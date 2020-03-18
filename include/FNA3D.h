@@ -507,7 +507,6 @@ FNA3DAPI void FNA3D_ReadBackbuffer(
 
 /* Textures */
 
-
 FNA3DAPI FNA3D_Texture* FNA3D_CreateTexture2D(
 	FNA3D_Device *device,
 	FNA3D_SurfaceFormat format,
