@@ -602,7 +602,7 @@ FNA3DAPI void FNA3D_SetTextureDataCube(
 );
 FNA3DAPI void FNA3D_SetTextureDataYUV(
 	FNA3D_Device *device,
-	FNA3D_Texture* textures,
+	FNA3D_Texture *textures,
 	void* ptr
 );
 FNA3DAPI void FNA3D_GetTextureData2D(
