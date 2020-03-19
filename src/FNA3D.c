@@ -25,33 +25,98 @@
  */
 
 #include "FNA3D.h"
+#include "FNA3D_Driver.h"
 
 #include <SDL.h>
+
+/* Drivers */
+
+static const FNA3D_Driver *drivers[] = {
+#if FNA3D_DRIVER_VULKAN
+	&Vulkan_Driver,
+#endif
+#if FNA3D_DRIVER_D3D11
+	&D3D11_Driver,
+#endif
+#if FNA3D_DRIVER_METAL
+	&Metal_Driver,
+#endif
+#if FNA3D_DRIVER_OPENGL
+	&OpenGL_Driver,
+#endif
+#if FNA3D_DRIVER_MODERNGL
+	&ModernGL_Driver,
+#endif
+#if FNA3D_DRIVER_GNMX
+	&GNMX_Driver,
+#endif
+	NULL
+};
+
+static int32_t selectedDriver = -1;
 
 /* Init/Quit */
 
 uint32_t FNA3D_PrepareWindowAttributes(uint8_t debugMode)
 {
-	/* TODO */
+	uint32_t result = 0;
+	uint32_t i;
+	for (i = 0; drivers[i] != NULL; i += 1)
+	{
+		if (drivers[i]->PrepareWindowAttributes(debugMode, &result))
+		{
+			break;
+		}
+		i += 1;
+	}
+	if (drivers[i] == NULL)
+	{
+		SDL_LogError(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"No supported FNA3D driver found!"
+		);
+	}
+	else
+	{
+		selectedDriver = i;
+	}
+	return result;
 }
 
 FNA3D_Device* FNA3D_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
-	/* TODO */
-	return NULL;
+	if (selectedDriver < 0)
+	{
+		SDL_LogError(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"Call FN3D_PrepareWindowAttributes first!"
+		);
+		return NULL;
+	}
+
+	return drivers[selectedDriver]->CreateDevice(presentationParameters);
 }
 
 void FNA3D_DestroyDevice(FNA3D_Device *device)
 {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+
+	device->Destroy(device);
 }
 
 /* Begin/End Frame */
 
 void FNA3D_BeginFrame(FNA3D_Device *device)
 {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->BeginFrame(device->driverData);
 }
 
 void FNA3D_SwapBuffers(
@@ -60,14 +125,27 @@ void FNA3D_SwapBuffers(
 	FNA3D_Rect *destinationRectangle,
 	void* overrideWindowHandle
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SwapBuffers(
+		device->driverData,
+		sourceRectangle,
+		destinationRectangle,
+		overrideWindowHandle
+	);
 }
 
 void FNA3D_SetPresentationInterval(
 	FNA3D_Device *device,
 	FNA3D_PresentInterval presentInterval
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SetPresentationInterval(device->driverData, presentInterval);
 }
 
 /* Drawing */
@@ -79,7 +157,11 @@ void FNA3D_Clear(
 	float depth,
 	int32_t stencil
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->Clear(device->driverData, options, color, depth, stencil);
 }
 
 void FNA3D_DrawIndexedPrimitives(
@@ -93,7 +175,21 @@ void FNA3D_DrawIndexedPrimitives(
 	FNA3D_Buffer *indices,
 	FNA3D_IndexElementSize indexElementSize
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->DrawIndexedPrimitives(
+		device->driverData,
+		primitiveType,
+		baseVertex,
+		minVertexIndex,
+		numVertices,
+		startIndex,
+		primitiveCount,
+		indices,
+		indexElementSize
+	);
 }
 
 void FNA3D_DrawInstancedPrimitives(
@@ -108,7 +204,22 @@ void FNA3D_DrawInstancedPrimitives(
 	FNA3D_Buffer *indices,
 	FNA3D_IndexElementSize indexElementSize
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->DrawInstancedPrimitives(
+		device->driverData,
+		primitiveType,
+		baseVertex,
+		minVertexIndex,
+		numVertices,
+		startIndex,
+		primitiveCount,
+		instanceCount,
+		indices,
+		indexElementSize
+	);
 }
 
 void FNA3D_DrawPrimitives(
@@ -117,7 +228,16 @@ void FNA3D_DrawPrimitives(
 	int32_t vertexStart,
 	int32_t primitiveCount
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->DrawPrimitives(
+		device->driverData,
+		primitiveType,
+		vertexStart,
+		primitiveCount
+	);
 }
 
 void FNA3D_DrawUserIndexedPrimitives(
@@ -131,7 +251,21 @@ void FNA3D_DrawUserIndexedPrimitives(
 	FNA3D_IndexElementSize indexElementSize,
 	int32_t primitiveCount
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->DrawUserIndexedPrimitives(
+		device->driverData,
+		primitiveType,
+		vertexData,
+		vertexOffset,
+		numVertices,
+		indexData,
+		indexOffset,
+		indexElementSize,
+		primitiveCount
+	);
 }
 
 void FNA3D_DrawUserPrimitives(
@@ -141,54 +275,95 @@ void FNA3D_DrawUserPrimitives(
 	int32_t vertexOffset,
 	int32_t primitiveCount
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->DrawUserPrimitives(
+		device->driverData,
+		primitiveType,
+		vertexData,
+		vertexOffset,
+		primitiveCount
+	);
 }
 
 /* Mutable Render States */
 
 void FNA3D_SetViewport(FNA3D_Device *device, FNA3D_Viewport *viewport)
 {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SetViewport(device->driverData, viewport);
 }
 
 void FNA3D_SetScissorRect(FNA3D_Device *device, FNA3D_Rect *scissor)
 {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SetScissorRect(device->driverData, scissor);
 }
 
 void FNA3D_GetBlendFactor(
 	FNA3D_Device *device,
 	FNA3D_Color *blendFactor
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->GetBlendFactor(device->driverData, blendFactor);
 }
 
 void FNA3D_SetBlendFactor(
 	FNA3D_Device *device,
 	FNA3D_Color *blendFactor
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SetBlendFactor(device->driverData, blendFactor);
 }
 
 int32_t FNA3D_GetMultiSampleMask(FNA3D_Device *device)
 {
-	/* TODO */
-	return 0;
+	if (device == NULL)
+	{
+		return 0;
+	}
+	return device->GetMultiSampleMask(device->driverData);
 }
 
 void FNA3D_SetMultiSampleMask(FNA3D_Device *device, int32_t mask)
 {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SetMultiSampleMask(device->driverData, mask);
 }
 
 int32_t FNA3D_GetReferenceStencil(FNA3D_Device *device)
 {
-	/* TODO */
-	return 0;
+	if (device == NULL)
+	{
+		return 0;
+	}
+	return device->GetReferenceStencil(device->driverData);
 }
+
 void FNA3D_SetReferenceStencil(FNA3D_Device *device, int32_t ref)
 {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SetReferenceStencil(device->driverData, ref);
 }
 
 /* Immutable Render States */
@@ -197,21 +372,33 @@ void FNA3D_SetBlendState(
 	FNA3D_Device *device,
 	FNA3D_BlendState *blendState
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SetBlendState(device->driverData, blendState);
 }
 
 void FNA3D_SetDepthStencilState(
 	FNA3D_Device *device,
 	FNA3D_DepthStencilState *depthStencilState
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SetDepthStencilState(device->driverData, depthStencilState);
 }
 
 void FNA3D_ApplyRasterizerState(
 	FNA3D_Device *device,
 	FNA3D_RasterizerState *rasterizerState
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->ApplyRasterizerState(device->driverData, rasterizerState);
 }
 
 void VerifySampler(
@@ -220,7 +407,11 @@ void VerifySampler(
 	FNA3D_Texture *texture,
 	FNA3D_SamplerState *sampler
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->VerifySampler(device->driverData, index, texture, sampler);
 }
 
 /* Vertex State */
@@ -232,7 +423,16 @@ void FNA3D_ApplyVertexBufferBindings(
 	uint8_t bindingsUpdated,
 	int32_t baseVertex
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->ApplyVertexBufferBindings(
+		device->driverData,
+		numBindings,
+		bindingsUpdated,
+		baseVertex
+	);
 }
 
 void FNA3D_ApplyVertexDeclaration(
@@ -241,7 +441,15 @@ void FNA3D_ApplyVertexDeclaration(
 	void* ptr,
 	int32_t vertexOffset
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->ApplyVertexDeclaration(
+		device->driverData,
+		ptr,
+		vertexOffset
+	);
 }
 
 /* Render Targets */
@@ -252,29 +460,48 @@ void FNA3D_SetRenderTargets(
 	FNA3D_Renderbuffer *renderbuffer,
 	FNA3D_DepthFormat depthFormat
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SetRenderTargets(
+		device->driverData,
+		renderbuffer,
+		depthFormat
+	);
 }
 
 void FNA3D_ResolveTarget(
 	FNA3D_Device *device
 	/* FIXME: Oh shit RenderTargetBinding target */
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->ResolveTarget(device->driverData);
 }
 
 /* Backbuffer Functions */
 
 FNA3D_Backbuffer* FNA3D_GetBackbuffer(FNA3D_Device *device)
 {
-	/* TODO */
-	return NULL;
+	if (device == NULL)
+	{
+		return NULL;
+	}
+	return device->GetBackbuffer(device->driverData);
 }
 
 void FNA3D_ResetBackbuffer(
 	FNA3D_Device *device,
 	FNA3D_PresentationParameters *presentationParameters
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->ResetBackbuffer(device->driverData, presentationParameters);
 }
 
 void FNA3D_ReadBackbuffer(
@@ -289,7 +516,22 @@ void FNA3D_ReadBackbuffer(
 	int32_t w,
 	int32_t h
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->ReadBackbuffer(
+		device->driverData,
+		data,
+		dataLen,
+		startIndex,
+		elementCount,
+		elementSizeInBytes,
+		x,
+		y,
+		w,
+		h
+	);
 }
 
 /* Textures */
@@ -302,8 +544,18 @@ FNA3D_Texture* FNA3D_CreateTexture2D(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
-	/* TODO */
-	return NULL;
+	if (device == NULL)
+	{
+		return NULL;
+	}
+	return device->CreateTexture2D(
+		device->driverData,
+		format,
+		width,
+		height,
+		levelCount,
+		isRenderTarget
+	);
 }
 
 FNA3D_Texture* FNA3D_CreateTexture3D(
@@ -314,8 +566,18 @@ FNA3D_Texture* FNA3D_CreateTexture3D(
 	int32_t depth,
 	int32_t levelCount
 ) {
-	/* TODO */
-	return NULL;
+	if (device == NULL)
+	{
+		return NULL;
+	}
+	return device->CreateTexture3D(
+		device->driverData,
+		format,
+		width,
+		height,
+		depth,
+		levelCount
+	);
 }
 
 FNA3D_Texture* FNA3D_CreateTextureCube(
@@ -325,15 +587,28 @@ FNA3D_Texture* FNA3D_CreateTextureCube(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
-	/* TODO */
-	return NULL;
+	if (device == NULL)
+	{
+		return NULL;
+	}
+	device->CreateTextureCube(
+		device->driverData,
+		format,
+		size,
+		levelCount,
+		isRenderTarget
+	);
 }
 
 void FNA3D_AddDisposeTexture(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->AddDisposeTexture(device->driverData, texture);
 }
 
 void FNA3D_SetTextureData2D(
@@ -348,7 +623,22 @@ void FNA3D_SetTextureData2D(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SetTextureData2D(
+		device->driverData,
+		texture,
+		format,
+		x,
+		y,
+		w,
+		h,
+		level,
+		data,
+		dataLength
+	);
 }
 
 void FNA3D_SetTextureData3D(
@@ -365,7 +655,24 @@ void FNA3D_SetTextureData3D(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SetTextureData3D(
+		device->driverData,
+		texture,
+		format,
+		level,
+		left,
+		top,
+		right,
+		bottom,
+		front,
+		back,
+		data,
+		dataLength
+	);
 }
 
 void FNA3D_SetTextureDataCube(
@@ -381,7 +688,23 @@ void FNA3D_SetTextureDataCube(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SetTextureDataCube(
+		device->driverData,
+		texture,
+		format,
+		x,
+		y,
+		w,
+		h,
+		cubeMapFace,
+		level,
+		data,
+		dataLength
+	);
 }
 
 void FNA3D_SetTextureDataYUV(
@@ -389,7 +712,11 @@ void FNA3D_SetTextureDataYUV(
 	FNA3D_Texture *textures,
 	void* ptr
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SetTextureDataYUV(device->driverData, textures, ptr);
 }
 
 void FNA3D_GetTextureData2D(
@@ -408,7 +735,26 @@ void FNA3D_GetTextureData2D(
 	int32_t elementCount,
 	int32_t elementSizeInBytes
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->GetTextureData2D(
+		device->driverData,
+		texture,
+		format,
+		textureWidth,
+		textureHeight,
+		level,
+		x,
+		y,
+		w,
+		h,
+		data,
+		startIndex,
+		elementCount,
+		elementSizeInBytes
+	);
 }
 
 void FNA3D_GetTextureData3D(
@@ -427,7 +773,26 @@ void FNA3D_GetTextureData3D(
 	int32_t elementCount,
 	int32_t elementSizeInBytes
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->GetTextureData3D(
+		device->driverData,
+		texture,
+		format,
+		left,
+		top,
+		front,
+		right,
+		bottom,
+		back,
+		level,
+		data,
+		startIndex,
+		elementCount,
+		elementSizeInBytes
+	);
 }
 
 void FNA3D_GetTextureDataCube(
@@ -446,7 +811,26 @@ void FNA3D_GetTextureDataCube(
 	int32_t elementCount,
 	int32_t elementSizeInBytes
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->GetTextureDataCube(
+		device->driverData,
+		texture,
+		format,
+		textureSize,
+		cubeMapFace,
+		level,
+		x,
+		y,
+		w,
+		h,
+		data,
+		startIndex,
+		elementCount,
+		elementSizeInBytes
+	);
 }
 
 /* Renderbuffers */
@@ -459,8 +843,18 @@ FNA3D_Renderbuffer* FNA3D_GenColorRenderbuffer(
 	int32_t multiSampleCount,
 	FNA3D_Texture *texture
 ) {
-	/* TODO */
-	return NULL;
+	if (device == NULL)
+	{
+		return NULL;
+	}
+	return device->GenColorRenderbuffer(
+		device->driverData,
+		width,
+		height,
+		format,
+		multiSampleCount,
+		texture
+	);
 }
 
 FNA3D_Renderbuffer* FNA3D_GenDepthStencilRenderbuffer(
@@ -470,15 +864,31 @@ FNA3D_Renderbuffer* FNA3D_GenDepthStencilRenderbuffer(
 	FNA3D_DepthFormat format,
 	int32_t multiSampleCount
 ) {
-	/* TODO */
-	return NULL;
+	if (device == NULL)
+	{
+		return NULL;
+	}
+	device->GenDepthStencilRenderbuffer(
+		device->driverData,
+		width,
+		height,
+		format,
+		multiSampleCount
+	);
 }
 
 void FNA3D_AddDisposeRenderbuffer(
 	FNA3D_Device *device,
 	FNA3D_Renderbuffer *renderbuffer
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->AddDisposeRenderbuffer(
+		device->driverData,
+		renderbuffer
+	);
 }
 
 /* Vertex Buffers */
@@ -490,15 +900,28 @@ FNA3D_Buffer* FNA3D_GenVertexBuffer(
 	int32_t vertexCount,
 	int32_t vertexStride
 ) {
-	/* TODO */
-	return NULL;
+	if (device == NULL)
+	{
+		return NULL;
+	}
+	return device->GenVertexBuffer(
+		device->driverData,
+		dynamic,
+		usage,
+		vertexCount,
+		vertexStride
+	);
 }
 
 void FNA3D_AddDisposeVertexBuffer(
 	FNA3D_Device *device,
 	FNA3D_Buffer *buffer
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->AddDisposeVertexBuffer(device->driverData, buffer);
 }
 
 void FNA3D_SetVertexBufferData(
@@ -509,7 +932,18 @@ void FNA3D_SetVertexBufferData(
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SetVertexBufferData(
+		device->driverData,
+		buffer,
+		offsetInBytes,
+		data,
+		dataLength,
+		options
+	);
 }
 
 void FNA3D_GetVertexBufferData(
@@ -522,7 +956,20 @@ void FNA3D_GetVertexBufferData(
 	int32_t elementSizeInBytes,
 	int32_t vertexStride
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->GetVertexBufferData(
+		device->driverData,
+		buffer,
+		offsetInBytes,
+		data,
+		startIndex,
+		elementCount,
+		elementSizeInBytes,
+		vertexStride
+	);
 }
 
 /* Index Buffers */
@@ -534,15 +981,28 @@ FNA3D_Buffer* FNA3D_GenIndexBuffer(
 	int32_t indexCount,
 	FNA3D_IndexElementSize indexElementSize
 ) {
-	/* TODO */
-	return NULL;
+	if (device == NULL)
+	{
+		return NULL;
+	}
+	return device->GenIndexBuffer(
+		device->driverData,
+		dynamic,
+		usage,
+		indexCount,
+		indexElementSize
+	);
 }
 
 void FNA3D_AddDisposeIndexBuffer(
 	FNA3D_Device *device,
 	FNA3D_Buffer *buffer
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->AddDisposeIndexBuffer(device->driverData, buffer);
 }
 
 void FNA3D_SetIndexBufferData(
@@ -553,7 +1013,18 @@ void FNA3D_SetIndexBufferData(
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SetIndexBufferData(
+		device->driverData,
+		buffer,
+		offsetInBytes,
+		data,
+		dataLength,
+		options
+	);
 }
 
 void FNA3D_GetIndexBufferData(
@@ -565,7 +1036,19 @@ void FNA3D_GetIndexBufferData(
 	int32_t elementCount,
 	int32_t elementSizeInBytes
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->GetIndexBufferData(
+		device->driverData,
+		buffer,
+		offsetInBytes,
+		data,
+		startIndex,
+		elementCount,
+		elementSizeInBytes
+	);
 }
 
 /* Effects */
@@ -574,23 +1057,33 @@ FNA3D_Effect* FNA3D_CreateEffect(
 	FNA3D_Device *device,
 	uint8_t *effectCode
 ) {
-	/* TODO */
-	return NULL;
+	if (device == NULL)
+	{
+		return NULL;
+	}
+	return device->CreateEffect(device->driverData, effectCode);
 }
 
 FNA3D_Effect* FNA3D_CloneEffect(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect
 ) {
-	/* TODO */
-	return NULL;
+	if (device == NULL)
+	{
+		return NULL;
+	}
+	return device->CloneEffect(device->driverData, effect);
 }
 
 void FNA3D_AddDisposeEffect(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->AddDisposeEffect(device->driverData, effect);
 }
 
 void FNA3D_ApplyEffect(
@@ -600,7 +1093,17 @@ void FNA3D_ApplyEffect(
 	uint32_t pass,
 	void* stateChanges /* FIXME: Should be MojoShader */
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->ApplyEffect(
+		device->driverData,
+		effect,
+		technique,
+		pass,
+		stateChanges
+	);
 }
 
 void FNA3D_BeginPassRestore(
@@ -608,96 +1111,151 @@ void FNA3D_BeginPassRestore(
 	FNA3D_Effect *effect,
 	void* stateChanges /* FIXME: Should be MojoShader */
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->BeginPassRestore(
+		device->driverData,
+		effect,
+		stateChanges
+	);
 }
 
 void FNA3D_EndPassRestore(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->EndPassRestore(device->driverData, effect);
 }
 
 /* Queries */
 
 FNA3D_Query* FNA3D_CreateQuery(FNA3D_Device *device)
 {
-	/* TODO */
-	return NULL;
+	if (device == NULL)
+	{
+		return NULL;
+	}
+	return device->CreateQuery(device->driverData);
 }
 
 void FNA3D_AddDisposeQuery(FNA3D_Device *device, FNA3D_Query *query)
 {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->AddDisposeQuery(device->driverData, query);
 }
 
 void FNA3D_QueryBegin(FNA3D_Device *device, FNA3D_Query *query)
 {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->QueryBegin(device->driverData, query);
 }
 
 void FNA3D_QueryEnd(FNA3D_Device *device, FNA3D_Query *query)
 {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->QueryEnd(device->driverData, query);
 }
 
 uint8_t FNA3D_QueryComplete(FNA3D_Device *device, FNA3D_Query *query)
 {
-	/* TODO */
-	return 1;
+	if (device == NULL)
+	{
+		return 1;
+	}
+	return device->QueryComplete(device->driverData, query);
 }
 
 int32_t FNA3D_QueryPixelCount(
 	FNA3D_Device *device,
 	FNA3D_Query *query
 ) {
-	/* TODO */
-	return 0;
+	if (device == NULL)
+	{
+		return 0;
+	}
+	return device->QueryPixelCount(device->driverData, query);
 }
 
 /* Feature Queries */
 
 uint8_t FNA3D_SupportsDXT1(FNA3D_Device *device)
 {
-	/* TODO */
-	return 0;
+	if (device == NULL)
+	{
+		return 0;
+	}
+	return device->SupportsDXT1(device->driverData);
 }
 
 uint8_t FNA3D_SupportsS3TC(FNA3D_Device *device)
 {
-	/* TODO */
-	return 0;
+	if (device == NULL)
+	{
+		return 0;
+	}
+	return device->SupportsS3TC(device->driverData);
 }
 
 uint8_t FNA3D_SupportsHardwareInstancing(FNA3D_Device *device)
 {
-	/* TODO */
-	return 0;
+	if (device == NULL)
+	{
+		return 0;
+	}
+	return device->SupportsHardwareInstancing(device->driverData);
 }
 
 uint8_t FNA3D_SupportsNoOverwrite(FNA3D_Device *device)
 {
-	/* TODO */
-	return 0;
+	if (device == NULL)
+	{
+		return 0;
+	}
+	return device->SupportsNoOverwrite(device->driverData);
 }
 
 int32_t FNA3D_GetMaxTextureSlots(FNA3D_Device *device)
 {
-	/* TODO */
-	return 0;
+	if (device == NULL)
+	{
+		return 0;
+	}
+	return device->GetMaxTextureSlots(device->driverData);
 }
 
 int32_t FNA3D_GetMaxMultiSampleCount(FNA3D_Device *device)
 {
-	/* TODO */
-	return 0;
+	if (device == NULL)
+	{
+		return 0;
+	}
+	return device->GetMaxMultiSampleCount(device->driverData);
 }
 
 /* Debugging */
 
 void FNA3D_SetStringMarker(FNA3D_Device *device, const char *text)
 {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SetStringMarker(device->driverData, text);
 }
 
 /* TODO: Debug callback function...? */
@@ -708,8 +1266,11 @@ intptr_t FNA3D_GetBufferSize(
 	FNA3D_Device *device,
 	FNA3D_Buffer *buffer
 ) {
-	/* TODO */
-	return 0;
+	if (device == NULL)
+	{
+		return 0;
+	}
+	return device->GetBufferSize(device->driverData, buffer);
 }
 
 /* Effect Objects */
@@ -718,8 +1279,11 @@ void* FNA3D_GetEffectData(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect
 ) {
-	/* TODO */
-	return NULL;
+	if (device == NULL)
+	{
+		return NULL;
+	}
+	return device->GetEffectData(device->driverData, effect);
 }
 
 /* Backbuffer Objects */
@@ -728,32 +1292,47 @@ int32_t FNA3D_GetBackbufferWidth(
 	FNA3D_Device *device,
 	FNA3D_Backbuffer *backbuffer
 ) {
-	/* TODO */
-	return 0;
+	if (device == NULL)
+	{
+		return 0;
+	}
+	return device->GetBackbufferWidth(device->driverData, backbuffer);
 }
 
 int32_t FNA3D_GetBackbufferHeight(
 	FNA3D_Device *device,
 	FNA3D_Backbuffer *backbuffer
 ) {
-	/* TODO */
-	return 0;
+	if (device == NULL)
+	{
+		return 0;
+	}
+	return device->GetBackbufferHeight(device->driverData, backbuffer);
 }
 
 FNA3D_DepthFormat FNA3D_GetBackbufferDepthFormat(
 	FNA3D_Device *device,
 	FNA3D_Backbuffer *backbuffer
 ) {
-	/* TODO */
-	return FNA3D_DEPTHFORMAT_NONE;
+	if (device == NULL)
+	{
+		return FNA3D_DEPTHFORMAT_NONE;
+	}
+	return device->GetBackbufferDepthFormat(device->driverData, backbuffer);
 }
 
 int32_t FNA3D_GetBackbufferMultiSampleCount(
 	FNA3D_Device *device,
 	FNA3D_Backbuffer *backbuffer
 ) {
-	/* TODO */
-	return 0;
+	if (device == NULL)
+	{
+		return 0;
+	}
+	return device->GetBackbufferMultiSampleCount(
+		device->driverData,
+		backbuffer
+	);
 }
 
 void FNA3D_ResetFramebuffer(
@@ -761,5 +1340,13 @@ void FNA3D_ResetFramebuffer(
 	FNA3D_Backbuffer *backbuffer,
 	FNA3D_PresentationParameters *presentationParameters
 ) {
-	/* TODO */
+	if (device == NULL)
+	{
+		return;
+	}
+	device->ResetFramebuffer(
+		device->driverData,
+		backbuffer,
+		presentationParameters
+	);
 }
