@@ -31,6 +31,9 @@ endif
 
 CFLAGS += -g -O3
 
+# Drivers
+DEFINES += -DFNA3D_DRIVER_OPENGL
+
 # Includes/Libraries
 INCLUDES = -Iinclude `sdl2-config --cflags`
 DEPENDENCIES = `sdl2-config --libs`
