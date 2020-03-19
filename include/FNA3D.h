@@ -53,7 +53,7 @@ typedef struct FNA3D_Backbuffer FNA3D_Backbuffer;
 
 /* Enumerations, should match XNA 4.0 */
 
-typedef enum
+typedef enum FNA3D_PresentInterval
 {
 	FNA3D_PRESENTINTERVAL_DEFAULT,
 	FNA3D_PRESENTINTERVAL_ONE,
@@ -61,7 +61,7 @@ typedef enum
 	FNA3D_PRESENTINTERVAL_IMMEDIATE
 } FNA3D_PresentInterval;
 
-typedef enum
+typedef enum FNA3D_DisplayOrientation
 {
 	FNA3D_DISPLAYORIENTATION_DEFAULT,
 	FNA3D_DISPLAYORIENTATION_LANDSCAPELEFT,
@@ -69,21 +69,21 @@ typedef enum
 	FNA3D_DISPLAYORIENTATION_PORTRAIT
 } FNA3D_DisplayOrientation;
 
-typedef enum
+typedef enum FNA3D_RenderTargetUsage
 {
 	FNA3D_RENDERTARGETUSAGE_DISCARDCONTENTS,
 	FNA3D_RENDERTARGETUSAGE_PRESERVECONTENTS,
 	FNA3D_RENDERTARGETUSAGE_PLATFORMCONTENTS
 } FNA3D_RenderTargetUsage;
 
-typedef enum
+typedef enum FNA3D_ClearOptions
 {
 	FNA3D_CLEAROPTIONS_TARGET	= 1,
 	FNA3D_CLEAROPTIONS_DEPTHBUFFER	= 2,
 	FNA3D_CLEAROPTIONS_STENCIL	= 4
 } FNA3D_ClearOptions;
 
-typedef enum
+typedef enum FNA3D_PrimitiveType
 {
 	FNA3D_PRIMITIVETYPE_TRIANGLELIST,
 	FNA3D_PRIMITIVETYPE_TRIANGLESTRIP,
@@ -92,13 +92,13 @@ typedef enum
 	FNA3D_PRIMITIVETYPE_POINTLIST_EXT
 } FNA3D_PrimitiveType;
 
-typedef enum
+typedef enum FNA3D_IndexElementSize
 {
 	FNA3D_INDEXELEMENTSIZE_16BIT,
 	FNA3D_INDEXELEMENTSIZE_32BIT
 } FNA3D_IndexElementSize;
 
-typedef enum
+typedef enum FNA3D_SurfaceFormat
 {
 	FNA3D_SURFACEFORMAT_COLOR,
 	FNA3D_SURFACEFORMAT_BGR565,
@@ -123,7 +123,7 @@ typedef enum
 	FNA3D_SURFACEFORMAT_COLORBGRA_EXT
 } FNA3D_SurfaceFormat;
 
-typedef enum
+typedef enum FNA3D_DepthFormat
 {
 	FNA3D_DEPTHFORMAT_NONE,
 	FNA3D_DEPTHFORMAT_D16,
@@ -131,7 +131,7 @@ typedef enum
 	FNA3D_DEPTHFORMAT_D24S8
 } FNA3D_DepthFormat;
 
-typedef enum
+typedef enum FNA3D_CubeMapFace
 {
 	FNA3D_CUBEMAPFACE_POSITIVEX,
 	FNA3D_CUBEMAPFACE_NEGATIVEX,
@@ -141,20 +141,20 @@ typedef enum
 	FNA3D_CUBEMAPFACE_NEGATIVEZ
 } FNA3D_CubeMapFace;
 
-typedef enum
+typedef enum FNA3D_BufferUsage
 {
 	FNA3D_BUFFERUSAGE_NONE,
 	FNA3D_BUFFERUSAGE_WRITEONLY
 } FNA3D_BufferUsage;
 
-typedef enum
+typedef enum FNA3D_SetDataOptions
 {
 	FNA3D_SETDATAOPTIONS_NONE,
 	FNA3D_SETDATAOPTIONS_DISCARD,
 	FNA3D_SETDATAOPTIONS_NOOVERWRITE
 } FNA3D_SetDataOptions;
 
-typedef enum
+typedef enum FNA3D_Blend
 {
 	FNA3D_BLEND_ONE,
 	FNA3D_BLEND_ZERO,
@@ -171,7 +171,7 @@ typedef enum
 	FNA3D_BLEND_SOURCEALPHASATURATION
 } FNA3D_Blend;
 
-typedef enum
+typedef enum FNA3D_BlendFunction
 {
 	FNA3D_BLENDFUNCTION_ADD,
 	FNA3D_BLENDFUNCTION_SUBTRACT,
@@ -180,7 +180,7 @@ typedef enum
 	FNA3D_BLENDFUNCTION_MIN
 } FNA3D_BlendFunction;
 
-typedef enum
+typedef enum FNA3D_ColorWriteChannels
 {
 	FNA3D_COLORWRITECHANNELS_NONE	= 0,
 	FNA3D_COLORWRITECHANNELS_RED	= 1,
@@ -190,7 +190,7 @@ typedef enum
 	FNA3D_COLORWRITECHANNELS_ALL	= 15
 } FNA3D_ColorWriteChannels;
 
-typedef enum
+typedef enum FNA3D_StencilOperation
 {
 	FNA3D_STENCILOPERATION_KEEP,
 	FNA3D_STENCILOPERATION_ZERO,
@@ -202,7 +202,7 @@ typedef enum
 	FNA3D_STENCILOPERATION_INVERT
 } FNA3D_StencilOperation;
 
-typedef enum
+typedef enum FNA3D_CompareFunction
 {
 	FNA3D_COMPAREFUNCTION_ALWAYS,
 	FNA3D_COMPAREFUNCTION_NEVER,
@@ -214,27 +214,27 @@ typedef enum
 	FNA3D_COMPAREFUNCTION_NOTEQUAL
 } FNA3D_CompareFunction;
 
-typedef enum
+typedef enum FNA3D_CullMode
 {
 	FNA3D_CULLMODE_NONE,
 	FNA3D_CULLMODE_CULLCLOCKWISEFACE,
 	FNA3D_CULLMODE_CULLCOUNTERCLOCKWISEFACE
 } FNA3D_CullMode;
 
-typedef enum
+typedef enum FNA3D_FillMode
 {
 	FNA3D_FILLMODE_SOLID,
 	FNA3D_FILLMODE_WIREFRAME
 } FNA3D_FillMode;
 
-typedef enum
+typedef enum FNA3D_TextureAddressMode
 {
 	FNA_TEXTUREADDRESSMODE_WRAP,
 	FNA_TEXTUREADDRESSMODE_CLAMP,
 	FNA_TEXTUREADDRESSMODE_MIRROR,
 } FNA3D_TextureAddressMode;
 
-typedef enum
+typedef enum FNA3D_TextureFilter
 {
 	FNA3D_TEXTUREFILTER_LINEAR,
 	FNA3D_TEXTUREFILTER_POINT,

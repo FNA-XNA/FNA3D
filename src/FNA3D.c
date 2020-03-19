@@ -33,22 +33,22 @@
 
 static const FNA3D_Driver *drivers[] = {
 #if FNA3D_DRIVER_VULKAN
-	&Vulkan_Driver,
+	&VulkanDriver,
 #endif
 #if FNA3D_DRIVER_D3D11
-	&D3D11_Driver,
+	&D3D11Driver,
 #endif
 #if FNA3D_DRIVER_METAL
-	&Metal_Driver,
+	&MetalDriver,
 #endif
 #if FNA3D_DRIVER_OPENGL
-	&OpenGL_Driver,
+	&OpenGLDriver,
 #endif
 #if FNA3D_DRIVER_MODERNGL
-	&ModernGL_Driver,
+	&ModernGLDriver,
 #endif
 #if FNA3D_DRIVER_GNMX
-	&GNMX_Driver,
+	&GNMXDriver,
 #endif
 	NULL
 };
@@ -90,7 +90,7 @@ FNA3D_Device* FNA3D_CreateDevice(
 	{
 		SDL_LogError(
 			SDL_LOG_CATEGORY_APPLICATION,
-			"Call FN3D_PrepareWindowAttributes first!"
+			"Call FNA3D_PrepareWindowAttributes first!"
 		);
 		return NULL;
 	}
