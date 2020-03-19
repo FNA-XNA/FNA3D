@@ -1,0 +1,3 @@
+*.o
+FNA3D.dll
+libFNA3D.*
