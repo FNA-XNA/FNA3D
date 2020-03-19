@@ -63,6 +63,21 @@ typedef enum
 
 typedef enum
 {
+	FNA3D_DISPLAYORIENTATION_DEFAULT,
+	FNA3D_DISPLAYORIENTATION_LANDSCAPELEFT,
+	FNA3D_DISPLAYORIENTATION_LANDSCAPERIGHT,
+	FNA3D_DISPLAYORIENTATION_PORTRAIT
+} FNA3D_DisplayOrientation;
+
+typedef enum
+{
+	FNA3D_RENDERTARGETUSAGE_DISCARDCONTENTS,
+	FNA3D_RENDERTARGETUSAGE_PRESERVECONTENTS,
+	FNA3D_RENDERTARGETUSAGE_PLATFORMCONTENTS
+} FNA3D_RenderTargetUsage;
+
+typedef enum
+{
 	FNA3D_CLEAR_OPTIONS_TARGET		= 1,
 	FNA3D_CLEAR_OPTIONS_DEPTH_BUFFER	= 2,
 	FNA3D_CLEAR_OPTIONS_STENCIL		= 4
@@ -325,12 +340,26 @@ typedef struct FNA3D_SamplerState
 	float mipMapLevelOfDetailBias;
 } FNA3D_SamplerState;
 
+typedef struct FNA3D_PresentationParameters
+{
+	uint32_t BackBufferWidth;
+	uint32_t BackBufferHeight;
+	FNA3D_SurfaceFormat BackBufferFormat;
+	int32_t MultiSampleCount;
+	void* DeviceWindowHandle;
+	uint8_t IsFullScreen;
+	FNA3D_SurfaceFormat DepthStencilFormat;
+	FNA3D_PresentInterval PresentationInterval;
+	FNA3D_DisplayOrientation DisplayOrientation;
+	FNA3D_RenderTargetUsage RenderTargetUsage;
+} FNA3D_PresentationParameters;
+
 /* Functions */
 
 /* Init/Quit */
 
 FNA3DAPI FNA3D_Device* FNA3D_CreateDevice(
-	/* FIXME: Oh shit PresentationParameters presentationParameters, */
+	FNA3D_PresentationParameters *presentationParameters
 );
 
 FNA3DAPI void FNA3D_DestroyDevice(FNA3D_Device *device);
@@ -486,8 +515,8 @@ FNA3DAPI void FNA3D_ResolveTarget(
 FNA3DAPI FNA3D_Backbuffer* FNA3D_GetBackbuffer(FNA3D_Device *device);
 
 FNA3DAPI void FNA3D_ResetBackbuffer(
-	FNA3D_Device *device
-	/* FIXME: Oh shit PresentationParameters presentationParameters, */
+	FNA3D_Device *device,
+	FNA3D_PresentationParameters *presentationParameters
 );
 
 FNA3DAPI void FNA3D_ReadBackbuffer(
@@ -804,8 +833,8 @@ FNA3DAPI int32_t FNA3D_GetBackbufferMultiSampleCount(
 );
 FNA3DAPI void FNA3D_ResetFramebuffer(
 	FNA3D_Device *device,
-	FNA3D_Backbuffer *backbuffer
-	/* FIXME: Oh shit PresentationParameters */
+	FNA3D_Backbuffer *backbuffer,
+	FNA3D_PresentationParameters *presentationParameters
 );
 
 #ifdef __cplusplus
