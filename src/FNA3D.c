@@ -602,7 +602,7 @@ FNA3D_Texture* FNA3D_CreateTextureCube(
 	{
 		return NULL;
 	}
-	device->CreateTextureCube(
+	return device->CreateTextureCube(
 		device->driverData,
 		format,
 		size,
@@ -879,7 +879,7 @@ FNA3D_Renderbuffer* FNA3D_GenDepthStencilRenderbuffer(
 	{
 		return NULL;
 	}
-	device->GenDepthStencilRenderbuffer(
+	return device->GenDepthStencilRenderbuffer(
 		device->driverData,
 		width,
 		height,
