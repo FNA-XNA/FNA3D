@@ -331,7 +331,6 @@ typedef struct FNA3D_SamplerState
 
 FNA3DAPI FNA3D_Device* FNA3D_CreateDevice(
 	/* FIXME: Oh shit PresentationParameters presentationParameters, */
-	/* FIXME: Oh shit GraphicsAdapter adapter */
 );
 
 FNA3DAPI void FNA3D_DestroyDevice(FNA3D_Device *device);
@@ -489,7 +488,6 @@ FNA3DAPI FNA3D_Backbuffer* FNA3D_GetBackbuffer(FNA3D_Device *device);
 FNA3DAPI void FNA3D_ResetBackbuffer(
 	FNA3D_Device *device
 	/* FIXME: Oh shit PresentationParameters presentationParameters, */
-	/* FIXME: Oh shit GraphicsAdapter adapter */
 );
 
 FNA3DAPI void FNA3D_ReadBackbuffer(
