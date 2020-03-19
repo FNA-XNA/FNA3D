@@ -33,7 +33,7 @@ struct FNA3D_Device
 {
 	/* Quit */
 
-	void (*Destroy)(void* driverData);
+	void (*DestroyDevice)(FNA3D_Device *device);
 
 	/* Begin/End Frame */
 
@@ -511,6 +511,87 @@ struct FNA3D_Device
 	void* driverData;
 };
 
+#define ASSIGN_DRIVER_FUNC(func, name) \
+	result->func = name##_##func;
+#define ASSIGN_DRIVER(name) \
+	ASSIGN_DRIVER_FUNC(DestroyDevice, name) \
+	ASSIGN_DRIVER_FUNC(BeginFrame, name) \
+	ASSIGN_DRIVER_FUNC(SwapBuffers, name) \
+	ASSIGN_DRIVER_FUNC(SetPresentationInterval, name) \
+	ASSIGN_DRIVER_FUNC(SetPresentationInterval, name) \
+	ASSIGN_DRIVER_FUNC(Clear, name) \
+	ASSIGN_DRIVER_FUNC(DrawIndexedPrimitives, name) \
+	ASSIGN_DRIVER_FUNC(DrawInstancedPrimitives, name) \
+	ASSIGN_DRIVER_FUNC(DrawPrimitives, name) \
+	ASSIGN_DRIVER_FUNC(DrawUserIndexedPrimitives, name) \
+	ASSIGN_DRIVER_FUNC(DrawUserPrimitives, name) \
+	ASSIGN_DRIVER_FUNC(SetViewport, name) \
+	ASSIGN_DRIVER_FUNC(SetScissorRect, name) \
+	ASSIGN_DRIVER_FUNC(GetBlendFactor, name) \
+	ASSIGN_DRIVER_FUNC(SetBlendFactor, name) \
+	ASSIGN_DRIVER_FUNC(GetMultiSampleMask, name) \
+	ASSIGN_DRIVER_FUNC(SetMultiSampleMask, name) \
+	ASSIGN_DRIVER_FUNC(GetReferenceStencil, name) \
+	ASSIGN_DRIVER_FUNC(SetReferenceStencil, name) \
+	ASSIGN_DRIVER_FUNC(SetBlendState, name) \
+	ASSIGN_DRIVER_FUNC(SetDepthStencilState, name) \
+	ASSIGN_DRIVER_FUNC(ApplyRasterizerState, name) \
+	ASSIGN_DRIVER_FUNC(VerifySampler, name) \
+	ASSIGN_DRIVER_FUNC(ApplyVertexBufferBindings, name) \
+	ASSIGN_DRIVER_FUNC(ApplyVertexDeclaration, name) \
+	ASSIGN_DRIVER_FUNC(SetRenderTargets, name) \
+	ASSIGN_DRIVER_FUNC(ResolveTarget, name) \
+	ASSIGN_DRIVER_FUNC(GetBackbuffer, name) \
+	ASSIGN_DRIVER_FUNC(ResetBackbuffer, name) \
+	ASSIGN_DRIVER_FUNC(ReadBackbuffer, name) \
+	ASSIGN_DRIVER_FUNC(CreateTexture2D, name) \
+	ASSIGN_DRIVER_FUNC(CreateTexture3D, name) \
+	ASSIGN_DRIVER_FUNC(CreateTextureCube, name) \
+	ASSIGN_DRIVER_FUNC(AddDisposeTexture, name) \
+	ASSIGN_DRIVER_FUNC(SetTextureData2D, name) \
+	ASSIGN_DRIVER_FUNC(SetTextureData3D, name) \
+	ASSIGN_DRIVER_FUNC(SetTextureDataCube, name) \
+	ASSIGN_DRIVER_FUNC(SetTextureDataYUV, name) \
+	ASSIGN_DRIVER_FUNC(GetTextureData2D, name) \
+	ASSIGN_DRIVER_FUNC(GetTextureData3D, name) \
+	ASSIGN_DRIVER_FUNC(GetTextureDataCube, name) \
+	ASSIGN_DRIVER_FUNC(GenColorRenderbuffer, name) \
+	ASSIGN_DRIVER_FUNC(GenDepthStencilRenderbuffer, name) \
+	ASSIGN_DRIVER_FUNC(AddDisposeRenderbuffer, name) \
+	ASSIGN_DRIVER_FUNC(GenVertexBuffer, name) \
+	ASSIGN_DRIVER_FUNC(AddDisposeVertexBuffer, name) \
+	ASSIGN_DRIVER_FUNC(SetVertexBufferData, name) \
+	ASSIGN_DRIVER_FUNC(GetVertexBufferData, name) \
+	ASSIGN_DRIVER_FUNC(AddDisposeIndexBuffer, name) \
+	ASSIGN_DRIVER_FUNC(SetIndexBufferData, name) \
+	ASSIGN_DRIVER_FUNC(GetIndexBufferData, name) \
+	ASSIGN_DRIVER_FUNC(CreateEffect, name) \
+	ASSIGN_DRIVER_FUNC(CloneEffect, name) \
+	ASSIGN_DRIVER_FUNC(AddDisposeEffect, name) \
+	ASSIGN_DRIVER_FUNC(ApplyEffect, name) \
+	ASSIGN_DRIVER_FUNC(BeginPassRestore, name) \
+	ASSIGN_DRIVER_FUNC(EndPassRestore, name) \
+	ASSIGN_DRIVER_FUNC(CreateQuery, name) \
+	ASSIGN_DRIVER_FUNC(AddDisposeQuery, name) \
+	ASSIGN_DRIVER_FUNC(QueryBegin, name) \
+	ASSIGN_DRIVER_FUNC(QueryEnd, name) \
+	ASSIGN_DRIVER_FUNC(QueryComplete, name) \
+	ASSIGN_DRIVER_FUNC(QueryPixelCount, name) \
+	ASSIGN_DRIVER_FUNC(SupportsDXT1, name) \
+	ASSIGN_DRIVER_FUNC(SupportsS3TC, name) \
+	ASSIGN_DRIVER_FUNC(SupportsHardwareInstancing, name) \
+	ASSIGN_DRIVER_FUNC(SupportsNoOverwrite, name) \
+	ASSIGN_DRIVER_FUNC(GetMaxTextureSlots, name) \
+	ASSIGN_DRIVER_FUNC(GetMaxMultiSampleCount, name) \
+	ASSIGN_DRIVER_FUNC(SetStringMarker, name) \
+	ASSIGN_DRIVER_FUNC(GetBufferSize, name) \
+	ASSIGN_DRIVER_FUNC(GetEffectData, name) \
+	ASSIGN_DRIVER_FUNC(GetBackbufferWidth, name) \
+	ASSIGN_DRIVER_FUNC(GetBackbufferHeight, name) \
+	ASSIGN_DRIVER_FUNC(GetBackbufferDepthFormat, name) \
+	ASSIGN_DRIVER_FUNC(GetBackbufferMultiSampleCount, name) \
+	ASSIGN_DRIVER_FUNC(ResetFramebuffer, name)
+
 typedef struct FNA3D_Driver
 {
 	uint8_t (*PrepareWindowAttributes)(uint8_t debugMode, uint32_t *flags);
@@ -522,6 +603,7 @@ extern FNA3D_Driver D3D11Driver;
 extern FNA3D_Driver MetalDriver;
 extern FNA3D_Driver OpenGLDriver;
 extern FNA3D_Driver ModernGLDriver;
+extern FNA3D_Driver ThreadedGLDriver;
 extern FNA3D_Driver GNMXDriver;
 
 #endif /* FNA3D_DRIVER_H */

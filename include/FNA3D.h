@@ -477,7 +477,7 @@ FNA3DAPI void FNA3D_ApplyRasterizerState(
 	FNA3D_Device *device,
 	FNA3D_RasterizerState *rasterizerState
 );
-FNA3DAPI void VerifySampler(
+FNA3DAPI void FNA3D_VerifySampler(
 	FNA3D_Device *device,
 	int32_t index,
 	FNA3D_Texture *texture,

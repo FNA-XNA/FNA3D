@@ -47,6 +47,9 @@ static const FNA3D_Driver *drivers[] = {
 #if FNA3D_DRIVER_MODERNGL
 	&ModernGLDriver,
 #endif
+#if FNA3D_DRIVER_THREADEDGL
+	&ThreadedGLDriver,
+#endif
 #if FNA3D_DRIVER_GNMX
 	&GNMXDriver,
 #endif
@@ -105,7 +108,7 @@ void FNA3D_DestroyDevice(FNA3D_Device *device)
 		return;
 	}
 
-	device->Destroy(device);
+	device->DestroyDevice(device);
 }
 
 /* Begin/End Frame */
@@ -401,7 +404,7 @@ void FNA3D_ApplyRasterizerState(
 	device->ApplyRasterizerState(device->driverData, rasterizerState);
 }
 
-void VerifySampler(
+void FNA3D_VerifySampler(
 	FNA3D_Device *device,
 	int32_t index,
 	FNA3D_Texture *texture,
