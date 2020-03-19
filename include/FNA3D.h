@@ -342,16 +342,16 @@ typedef struct FNA3D_SamplerState
 
 typedef struct FNA3D_PresentationParameters
 {
-	uint32_t BackBufferWidth;
-	uint32_t BackBufferHeight;
-	FNA3D_SurfaceFormat BackBufferFormat;
-	int32_t MultiSampleCount;
-	void* DeviceWindowHandle;
-	uint8_t IsFullScreen;
-	FNA3D_SurfaceFormat DepthStencilFormat;
-	FNA3D_PresentInterval PresentationInterval;
-	FNA3D_DisplayOrientation DisplayOrientation;
-	FNA3D_RenderTargetUsage RenderTargetUsage;
+	uint32_t backBufferWidth;
+	uint32_t backBufferHeight;
+	FNA3D_SurfaceFormat backBufferFormat;
+	int32_t multiSampleCount;
+	void* deviceWindowHandle;
+	uint8_t isFullScreen;
+	FNA3D_SurfaceFormat depthStencilFormat;
+	FNA3D_PresentInterval presentationInterval;
+	FNA3D_DisplayOrientation displayOrientation;
+	FNA3D_RenderTargetUsage renderTargetUsage;
 } FNA3D_PresentationParameters;
 
 /* Functions */
