@@ -774,7 +774,6 @@ FNA3DAPI void FNA3D_EndPassRestore(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect
 );
-#endif
 
 /* Queries */
 
@@ -845,3 +844,5 @@ FNA3DAPI void FNA3D_ResetFramebuffer(
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
+
+#endif /* FNA3D_H */
