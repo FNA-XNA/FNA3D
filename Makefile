@@ -41,7 +41,7 @@ DEPENDENCIES = `sdl2-config --libs`
 # Source
 FNA3DSRC = \
 	src/FNA3D.c \
-	src/FNA3D_OpenGL.c
+	src/FNA3D_Driver_OpenGL.c
 
 # Objects
 FNA3DOBJ = $(FNA3DSRC:%.c=%.o)
