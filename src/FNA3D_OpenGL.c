@@ -24,6 +24,8 @@
  *
  */
 
+#if FNA3D_DRIVER_OPENGL
+
 #include "FNA3D_Driver.h"
 
 #include "SDL.h"
@@ -810,6 +812,9 @@ FNA3D_Device* OPENGL_CreateDevice(
 }
 
 FNA3D_Driver OpenGLDriver = {
+	"OpenGL",
 	OPENGL_PrepareWindowAttributes,
 	OPENGL_CreateDevice
 };
+
+#endif /* FNA3D_DRIVER_OPENGL */

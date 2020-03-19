@@ -64,8 +64,16 @@ uint32_t FNA3D_PrepareWindowAttributes(uint8_t debugMode)
 {
 	uint32_t result = 0;
 	uint32_t i;
+	const char *hint = SDL_GetHint("FNA3D_FORCE_DRIVER");
 	for (i = 0; drivers[i] != NULL; i += 1)
 	{
+		if (hint != NULL)
+		{
+			if (SDL_strcmp(hint, drivers[i]->Name) != 0)
+			{
+				continue;
+			}
+		}
 		if (drivers[i]->PrepareWindowAttributes(debugMode, &result))
 		{
 			break;
