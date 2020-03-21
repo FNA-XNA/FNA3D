@@ -29,6 +29,7 @@
 #include "FNA3D_Driver.h"
 
 #include <SDL.h>
+#include "FNA3D_Driver_OpenGL.h"
 
 /* Internal Structures */
 
@@ -791,6 +792,24 @@ void OPENGL_ResetFramebuffer(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
 	/* TODO */
+}
+
+/* Load GL Entry Points */
+
+static void LoadEntryPoints(OpenGLDevice *device)
+{
+	// TODO: The rest of the owl.
+	/* GL entry points */
+	#define GL_PROC(ext, ret, func, parms) \
+		glfntype_##func func;
+	#include "glfuncs.h"
+	#undef GL_PROC
+
+	#define GL_PROC(ext, ret, func, parms) \
+		func = (glfntype_##func) SDL_GL_GetProcAddress(#func);
+		// if (device->func == NULL) SDL_assert(0);
+	#include "glfuncs.h"
+	#undef GL_PROC
 }
 
 /* Driver */
