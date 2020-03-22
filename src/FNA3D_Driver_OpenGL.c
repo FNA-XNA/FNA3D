@@ -1046,7 +1046,86 @@ static void LoadEntryPoints(OpenGLDevice *device)
 
 #ifdef DEBUG
 
-	// TODO
+	uint8_t supportsDebug = 1;
+
+	/* Try KHR_debug first...
+	 *
+	 * "NOTE: when implemented in an OpenGL ES context, all entry points defined
+	 * by this extension must have a "KHR" suffix. When implemented in an
+	 * OpenGL context, all entry points must have NO suffix, as shown below."
+	 * https://www.khronos.org/registry/OpenGL/extensions/KHR/KHR_debug.txt
+	 */
+	if (device->useES3)
+	{
+		glDebugMessageCallback = SDL.SDL_GL_GetProcAddress("glDebugMessageCallbackKHR");
+		glDebugMessageControl = SDL.SDL_GL_GetProcAddress("glDebugMessageControlKHR");
+	}
+	if (glDebugMessageCallback == NULL || glDebugMessageControl == NULL)
+	{
+		/* ... then try ARB_debug_output. */
+		glDebugMessageCallback = SDL_GL_GetProcAddress("glDebugMessageCallbackARB");
+		glDebugMessageCallback = SDL_GL_GetProcAddress("glDebugMessageControlARB");
+	}
+	if (glDebugMessageCallback == NULL || glDebugMessageControl == NULL)
+	{
+		supportsDebug = 0;
+	}
+
+	/* Android developers are incredibly stupid and export stub functions */
+	if (device->useES3)
+	{
+		if (	!SDL_GL_ExtensionSupported("GL_KHR_debug") &&
+			!SDL_GL_ExtensionSupported("GL_ARB_debug_output")	)
+		{
+			supportsDebug = 0;
+		}
+	}
+
+	/* Set the callback, finally. */
+	if (!supportsDebug)
+	{
+		SDL_LogWarn(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"ARB_debug_output/KHR_debug not supported!"
+		);
+	}
+	else
+	{
+		glDebugMessageControl(
+			GL_DONT_CARE,
+			GL_DONT_CARE,
+			GL_DONT_CARE,
+			0,
+			NULL,
+			GL_TRUE
+		);
+		glDebugMessageControl(
+			GL_DONT_CARE,
+			GL_DEBUG_TYPE_OTHER,
+			GL_DEBUG_SEVERITY_LOW,
+			0,
+			NULL,
+			GL_FALSE
+		);
+		glDebugMessageControl(
+			GL_DONT_CARE,
+			GL_DEBUG_TYPE_OTHER,
+			GL_DEBUG_SEVERITY_NOTIFICATION,
+			0,
+			NULL,
+			GL_FALSE
+		);
+		glDebugMessageCallback(DebugCall, NULL);
+	}
+
+	/* GREMEDY_string_marker, for apitrace */
+	if (glStringMarkerGREMEDY == NULL)
+	{
+		SDL_LogWarn(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"GREMEDY_string_marker not supported!"
+		);
+	}
 
 #endif
 
