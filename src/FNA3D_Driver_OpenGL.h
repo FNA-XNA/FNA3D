@@ -136,6 +136,9 @@ typedef unsigned char	GLboolean;
 #define GL_ACTIVE_UNIFORMS				0x8B86
 #define GL_ACTIVE_ATTRIBUTES				0x8B89
 
+/* Debug */
+#define GL_DEBUG_TYPE_ERROR				0x824C
+
 /* In case this needs to be exported in a certain way... */
 #ifdef _WIN32 /* Windows OpenGL uses stdcall */
 #define GLAPIENTRY __stdcall
