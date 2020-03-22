@@ -160,4 +160,7 @@ typedef void (GLAPIENTRY *DEBUGPROC)(
 #include "glfuncs.h"
 #undef GL_PROC
 
+/* glGetString is a bit different since we load it early */
+typedef const GLubyte* (GLAPIENTRY *glfntype_glGetString)(GLenum a);
+
 #endif

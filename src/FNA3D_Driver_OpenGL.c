@@ -35,15 +35,25 @@
 
 typedef struct OpenGLDevice /* Cast from driverData */
 {
-	const char* driver;
+	/* Context */
 	uint8_t useES3;
-	uint8_t BUG_HACK_NOTANGLE;
 	uint8_t useCoreProfile;
+
+	/* Capabilities */
 	uint8_t supportsBaseVertex;
 	uint8_t supportsFauxBackbuffer;
 	uint8_t supportsHardwareInstancing;
 	uint8_t supportsMultisampling;
 	uint8_t supportsFBOInvalidation;
+
+	/* glGetString, loaded early */
+	glfntype_glGetString glGetString;
+
+	/* GL entry points */
+	#define GL_PROC(ext, ret, func, parms) \
+	glfntype_##func func;
+	#include "glfuncs.h"
+	#undef GL_PROC
 } OpenGLDevice;
 
 typedef struct OpenGLTexture /* Cast from FNA3D_Texture* */
@@ -803,10 +813,77 @@ void OPENGL_ResetFramebuffer(
 	/* TODO */
 }
 
+/* Fallback GL Functions */
+
+void DrawRangeElementsNoBase(
+	GLenum a, GLuint b, GLuint c, GLsizei d,
+	GLenum e, const GLvoid *f, GLint g
+) {
+	/* TODO */
+}
+
+void DrawRangeElementsUnchecked(
+	GLenum a, GLuint b, GLuint c, GLsizei d,
+	GLenum e, const GLvoid *f
+) {
+	/* TODO */
+}
+
+void DrawRangeElementsNoBaseUnchecked(
+	GLenum a, GLuint b, GLuint c, GLsizei d,
+	GLenum e, const GLvoid *f, GLint g
+) {
+	/* TODO */
+}
+
+void DrawElementsInstancedNoBase(
+	GLenum a, GLsizei b, GLenum c,
+	const GLvoid *d, GLsizei e, GLint f
+) {
+	/* TODO */
+}
+
+void PolygonModeESError(GLenum a, GLenum b)
+{
+	SDL_assert(0 && "glPolygonMode is not available in ES!");
+}
+
+void GetTexImageESError(GLenum a, GLint b, GLenum c, GLenum d, GLvoid *e)
+{
+	SDL_assert(0 && "glGetTexImage is not available in ES!");
+}
+
+void GetBufferSubDataESError(GLenum a, GLintptr b, GLsizeiptr c, GLvoid *d)
+{
+	SDL_assert(0 && "glGetBufferSubData is not available in ES!");
+}
+
+void ClearDepthFloat(GLdouble a)
+{
+	/* TODO */
+}
+
+void DepthRangeFloat(GLdouble a, GLdouble b)
+{
+	/* TODO */
+}
+
 /* Load GL Entry Points */
 
-static void LoadEntryPoints(OpenGLDevice *device)
+static void LoadGLGetString(OpenGLDevice *device)
 {
+	device->glGetString = SDL_GL_GetProcAddress("glGetString");
+	if (device->glGetString == NULL)
+	{
+		SDL_assert(0 && "GRAPHICS DRIVER IS EXTREMELY BROKEN!");
+	}
+}
+
+static void LoadEntryPoints(
+	OpenGLDevice *device,
+	const char *driverInfo,
+	uint8_t BUG_HACK_NOTANGLE
+) {
 	char errorMessage[256];
 	const char *baseErrorString = (
 		device->useES3 ?
@@ -816,18 +893,14 @@ static void LoadEntryPoints(OpenGLDevice *device)
 
 	#define GL_FAIL(func) \
 		SDL_snprintf( \
-			errorMessage, 256, \
+			errorMessage, \
+			256, \
 			"%s\nEntry point: %s\n%s", \
-			baseErrorString, func, \
-			device->driver \
+			baseErrorString, \
+			func, \
+			driverInfo \
 		); \
 		SDL_assert(0 && errorMessage);
-
-	// FIXME: Move this into OpenGLDevice struct!
-	#define GL_PROC(ext, ret, func, parms) \
-		glfntype_##func func;
-	#include "glfuncs.h"
-	#undef GL_PROC
 
 	#define INIT_CATEGORY(ext) \
 		int supports##ext = 1; \
@@ -841,8 +914,8 @@ static void LoadEntryPoints(OpenGLDevice *device)
 	#undef INIT_CATEGORY
 
 	#define GL_PROC(ext, ret, func, parms) \
-		func = (glfntype_##func) SDL_GL_GetProcAddress(#func); \
-		if (func == NULL) \
+		device->func = (glfntype_##func) SDL_GL_GetProcAddress(#func); \
+		if (device->func == NULL) \
 		{ \
 			supports##ext = 0; \
 			if (firstFailed##ext == NULL) \
@@ -853,45 +926,37 @@ static void LoadEntryPoints(OpenGLDevice *device)
 	#include "glfuncs.h"
 	#undef GL_PROC
 
-	/* glGetString sanity check */
-	if (glGetString == NULL)
-	{
-		SDL_assert(0 && "GRAPHICS DRIVER IS EXTREMELY BROKEN!");
-	}
-
-	// Basic entry points. If you don't have these, you're screwed.
+	/* Basic entry points. If you don't have these, you're screwed. */
 	if (!supportsBaseGL)
 	{
 		GL_FAIL(firstFailedBaseGL);
 	}
 
 	/* ARB_draw_elements_base_vertex is ideal! */
-	if (glDrawRangeElementsBaseVertex == NULL)
+	if (device->glDrawRangeElementsBaseVertex == NULL)
 	{
-		glDrawRangeElementsBaseVertex = SDL_GL_GetProcAddress(
+		device->glDrawRangeElementsBaseVertex = SDL_GL_GetProcAddress(
 			"glDrawRangeElementsBaseVertexOES"
 		);
-		if (glDrawRangeElementsBaseVertex)
+		if (device->glDrawRangeElementsBaseVertex)
 		{
 			device->supportsBaseVertex = 1;
 		}
 	}
 	device->supportsBaseVertex = (
-		glDrawRangeElementsBaseVertex &&
-		device->BUG_HACK_NOTANGLE
+		device->glDrawRangeElementsBaseVertex &&
+		BUG_HACK_NOTANGLE
 	);
 	if (!device->supportsBaseVertex)
 	{
-		if (glDrawRangeElements)
+		if (device->glDrawRangeElements)
 		{
-			// TODO: glDrawRangeElementsBaseVertex = DrawRangeElementsNoBase;
+			device->glDrawRangeElementsBaseVertex = DrawRangeElementsNoBase;
 		}
-		else if (glDrawElements)
+		else if (device->glDrawElements)
 		{
-			/* TODO:
-				glDrawRangeElements = DrawRangeElementsUnchecked;
-				glDrawRangeElementsBaseVertex = DrawRangeElementsNoBaseUnchecked;
-			*/
+			device->glDrawRangeElements = DrawRangeElementsUnchecked;
+			device->glDrawRangeElementsBaseVertex = DrawRangeElementsNoBaseUnchecked;
 		}
 		else
 		{
@@ -906,45 +971,41 @@ static void LoadEntryPoints(OpenGLDevice *device)
 	 */
 	if (device->useES3)
 	{
-		if (glPolygonMode == NULL)
+		if (device->glPolygonMode == NULL)
 		{
-			// TODO: glPolygonMode = PolygonModeESError;
+			device->glPolygonMode = PolygonModeESError;
 		}
-		if (glGetTexImage == NULL)
+		if (device->glGetTexImage == NULL)
 		{
-			// TODO: glGetTexImage = GetTexImageESError;
+			device->glGetTexImage = GetTexImageESError;
 		}
-		if (glTexEnvi == NULL)
+		if (device->glGetBufferSubData == NULL)
 		{
-			// TODO: glTexEnvi = TexEnviESError;
-		}
-		if (glGetBufferSubData == NULL)
-		{
-			// TODO: glGetBufferSubData = GetBufferSubDataESError;
+			device->glGetBufferSubData = GetBufferSubDataESError;
 		}
 	}
-	else if (!supportsNonES3)
+	else if (!supportsOptES3)
 	{
-		GL_FAIL(firstFailedNonES3);
+		GL_FAIL(firstFailedOptES3);
 	}
 
 	/* We need _some_ form of depth range, ES... */
-	if (glDepthRange == NULL)
+	if (device->glDepthRange == NULL)
 	{
-		if (glDepthRangef)
+		if (device->glDepthRangef)
 		{
-			// TODO: glDepthRange = DepthRangeFloat;
+			device->glDepthRange = DepthRangeFloat;
 		}
 		else
 		{
 			GL_FAIL("glDepthRangef");
 		}
 	}
-	if (glClearDepth == NULL)
+	if (device->glClearDepth == NULL)
 	{
-		if (glClearDepthf)
+		if (device->glClearDepthf)
 		{
-			// TODO: glClearDepth = ClearDepthFloat;
+			device->glClearDepth = ClearDepthFloat;
 		}
 		else
 		{
@@ -975,33 +1036,33 @@ static void LoadEntryPoints(OpenGLDevice *device)
 	}
 
 	/* EXT_framebuffer_blit (or ARB_framebuffer_object) is needed by the faux-backbuffer. */
-	device->supportsFauxBackbuffer = (glBlitFramebuffer != NULL);
+	device->supportsFauxBackbuffer = (device->glBlitFramebuffer != NULL);
 
 	/* EXT_framebuffer_multisample (or ARB_framebuffer_object) is glitter */
-	device->supportsMultisampling = (glRenderbufferStorageMultisample != NULL);
+	device->supportsMultisampling = (device->glRenderbufferStorageMultisample != NULL);
 
 	/* ARB_instanced_arrays/ARB_draw_instanced are almost optional. */
 	device->supportsHardwareInstancing = 0;
-	if (glVertexAttribDivisor)
+	if (device->glVertexAttribDivisor)
 	{
-		if (device->supportsBaseVertex && glDrawElementsInstancedBaseVertex)
+		if (device->supportsBaseVertex && device->glDrawElementsInstancedBaseVertex)
 		{
 			device->supportsHardwareInstancing = 1;
 		}
-		else if (!device->supportsBaseVertex && glDrawElementsInstanced)
+		else if (!device->supportsBaseVertex && device->glDrawElementsInstanced)
 		{
 			device->supportsHardwareInstancing = 1;
-			// TODO: glDrawElementsInstancedBaseVertex = DrawElementsInstancedNoBase;
+			device->glDrawElementsInstancedBaseVertex = DrawElementsInstancedNoBase;
 		}
 	}
 
 	/* ARB_invalidate_subdata makes target swaps faster on mobile targets */
 	device->supportsFBOInvalidation = device->useES3; // FIXME: Does desktop benefit from this?
-	if (glInvalidateFramebuffer == NULL && device->useES3)
+	if (device->glInvalidateFramebuffer == NULL && device->useES3)
 	{
 		/* ES2 has EXT_discard_framebuffer as a fallback */
-		glInvalidateFramebuffer = SDL_GL_GetProcAddress("glDiscardFramebufferEXT");
-		if (glInvalidateFramebuffer == NULL)
+		device->glInvalidateFramebuffer = SDL_GL_GetProcAddress("glDiscardFramebufferEXT");
+		if (device->glInvalidateFramebuffer == NULL)
 		{
 			device->supportsFBOInvalidation = 0;
 		}
@@ -1016,36 +1077,39 @@ static void LoadEntryPoints(OpenGLDevice *device)
 	 * exact same time. WTF.
 	 * -flibit
 	 */
-	if (glColorMaski == NULL)
+	if (device->glColorMaski == NULL)
 	{
-		glColorMaski = SDL_GL_GetProcAddress("glColorMaskIndexedEXT");
+		device->glColorMaski = SDL_GL_GetProcAddress("glColorMaskIndexedEXT");
 	}
-	if (glColorMaski == NULL)
+	if (device->glColorMaski == NULL)
 	{
-		glColorMaski = SDL_GL_GetProcAddress("glColorMaskIndexediOES");
+		device->glColorMaski = SDL_GL_GetProcAddress("glColorMaskIndexediOES");
 	}
-	if (glColorMaski == NULL)
+	if (device->glColorMaski == NULL)
 	{
-		glColorMaski = SDL_GL_GetProcAddress("glColorMaskiEXT");
+		device->glColorMaski = SDL_GL_GetProcAddress("glColorMaskiEXT");
 	}
-	if (glColorMaski == NULL)
+	if (device->glColorMaski == NULL)
 	{
 		// FIXME: SupportsIndependentWriteMasks? -flibit
 	}
 
 	/* ARB_texture_multisample is probably used by nobody. */
-	if (glSampleMaski == NULL)
+	if (device->glSampleMaski == NULL)
 	{
 		// FIXME: SupportsMultisampleMasks? -flibit
 	}
 
+	/* We need OpenGL 3.2+ for Core contexts. */
 	if (device->useCoreProfile && !supportsCoreGL)
 	{
 		SDL_assert(0 && "OpenGL 3.2 support is required!");
 	}
 
-#ifdef DEBUG
+	/* Nothing beyond this can fail. */
+	#undef GL_FAIL
 
+#ifdef DEBUG
 	uint8_t supportsDebug = 1;
 
 	/* Try KHR_debug first...
@@ -1057,16 +1121,18 @@ static void LoadEntryPoints(OpenGLDevice *device)
 	 */
 	if (device->useES3)
 	{
-		glDebugMessageCallback = SDL.SDL_GL_GetProcAddress("glDebugMessageCallbackKHR");
-		glDebugMessageControl = SDL.SDL_GL_GetProcAddress("glDebugMessageControlKHR");
+		device->glDebugMessageCallback = SDL.SDL_GL_GetProcAddress("glDebugMessageCallbackKHR");
+		device->glDebugMessageControl = SDL.SDL_GL_GetProcAddress("glDebugMessageControlKHR");
 	}
-	if (glDebugMessageCallback == NULL || glDebugMessageControl == NULL)
+	if (	device->glDebugMessageCallback == NULL ||
+		device->glDebugMessageControl == NULL	)
 	{
 		/* ... then try ARB_debug_output. */
-		glDebugMessageCallback = SDL_GL_GetProcAddress("glDebugMessageCallbackARB");
-		glDebugMessageCallback = SDL_GL_GetProcAddress("glDebugMessageControlARB");
+		device->glDebugMessageCallback = SDL_GL_GetProcAddress("glDebugMessageCallbackARB");
+		device->glDebugMessageCallback = SDL_GL_GetProcAddress("glDebugMessageControlARB");
 	}
-	if (glDebugMessageCallback == NULL || glDebugMessageControl == NULL)
+	if (	device->glDebugMessageCallback == NULL ||
+		device->glDebugMessageControl == NULL	)
 	{
 		supportsDebug = 0;
 	}
@@ -1091,7 +1157,7 @@ static void LoadEntryPoints(OpenGLDevice *device)
 	}
 	else
 	{
-		glDebugMessageControl(
+		device->glDebugMessageControl(
 			GL_DONT_CARE,
 			GL_DONT_CARE,
 			GL_DONT_CARE,
@@ -1099,7 +1165,7 @@ static void LoadEntryPoints(OpenGLDevice *device)
 			NULL,
 			GL_TRUE
 		);
-		glDebugMessageControl(
+		device->glDebugMessageControl(
 			GL_DONT_CARE,
 			GL_DEBUG_TYPE_OTHER,
 			GL_DEBUG_SEVERITY_LOW,
@@ -1107,7 +1173,7 @@ static void LoadEntryPoints(OpenGLDevice *device)
 			NULL,
 			GL_FALSE
 		);
-		glDebugMessageControl(
+		device->glDebugMessageControl(
 			GL_DONT_CARE,
 			GL_DEBUG_TYPE_OTHER,
 			GL_DEBUG_SEVERITY_NOTIFICATION,
@@ -1115,21 +1181,18 @@ static void LoadEntryPoints(OpenGLDevice *device)
 			NULL,
 			GL_FALSE
 		);
-		glDebugMessageCallback(DebugCall, NULL);
+		device->glDebugMessageCallback(DebugCall, NULL);
 	}
 
 	/* GREMEDY_string_marker, for apitrace */
-	if (glStringMarkerGREMEDY == NULL)
+	if (device->glStringMarkerGREMEDY == NULL)
 	{
 		SDL_LogWarn(
 			SDL_LOG_CATEGORY_APPLICATION,
 			"GREMEDY_string_marker not supported!"
 		);
 	}
-
 #endif
-
-	#undef GL_FAIL
 }
 
 /* Driver */
@@ -1144,9 +1207,38 @@ uint8_t OPENGL_PrepareWindowAttributes(uint8_t debugMode, uint32_t *flags)
 FNA3D_Device* OPENGL_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
+	/* Init the OpenGLDevice */
+	OpenGLDevice *device = (OpenGLDevice*) SDL_malloc(sizeof(OpenGLDevice));
+
+	/* Print GL information */
+	LoadGLGetString(device);
+	const char* renderer	= device->glGetString(GL_RENDERER);
+	const char* version	= device->glGetString(GL_VERSION);
+	const char* vendor	= device->glGetString(GL_VENDOR);
+	char driverInfo[256];
+	SDL_snprintf(driverInfo, 256,
+		"OpenGL Device: %s\nOpenGL Driver: %s\nOpenGL Vendor: %s",
+		renderer, version, vendor
+	);
+	SDL_LogInfo(
+		SDL_LOG_CATEGORY_APPLICATION,
+		"IGLDevice: OpenGLDevice"
+	);
+	SDL_LogInfo(
+		SDL_LOG_CATEGORY_APPLICATION,
+		driverInfo
+	);
+
+	// FIXME: REMOVE ME ASAP!
+	uint8_t BUG_HACK_NOTANGLE = (SDL_strstr(renderer, "Direct3D11") == NULL);
+
+	/* Initialize entry points */
+	LoadEntryPoints(device, driverInfo, BUG_HACK_NOTANGLE);
+
+	/* Set up the generic FNA3D_Device */
 	FNA3D_Device *result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
 	ASSIGN_DRIVER(OPENGL)
-	result->driverData = NULL; /* TODO */
+	result->driverData = device;
 	return result;
 }
 
