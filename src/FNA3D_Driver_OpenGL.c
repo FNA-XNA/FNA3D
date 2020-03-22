@@ -35,6 +35,15 @@
 
 typedef struct OpenGLDevice /* Cast from driverData */
 {
+	const char* driver;
+	uint8_t useES3;
+	uint8_t BUG_HACK_NOTANGLE;
+	uint8_t useCoreProfile;
+	uint8_t supportsBaseVertex;
+	uint8_t supportsFauxBackbuffer;
+	uint8_t supportsHardwareInstancing;
+	uint8_t supportsMultisampling;
+	uint8_t supportsFBOInvalidation;
 } OpenGLDevice;
 
 typedef struct OpenGLTexture /* Cast from FNA3D_Texture* */
@@ -798,18 +807,250 @@ void OPENGL_ResetFramebuffer(
 
 static void LoadEntryPoints(OpenGLDevice *device)
 {
-	// TODO: The rest of the owl.
-	/* GL entry points */
+	char errorMessage[256];
+	const char *baseErrorString = (
+		device->useES3 ?
+		"OpenGL ES 3.0 support is required!" :
+		"OpenGL 2.1 support is required!"
+	);
+
+	#define GL_FAIL(func) \
+		SDL_snprintf( \
+			errorMessage, 256, \
+			"%s\nEntry point: %s\n%s", \
+			baseErrorString, func, \
+			device->driver \
+		); \
+		SDL_assert(0 && errorMessage);
+
+	// FIXME: Move this into OpenGLDevice struct!
 	#define GL_PROC(ext, ret, func, parms) \
 		glfntype_##func func;
 	#include "glfuncs.h"
 	#undef GL_PROC
 
+	#define INIT_CATEGORY(ext) \
+		int supports##ext = 1; \
+		char* firstFailed##ext = NULL;
+	INIT_CATEGORY(BaseGL)
+	INIT_CATEGORY(OptES3)
+	INIT_CATEGORY(NonES3)
+	INIT_CATEGORY(FBO)
+	INIT_CATEGORY(CoreGL)
+	INIT_CATEGORY(MiscGL)
+	#undef INIT_CATEGORY
+
 	#define GL_PROC(ext, ret, func, parms) \
-		func = (glfntype_##func) SDL_GL_GetProcAddress(#func);
-		// if (device->func == NULL) SDL_assert(0);
+		func = (glfntype_##func) SDL_GL_GetProcAddress(#func); \
+		if (func == NULL) \
+		{ \
+			supports##ext = 0; \
+			if (firstFailed##ext == NULL) \
+			{ \
+				firstFailed##ext = #func; \
+			} \
+		}
 	#include "glfuncs.h"
 	#undef GL_PROC
+
+	/* glGetString sanity check */
+	if (glGetString == NULL)
+	{
+		SDL_assert(0 && "GRAPHICS DRIVER IS EXTREMELY BROKEN!");
+	}
+
+	// Basic entry points. If you don't have these, you're screwed.
+	if (!supportsBaseGL)
+	{
+		GL_FAIL(firstFailedBaseGL);
+	}
+
+	/* ARB_draw_elements_base_vertex is ideal! */
+	if (glDrawRangeElementsBaseVertex == NULL)
+	{
+		glDrawRangeElementsBaseVertex = SDL_GL_GetProcAddress(
+			"glDrawRangeElementsBaseVertexOES"
+		);
+		if (glDrawRangeElementsBaseVertex)
+		{
+			device->supportsBaseVertex = 1;
+		}
+	}
+	device->supportsBaseVertex = (
+		glDrawRangeElementsBaseVertex &&
+		device->BUG_HACK_NOTANGLE
+	);
+	if (!device->supportsBaseVertex)
+	{
+		if (glDrawRangeElements)
+		{
+			// TODO: glDrawRangeElementsBaseVertex = DrawRangeElementsNoBase;
+		}
+		else if (glDrawElements)
+		{
+			/* TODO:
+				glDrawRangeElements = DrawRangeElementsUnchecked;
+				glDrawRangeElementsBaseVertex = DrawRangeElementsNoBaseUnchecked;
+			*/
+		}
+		else
+		{
+			GL_FAIL("glDrawElements");
+		}
+	}
+
+	/* These functions are NOT supported in ES.
+	 * NVIDIA or desktop ES might, but real scenarios where you need ES
+	 * will certainly not have these.
+	 * -flibit
+	 */
+	if (device->useES3)
+	{
+		if (glPolygonMode == NULL)
+		{
+			// TODO: glPolygonMode = PolygonModeESError;
+		}
+		if (glGetTexImage == NULL)
+		{
+			// TODO: glGetTexImage = GetTexImageESError;
+		}
+		if (glTexEnvi == NULL)
+		{
+			// TODO: glTexEnvi = TexEnviESError;
+		}
+		if (glGetBufferSubData == NULL)
+		{
+			// TODO: glGetBufferSubData = GetBufferSubDataESError;
+		}
+	}
+	else if (!supportsNonES3)
+	{
+		GL_FAIL(firstFailedNonES3);
+	}
+
+	/* We need _some_ form of depth range, ES... */
+	if (glDepthRange == NULL)
+	{
+		if (glDepthRangef)
+		{
+			// TODO: glDepthRange = DepthRangeFloat;
+		}
+		else
+		{
+			GL_FAIL("glDepthRangef");
+		}
+	}
+	if (glClearDepth == NULL)
+	{
+		if (glClearDepthf)
+		{
+			// TODO: glClearDepth = ClearDepthFloat;
+		}
+		else
+		{
+			GL_FAIL("glClearDepthf");
+		}
+	}
+
+	/* Silently fail if using GLES. You didn't need these, right...? >_> */
+	if (!supportsNonES3)
+	{
+		if (device->useES3)
+		{
+			SDL_LogWarn(
+				SDL_LOG_CATEGORY_APPLICATION,
+				"Some non-ES functions failed to load. Beware..."
+			);
+		}
+		else
+		{
+			GL_FAIL(firstFailedNonES3);
+		}
+	}
+
+	/* ARB_framebuffer_object. We're flexible, but not _that_ flexible. */
+	if (!supportsFBO)
+	{
+		SDL_assert(0 && "OpenGL framebuffer support is required!");
+	}
+
+	/* EXT_framebuffer_blit (or ARB_framebuffer_object) is needed by the faux-backbuffer. */
+	device->supportsFauxBackbuffer = (glBlitFramebuffer != NULL);
+
+	/* EXT_framebuffer_multisample (or ARB_framebuffer_object) is glitter */
+	device->supportsMultisampling = (glRenderbufferStorageMultisample != NULL);
+
+	/* ARB_instanced_arrays/ARB_draw_instanced are almost optional. */
+	device->supportsHardwareInstancing = 0;
+	if (glVertexAttribDivisor)
+	{
+		if (device->supportsBaseVertex && glDrawElementsInstancedBaseVertex)
+		{
+			device->supportsHardwareInstancing = 1;
+		}
+		else if (!device->supportsBaseVertex && glDrawElementsInstanced)
+		{
+			device->supportsHardwareInstancing = 1;
+			// TODO: glDrawElementsInstancedBaseVertex = DrawElementsInstancedNoBase;
+		}
+	}
+
+	/* ARB_invalidate_subdata makes target swaps faster on mobile targets */
+	device->supportsFBOInvalidation = device->useES3; // FIXME: Does desktop benefit from this?
+	if (glInvalidateFramebuffer == NULL && device->useES3)
+	{
+		/* ES2 has EXT_discard_framebuffer as a fallback */
+		glInvalidateFramebuffer = SDL_GL_GetProcAddress("glDiscardFramebufferEXT");
+		if (glInvalidateFramebuffer == NULL)
+		{
+			device->supportsFBOInvalidation = 0;
+		}
+	}
+
+	/* Indexed color mask is a weird thing.
+	 * IndexedEXT was introduced in EXT_draw_buffers2, then
+	 * it was introduced in GL 3.0 as "ColorMaski" with no
+	 * extension at all, and OpenGL ES introduced it as
+	 * ColorMaskiEXT via EXT_draw_buffers_indexed and AGAIN
+	 * as ColorMaskiOES via OES_draw_buffers_indexed at the
+	 * exact same time. WTF.
+	 * -flibit
+	 */
+	if (glColorMaski == NULL)
+	{
+		glColorMaski = SDL_GL_GetProcAddress("glColorMaskIndexedEXT");
+	}
+	if (glColorMaski == NULL)
+	{
+		glColorMaski = SDL_GL_GetProcAddress("glColorMaskIndexediOES");
+	}
+	if (glColorMaski == NULL)
+	{
+		glColorMaski = SDL_GL_GetProcAddress("glColorMaskiEXT");
+	}
+	if (glColorMaski == NULL)
+	{
+		// FIXME: SupportsIndependentWriteMasks? -flibit
+	}
+
+	/* ARB_texture_multisample is probably used by nobody. */
+	if (glSampleMaski == NULL)
+	{
+		// FIXME: SupportsMultisampleMasks? -flibit
+	}
+
+	if (device->useCoreProfile && !supportsCoreGL)
+	{
+		SDL_assert(0 && "OpenGL 3.2 support is required!");
+	}
+
+#ifdef DEBUG
+
+	// TODO
+
+#endif
+
+	#undef GL_FAIL
 }
 
 /* Driver */
