@@ -300,4 +300,4 @@ typedef void (GLAPIENTRY *DEBUGPROC)(
 /* glGetString is a bit different since we load it early */
 typedef const GLubyte* (GLAPIENTRY *glfntype_glGetString)(GLenum a);
 
-#endif
+#endif /* FNA3D_DRIVER_OPENGL_H */
