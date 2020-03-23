@@ -64,8 +64,8 @@ typedef unsigned char	GLboolean;
 #define GL_HALF_FLOAT					0x140B
 #define GL_UNSIGNED_SHORT_4_4_4_4_REV			0x8365
 #define GL_UNSIGNED_SHORT_5_5_5_1_REV			0x8366
-#define GL_UNSIGNED_INT_2_10_10_10_REV			0x8368
-#define GL_UNSIGNED_SHORT_5_6_5				0x8363
+#define GL_UNSIGNED_INT_2_10_10_10_REV  		0x8368
+#define GL_UNSIGNED_SHORT_5_6_5 			0x8363
 #define GL_UNSIGNED_INT_24_8				0x84FA
 
 /* Strings */
@@ -80,39 +80,39 @@ typedef unsigned char	GLboolean;
 #define GL_STENCIL_BUFFER_BIT				0x0400
 
 /* Enable Caps */
-#define GL_SCISSOR_TEST					0x0C11
+#define GL_SCISSOR_TEST 				0x0C11
 #define GL_DEPTH_TEST					0x0B71
-#define GL_STENCIL_TEST					0x0B90
+#define GL_STENCIL_TEST 				0x0B90
 
 /* Points */
-#define GL_POINT_SPRITE					0x8861
+#define GL_POINT_SPRITE 				0x8861
 #define GL_COORD_REPLACE				0x8862
 
 /* Polygons */
-#define GL_LINE						0x1B01
-#define GL_FILL						0x1B02
+#define GL_LINE 					0x1B01
+#define GL_FILL 					0x1B02
 #define GL_CW						0x0900
-#define GL_CCW						0x0901
+#define GL_CCW  					0x0901
 #define GL_FRONT					0x0404
-#define GL_BACK						0x0405
+#define GL_BACK 					0x0405
 #define GL_FRONT_AND_BACK				0x0408
 #define GL_CULL_FACE					0x0B44
-#define GL_POLYGON_OFFSET_FILL				0x8037
+#define GL_POLYGON_OFFSET_FILL  			0x8037
 
 /* Texture Type */
 #define GL_TEXTURE_2D					0x0DE1
 #define GL_TEXTURE_3D					0x806F
 #define GL_TEXTURE_CUBE_MAP				0x8513
-#define GL_TEXTURE_CUBE_MAP_POSITIVE_X			0x8515
+#define GL_TEXTURE_CUBE_MAP_POSITIVE_X  		0x8515
 
 /* Blend Mode */
 #define GL_BLEND					0x0BE2
 #define GL_SRC_COLOR					0x0300
-#define GL_ONE_MINUS_SRC_COLOR				0x0301
+#define GL_ONE_MINUS_SRC_COLOR  			0x0301
 #define GL_SRC_ALPHA					0x0302
 #define GL_ONE_MINUS_SRC_ALPHA  			0x0303
 #define GL_DST_ALPHA					0x0304
-#define GL_ONE_MINUS_DST_ALPHA				0x0305
+#define GL_ONE_MINUS_DST_ALPHA  			0x0305
 #define GL_DST_COLOR					0x0306
 #define GL_ONE_MINUS_DST_COLOR				0x0307
 #define GL_SRC_ALPHA_SATURATE				0x0308
@@ -120,15 +120,15 @@ typedef unsigned char	GLboolean;
 #define GL_ONE_MINUS_CONSTANT_COLOR			0x8002
 
 /* Equations */
-#define GL_MIN						0x8007
-#define GL_MAX						0x8008
+#define GL_MIN  					0x8007
+#define GL_MAX  					0x8008
 #define GL_FUNC_ADD					0x8006
 #define GL_FUNC_SUBTRACT				0x800A
 #define GL_FUNC_REVERSE_SUBTRACT			0x800B
 
 /* Comparisons */
 #define GL_NEVER					0x0200
-#define GL_LESS						0x0201
+#define GL_LESS 					0x0201
 #define GL_EQUAL					0x0202
 #define GL_LEQUAL					0x0203
 #define GL_GREATER					0x0204
@@ -138,10 +138,10 @@ typedef unsigned char	GLboolean;
 
 /* Stencil Operations */
 #define GL_INVERT					0x150A
-#define GL_KEEP						0x1E00
+#define GL_KEEP 					0x1E00
 #define GL_REPLACE					0x1E01
-#define GL_INCR						0x1E02
-#define GL_DECR						0x1E03
+#define GL_INCR 					0x1E02
+#define GL_DECR 					0x1E03
 #define GL_INCR_WRAP					0x8507
 #define GL_DECR_WRAP					0x8508
 
@@ -156,7 +156,7 @@ typedef unsigned char	GLboolean;
 #define GL_NEAREST_MIPMAP_NEAREST			0x2700
 #define GL_NEAREST_MIPMAP_LINEAR			0x2702
 #define GL_LINEAR_MIPMAP_NEAREST			0x2701
-#define GL_LINEAR_MIPMAP_LINEAR				0x2703
+#define GL_LINEAR_MIPMAP_LINEAR 			0x2703
 
 /* Attachments */
 #define GL_COLOR_ATTACHMENT0				0x8CE0
@@ -165,24 +165,24 @@ typedef unsigned char	GLboolean;
 #define GL_DEPTH_STENCIL_ATTACHMENT			0x821A
 
 /* Texture Formats */
-#define GL_RED						0x1903
+#define GL_RED  					0x1903
 #define GL_ALPHA					0x1906
-#define GL_RGB						0x1907
-#define GL_RGBA						0x1908
-#define GL_RGB8						0x8051
+#define GL_RGB  					0x1907
+#define GL_RGBA 					0x1908
+#define GL_RGB8 					0x8051
 #define GL_RGBA8					0x8058
 #define GL_RGBA4					0x8056
 #define GL_RGB5_A1					0x8057
-#define GL_RGB10_A2_EXT					0x8059
+#define GL_RGB10_A2_EXT 				0x8059
 #define GL_RGBA16					0x805B
-#define GL_BGRA						0x80E1
+#define GL_BGRA 					0x80E1
 #define GL_DEPTH_COMPONENT16				0x81A5
 #define GL_DEPTH_COMPONENT24				0x81A6
-#define GL_RG						0x8227
-#define GL_RG8						0x822B
-#define GL_RG16						0x822C
-#define GL_R16F						0x822D
-#define GL_R32F						0x822E
+#define GL_RG   					0x8227
+#define GL_RG8  					0x822B
+#define GL_RG16 					0x822C
+#define GL_R16F 					0x822D
+#define GL_R32F 					0x822E
 #define GL_RG16F					0x822F
 #define GL_RG32F					0x8230
 #define GL_RGBA32F					0x8814
@@ -215,17 +215,17 @@ typedef unsigned char	GLboolean;
 #define GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS		0x8B4C
 
 /* Buffer objects */
-#define GL_ARRAY_BUFFER					0x8892
-#define GL_ELEMENT_ARRAY_BUFFER				0x8893
-#define GL_STREAM_DRAW					0x88E0
-#define GL_STATIC_DRAW					0x88E4
+#define GL_ARRAY_BUFFER 				0x8892
+#define GL_ELEMENT_ARRAY_BUFFER 			0x8893
+#define GL_STREAM_DRAW  				0x88E0
+#define GL_STATIC_DRAW  				0x88E4
 #define GL_MAX_VERTEX_ATTRIBS				0x8869
 
 /* Render targets */
-#define GL_FRAMEBUFFER					0x8D40
+#define GL_FRAMEBUFFER  				0x8D40
 #define GL_READ_FRAMEBUFFER				0x8CA8
 #define GL_DRAW_FRAMEBUFFER				0x8CA9
-#define GL_RENDERBUFFER					0x8D41
+#define GL_RENDERBUFFER 				0x8D41
 #define GL_MAX_DRAW_BUFFERS				0x8824
 
 /* Draw Primitives */
@@ -236,14 +236,14 @@ typedef unsigned char	GLboolean;
 #define GL_TRIANGLE_STRIP				0x0005
 
 /* Query Objects */
-#define GL_QUERY_RESULT					0x8866
+#define GL_QUERY_RESULT 				0x8866
 #define GL_QUERY_RESULT_AVAILABLE			0x8867
 #define GL_SAMPLES_PASSED				0x8914
 
 /* Multisampling */
-#define GL_MULTISAMPLE					0x809D
-#define GL_MAX_SAMPLES					0x8D57
-#define GL_SAMPLE_MASK					0x8E51
+#define GL_MULTISAMPLE  				0x809D
+#define GL_MAX_SAMPLES  				0x8D57
+#define GL_SAMPLE_MASK  				0x8E51
 
 /* 3.2 Core Profile */
 #define GL_NUM_EXTENSIONS				0x821D
