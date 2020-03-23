@@ -43,9 +43,16 @@ typedef uintptr_t	GLsizeiptr;
 typedef intptr_t	GLintptr;
 typedef unsigned char	GLboolean;
 
+/* Hint */
+#define GL_DONT_CARE					0x1100
+
 /* One */
 #define GL_ZERO 					0x0000
 #define GL_ONE						0x0001
+
+/* True/False */
+#define GL_FALSE					0x0000
+#define GL_TRUE 					0x0001
 
 /* Strings */
 #define GL_VENDOR					0x1F00
@@ -138,6 +145,13 @@ typedef unsigned char	GLboolean;
 
 /* Debug */
 #define GL_DEBUG_TYPE_ERROR				0x824C
+#define GL_DEBUG_TYPE_OTHER				0x8251
+
+/* Severity */
+#define GL_DEBUG_SEVERITY_HIGH				0x9146
+#define GL_DEBUG_SEVERITY_MEDIUM			0x9147
+#define GL_DEBUG_SEVERITY_LOW				0x9148
+#define GL_DEBUG_SEVERITY_NOTIFICATION			0x826B
 
 /* In case this needs to be exported in a certain way... */
 #ifdef _WIN32 /* Windows OpenGL uses stdcall */

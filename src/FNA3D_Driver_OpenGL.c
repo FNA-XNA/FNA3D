@@ -27,17 +27,22 @@
 #if FNA3D_DRIVER_OPENGL
 
 #include "FNA3D_Driver.h"
+#include "FNA3D_Driver_OpenGL.h"
 
 #include <SDL.h>
-#include "FNA3D_Driver_OpenGL.h"
+#include <SDL_syswm.h>
 
 /* Internal Structures */
 
 typedef struct OpenGLDevice /* Cast from driverData */
 {
 	/* Context */
+	SDL_GLContext context;
 	uint8_t useES3;
 	uint8_t useCoreProfile;
+	FNA3D_DepthFormat windowDepthFormat;
+	GLuint realBackbufferFBO;
+	GLuint realBackbufferRBO;
 
 	/* Capabilities */
 	uint8_t supportsBaseVertex;
@@ -46,10 +51,8 @@ typedef struct OpenGLDevice /* Cast from driverData */
 	uint8_t supportsMultisampling;
 	uint8_t supportsFBOInvalidation;
 
-	/* glGetString, loaded early */
-	glfntype_glGetString glGetString;
-
 	/* GL entry points */
+	glfntype_glGetString glGetString; /* Loaded early! */
 	#define GL_PROC(ext, ret, func, parms) \
 	glfntype_##func func;
 	#include "glfuncs.h"
@@ -749,7 +752,7 @@ void OPENGL_SetStringMarker(void* driverData, const char *text)
 	/* TODO */
 }
 
-static void DebugCall(
+static void GLAPIENTRY DebugCall(
 	GLenum source,
 	GLenum type,
 	GLuint id,
@@ -943,15 +946,15 @@ static void ClearDepth(OpenGLDevice *device, GLdouble depth)
 }
 
 /* Use this instead of device->glDepthRange */
-static void DepthRange(OpenGLDevice *device, GLdouble near, GLdouble far)
+static void DepthRange(OpenGLDevice *device, GLdouble nearDepth, GLdouble farDepth)
 {
 	if (device->glDepthRange)
 	{
-		device->glDepthRange(near, far);
+		device->glDepthRange(nearDepth, farDepth);
 	}
 	else
 	{
-		device->glDepthRangef((float) near, (float) far);
+		device->glDepthRangef((float) nearDepth, (float) farDepth);
 	}
 }
 
@@ -959,7 +962,7 @@ static void DepthRange(OpenGLDevice *device, GLdouble near, GLdouble far)
 
 static void LoadGLGetString(OpenGLDevice *device)
 {
-	device->glGetString = SDL_GL_GetProcAddress("glGetString");
+	device->glGetString = (glfntype_glGetString) SDL_GL_GetProcAddress("glGetString");
 	if (!device->glGetString)
 	{
 		SDL_assert(0 && "GRAPHICS DRIVER IS EXTREMELY BROKEN!");
@@ -1019,7 +1022,7 @@ static void LoadEntryPoints(
 	/* ARB_draw_elements_base_vertex is ideal! */
 	if (!device->glDrawRangeElementsBaseVertex)
 	{
-		device->glDrawRangeElementsBaseVertex = SDL_GL_GetProcAddress(
+		device->glDrawRangeElementsBaseVertex = (glfntype_glDrawRangeElementsBaseVertex) SDL_GL_GetProcAddress(
 			"glDrawRangeElementsBaseVertexOES"
 		);
 	}
@@ -1043,15 +1046,15 @@ static void LoadEntryPoints(
 	{
 		if (!device->glPolygonMode)
 		{
-			device->glPolygonMode = PolygonModeESError;
+			device->glPolygonMode = (glfntype_glPolygonMode) PolygonModeESError;
 		}
 		if (!device->glGetTexImage)
 		{
-			device->glGetTexImage = GetTexImageESError;
+			device->glGetTexImage = (glfntype_glGetTexImage) GetTexImageESError;
 		}
 		if (!device->glGetBufferSubData)
 		{
-			device->glGetBufferSubData = GetBufferSubDataESError;
+			device->glGetBufferSubData = (glfntype_glGetBufferSubData) GetBufferSubDataESError;
 		}
 	}
 	else if (!supportsOptES3)
@@ -1108,7 +1111,9 @@ static void LoadEntryPoints(
 	if (!device->glInvalidateFramebuffer && device->useES3)
 	{
 		/* ES2 has EXT_discard_framebuffer as a fallback */
-		device->glInvalidateFramebuffer = SDL_GL_GetProcAddress("glDiscardFramebufferEXT");
+		device->glInvalidateFramebuffer = (glfntype_glInvalidateFramebuffer) SDL_GL_GetProcAddress(
+			"glDiscardFramebufferEXT"
+		);
 		if (!device->glInvalidateFramebuffer)
 		{
 			device->supportsFBOInvalidation = 0;
@@ -1126,15 +1131,15 @@ static void LoadEntryPoints(
 	 */
 	if (!device->glColorMaski)
 	{
-		device->glColorMaski = SDL_GL_GetProcAddress("glColorMaskIndexedEXT");
+		device->glColorMaski = (glfntype_glColorMaski) SDL_GL_GetProcAddress("glColorMaskIndexedEXT");
 	}
 	if (!device->glColorMaski)
 	{
-		device->glColorMaski = SDL_GL_GetProcAddress("glColorMaskIndexediOES");
+		device->glColorMaski = (glfntype_glColorMaski) SDL_GL_GetProcAddress("glColorMaskIndexediOES");
 	}
 	if (!device->glColorMaski)
 	{
-		device->glColorMaski = SDL_GL_GetProcAddress("glColorMaskiEXT");
+		device->glColorMaski = (glfntype_glColorMaski) SDL_GL_GetProcAddress("glColorMaskiEXT");
 	}
 	if (!device->glColorMaski)
 	{
@@ -1156,7 +1161,6 @@ static void LoadEntryPoints(
 	/* Nothing beyond this can fail. */
 	#undef GL_FAIL
 
-#ifdef DEBUG
 	uint8_t supportsDebug = 1;
 
 	/* Try KHR_debug first...
@@ -1168,14 +1172,14 @@ static void LoadEntryPoints(
 	 */
 	if (device->useES3)
 	{
-		device->glDebugMessageCallback = SDL.SDL_GL_GetProcAddress("glDebugMessageCallbackKHR");
-		device->glDebugMessageControl = SDL.SDL_GL_GetProcAddress("glDebugMessageControlKHR");
+		device->glDebugMessageCallback = (glfntype_glDebugMessageCallback) SDL_GL_GetProcAddress("glDebugMessageCallbackKHR");
+		device->glDebugMessageControl = (glfntype_glDebugMessageControl) SDL_GL_GetProcAddress("glDebugMessageControlKHR");
 	}
 	if (!device->glDebugMessageCallback || !device->glDebugMessageControl)
 	{
 		/* ... then try ARB_debug_output. */
-		device->glDebugMessageCallback = SDL_GL_GetProcAddress("glDebugMessageCallbackARB");
-		device->glDebugMessageCallback = SDL_GL_GetProcAddress("glDebugMessageControlARB");
+		device->glDebugMessageCallback = (glfntype_glDebugMessageCallback) SDL_GL_GetProcAddress("glDebugMessageCallbackARB");
+		device->glDebugMessageControl = (glfntype_glDebugMessageControl) SDL_GL_GetProcAddress("glDebugMessageControlARB");
 	}
 	if (!device->glDebugMessageCallback || !device->glDebugMessageControl)
 	{
@@ -1237,7 +1241,6 @@ static void LoadEntryPoints(
 			"GREMEDY_string_marker not supported!"
 		);
 	}
-#endif
 }
 
 /* Driver */
@@ -1255,11 +1258,75 @@ FNA3D_Device* OPENGL_CreateDevice(
 	/* Init the OpenGLDevice */
 	OpenGLDevice *device = (OpenGLDevice*) SDL_malloc(sizeof(OpenGLDevice));
 
+	/* Create OpenGL context */
+	device->context = SDL_GL_CreateContext(
+		(SDL_Window*) presentationParameters->deviceWindowHandle
+	);
+
+	/* Check for a possible ES context */
+	int flags;
+	int es3Flag = SDL_GL_CONTEXT_PROFILE_ES;
+	SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &flags);
+	device->useES3 = (flags & es3Flag) == es3Flag;
+
+	/* Check for a possible Core context */
+	int coreFlag = SDL_GL_CONTEXT_PROFILE_CORE;
+	device->useCoreProfile = (flags & coreFlag) == coreFlag;
+
+	/* Check the window's depth/stencil format */
+	int depthSize, stencilSize;
+	SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &depthSize);
+	SDL_GL_GetAttribute(SDL_GL_STENCIL_SIZE, &stencilSize);
+	if (depthSize == 0 && stencilSize == 0)
+	{
+		device->windowDepthFormat = FNA3D_DEPTHFORMAT_NONE;
+	}
+	else if (depthSize == 16 && stencilSize == 0)
+	{
+		device->windowDepthFormat = FNA3D_DEPTHFORMAT_D16;
+	}
+	else if (depthSize == 24 && stencilSize == 0)
+	{
+		device->windowDepthFormat = FNA3D_DEPTHFORMAT_D24;
+	}
+	else if (depthSize == 24 && stencilSize == 8)
+	{
+		device->windowDepthFormat = FNA3D_DEPTHFORMAT_D24S8;
+	}
+	else
+	{
+		SDL_assert(0 && "Unrecognized window depth/stencil format!");
+	}
+
+	/* UIKit needs special treatment for backbuffer behavior */
+	SDL_SysWMinfo wmInfo;
+	SDL_VERSION(&wmInfo.version);
+	SDL_GetWindowWMInfo(
+		(SDL_Window*) presentationParameters->deviceWindowHandle,
+		&wmInfo
+	);
+	if (wmInfo.subsystem == SDL_SYSWM_UIKIT)
+	{
+		/* FIXME: The uikit union is behind an #ifdef SDL_VIDEO_UIKIT.
+		 * What should we do here...?
+		 * -caleb
+		 */
+		// device->realBackbufferFBO = wmInfo.info.uikit.framebuffer;
+		// device->realBackbufferRBO = wmInfo.info.uikit.colorbuffer;
+	}
+	else
+	{
+		device->realBackbufferFBO = 0;
+		device->realBackbufferRBO = 0;
+	}
+
+	/* TODO: Init threaded GL crap where applicable */
+
 	/* Print GL information */
 	LoadGLGetString(device);
-	const char* renderer	= device->glGetString(GL_RENDERER);
-	const char* version	= device->glGetString(GL_VERSION);
-	const char* vendor	= device->glGetString(GL_VENDOR);
+	const char* renderer	= (const char*) device->glGetString(GL_RENDERER);
+	const char* version	= (const char*) device->glGetString(GL_VERSION);
+	const char* vendor	= (const char*) device->glGetString(GL_VENDOR);
 	char driverInfo[256];
 	SDL_snprintf(
 		driverInfo, 256,
@@ -1276,12 +1343,17 @@ FNA3D_Device* OPENGL_CreateDevice(
 	);
 
 	// FIXME: REMOVE ME ASAP!
-	uint8_t BUG_HACK_NOTANGLE = !SDL_strstr(renderer, "Direct3D11");
+	uint8_t BUG_HACK_NOTANGLE = !SDL_strstr(
+		(const char*) renderer,
+		"Direct3D11"
+	);
 
 	/* Initialize entry points */
 	LoadEntryPoints(device, driverInfo, BUG_HACK_NOTANGLE);
 
-	/* Set up the generic FNA3D_Device */
+	/* TODO: The rest of the OpenGLDevice constructor */
+
+	/* Set up and return the FNA3D_Device */
 	FNA3D_Device *result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
 	ASSIGN_DRIVER(OPENGL)
 	result->driverData = device;

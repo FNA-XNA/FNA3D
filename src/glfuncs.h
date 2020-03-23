@@ -81,8 +81,6 @@ GL_PROC(NonES3, void, glTexSubImage3D, (GLenum a, GLint b, GLint c, GLint d, GLi
 GL_PROC(MiscGL, void, glVertexAttribDivisor, (GLuint a, GLuint b))
 GL_PROC(BaseGL, void, glVertexAttribPointer, (GLuint a, GLint b, GLenum c, GLboolean d, GLsizei e, const GLvoid *f))
 GL_PROC(BaseGL, void, glViewport, (GLint a, GLint b, GLsizei c, GLsizei d))
-#ifdef DEBUG
 GL_PROC(MiscGL, void, glDebugMessageCallback, (DEBUGPROC a, const GLvoid *b))
 GL_PROC(MiscGL, void, glDebugMessageControl, (GLenum a, GLenum b, GLenum c, GLsizei d, const GLuint *e, GLboolean f))
 GL_PROC(MiscGL, void, glStringMarkerGREMEDY, (GLsizei a, const GLchar *b))
-#endif
