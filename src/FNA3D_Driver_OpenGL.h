@@ -65,24 +65,9 @@ typedef unsigned char	GLboolean;
 #define GL_UNSIGNED_INT 				0x1405
 #define GL_FLOAT					0x1406
 
-/* Errors */
-#define GL_INVALID_ENUM 				0x0500
-#define GL_INVALID_VALUE				0x0501
-#define GL_INVALID_OPERATION				0x0502
-#define GL_STACK_OVERFLOW				0x0503
-#define GL_STACK_UNDERFLOW				0x0504
-#define GL_OUT_OF_MEMORY				0x0505
-
 /* Call Lists */
 #define GL_TRIANGLES					0x0004
 #define GL_TRIANGLE_STRIP				0x0005
-#define GL_QUADS					0x0007
-#define GL_POLYGON					0x0009
-#define GL_COMPILE					0x1300
-
-/* Client State */
-#define GL_VERTEX_ARRAY 				0x8074
-#define GL_TEXTURE_COORD_ARRAY  			0x8078
 
 /* Textures */
 #define GL_UNPACK_ALIGNMENT				0x0CF5
@@ -98,15 +83,8 @@ typedef unsigned char	GLboolean;
 #define GL_CLAMP					0x2900
 #define GL_REPEAT					0x2901
 #define GL_RGBA 					0x1908
-#define GL_LUMINANCE					0x1909
 #define GL_CLAMP_TO_EDGE				0x812F
-#define GL_TEXTURE_ENV  				0x2300
-#define GL_TEXTURE_ENV_MODE				0x2200
-#define GL_MODULATE					0x2100
 #define GL_TEXTURE0					0x84C0
-#define GL_TEXTURE1					0x84C1
-#define GL_TEXTURE2					0x84C2
-#define GL_TEXTURE3					0x84C3
 
 /* Clearing */
 #define GL_COLOR_BUFFER_BIT				0x4000
@@ -119,29 +97,10 @@ typedef unsigned char	GLboolean;
 
 /* Framebuffers */
 #define GL_FRAMEBUFFER  				0x8D40
-#define GL_FRAMEBUFFER_COMPLETE 			0x8CD5
-#define GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT		0x8CD6
-#define GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT	0x8CD7
-#define GL_FRAMEBUFFER_INCOMPLETE_DRAW_BUFFER		0x8CDB
-#define GL_FRAMEBUFFER_INCOMPLETE_READ_BUFFER		0x8CDC
-#define GL_FRAMEBUFFER_UNSUPPORTED			0x8CDD
-#define GL_FRAMEBUFFER_INCOMPLETE_DIMENSIONS_EXT	0x8CD9
-#define GL_FRAMEBUFFER_INCOMPLETE_FORMATS_EXT		0x8CDA
 #define GL_RENDERBUFFER 				0x8D41
 #define GL_DEPTH_COMPONENT				0x1902
 #define GL_DEPTH_ATTACHMENT				0x8D00
 #define GL_COLOR_ATTACHMENT0				0x8CE0
-
-/* Shaders */
-#define GL_FRAGMENT_SHADER				0x8B30
-#define GL_VERTEX_SHADER				0x8B31
-#define GL_COMPILE_STATUS				0x8B81
-#define GL_DELETE_STATUS				0x8B80
-#define GL_LINK_STATUS  				0x8B82
-#define GL_INFO_LOG_LENGTH				0x8B84
-#define GL_ATTACHED_SHADERS				0x8B85
-#define GL_ACTIVE_UNIFORMS				0x8B86
-#define GL_ACTIVE_ATTRIBUTES				0x8B89
 
 /* Debug */
 #define GL_DEBUG_TYPE_ERROR				0x824C
