@@ -8,8 +8,8 @@ int main(int argc, char **argv)
 	int quit;
 	SDL_Event e;
 	FNA3D_PresentationParameters pp;
-	SDL_Window *window = NULL;
-	FNA3D_Device *device = NULL;
+	SDL_Window *window;
+	FNA3D_Device *device;
 
 	/* Set up SDL window */
 	SDL_Init(SDL_INIT_VIDEO);

@@ -13,7 +13,8 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{FA76AE2F-4297-406A-86DC-E81E8507FC17}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <RootNamespace>init_gl</RootNamespace>
+    <RootNamespace>initGL</RootNamespace>
+    <ProjectName>initGL</ProjectName>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -76,7 +77,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\tests\init_gl.c" />
+    <ClCompile Include="..\..\tests\initGL.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

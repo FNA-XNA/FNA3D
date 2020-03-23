@@ -3,7 +3,7 @@ Microsoft Visual Studio Solution File, Format Version 11.00
 # Visual C++ Express 2010
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "FNA3D", "FNA3D\FNA3D.vcxproj", "{6DB15344-E000-45CB-A48A-1D72F7D6E945}"
 EndProject
-Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "init_gl", "init_gl\init_gl.vcxproj", "{FA76AE2F-4297-406A-86DC-E81E8507FC17}"
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "initGL", "initGL\initGL.vcxproj", "{FA76AE2F-4297-406A-86DC-E81E8507FC17}"
 	ProjectSection(ProjectDependencies) = postProject
 		{6DB15344-E000-45CB-A48A-1D72F7D6E945} = {6DB15344-E000-45CB-A48A-1D72F7D6E945}
 	EndProjectSection
