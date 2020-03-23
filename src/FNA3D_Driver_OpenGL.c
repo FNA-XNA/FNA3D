@@ -27,33 +27,83 @@
 #if FNA3D_DRIVER_OPENGL
 
 #include "FNA3D_Driver.h"
+#include "FNA3D_Driver_OpenGL.h"
 
 #include <SDL.h>
+#include <SDL_syswm.h>
 
 /* Internal Structures */
 
 typedef struct OpenGLDevice /* Cast from driverData */
 {
+	/* Context */
+	SDL_GLContext context;
+	uint8_t useES3;
+	uint8_t useCoreProfile;
+	FNA3D_DepthFormat windowDepthFormat;
+	GLuint realBackbufferFBO;
+	GLuint realBackbufferRBO;
+
+	/* Capabilities */
+	/* TODO: Check these...
+	 * - DoublePrecisionDepth/OES_single_precision for ClearDepth/DepthRange
+	 * - EXT_framebuffer_blit for faux-backbuffer
+	 * - ARB_invalidate_subdata for InvalidateFramebuffer
+	 */
+	uint8_t supports_BaseGL;
+	uint8_t supports_CoreGL;
+	uint8_t supports_3DTexture;
+	uint8_t supports_DoublePrecisionDepth;
+	uint8_t supports_OES_single_precision;
+	uint8_t supports_ARB_occlusion_query;
+	uint8_t supports_NonES3;
+	uint8_t supports_NonES3NonCore;
+	uint8_t supports_ARB_framebuffer_object;
+	uint8_t supports_EXT_framebuffer_blit;
+	uint8_t supports_EXT_framebuffer_multisample;
+	uint8_t supports_ARB_invalidate_subdata;
+	uint8_t supports_ARB_draw_instanced;
+	uint8_t supports_ARB_instanced_arrays;
+	uint8_t supports_ARB_draw_elements_base_vertex;
+	uint8_t supports_GL_EXT_draw_buffers2;
+	uint8_t supports_ARB_texture_multisample;
+	uint8_t supports_KHR_debug;
+	uint8_t supports_GREMEDY_string_marker;
+
+	/* GL entry points */
+	glfntype_glGetString glGetString; /* Loaded early! */
+	#define GL_PROC(ext, ret, func, parms) \
+		glfntype_##func func;
+	#define GL_PROC_EXT(ext, fallback, ret, func, parms) \
+		glfntype_##func func;
+	#include "FNA3D_Driver_OpenGL_glfuncs.h"
+	#undef GL_PROC
+	#undef GL_PROC_EXT
 } OpenGLDevice;
 
 typedef struct OpenGLTexture /* Cast from FNA3D_Texture* */
 {
+	uint8_t filler;
 } OpenGLTexture;
 
 typedef struct OpenGLBuffer /* Cast from FNA3D_Buffer* */
 {
+	uint8_t filler;
 } OpenGLBuffer;
 
 typedef struct OpenGLRenderbuffer /* Cast from FNA3D_Renderbuffer* */
 {
+	uint8_t filler;
 } OpenGLRenderbuffer;
 
 typedef struct OpenGLEffect /* Cast from FNA3D_Effect* */
 {
+	uint8_t filler;
 } OpenGLEffect;
 
 typedef struct OpenGLQuery /* Cast from FNA3D_Query* */
 {
+	uint8_t filler;
 } OpenGLQuery;
 
 #define BACKBUFFER_TYPE_OPENGL 1
@@ -126,6 +176,8 @@ void OPENGL_DrawIndexedPrimitives(
 	FNA3D_IndexElementSize indexElementSize
 ) {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_ARB_draw_elements_base_vertex);
 }
 
 void OPENGL_DrawInstancedPrimitives(
@@ -141,6 +193,9 @@ void OPENGL_DrawInstancedPrimitives(
 	FNA3D_IndexElementSize indexElementSize
 ) {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_ARB_draw_instanced);
+	SDL_assert(device->supports_ARB_draw_elements_base_vertex);
 }
 
 void OPENGL_DrawPrimitives(
@@ -205,12 +260,16 @@ void OPENGL_SetBlendFactor(
 int32_t OPENGL_GetMultiSampleMask(void* driverData)
 {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_ARB_texture_multisample);
 	return 0;
 }
 
 void OPENGL_SetMultiSampleMask(void* driverData, int32_t mask)
 {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_ARB_texture_multisample);
 }
 
 int32_t OPENGL_GetReferenceStencil(void* driverData)
@@ -231,6 +290,8 @@ void OPENGL_SetBlendState(
 	FNA3D_BlendState *blendState
 ) {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_GL_EXT_draw_buffers2);
 }
 
 void OPENGL_SetDepthStencilState(
@@ -266,6 +327,8 @@ void OPENGL_ApplyVertexBufferBindings(
 	int32_t baseVertex
 ) {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_ARB_instanced_arrays); /* If divisor > 0 */
 }
 
 void OPENGL_ApplyVertexDeclaration(
@@ -348,6 +411,8 @@ FNA3D_Texture* OPENGL_CreateTexture3D(
 	int32_t levelCount
 ) {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_3DTexture);
 	return NULL;
 }
 
@@ -399,6 +464,8 @@ void OPENGL_SetTextureData3D(
 	int32_t dataLength
 ) {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_3DTexture);
 }
 
 void OPENGL_SetTextureDataCube(
@@ -442,6 +509,8 @@ void OPENGL_GetTextureData2D(
 	int32_t elementSizeInBytes
 ) {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_NonES3);
 }
 
 void OPENGL_GetTextureData3D(
@@ -461,6 +530,8 @@ void OPENGL_GetTextureData3D(
 	int32_t elementSizeInBytes
 ) {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_NonES3);
 }
 
 void OPENGL_GetTextureDataCube(
@@ -480,6 +551,8 @@ void OPENGL_GetTextureDataCube(
 	int32_t elementSizeInBytes
 ) {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_NonES3);
 }
 
 /* Renderbuffers */
@@ -656,27 +729,37 @@ void OPENGL_EndPassRestore(
 FNA3D_Query* OPENGL_CreateQuery(void* driverData)
 {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_ARB_occlusion_query);
 	return NULL;
 }
 
 void OPENGL_AddDisposeQuery(void* driverData, FNA3D_Query *query)
 {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_ARB_occlusion_query);
 }
 
 void OPENGL_QueryBegin(void* driverData, FNA3D_Query *query)
 {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_ARB_occlusion_query);
 }
 
 void OPENGL_QueryEnd(void* driverData, FNA3D_Query *query)
 {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_ARB_occlusion_query);
 }
 
 uint8_t OPENGL_QueryComplete(void* driverData, FNA3D_Query *query)
 {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_ARB_occlusion_query);
 	return 1;
 }
 
@@ -685,6 +768,8 @@ int32_t OPENGL_QueryPixelCount(
 	FNA3D_Query *query
 ) {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_ARB_occlusion_query);
 	return 0;
 }
 
@@ -702,12 +787,12 @@ uint8_t OPENGL_SupportsS3TC(void* driverData)
 }
 uint8_t OPENGL_SupportsHardwareInstancing(void* driverData)
 {
-	/* TODO */
-	return 0;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	return (	device->supports_ARB_draw_instanced &&
+			device->supports_ARB_instanced_arrays	);
 }
 uint8_t OPENGL_SupportsNoOverwrite(void* driverData)
 {
-	/* TODO */
 	return 0;
 }
 
@@ -727,9 +812,55 @@ int32_t OPENGL_GetMaxMultiSampleCount(void* driverData)
 void OPENGL_SetStringMarker(void* driverData, const char *text)
 {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_GREMEDY_string_marker);
 }
 
-/* TODO: Debug callback function...? */
+static const char *debugSourceStr[] = {
+	"GL_DEBUG_SOURCE_API",
+	"GL_DEBUG_SOURCE_WINDOW_SYSTEM",
+	"GL_DEBUG_SOURCE_SHADER_COMPILER",
+	"GL_DEBUG_SOURCE_THIRD_PARTY",
+	"GL_DEBUG_SOURCE_APPLICATION",
+	"GL_DEBUG_SOURCE_OTHER"
+};
+static const char *debugTypeStr[] = {
+	"GL_DEBUG_TYPE_ERROR",
+	"GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR",
+	"GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR",
+	"GL_DEBUG_TYPE_PORTABILITY",
+	"GL_DEBUG_TYPE_PERFORMANCE",
+	"GL_DEBUG_TYPE_OTHER"
+};
+static const char *debugSeverityStr[] = {
+	"GL_DEBUG_SEVERITY_HIGH",
+	"GL_DEBUG_SEVERITY_MEDIUM",
+	"GL_DEBUG_SEVERITY_LOW",
+	"GL_DEBUG_SEVERITY_NOTIFICATION"
+};
+
+static void GLAPIENTRY DebugCall(
+	GLenum source,
+	GLenum type,
+	GLuint id,
+	GLenum severity,
+	GLsizei length,
+	const GLchar *message,
+	const void *userParam
+) {
+	SDL_LogWarn(
+		SDL_LOG_CATEGORY_APPLICATION,
+		"%s\n\tSource: %s\n\tType: %s\n\tSeverity: %s",
+		message,
+		debugSourceStr[source - GL_DEBUG_SOURCE_API],
+		debugTypeStr[type - GL_DEBUG_TYPE_ERROR],
+		debugSeverityStr[severity - GL_DEBUG_SEVERITY_HIGH]
+	);
+	if (type == GL_DEBUG_TYPE_ERROR)
+	{
+		SDL_assert(0 && "ARB_debug_output error, check your logs!");
+	}
+}
 
 /* Buffer Objects */
 
@@ -793,6 +924,208 @@ void OPENGL_ResetFramebuffer(
 	/* TODO */
 }
 
+/* Load GL Entry Points */
+
+static void LoadEntryPoints(
+	OpenGLDevice *device,
+	const char *driverInfo,
+	uint8_t debugMode
+) {
+	const char *baseErrorString = (
+		device->useES3 ?
+		"OpenGL ES 3.0 support is required!" :
+		"OpenGL 2.1 support is required!"
+	);
+
+	device->supports_BaseGL = 1;
+	device->supports_CoreGL = 1;
+	device->supports_3DTexture = 1;
+	device->supports_DoublePrecisionDepth = 1;
+	device->supports_OES_single_precision = 1;
+	device->supports_ARB_occlusion_query = 1;
+	device->supports_NonES3 = 1;
+	device->supports_NonES3NonCore = 1;
+	device->supports_ARB_framebuffer_object = 1;
+	device->supports_EXT_framebuffer_blit = 1;
+	device->supports_EXT_framebuffer_multisample = 1;
+	device->supports_ARB_invalidate_subdata = 1;
+	device->supports_ARB_draw_instanced = 1;
+	device->supports_ARB_instanced_arrays = 1;
+	device->supports_ARB_draw_elements_base_vertex = 1;
+	device->supports_GL_EXT_draw_buffers2 = 1;
+	device->supports_ARB_texture_multisample = 1;
+	device->supports_KHR_debug = 1;
+	device->supports_GREMEDY_string_marker = 1;
+
+	#define GL_PROC(ext, ret, func, parms) \
+		device->func = (glfntype_##func) SDL_GL_GetProcAddress(#func); \
+		if (device->func == NULL) \
+		{ \
+			device->supports_##ext = 0; \
+		}
+	#define GL_PROC_EXT(ext, fallback, ret, func, parms) \
+		device->func = (glfntype_##func) SDL_GL_GetProcAddress(#func); \
+		if (device->func == NULL) \
+		{ \
+			device->func = (glfntype_##func) SDL_GL_GetProcAddress(#func #fallback); \
+			if (device->func == NULL) \
+			{ \
+				device->supports_##ext = 0; \
+			} \
+		}
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+	#include "FNA3D_Driver_OpenGL_glfuncs.h"
+#pragma GCC diagnostic pop
+	#undef GL_PROC
+	#undef GL_PROC_EXT
+
+	/* Weeding out the GeForce FX cards... */
+	if (!device->supports_BaseGL)
+	{
+		SDL_LogError(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"%s\n%s",
+			baseErrorString,
+			driverInfo
+		);
+		return;
+	}
+
+	/* No depth precision whatsoever? Something's busted. */
+	if (	!device->supports_DoublePrecisionDepth &&
+		!device->supports_OES_single_precision	)
+	{
+		SDL_LogError(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"%s\n%s",
+			baseErrorString,
+			driverInfo
+		);
+		return;
+	}
+
+	/* If you asked for core profile, you better have it! */
+	if (device->useCoreProfile && !device->supports_CoreGL)
+	{
+		SDL_LogError(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"OpenGL 3.2 Core support is required!\n%s",
+			driverInfo
+		);
+		return;
+	}
+
+	/* Some stuff is okay for ES3, not for desktop. */
+	if (device->useES3)
+	{
+		if (!device->supports_3DTexture)
+		{
+			SDL_LogWarn(
+				SDL_LOG_CATEGORY_APPLICATION,
+				"3D textures unsupported, beware..."
+			);
+		}
+		if (!device->supports_ARB_occlusion_query)
+		{
+			SDL_LogWarn(
+				SDL_LOG_CATEGORY_APPLICATION,
+				"Occlusion queries unsupported, beware..."
+			);
+		}
+	}
+	else
+	{
+		if (	!device->supports_3DTexture ||
+			!device->supports_ARB_occlusion_query ||
+			!device->supports_NonES3	)
+		{
+			SDL_LogError(
+				SDL_LOG_CATEGORY_APPLICATION,
+				"%s\n%s",
+				baseErrorString,
+				driverInfo
+			);
+			return;
+		}
+	}
+
+	/* AKA: The shitty TexEnvi check */
+	if (	!device->useES3 &&
+		!device->useCoreProfile &&
+		!device->supports_NonES3NonCore	)
+	{
+		SDL_LogError(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"%s\n%s",
+			baseErrorString,
+			driverInfo
+		);
+		return;
+	}
+
+	/* Possibly bogus if a game never uses render targets? */
+	if (!device->supports_ARB_framebuffer_object)
+	{
+		SDL_LogError(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"OpenGL framebuffer support is required!\n%s",
+			driverInfo
+		);
+		return;
+	}
+
+	/* Everything below this check is for debug contexts */
+	if (!debugMode)
+	{
+		return;
+	}
+
+	if (device->supports_KHR_debug)
+	{
+		device->glDebugMessageControl(
+			GL_DONT_CARE,
+			GL_DONT_CARE,
+			GL_DONT_CARE,
+			0,
+			NULL,
+			GL_TRUE
+		);
+		device->glDebugMessageControl(
+			GL_DONT_CARE,
+			GL_DEBUG_TYPE_OTHER,
+			GL_DEBUG_SEVERITY_LOW,
+			0,
+			NULL,
+			GL_FALSE
+		);
+		device->glDebugMessageControl(
+			GL_DONT_CARE,
+			GL_DEBUG_TYPE_OTHER,
+			GL_DEBUG_SEVERITY_NOTIFICATION,
+			0,
+			NULL,
+			GL_FALSE
+		);
+		device->glDebugMessageCallback(DebugCall, NULL);
+	}
+	else
+	{
+		SDL_LogWarn(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"ARB_debug_output/KHR_debug not supported!"
+		);
+	}
+
+	if (!device->supports_GREMEDY_string_marker)
+	{
+		SDL_LogWarn(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"GREMEDY_string_marker not supported!"
+		);
+	}
+}
+
 /* Driver */
 
 uint8_t OPENGL_PrepareWindowAttributes(uint8_t debugMode, uint32_t *flags)
@@ -805,9 +1138,117 @@ uint8_t OPENGL_PrepareWindowAttributes(uint8_t debugMode, uint32_t *flags)
 FNA3D_Device* OPENGL_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
-	FNA3D_Device *result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
+	int flags;
+	int depthSize, stencilSize;
+	SDL_SysWMinfo wmInfo;
+	const char *renderer, *version, *vendor;
+	char driverInfo[256];
+	OpenGLDevice *device;
+	FNA3D_Device *result;
+
+	/* Init the OpenGLDevice */
+	device = (OpenGLDevice*) SDL_malloc(sizeof(OpenGLDevice));
+
+	/* Create OpenGL context */
+	device->context = SDL_GL_CreateContext(
+		(SDL_Window*) presentationParameters->deviceWindowHandle
+	);
+
+	/* Check for a possible ES/Core context */
+	SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &flags);
+	device->useES3 = (flags & SDL_GL_CONTEXT_PROFILE_ES) != 0;
+	device->useCoreProfile = (flags & SDL_GL_CONTEXT_PROFILE_CORE) != 0;
+
+	/* Check the window's depth/stencil format */
+	SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &depthSize);
+	SDL_GL_GetAttribute(SDL_GL_STENCIL_SIZE, &stencilSize);
+	if (depthSize == 0 && stencilSize == 0)
+	{
+		device->windowDepthFormat = FNA3D_DEPTHFORMAT_NONE;
+	}
+	else if (depthSize == 16 && stencilSize == 0)
+	{
+		device->windowDepthFormat = FNA3D_DEPTHFORMAT_D16;
+	}
+	else if (depthSize == 24 && stencilSize == 0)
+	{
+		device->windowDepthFormat = FNA3D_DEPTHFORMAT_D24;
+	}
+	else if (depthSize == 24 && stencilSize == 8)
+	{
+		device->windowDepthFormat = FNA3D_DEPTHFORMAT_D24S8;
+	}
+	else
+	{
+		SDL_assert(0 && "Unrecognized window depth/stencil format!");
+	}
+
+	/* UIKit needs special treatment for backbuffer behavior */
+	SDL_VERSION(&wmInfo.version);
+	SDL_GetWindowWMInfo(
+		(SDL_Window*) presentationParameters->deviceWindowHandle,
+		&wmInfo
+	);
+#ifdef SDL_VIDEO_UIKIT
+	if (wmInfo.subsystem == SDL_SYSWM_UIKIT)
+	{
+		device->realBackbufferFBO = wmInfo.info.uikit.framebuffer;
+		device->realBackbufferRBO = wmInfo.info.uikit.colorbuffer;
+	}
+	else
+#endif /* SDL_VIDEO_UIKIT */
+	{
+		device->realBackbufferFBO = 0;
+		device->realBackbufferRBO = 0;
+	}
+
+	/* TODO: Init threaded GL crap where applicable */
+
+	/* Print GL information */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+	device->glGetString = (glfntype_glGetString) SDL_GL_GetProcAddress("glGetString");
+#pragma GCC diagnostic pop
+	if (!device->glGetString)
+	{
+		SDL_assert(0 && "GRAPHICS DRIVER IS EXTREMELY BROKEN!");
+	}
+	renderer =	(const char*) device->glGetString(GL_RENDERER);
+	version =	(const char*) device->glGetString(GL_VERSION);
+	vendor =	(const char*) device->glGetString(GL_VENDOR);
+	SDL_snprintf(
+		driverInfo, sizeof(driverInfo),
+		"OpenGL Device: %s\nOpenGL Driver: %s\nOpenGL Vendor: %s",
+		renderer, version, vendor
+	);
+	SDL_LogInfo(
+		SDL_LOG_CATEGORY_APPLICATION,
+		"IGLDevice: OpenGLDevice"
+	);
+	SDL_LogInfo(
+		SDL_LOG_CATEGORY_APPLICATION,
+		driverInfo
+	);
+
+	/* Initialize entry points */
+	LoadEntryPoints(device, driverInfo, 0); /* FIXME: Debug context check */
+
+	/* FIXME: REMOVE ME ASAP! TERRIBLE HACK FOR ANGLE! */
+	if (!SDL_strstr(renderer, "Direct3D11"))
+	{
+		device->supports_ARB_draw_elements_base_vertex = 0;
+	}
+
+	/* TODO: The rest of the OpenGLDevice constructor */
+	if (!device->supports_EXT_framebuffer_multisample)
+	{
+		/* MaxMultiSampleCount = 0; */
+	}
+
+	/* Set up and return the FNA3D_Device */
+	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
 	ASSIGN_DRIVER(OPENGL)
-	result->driverData = NULL; /* TODO */
+	result->driverData = device;
 	return result;
 }
 
