@@ -48,7 +48,7 @@ typedef unsigned char	GLboolean;
 
 /* One */
 #define GL_ZERO 					0x0000
-#define GL_ONE						0x0001
+#define GL_ONE  					0x0001
 
 /* True/False */
 #define GL_FALSE					0x0000
@@ -82,7 +82,7 @@ typedef unsigned char	GLboolean;
 
 /* Client State */
 #define GL_VERTEX_ARRAY 				0x8074
-#define GL_TEXTURE_COORD_ARRAY				0x8078
+#define GL_TEXTURE_COORD_ARRAY  			0x8078
 
 /* Textures */
 #define GL_UNPACK_ALIGNMENT				0x0CF5
@@ -100,7 +100,7 @@ typedef unsigned char	GLboolean;
 #define GL_RGBA 					0x1908
 #define GL_LUMINANCE					0x1909
 #define GL_CLAMP_TO_EDGE				0x812F
-#define GL_TEXTURE_ENV					0x2300
+#define GL_TEXTURE_ENV  				0x2300
 #define GL_TEXTURE_ENV_MODE				0x2200
 #define GL_MODULATE					0x2100
 #define GL_TEXTURE0					0x84C0
@@ -115,10 +115,10 @@ typedef unsigned char	GLboolean;
 #define GL_BLEND					0x0BE2
 #define GL_SRC_COLOR					0x0300
 #define GL_SRC_ALPHA					0x0302
-#define GL_ONE_MINUS_SRC_ALPHA				0x0303
+#define GL_ONE_MINUS_SRC_ALPHA  			0x0303
 
 /* Framebuffers */
-#define GL_FRAMEBUFFER					0x8D40
+#define GL_FRAMEBUFFER  				0x8D40
 #define GL_FRAMEBUFFER_COMPLETE 			0x8CD5
 #define GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT		0x8CD6
 #define GL_FRAMEBUFFER_INCOMPLETE_MISSING_ATTACHMENT	0x8CD7
@@ -137,7 +137,7 @@ typedef unsigned char	GLboolean;
 #define GL_VERTEX_SHADER				0x8B31
 #define GL_COMPILE_STATUS				0x8B81
 #define GL_DELETE_STATUS				0x8B80
-#define GL_LINK_STATUS					0x8B82
+#define GL_LINK_STATUS  				0x8B82
 #define GL_INFO_LOG_LENGTH				0x8B84
 #define GL_ATTACHED_SHADERS				0x8B85
 #define GL_ACTIVE_UNIFORMS				0x8B86
@@ -148,10 +148,10 @@ typedef unsigned char	GLboolean;
 #define GL_DEBUG_TYPE_OTHER				0x8251
 
 /* Severity */
-#define GL_DEBUG_SEVERITY_HIGH				0x9146
+#define GL_DEBUG_SEVERITY_HIGH  			0x9146
 #define GL_DEBUG_SEVERITY_MEDIUM			0x9147
 #define GL_DEBUG_SEVERITY_LOW				0x9148
-#define GL_DEBUG_SEVERITY_NOTIFICATION			0x826B
+#define GL_DEBUG_SEVERITY_NOTIFICATION  		0x826B
 
 /* In case this needs to be exported in a certain way... */
 #ifdef _WIN32 /* Windows OpenGL uses stdcall */
