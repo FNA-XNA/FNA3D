@@ -752,6 +752,29 @@ void OPENGL_SetStringMarker(void* driverData, const char *text)
 	/* TODO */
 }
 
+static const char *debugSourceStr[] = {
+	"GL_DEBUG_SOURCE_API",
+	"GL_DEBUG_SOURCE_WINDOW_SYSTEM",
+	"GL_DEBUG_SOURCE_SHADER_COMPILER",
+	"GL_DEBUG_SOURCE_THIRD_PARTY",
+	"GL_DEBUG_SOURCE_APPLICATION",
+	"GL_DEBUG_SOURCE_OTHER"
+};
+static const char *debugTypeStr[] = {
+	"GL_DEBUG_TYPE_ERROR",
+	"GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR",
+	"GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR",
+	"GL_DEBUG_TYPE_PORTABILITY",
+	"GL_DEBUG_TYPE_PERFORMANCE",
+	"GL_DEBUG_TYPE_OTHER"
+};
+static const char *debugSeverityStr[] = {
+	"GL_DEBUG_SEVERITY_HIGH",
+	"GL_DEBUG_SEVERITY_MEDIUM",
+	"GL_DEBUG_SEVERITY_LOW",
+	"GL_DEBUG_SEVERITY_NOTIFICATION"
+};
+
 static void GLAPIENTRY DebugCall(
 	GLenum source,
 	GLenum type,
@@ -761,17 +784,18 @@ static void GLAPIENTRY DebugCall(
 	const GLchar *message,
 	const void *userParam
 ) {
-	char err[512];
-	SDL_snprintf(
-		err, 512,
+	SDL_LogWarn(
+		SDL_LOG_CATEGORY_APPLICATION,
 		"%s\n\tSource: %s\n\tType: %s\n\tSeverity: %s",
-		message, source, type, severity
+		message,
+		debugSourceStr[source - GL_DEBUG_SOURCE_API],
+		debugTypeStr[type - GL_DEBUG_TYPE_ERROR],
+		debugSeverityStr[severity - GL_DEBUG_SEVERITY_HIGH]
 	);
 	if (type == GL_DEBUG_TYPE_ERROR)
 	{
-		SDL_assert(0 && err);
+		SDL_assert(0 && "ARB_debug_output error, check your logs!");
 	}
-	SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION, err);
 }
 
 /* Buffer Objects */
