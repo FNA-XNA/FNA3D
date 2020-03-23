@@ -65,7 +65,7 @@ typedef struct OpenGLDevice /* Cast from driverData */
 	uint8_t supports_ARB_draw_instanced;
 	uint8_t supports_ARB_instanced_arrays;
 	uint8_t supports_ARB_draw_elements_base_vertex;
-	uint8_t supports_GL_EXT_draw_buffers2;
+	uint8_t supports_EXT_draw_buffers2;
 	uint8_t supports_ARB_texture_multisample;
 	uint8_t supports_KHR_debug;
 	uint8_t supports_GREMEDY_string_marker;
@@ -291,7 +291,7 @@ void OPENGL_SetBlendState(
 ) {
 	/* TODO */
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	SDL_assert(device->supports_GL_EXT_draw_buffers2);
+	SDL_assert(device->supports_EXT_draw_buffers2);
 }
 
 void OPENGL_SetDepthStencilState(
@@ -952,7 +952,7 @@ static void LoadEntryPoints(
 	device->supports_ARB_draw_instanced = 1;
 	device->supports_ARB_instanced_arrays = 1;
 	device->supports_ARB_draw_elements_base_vertex = 1;
-	device->supports_GL_EXT_draw_buffers2 = 1;
+	device->supports_EXT_draw_buffers2 = 1;
 	device->supports_ARB_texture_multisample = 1;
 	device->supports_KHR_debug = 1;
 	device->supports_GREMEDY_string_marker = 1;
@@ -1062,6 +1062,22 @@ static void LoadEntryPoints(
 			driverInfo
 		);
 		return;
+	}
+
+	/* ColorMask is an absolute mess */
+	if (!device->supports_EXT_draw_buffers2)
+	{
+		#define LOAD_COLORMASK(suffix) \
+		device->glColorMaski = (glfntype_glColorMaski) \
+			SDL_GL_GetProcAddress("glColorMask" #suffix);
+		LOAD_COLORMASK(IndexedEXT)
+		if (device->glColorMaski == NULL) LOAD_COLORMASK(iOES)
+		if (device->glColorMaski == NULL) LOAD_COLORMASK(iEXT)
+		if (device->glColorMaski != NULL)
+		{
+			device->supports_EXT_draw_buffers2 = 1;
+		}
+		#undef LOAD_COLORMASK
 	}
 
 	/* Possibly bogus if a game never uses render targets? */

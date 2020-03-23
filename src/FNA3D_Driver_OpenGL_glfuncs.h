@@ -139,7 +139,7 @@ GL_PROC(ARB_instanced_arrays, void, glVertexAttribDivisor, (GLuint a, GLuint b))
  * exact same time. WTF.
  * -flibit
  */
-GL_PROC(GL_EXT_draw_buffers2, void, glColorMaski, (GLuint a, GLboolean b, GLboolean c, GLboolean d, GLboolean e))
+GL_PROC(EXT_draw_buffers2, void, glColorMaski, (GLuint a, GLboolean b, GLboolean c, GLboolean d, GLboolean e))
 
 /* Probably used by nobody, honestly */
 GL_PROC(ARB_texture_multisample, void, glSampleMaski, (GLuint a, GLuint b))
