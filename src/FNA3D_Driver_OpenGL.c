@@ -1070,9 +1070,12 @@ static void LoadEntryPoints(
 		#define LOAD_COLORMASK(suffix) \
 		device->glColorMaski = (glfntype_glColorMaski) \
 			SDL_GL_GetProcAddress("glColorMask" #suffix);
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 		LOAD_COLORMASK(IndexedEXT)
 		if (device->glColorMaski == NULL) LOAD_COLORMASK(iOES)
 		if (device->glColorMaski == NULL) LOAD_COLORMASK(iEXT)
+#pragma GCC diagnostic pop
 		if (device->glColorMaski != NULL)
 		{
 			device->supports_EXT_draw_buffers2 = 1;
