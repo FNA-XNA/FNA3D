@@ -291,8 +291,11 @@ typedef void (GLAPIENTRY *DEBUGPROC)(
 /* Function typedefs */
 #define GL_PROC(ext, ret, func, parms) \
 	typedef ret (GLAPIENTRY *glfntype_##func) parms;
-#include "glfuncs.h"
+#define GL_PROC_EXT(ext, fallbacl, ret, func, parms) \
+	typedef ret (GLAPIENTRY *glfntype_##func) parms;
+#include "FNA3D_Driver_OpenGL_glfuncs.h"
 #undef GL_PROC
+#undef GL_PROC_EXT
 
 /* glGetString is a bit different since we load it early */
 typedef const GLubyte* (GLAPIENTRY *glfntype_glGetString)(GLenum a);
