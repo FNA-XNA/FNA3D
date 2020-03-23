@@ -83,22 +83,27 @@ typedef struct OpenGLDevice /* Cast from driverData */
 
 typedef struct OpenGLTexture /* Cast from FNA3D_Texture* */
 {
+	uint8_t filler;
 } OpenGLTexture;
 
 typedef struct OpenGLBuffer /* Cast from FNA3D_Buffer* */
 {
+	uint8_t filler;
 } OpenGLBuffer;
 
 typedef struct OpenGLRenderbuffer /* Cast from FNA3D_Renderbuffer* */
 {
+	uint8_t filler;
 } OpenGLRenderbuffer;
 
 typedef struct OpenGLEffect /* Cast from FNA3D_Effect* */
 {
+	uint8_t filler;
 } OpenGLEffect;
 
 typedef struct OpenGLQuery /* Cast from FNA3D_Query* */
 {
+	uint8_t filler;
 } OpenGLQuery;
 
 #define BACKBUFFER_TYPE_OPENGL 1
@@ -926,7 +931,6 @@ static void LoadEntryPoints(
 	const char *driverInfo,
 	uint8_t debugMode
 ) {
-	char errorMessage[256];
 	const char *baseErrorString = (
 		device->useES3 ?
 		"OpenGL ES 3.0 support is required!" :
@@ -969,7 +973,10 @@ static void LoadEntryPoints(
 				device->supports_##ext = 0; \
 			} \
 		}
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 	#include "FNA3D_Driver_OpenGL_glfuncs.h"
+#pragma GCC diagnostic pop
 	#undef GL_PROC
 	#undef GL_PROC_EXT
 
@@ -1131,26 +1138,28 @@ uint8_t OPENGL_PrepareWindowAttributes(uint8_t debugMode, uint32_t *flags)
 FNA3D_Device* OPENGL_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
+	int flags;
+	int depthSize, stencilSize;
+	SDL_SysWMinfo wmInfo;
+	const char *renderer, *version, *vendor;
+	char driverInfo[256];
+	OpenGLDevice *device;
+	FNA3D_Device *result;
+
 	/* Init the OpenGLDevice */
-	OpenGLDevice *device = (OpenGLDevice*) SDL_malloc(sizeof(OpenGLDevice));
+	device = (OpenGLDevice*) SDL_malloc(sizeof(OpenGLDevice));
 
 	/* Create OpenGL context */
 	device->context = SDL_GL_CreateContext(
 		(SDL_Window*) presentationParameters->deviceWindowHandle
 	);
 
-	/* Check for a possible ES context */
-	int flags;
-	int es3Flag = SDL_GL_CONTEXT_PROFILE_ES;
+	/* Check for a possible ES/Core context */
 	SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &flags);
-	device->useES3 = (flags & es3Flag) == es3Flag;
-
-	/* Check for a possible Core context */
-	int coreFlag = SDL_GL_CONTEXT_PROFILE_CORE;
-	device->useCoreProfile = (flags & coreFlag) == coreFlag;
+	device->useES3 = (flags & SDL_GL_CONTEXT_PROFILE_ES) != 0;
+	device->useCoreProfile = (flags & SDL_GL_CONTEXT_PROFILE_CORE) != 0;
 
 	/* Check the window's depth/stencil format */
-	int depthSize, stencilSize;
 	SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &depthSize);
 	SDL_GL_GetAttribute(SDL_GL_STENCIL_SIZE, &stencilSize);
 	if (depthSize == 0 && stencilSize == 0)
@@ -1175,7 +1184,6 @@ FNA3D_Device* OPENGL_CreateDevice(
 	}
 
 	/* UIKit needs special treatment for backbuffer behavior */
-	SDL_SysWMinfo wmInfo;
 	SDL_VERSION(&wmInfo.version);
 	SDL_GetWindowWMInfo(
 		(SDL_Window*) presentationParameters->deviceWindowHandle,
@@ -1197,15 +1205,17 @@ FNA3D_Device* OPENGL_CreateDevice(
 	/* TODO: Init threaded GL crap where applicable */
 
 	/* Print GL information */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 	device->glGetString = (glfntype_glGetString) SDL_GL_GetProcAddress("glGetString");
+#pragma GCC diagnostic pop
 	if (!device->glGetString)
 	{
 		SDL_assert(0 && "GRAPHICS DRIVER IS EXTREMELY BROKEN!");
 	}
-	const char* renderer	= (const char*) device->glGetString(GL_RENDERER);
-	const char* version	= (const char*) device->glGetString(GL_VERSION);
-	const char* vendor	= (const char*) device->glGetString(GL_VENDOR);
-	char driverInfo[256];
+	renderer =	(const char*) device->glGetString(GL_RENDERER);
+	version =	(const char*) device->glGetString(GL_VERSION);
+	vendor =	(const char*) device->glGetString(GL_VENDOR);
 	SDL_snprintf(
 		driverInfo, sizeof(driverInfo),
 		"OpenGL Device: %s\nOpenGL Driver: %s\nOpenGL Vendor: %s",
@@ -1236,7 +1246,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	}
 
 	/* Set up and return the FNA3D_Device */
-	FNA3D_Device *result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
+	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
 	ASSIGN_DRIVER(OPENGL)
 	result->driverData = device;
 	return result;
