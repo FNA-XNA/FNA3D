@@ -1033,6 +1033,18 @@ static void LoadEntryPoints(
 				"Occlusion queries unsupported, beware..."
 			);
 		}
+		if (!device->supports_ARB_invalidate_subdata)
+		{
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+			device->glInvalidateFramebuffer =
+				(glfntype_glInvalidateFramebuffer) SDL_GL_GetProcAddress(
+					"glDiscardFramebufferEXT"
+			);
+#pragma GCC diagnostic pop
+			device->supports_ARB_invalidate_subdata =
+				device->glInvalidateFramebuffer != NULL;
+		}
 	}
 	else
 	{
