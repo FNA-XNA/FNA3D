@@ -37,7 +37,7 @@ typedef unsigned char	GLubyte;
 typedef int		GLsizei;
 typedef float		GLfloat;
 typedef float		GLclampf;
-typedef double		GLdouble;
+typedef double  	GLdouble;
 typedef char		GLchar;
 typedef uintptr_t	GLsizeiptr;
 typedef intptr_t	GLintptr;
