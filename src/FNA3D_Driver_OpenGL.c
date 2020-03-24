@@ -1950,10 +1950,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	);
 	SDL_LogInfo(
 		SDL_LOG_CATEGORY_APPLICATION,
-		"IGLDevice: OpenGLDevice"
-	);
-	SDL_LogInfo(
-		SDL_LOG_CATEGORY_APPLICATION,
+		"IGLDevice: OpenGLDevice\n%s",
 		driverInfo
 	);
 
