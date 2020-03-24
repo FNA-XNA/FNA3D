@@ -1161,7 +1161,100 @@ static void LoadEntryPoints(
 
 uint8_t OPENGL_PrepareWindowAttributes(uint8_t debugMode, uint32_t *flags)
 {
-	/* TODO: See SDL2_FNAPlatform PrepareGLAttributes */
+	int forceES3, forceCore, forceCompat;
+	const char *osVersion;
+	int depthSize, stencilSize;
+	const char *depthFormatHint;
+
+	/* GLContext environment variables */
+	forceES3 = SDL_GetHintBoolean("FNA_OPENGL_FORCE_ES3", 0);
+	forceCore = SDL_GetHintBoolean("FNA_OPENGL_FORCE_CORE_PROFILE", 0);
+	forceCompat = SDL_GetHintBoolean("FNA_OPENGL_FORCE_COMPATIBILITY_PROFILE", 0);
+
+	/* Some platforms are GLES only */
+	osVersion = SDL_GetPlatform();
+	forceES3 |= (
+		(SDL_strcmp(osVersion, "WinRT") == 0) ||
+		(SDL_strcmp(osVersion, "iOS") == 0) ||
+		(SDL_strcmp(osVersion, "tvOS") == 0) ||
+		(SDL_strcmp(osVersion, "Stadia") == 0) ||
+		(SDL_strcmp(osVersion, "Android") == 0) ||
+		(SDL_strcmp(osVersion, "Emscripten") == 0)
+	);
+
+	/* Window depth format */
+	depthSize = 24;
+	stencilSize = 8;
+	depthFormatHint = SDL_GetHint("FNA_OPENGL_WINDOW_DEPTHSTENCILFORMAT");
+	if (depthFormatHint != NULL)
+	{
+		if (SDL_strcmp(depthFormatHint, "None") == 0)
+		{
+			depthSize = 0;
+			stencilSize = 0;
+		}
+		else if (SDL_strcmp(depthFormatHint, "Depth16") == 0)
+		{
+			depthSize = 16;
+			stencilSize = 0;
+		}
+		else if (SDL_strcmp(depthFormatHint, "Depth24") == 0)
+		{
+			depthSize = 24;
+			stencilSize = 0;
+		}
+		else if (SDL_strcmp(depthFormatHint, "Depth24Stencil8") == 0)
+		{
+			depthSize = 24;
+			stencilSize = 8;
+		}
+	}
+
+	/* Set context attributes */
+	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
+	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, depthSize);
+	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, stencilSize);
+	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+	if (forceES3)
+	{
+		SDL_GL_SetAttribute(SDL_GL_RETAINED_BACKING, 0);
+		SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
+		SDL_GL_SetAttribute(
+			SDL_GL_CONTEXT_PROFILE_MASK,
+			SDL_GL_CONTEXT_PROFILE_ES
+		);
+	}
+	else if (forceCore)
+	{
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
+		SDL_GL_SetAttribute(
+			SDL_GL_CONTEXT_PROFILE_MASK,
+			SDL_GL_CONTEXT_PROFILE_CORE
+		);
+	}
+	else if (forceCompat)
+	{
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 2);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+		SDL_GL_SetAttribute(
+			SDL_GL_CONTEXT_PROFILE_MASK,
+			SDL_GL_CONTEXT_PROFILE_COMPATIBILITY
+		);
+	}
+	if (debugMode)
+	{
+		SDL_GL_SetAttribute(
+			SDL_GL_CONTEXT_FLAGS,
+			SDL_GL_CONTEXT_DEBUG_FLAG
+		);
+	}
+
 	*flags = SDL_WINDOW_OPENGL;
 	return 1;
 }
