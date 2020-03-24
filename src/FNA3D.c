@@ -1101,9 +1101,9 @@ void FNA3D_AddDisposeEffect(
 void FNA3D_ApplyEffect(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect,
-	void* technique, /* FIXME: Should be MojoShader */
+	MOJOSHADER_effectTechnique *technique,
 	uint32_t pass,
-	void* stateChanges /* FIXME: Should be MojoShader */
+	MOJOSHADER_effectStateChanges *stateChanges
 ) {
 	if (device == NULL)
 	{
@@ -1121,7 +1121,7 @@ void FNA3D_ApplyEffect(
 void FNA3D_BeginPassRestore(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect,
-	void* stateChanges /* FIXME: Should be MojoShader */
+	MOJOSHADER_effectStateChanges *stateChanges
 ) {
 	if (device == NULL)
 	{

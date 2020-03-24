@@ -755,9 +755,9 @@ void OPENGL_AddDisposeEffect(
 void OPENGL_ApplyEffect(
 	void* driverData,
 	FNA3D_Effect *effect,
-	void* technique, /* FIXME: Should be MojoShader */
+	MOJOSHADER_effectTechnique *technique,
 	uint32_t pass,
-	void* stateChanges /* FIXME: Should be MojoShader */
+	MOJOSHADER_effectStateChanges *stateChanges
 ) {
 	/* TODO */
 }
@@ -765,7 +765,7 @@ void OPENGL_ApplyEffect(
 void OPENGL_BeginPassRestore(
 	void* driverData,
 	FNA3D_Effect *effect,
-	void* stateChanges /* FIXME: Should be MojoShader */
+	MOJOSHADER_effectStateChanges *stateChanges
 ) {
 	/* TODO */
 }

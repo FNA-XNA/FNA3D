@@ -35,23 +35,52 @@ CFLAGS += -g -O3
 DEFINES += -DFNA3D_DRIVER_OPENGL
 
 # Includes/Libraries
-INCLUDES = -Iinclude `sdl2-config --cflags`
+INCLUDES = -Iinclude -IMojoShader `sdl2-config --cflags`
 DEPENDENCIES = `sdl2-config --libs`
+
+# MojoShader Configuration
+DEFINES += \
+	-DMOJOSHADER_NO_VERSION_INCLUDE \
+	-DMOJOSHADER_EFFECT_SUPPORT \
+	-DMOJOSHADER_DEPTH_CLIPPING \
+	-DMOJOSHADER_FLIP_RENDERTARGET \
+	-DMOJOSHADER_XNA4_VERTEX_TEXTURES \
+	-DSUPPORT_PROFILE_ARB1=0 \
+	-DSUPPORT_PROFILE_ARB1_NV=0 \
+	-DSUPPORT_PROFILE_BYTECODE=0 \
+	-DSUPPORT_PROFILE_D3D=0
+ifeq ($(UNAME), Darwin)
+	DEFINES += -DSUPPORT_PROFILE_METAL=1
+	DEPENDENCIES += -lobjc
+else
+	DEFINES += -DSUPPORT_PROFILE_METAL=0
+endif
 
 # Source
 FNA3DSRC = \
 	src/FNA3D.c \
 	src/FNA3D_Driver_OpenGL.c
+MOJOSHADERSRC = \
+	MojoShader/mojoshader.c \
+	MojoShader/mojoshader_effects.c \
+	MojoShader/mojoshader_common.c \
+	MojoShader/mojoshader_opengl.c \
+	MojoShader/mojoshader_metal.c \
+	MojoShader/profiles/mojoshader_profile_common.c \
+	MojoShader/profiles/mojoshader_profile_glsl.c \
+	MojoShader/profiles/mojoshader_profile_metal.c \
+	MojoShader/profiles/mojoshader_profile_spirv.c
 
 # Objects
 FNA3DOBJ = $(FNA3DSRC:%.c=%.o)
+MOJOSHADEROBJ = $(MOJOSHADERSRC:%.c=%.o)
 
 # Targets
-all: $(FNA3DOBJ)
-	$(CC) $(CFLAGS) -shared -o $(PREFIX)FNA3D.$(SUFFIX) $(FNA3DOBJ) $(DEPENDENCIES) $(LDFLAGS)
+all: $(FNA3DOBJ) $(MOJOSHADEROBJ)
+	$(CC) $(CFLAGS) -shared -o $(PREFIX)FNA3D.$(SUFFIX) $(FNA3DOBJ) $(MOJOSHADEROBJ) $(DEPENDENCIES) $(LDFLAGS)
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $< $(INCLUDES) $(DEFINES)
 
 clean:
-	rm -f $(FNA3DOBJ) $(PREFIX)FNA3D.$(SUFFIX)
+	rm -f $(FNA3DOBJ) $(MOJOSHADEROBJ) $(PREFIX)FNA3D.$(SUFFIX)

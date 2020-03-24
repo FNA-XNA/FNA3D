@@ -427,14 +427,14 @@ struct FNA3D_Device
 	void (*ApplyEffect)(
 		void* driverData,
 		FNA3D_Effect *effect,
-		void* technique, /* FIXME: Should be MojoShader */
+		MOJOSHADER_effectTechnique *technique,
 		uint32_t pass,
-		void* stateChanges /* FIXME: Should be MojoShader */
+		MOJOSHADER_effectStateChanges *stateChanges
 	);
 	void (*BeginPassRestore)(
 		void* driverData,
 		FNA3D_Effect *effect,
-		void* stateChanges /* FIXME: Should be MojoShader */
+		MOJOSHADER_effectStateChanges *stateChanges
 	);
 	void (*EndPassRestore)(
 		void* driverData,
