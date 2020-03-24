@@ -263,6 +263,23 @@ typedef enum FNA3D_VertexElementFormat
 	FNA3D_VERTEXELEMENTFORMAT_HALFVECTOR4
 } FNA3D_VertexElementFormat;
 
+typedef enum FNA3D_VertexElementUsage
+{
+	FNA3D_VERTEXELEMENTUSAGE_POSITION,
+	FNA3D_VERTEXELEMENTUSAGE_COLOR,
+	FNA3D_VERTEXELEMENTUSAGE_TEXTURECOORDINATE,
+	FNA3D_VERTEXELEMENTUSAGE_NORMAL,
+	FNA3D_VERTEXELEMENTUSAGE_BINORMAL,
+	FNA3D_VERTEXELEMENTUSAGE_TANGENT,
+	FNA3D_VERTEXELEMENTUSAGE_BLENDINDICES,
+	FNA3D_VERTEXELEMENTUSAGE_BLENDWEIGHT,
+	FNA3D_VERTEXELEMENTUSAGE_DEPTH,
+	FNA3D_VERTEXELEMENTUSAGE_FOG,
+	FNA3D_VERTEXELEMENTUSAGE_POINTSIZE,
+	FNA3D_VERTEXELEMENTUSAGE_SAMPLE,
+	FNA3D_VERTEXELEMENTUSAGE_TESSELATEFACTOR
+} FNA3D_VertexElementUsage;
+
 /* Structures, should match XNA 4.0 */
 
 typedef struct FNA3D_Color
@@ -355,6 +372,21 @@ typedef struct FNA3D_SamplerState
 	int32_t maxMipLevel;
 	float mipMapLevelOfDetailBias;
 } FNA3D_SamplerState;
+
+typedef struct FNA3D_VertexElement
+{
+	int32_t offset;
+	FNA3D_VertexElementFormat vertexElementFormat;
+	FNA3D_VertexElementUsage vertexElementUsage;
+	int32_t usageIndex;
+} FNA3D_VertexElement;
+
+typedef struct FNA3D_VertexDeclaration
+{
+	int32_t vertexStride;
+	int32_t elementCount;
+	FNA3D_VertexElement *elements;
+} FNA3D_VertexDeclaration;
 
 typedef struct FNA3D_PresentationParameters
 {
@@ -512,7 +544,7 @@ FNA3DAPI void FNA3D_ApplyVertexBufferBindings(
 
 FNA3DAPI void FNA3D_ApplyVertexDeclaration(
 	FNA3D_Device *device,
-	/* FIXME: Oh shit VertexDeclaration vertexDeclaration, */
+	FNA3D_VertexDeclaration *vertexDeclaration,
 	void* ptr,
 	int32_t vertexOffset
 );

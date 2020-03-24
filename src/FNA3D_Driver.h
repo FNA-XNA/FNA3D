@@ -162,7 +162,7 @@ struct FNA3D_Device
 
 	void (*ApplyVertexDeclaration)(
 		void* driverData,
-		/* FIXME: Oh shit VertexDeclaration vertexDeclaration, */
+		FNA3D_VertexDeclaration *vertexDeclaration,
 		void* ptr,
 		int32_t vertexOffset
 	);

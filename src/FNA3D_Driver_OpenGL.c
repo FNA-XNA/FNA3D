@@ -386,7 +386,7 @@ void OPENGL_ApplyVertexBufferBindings(
 
 void OPENGL_ApplyVertexDeclaration(
 	void* driverData,
-	/* FIXME: Oh shit VertexDeclaration vertexDeclaration, */
+	FNA3D_VertexDeclaration *vertexDeclaration,
 	void* ptr,
 	int32_t vertexOffset
 ) {

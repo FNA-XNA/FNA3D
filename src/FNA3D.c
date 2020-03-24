@@ -448,7 +448,7 @@ void FNA3D_ApplyVertexBufferBindings(
 
 void FNA3D_ApplyVertexDeclaration(
 	FNA3D_Device *device,
-	/* FIXME: Oh shit VertexDeclaration vertexDeclaration, */
+	FNA3D_VertexDeclaration *vertexDeclaration,
 	void* ptr,
 	int32_t vertexOffset
 ) {
@@ -458,6 +458,7 @@ void FNA3D_ApplyVertexDeclaration(
 	}
 	device->ApplyVertexDeclaration(
 		device->driverData,
+		vertexDeclaration,
 		ptr,
 		vertexOffset
 	);
