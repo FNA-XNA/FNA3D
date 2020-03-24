@@ -397,7 +397,7 @@ typedef struct FNA3D_PresentationParameters
 	int32_t multiSampleCount;
 	void* deviceWindowHandle;
 	uint8_t isFullScreen;
-	FNA3D_SurfaceFormat depthStencilFormat;
+	FNA3D_DepthFormat depthStencilFormat;
 	FNA3D_PresentInterval presentationInterval;
 	FNA3D_DisplayOrientation displayOrientation;
 	FNA3D_RenderTargetUsage renderTargetUsage;
