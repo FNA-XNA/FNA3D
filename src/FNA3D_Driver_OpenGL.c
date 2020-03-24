@@ -68,18 +68,34 @@ typedef struct OpenGLQuery /* Cast from FNA3D_Query* */
 	uint8_t filler;
 } OpenGLQuery;
 
-#define BACKBUFFER_TYPE_OPENGL 1
-#define BACKBUFFER_TYPE_NULL 0
-
 typedef struct OpenGLBackbuffer /* Cast from FNA3D_Backbuffer */
 {
+	#define BACKBUFFER_TYPE_NULL 0
+	#define BACKBUFFER_TYPE_OPENGL 1
 	uint8_t type;
-} OpenGLBackbuffer;
+	union
+	{
+		struct
+		{
+			int32_t width;
+			int32_t height;
+			FNA3D_DepthFormat depthFormat;
+			int32_t multiSampleCount;
+		} null;
+		struct
+		{
+			GLuint handle;
+			int32_t width;
+			int32_t height;
+			FNA3D_DepthFormat depthFormat;
+			int32_t multiSampleCount;
 
-typedef struct NullBackbuffer /* Cast from FNA3D_Backbuffer */
-{
-	uint8_t type;
-} NullBackbuffer;
+			GLuint texture;
+			GLuint colorAttachment;
+			GLuint depthStencilAttachment;
+		} opengl;
+	} buffer;
+} OpenGLBackbuffer;
 
 typedef struct OpenGLVertexAttribute
 {
@@ -96,11 +112,13 @@ typedef struct OpenGLDevice /* Cast from driverData */
 	SDL_GLContext context;
 	uint8_t useES3;
 	uint8_t useCoreProfile;
+
+	/* The Faux-Backbuffer */
+	OpenGLBackbuffer *backbuffer;
 	FNA3D_DepthFormat windowDepthFormat;
+	GLenum backbufferScaleMode;
 	GLuint realBackbufferFBO;
 	GLuint realBackbufferRBO;
-	const char *shaderProfile;
-	GLenum backbufferScaleMode;
 	GLuint vao;
 
 	/* Capabilities */
@@ -158,6 +176,15 @@ typedef struct OpenGLDevice /* Cast from driverData */
 	GLuint resolveFramebufferRead;
 	GLuint resolveFramebufferDraw;
 
+	/* MojoShader Interop */
+	const char *shaderProfile;
+	MOJOSHADER_glContext *shaderContext;
+	MOJOSHADER_glEffect *currentEffect;
+	MOJOSHADER_effectTechnique *currentTechnique;
+	uint32_t currentPass;
+	uint8_t renderTargetBound;
+	uint8_t effectApplied;
+
 	/* State */
 	uint8_t togglePointSprite;
 
@@ -171,6 +198,500 @@ typedef struct OpenGLDevice /* Cast from driverData */
 	#undef GL_PROC
 	#undef GL_PROC_EXT
 } OpenGLDevice;
+
+/* XNA->OpenGL Translation Arrays */
+
+static int32_t XNAToGL_TextureFormat[] =
+{
+	GL_RGBA,			// SurfaceFormat.Color
+	GL_RGB,				// SurfaceFormat.Bgr565
+	GL_BGRA,			// SurfaceFormat.Bgra5551
+	GL_BGRA,			// SurfaceFormat.Bgra4444
+	GL_COMPRESSED_TEXTURE_FORMATS,	// SurfaceFormat.Dxt1
+	GL_COMPRESSED_TEXTURE_FORMATS,	// SurfaceFormat.Dxt3
+	GL_COMPRESSED_TEXTURE_FORMATS,	// SurfaceFormat.Dxt5
+	GL_RG,				// SurfaceFormat.NormalizedByte2
+	GL_RGBA,			// SurfaceFormat.NormalizedByte4
+	GL_RGBA,			// SurfaceFormat.Rgba1010102
+	GL_RG,				// SurfaceFormat.Rg32
+	GL_RGBA,			// SurfaceFormat.Rgba64
+	GL_ALPHA,			// SurfaceFormat.Alpha8
+	GL_RED,				// SurfaceFormat.Single
+	GL_RG,				// SurfaceFormat.Vector2
+	GL_RGBA,			// SurfaceFormat.Vector4
+	GL_RED,				// SurfaceFormat.HalfSingle
+	GL_RG,				// SurfaceFormat.HalfVector2
+	GL_RGBA,			// SurfaceFormat.HalfVector4
+	GL_RGBA,			// SurfaceFormat.HdrBlendable
+	GL_BGRA,			// SurfaceFormat.ColorBgraEXT
+};
+
+static int32_t XNAToGL_TextureInternalFormat[] =
+{
+	GL_RGBA8,				// SurfaceFormat.Color
+	GL_RGB8,				// SurfaceFormat.Bgr565
+	GL_RGB5_A1,				// SurfaceFormat.Bgra5551
+	GL_RGBA4,				// SurfaceFormat.Bgra4444
+	GL_COMPRESSED_RGBA_S3TC_DXT1_EXT,	// SurfaceFormat.Dxt1
+	GL_COMPRESSED_RGBA_S3TC_DXT3_EXT,	// SurfaceFormat.Dxt3
+	GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,	// SurfaceFormat.Dxt5
+	GL_RG8,					// SurfaceFormat.NormalizedByte2
+	GL_RGBA8,				// SurfaceFormat.NormalizedByte4
+	GL_RGB10_A2_EXT,			// SurfaceFormat.Rgba1010102
+	GL_RG16,				// SurfaceFormat.Rg32
+	GL_RGBA16,				// SurfaceFormat.Rgba64
+	GL_ALPHA,				// SurfaceFormat.Alpha8
+	GL_R32F,				// SurfaceFormat.Single
+	GL_RG32F,				// SurfaceFormat.Vector2
+	GL_RGBA32F,				// SurfaceFormat.Vector4
+	GL_R16F,				// SurfaceFormat.HalfSingle
+	GL_RG16F,				// SurfaceFormat.HalfVector2
+	GL_RGBA16F,				// SurfaceFormat.HalfVector4
+	GL_RGBA16F,				// SurfaceFormat.HdrBlendable
+	GL_RGBA8				// SurfaceFormat.ColorBgraEXT
+};
+
+static int32_t XNAToGL_TextureDataType[] =
+{
+	GL_UNSIGNED_BYTE,		// SurfaceFormat.Color
+	GL_UNSIGNED_SHORT_5_6_5,	// SurfaceFormat.Bgr565
+	GL_UNSIGNED_SHORT_5_5_5_1_REV,	// SurfaceFormat.Bgra5551
+	GL_UNSIGNED_SHORT_4_4_4_4_REV,	// SurfaceFormat.Bgra4444
+	GL_ZERO,			// NOPE
+	GL_ZERO,			// NOPE
+	GL_ZERO,			// NOPE
+	GL_BYTE,			// SurfaceFormat.NormalizedByte2
+	GL_BYTE,			// SurfaceFormat.NormalizedByte4
+	GL_UNSIGNED_INT_2_10_10_10_REV,	// SurfaceFormat.Rgba1010102
+	GL_UNSIGNED_SHORT,		// SurfaceFormat.Rg32
+	GL_UNSIGNED_SHORT,		// SurfaceFormat.Rgba64
+	GL_UNSIGNED_BYTE,		// SurfaceFormat.Alpha8
+	GL_FLOAT,			// SurfaceFormat.Single
+	GL_FLOAT,			// SurfaceFormat.Vector2
+	GL_FLOAT,			// SurfaceFormat.Vector4
+	GL_HALF_FLOAT,			// SurfaceFormat.HalfSingle
+	GL_HALF_FLOAT,			// SurfaceFormat.HalfVector2
+	GL_HALF_FLOAT,			// SurfaceFormat.HalfVector4
+	GL_HALF_FLOAT,			// SurfaceFormat.HdrBlendable
+	GL_UNSIGNED_BYTE		// SurfaceFormat.ColorBgraEXT
+};
+
+static int32_t XNAToGL_BlendMode[] =
+{
+	GL_ONE,				// Blend.One
+	GL_ZERO,			// Blend.Zero
+	GL_SRC_COLOR,			// Blend.SourceColor
+	GL_ONE_MINUS_SRC_COLOR,		// Blend.InverseSourceColor
+	GL_SRC_ALPHA,			// Blend.SourceAlpha
+	GL_ONE_MINUS_SRC_ALPHA,		// Blend.InverseSourceAlpha
+	GL_DST_COLOR,			// Blend.DestinationColor
+	GL_ONE_MINUS_DST_COLOR,		// Blend.InverseDestinationColor
+	GL_DST_ALPHA,			// Blend.DestinationAlpha
+	GL_ONE_MINUS_DST_ALPHA,		// Blend.InverseDestinationAlpha
+	GL_CONSTANT_COLOR,		// Blend.BlendFactor
+	GL_ONE_MINUS_CONSTANT_COLOR,	// Blend.InverseBlendFactor
+	GL_SRC_ALPHA_SATURATE		// Blend.SourceAlphaSaturation
+};
+
+static int32_t XNAToGL_BlendEquation[] =
+{
+	GL_FUNC_ADD,			// BlendFunction.Add
+	GL_FUNC_SUBTRACT,		// BlendFunction.Subtract
+	GL_FUNC_REVERSE_SUBTRACT,	// BlendFunction.ReverseSubtract
+	GL_MAX,				// BlendFunction.Max
+	GL_MIN				// BlendFunction.Min
+};
+
+static int32_t XNAToGL_CompareFunc[] =
+{
+	GL_ALWAYS,	// CompareFunction.Always
+	GL_NEVER,	// CompareFunction.Never
+	GL_LESS,	// CompareFunction.Less
+	GL_LEQUAL,	// CompareFunction.LessEqual
+	GL_EQUAL,	// CompareFunction.Equal
+	GL_GEQUAL,	// CompareFunction.GreaterEqual
+	GL_GREATER,	// CompareFunction.Greater
+	GL_NOTEQUAL	// CompareFunction.NotEqual
+};
+
+static int32_t XNAToGL_GLStencilOp[] =
+{
+	GL_KEEP,	// StencilOperation.Keep
+	GL_ZERO,	// StencilOperation.Zero
+	GL_REPLACE,	// StencilOperation.Replace
+	GL_INCR_WRAP,	// StencilOperation.Increment
+	GL_DECR_WRAP,	// StencilOperation.Decrement
+	GL_INCR,	// StencilOperation.IncrementSaturation
+	GL_DECR,	// StencilOperation.DecrementSaturation
+	GL_INVERT	// StencilOperation.Invert
+};
+
+static int32_t XNAToGL_FrontFace[] =
+{
+	GL_ZERO,	// NOPE
+	GL_CW,		// CullMode.CullClockwiseFace
+	GL_CCW		// CullMode.CullCounterClockwiseFace
+};
+
+static int32_t XNAToGL_GLFillMode[] =
+{
+	GL_FILL,	// FillMode.Solid
+	GL_LINE		// FillMode.WireFrame
+};
+
+static int32_t XNAToGL_Wrap[] =
+{
+	GL_REPEAT,		// TextureAddressMode.Wrap
+	GL_CLAMP_TO_EDGE,	// TextureAddressMode.Clamp
+	GL_MIRRORED_REPEAT	// TextureAddressMode.Mirror
+};
+
+static int32_t XNAToGL_MagFilter[] =
+{
+	GL_LINEAR,	// TextureFilter.Linear
+	GL_NEAREST,	// TextureFilter.Point
+	GL_LINEAR,	// TextureFilter.Anisotropic
+	GL_LINEAR,	// TextureFilter.LinearMipPoint
+	GL_NEAREST,	// TextureFilter.PointMipLinear
+	GL_NEAREST,	// TextureFilter.MinLinearMagPointMipLinear
+	GL_NEAREST,	// TextureFilter.MinLinearMagPointMipPoint
+	GL_LINEAR,	// TextureFilter.MinPointMagLinearMipLinear
+	GL_LINEAR	// TextureFilter.MinPointMagLinearMipPoint
+};
+
+static int32_t XNAToGL_MinMipFilter[] =
+{
+	GL_LINEAR_MIPMAP_LINEAR,	// TextureFilter.Linear
+	GL_NEAREST_MIPMAP_NEAREST,	// TextureFilter.Point
+	GL_LINEAR_MIPMAP_LINEAR,	// TextureFilter.Anisotropic
+	GL_LINEAR_MIPMAP_NEAREST,	// TextureFilter.LinearMipPoint
+	GL_NEAREST_MIPMAP_LINEAR,	// TextureFilter.PointMipLinear
+	GL_LINEAR_MIPMAP_LINEAR,	// TextureFilter.MinLinearMagPointMipLinear
+	GL_LINEAR_MIPMAP_NEAREST,	// TextureFilter.MinLinearMagPointMipPoint
+	GL_NEAREST_MIPMAP_LINEAR,	// TextureFilter.MinPointMagLinearMipLinear
+	GL_NEAREST_MIPMAP_NEAREST	// TextureFilter.MinPointMagLinearMipPoint
+};
+
+static int32_t XNAToGL_MinFilter[] =
+{
+	GL_LINEAR,	// TextureFilter.Linear
+	GL_NEAREST,	// TextureFilter.Point
+	GL_LINEAR,	// TextureFilter.Anisotropic
+	GL_LINEAR,	// TextureFilter.LinearMipPoint
+	GL_NEAREST,	// TextureFilter.PointMipLinear
+	GL_LINEAR,	// TextureFilter.MinLinearMagPointMipLinear
+	GL_LINEAR,	// TextureFilter.MinLinearMagPointMipPoint
+	GL_NEAREST,	// TextureFilter.MinPointMagLinearMipLinear
+	GL_NEAREST	// TextureFilter.MinPointMagLinearMipPoint
+};
+
+static int32_t XNAToGL_DepthStencilAttachment[] =
+{
+	GL_ZERO,			// NOPE
+	GL_DEPTH_ATTACHMENT,		// DepthFormat.Depth16
+	GL_DEPTH_ATTACHMENT,		// DepthFormat.Depth24
+	GL_DEPTH_STENCIL_ATTACHMENT	// DepthFormat.Depth24Stencil8
+};
+
+static int32_t XNAToGL_DepthStorage[] =
+{
+	GL_ZERO,		// NOPE
+	GL_DEPTH_COMPONENT16,	// DepthFormat.Depth16
+	GL_DEPTH_COMPONENT24,	// DepthFormat.Depth24
+	GL_DEPTH24_STENCIL8	// DepthFormat.Depth24Stencil8
+};
+
+static float XNAToGL_DepthBiasScale[] =
+{
+	0.0f,				// DepthFormat.None
+	(float) ((1 << 16) - 1),	// DepthFormat.Depth16
+	(float) ((1 << 24) - 1),	// DepthFormat.Depth24
+	(float) ((1 << 24) - 1)		// DepthFormat.Depth24Stencil8
+};
+
+static MOJOSHADER_usage XNAToGL_VertexAttribUsage[] =
+{
+	MOJOSHADER_USAGE_POSITION,	// VertexElementUsage.Position
+	MOJOSHADER_USAGE_COLOR,		// VertexElementUsage.Color
+	MOJOSHADER_USAGE_TEXCOORD,	// VertexElementUsage.TextureCoordinate
+	MOJOSHADER_USAGE_NORMAL,	// VertexElementUsage.Normal
+	MOJOSHADER_USAGE_BINORMAL,	// VertexElementUsage.Binormal
+	MOJOSHADER_USAGE_TANGENT,	// VertexElementUsage.Tangent
+	MOJOSHADER_USAGE_BLENDINDICES,	// VertexElementUsage.BlendIndices
+	MOJOSHADER_USAGE_BLENDWEIGHT,	// VertexElementUsage.BlendWeight
+	MOJOSHADER_USAGE_DEPTH,		// VertexElementUsage.Depth
+	MOJOSHADER_USAGE_FOG,		// VertexElementUsage.Fog
+	MOJOSHADER_USAGE_POINTSIZE,	// VertexElementUsage.PointSize
+	MOJOSHADER_USAGE_SAMPLE,	// VertexElementUsage.Sample
+	MOJOSHADER_USAGE_TESSFACTOR	// VertexElementUsage.TessellateFactor
+};
+
+static int32_t XNAToGL_VertexAttribSize[] =
+{
+	1,	// VertexElementFormat.Single
+	2,	// VertexElementFormat.Vector2
+	3,	// VertexElementFormat.Vector3
+	4,	// VertexElementFormat.Vector4
+	4,	// VertexElementFormat.Color
+	4,	// VertexElementFormat.Byte4
+	2,	// VertexElementFormat.Short2
+	4,	// VertexElementFormat.Short4
+	2,	// VertexElementFormat.NormalizedShort2
+	4,	// VertexElementFormat.NormalizedShort4
+	2,	// VertexElementFormat.HalfVector2
+	4	// VertexElementFormat.HalfVector4
+};
+
+static int32_t XNAToGL_VertexAttribType[] =
+{
+	GL_FLOAT,		// VertexElementFormat.Single
+	GL_FLOAT,		// VertexElementFormat.Vector2
+	GL_FLOAT,		// VertexElementFormat.Vector3
+	GL_FLOAT,		// VertexElementFormat.Vector4
+	GL_UNSIGNED_BYTE,	// VertexElementFormat.Color
+	GL_UNSIGNED_BYTE,	// VertexElementFormat.Byte4
+	GL_SHORT,		// VertexElementFormat.Short2
+	GL_SHORT,		// VertexElementFormat.Short4
+	GL_SHORT,		// VertexElementFormat.NormalizedShort2
+	GL_SHORT,		// VertexElementFormat.NormalizedShort4
+	GL_HALF_FLOAT,		// VertexElementFormat.HalfVector2
+	GL_HALF_FLOAT		// VertexElementFormat.HalfVector4
+};
+
+static uint8_t XNAToGL_VertexAttribNormalized(FNA3D_VertexElement *element)
+{
+	return (	element->vertexElementUsage == FNA3D_VERTEXELEMENTUSAGE_COLOR ||
+			element->vertexElementFormat == FNA3D_VERTEXELEMENTFORMAT_NORMALIZEDSHORT2 ||
+			element->vertexElementFormat == FNA3D_VERTEXELEMENTFORMAT_NORMALIZEDSHORT4	);
+}
+
+static int32_t XNAToGL_IndexType[] =
+{
+	GL_UNSIGNED_SHORT,	// IndexElementSize.SixteenBits
+	GL_UNSIGNED_INT		// IndexElementSize.ThirtyTwoBits
+};
+
+static int32_t XNAToGL_IndexSize[] =
+{
+	2,	// IndexElementSize.SixteenBits
+	4	// IndexElementSize.ThirtyTwoBits
+};
+
+static int32_t XNAToGL_Primitive[] =
+{
+	GL_TRIANGLES,		// PrimitiveType.TriangleList
+	GL_TRIANGLE_STRIP,	// PrimitiveType.TriangleStrip
+	GL_LINES,		// PrimitiveType.LineList
+	GL_LINE_STRIP,		// PrimitiveType.LineStrip
+	GL_POINTS		// PrimitiveType.PointListEXT
+};
+
+static int32_t XNAToGL_PrimitiveVerts(
+	FNA3D_PrimitiveType primitiveType,
+	int32_t primitiveCount
+) {
+	switch (primitiveType)
+	{
+		case FNA3D_PRIMITIVETYPE_TRIANGLELIST:
+			return primitiveCount * 3;
+		case FNA3D_PRIMITIVETYPE_TRIANGLESTRIP:
+			return primitiveCount + 2;
+		case FNA3D_PRIMITIVETYPE_LINELIST:
+			return primitiveCount * 2;
+		case FNA3D_PRIMITIVETYPE_LINESTRIP:
+			return primitiveCount + 1;
+		case FNA3D_PRIMITIVETYPE_POINTLIST_EXT:
+			return primitiveCount;
+	}
+	SDL_assert(0 && "Unrecognized primitive type!");
+	return 0;
+}
+
+/* Helper Functions */
+
+static void BindFramebuffer(OpenGLDevice *device, GLuint handle)
+{
+	/* TODO */
+}
+
+static void CreateOpenGLBackbuffer(
+	OpenGLDevice *device,
+	FNA3D_PresentationParameters *parameters
+) {
+	int useFauxBackbuffer;
+	int drawX, drawY;
+	SDL_GL_GetDrawableSize(
+		(SDL_Window*) parameters->deviceWindowHandle,
+		&drawX,
+		&drawY
+	);
+	useFauxBackbuffer = (	drawX != parameters->backBufferWidth ||
+				drawY != parameters->backBufferHeight	);
+	useFauxBackbuffer = (	useFauxBackbuffer ||
+				(parameters->multiSampleCount > 0)	);
+
+	if (useFauxBackbuffer)
+	{
+		if (	device->backbuffer == NULL ||
+			device->backbuffer->type == BACKBUFFER_TYPE_NULL	)
+		{
+			if (!device->supports_EXT_framebuffer_blit)
+			{
+				SDL_LogError(
+					SDL_LOG_CATEGORY_APPLICATION,
+					"Your hardware does not support the faux-backbuffer!"
+					"\n\nKeep the window/backbuffer resolution the same."
+				);
+				return;
+			}
+			if (device->backbuffer != NULL)
+			{
+				SDL_free(device->backbuffer);
+			}
+			device->backbuffer = (OpenGLBackbuffer*) SDL_malloc(
+				sizeof(OpenGLBackbuffer)
+			);
+			device->backbuffer->type = BACKBUFFER_TYPE_OPENGL;
+
+			#define GLBACKBUFFER device->backbuffer->buffer.opengl
+
+			GLBACKBUFFER.width = parameters->backBufferWidth;
+			GLBACKBUFFER.height = parameters->backBufferHeight;
+			GLBACKBUFFER.depthFormat = parameters->depthStencilFormat;
+			GLBACKBUFFER.multiSampleCount = parameters->multiSampleCount;
+			GLBACKBUFFER.texture = 0;
+
+			/* Generate and bind the FBO. */
+			device->glGenFramebuffers(1, &GLBACKBUFFER.handle);
+			BindFramebuffer(device, GLBACKBUFFER.handle);
+
+			/* Create and attach the color buffer */
+			device->glGenRenderbuffers(
+				1,
+				&GLBACKBUFFER.colorAttachment
+			);
+			device->glBindRenderbuffer(
+				GL_RENDERBUFFER,
+				GLBACKBUFFER.colorAttachment
+			);
+			if (GLBACKBUFFER.multiSampleCount > 0)
+			{
+				device->glRenderbufferStorageMultisample(
+					GL_RENDERBUFFER,
+					GLBACKBUFFER.multiSampleCount,
+					GL_RGBA8,
+					GLBACKBUFFER.width,
+					GLBACKBUFFER.height
+				);
+			}
+			else
+			{
+				device->glRenderbufferStorage(
+					GL_RENDERBUFFER,
+					GL_RGBA8,
+					GLBACKBUFFER.width,
+					GLBACKBUFFER.height
+				);
+			}
+			device->glFramebufferRenderbuffer(
+				GL_FRAMEBUFFER,
+				GL_COLOR_ATTACHMENT0,
+				GL_RENDERBUFFER,
+				GLBACKBUFFER.colorAttachment
+			);
+
+			if (GLBACKBUFFER.depthFormat == FNA3D_DEPTHFORMAT_NONE)
+			{
+				/* Don't bother creating a DS buffer */
+				GLBACKBUFFER.depthStencilAttachment = 0;
+
+				/* Keep this state sane. */
+				device->glBindRenderbuffer(
+					GL_RENDERBUFFER,
+					device->realBackbufferRBO
+				);
+
+				return;
+			}
+
+			device->glGenRenderbuffers(
+				1,
+				&GLBACKBUFFER.depthStencilAttachment
+			);
+			device->glBindRenderbuffer(
+				GL_RENDERBUFFER,
+				GLBACKBUFFER.depthStencilAttachment
+			);
+			if (GLBACKBUFFER.multiSampleCount > 0)
+			{
+				device->glRenderbufferStorageMultisample(
+					GL_RENDERBUFFER,
+					GLBACKBUFFER.multiSampleCount,
+					XNAToGL_DepthStorage[
+						GLBACKBUFFER.depthFormat
+					],
+					GLBACKBUFFER.width,
+					GLBACKBUFFER.height
+				);
+			}
+			else
+			{
+				device->glRenderbufferStorage(
+					GL_RENDERBUFFER,
+					XNAToGL_DepthStorage[
+						GLBACKBUFFER.depthFormat
+					],
+					GLBACKBUFFER.width,
+					GLBACKBUFFER.height
+				);
+			}
+			device->glFramebufferRenderbuffer(
+				GL_FRAMEBUFFER,
+				GL_DEPTH_ATTACHMENT,
+				GL_RENDERBUFFER,
+				GLBACKBUFFER.depthStencilAttachment
+			);
+			if (GLBACKBUFFER.depthFormat == FNA3D_DEPTHFORMAT_D24S8)
+			{
+				device->glFramebufferRenderbuffer(
+					GL_FRAMEBUFFER,
+					GL_STENCIL_ATTACHMENT,
+					GL_RENDERBUFFER,
+					GLBACKBUFFER.depthStencilAttachment
+				);
+			}
+
+			/* Keep this state sane. */
+			device->glBindRenderbuffer(
+				GL_RENDERBUFFER,
+				device->realBackbufferRBO
+			);
+		}
+		else
+		{
+			/* TODO: public void ResetFramebuffer */
+		}
+	}
+	else
+	{
+		if (	device->backbuffer == NULL ||
+			device->backbuffer->type == BACKBUFFER_TYPE_OPENGL	)
+		{
+			if (device->backbuffer != NULL)
+			{
+				/* TODO: public void Dispose() */
+				SDL_free(device->backbuffer);
+			}
+			device->backbuffer = (OpenGLBackbuffer*) SDL_malloc(
+				sizeof(OpenGLBackbuffer)
+			);
+			device->backbuffer->type = BACKBUFFER_TYPE_NULL;
+		}
+		device->backbuffer->buffer.null.width = parameters->backBufferWidth;
+		device->backbuffer->buffer.null.height = parameters->backBufferHeight;
+		device->backbuffer->buffer.null.depthFormat = device->windowDepthFormat;
+	}
+}
 
 /* Device Implementation */
 
@@ -1210,6 +1731,11 @@ static void LoadEntryPoints(
 	}
 }
 
+static void* GLGetProcAddress(const char *ep, void* d)
+{
+	return SDL_GL_GetProcAddress(ep);
+}
+
 static void checkExtensions(
 	const char *ext,
 	uint8_t *supportsS3tc,
@@ -1440,7 +1966,39 @@ FNA3D_Device* OPENGL_CreateDevice(
 		device->supports_ARB_draw_elements_base_vertex = 0;
 	}
 
-	/* TODO: Set up MojoShader */
+	/* Initialize shader context */
+	device->shaderProfile = SDL_GetHint("FNA_GRAPHICS_MOJOSHADER_PROFILE");
+	if (device->shaderProfile == NULL || device->shaderProfile[0] == '\0')
+	{
+		device->shaderProfile = MOJOSHADER_glBestProfile(
+			GLGetProcAddress,
+			NULL,
+			NULL,
+			NULL,
+			NULL
+		);
+
+		/* SPIR-V is very new and not really necessary. */
+		if (	(SDL_strcmp(device->shaderProfile, "glspirv") == 0) &&
+			!device->useCoreProfile	)
+		{
+			device->shaderProfile = "glsl120";
+		}
+	}
+	device->shaderContext = MOJOSHADER_glCreateContext(
+		device->shaderProfile,
+		GLGetProcAddress,
+		NULL,
+		NULL,
+		NULL,
+		NULL
+	);
+	MOJOSHADER_glMakeContextCurrent(device->shaderContext);
+	device->currentEffect = NULL;
+	device->currentTechnique = NULL;
+	device->currentPass = 0;
+	device->renderTargetBound = 0;
+	device->effectApplied = 0;
 
 	/* Some users might want pixely upscaling... */
 	device->backbufferScaleMode = SDL_GetHintBoolean(
@@ -1491,7 +2049,9 @@ FNA3D_Device* OPENGL_CreateDevice(
 		device->maxMultiSampleCount
 	);
 
-	/* TODO: Initialize the faux backbuffer */
+	/* Initialize the faux backbuffer */
+	device->backbuffer = NULL;
+	CreateOpenGLBackbuffer(device, presentationParameters);
 
 	/* Initialize texture collection array */
 	device->glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &numSamplers);
@@ -1551,16 +2111,14 @@ FNA3D_Device* OPENGL_CreateDevice(
 	device->glGenFramebuffers(1, &device->resolveFramebufferRead);
 	device->glGenFramebuffers(1, &device->resolveFramebufferDraw);
 
-	/* Generate and bind a VAO, to shut Core up */
+	device->togglePointSprite = 0;
 	if (device->useCoreProfile)
 	{
+		/* Generate and bind a VAO, to shut Core up */
 		device->glGenVertexArrays(1, &device->vao);
 		device->glBindVertexArray(device->vao);
 	}
-
-	/* Point sprites... */
-	device->togglePointSprite = 0;
-	if (!device->useCoreProfile && !device->useES3)
+	else if (!device->useCoreProfile && !device->useES3)
 	{
 		/* Compatibility contexts require that point sprites be enabled
 		 * explicitly. However, Apple's drivers have a blatant spec
