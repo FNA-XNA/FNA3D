@@ -2011,7 +2011,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 		for (i = 0; i < numExtensions; i += 1)
 		{
 			checkExtensions(
-				device->glGetStringi(GL_EXTENSIONS, i),
+				(const char*) device->glGetStringi(GL_EXTENSIONS, i),
 				&device->supports_s3tc,
 				&device->supports_dxt1
 			);
@@ -2026,7 +2026,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	else
 	{
 		checkExtensions(
-			device->glGetString(GL_EXTENSIONS),
+			(const char*) device->glGetString(GL_EXTENSIONS),
 			&device->supports_s3tc,
 			&device->supports_dxt1
 		);
