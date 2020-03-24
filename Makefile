@@ -51,7 +51,7 @@ DEFINES += \
 	-DSUPPORT_PROFILE_D3D=0
 ifeq ($(UNAME), Darwin)
 	DEFINES += -DSUPPORT_PROFILE_METAL=1
-	DEPENDENCIES += -lobjc
+	DEPENDENCIES += -lobjc -framework Carbon # Stupid Gestalt
 else
 	DEFINES += -DSUPPORT_PROFILE_METAL=0
 endif
