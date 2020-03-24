@@ -1,0 +1,4 @@
+[submodule "MojoShader"]
+	path = MojoShader
+	url = git://github.com/FNA-XNA/MojoShader
+	branch = upstream
