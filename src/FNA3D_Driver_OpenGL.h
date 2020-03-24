@@ -270,6 +270,11 @@ typedef unsigned char	GLboolean;
 #define GL_DEBUG_SEVERITY_LOW				0x9148
 #define GL_DEBUG_SEVERITY_NOTIFICATION  		0x826B
 
+/* XNA Limits */
+#define MAX_TEXTURE_SAMPLERS		16
+#define MAX_VERTEX_ATTRIBUTES		16
+#define MAX_RENDERTARGET_BINDINGS	4
+
 /* In case this needs to be exported in a certain way... */
 #ifdef _WIN32 /* Windows OpenGL uses stdcall */
 #define GLAPIENTRY __stdcall

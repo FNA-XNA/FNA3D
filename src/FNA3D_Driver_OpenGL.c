@@ -34,56 +34,18 @@
 
 /* Internal Structures */
 
-typedef struct OpenGLDevice /* Cast from driverData */
-{
-	/* Context */
-	SDL_GLContext context;
-	uint8_t useES3;
-	uint8_t useCoreProfile;
-	FNA3D_DepthFormat windowDepthFormat;
-	GLuint realBackbufferFBO;
-	GLuint realBackbufferRBO;
-
-	/* Capabilities */
-	/* TODO: Check these...
-	 * - DoublePrecisionDepth/OES_single_precision for ClearDepth/DepthRange
-	 * - EXT_framebuffer_blit for faux-backbuffer
-	 * - ARB_invalidate_subdata for InvalidateFramebuffer
-	 */
-	uint8_t supports_BaseGL;
-	uint8_t supports_CoreGL;
-	uint8_t supports_3DTexture;
-	uint8_t supports_DoublePrecisionDepth;
-	uint8_t supports_OES_single_precision;
-	uint8_t supports_ARB_occlusion_query;
-	uint8_t supports_NonES3;
-	uint8_t supports_NonES3NonCore;
-	uint8_t supports_ARB_framebuffer_object;
-	uint8_t supports_EXT_framebuffer_blit;
-	uint8_t supports_EXT_framebuffer_multisample;
-	uint8_t supports_ARB_invalidate_subdata;
-	uint8_t supports_ARB_draw_instanced;
-	uint8_t supports_ARB_instanced_arrays;
-	uint8_t supports_ARB_draw_elements_base_vertex;
-	uint8_t supports_EXT_draw_buffers2;
-	uint8_t supports_ARB_texture_multisample;
-	uint8_t supports_KHR_debug;
-	uint8_t supports_GREMEDY_string_marker;
-
-	/* GL entry points */
-	glfntype_glGetString glGetString; /* Loaded early! */
-	#define GL_PROC(ext, ret, func, parms) \
-		glfntype_##func func;
-	#define GL_PROC_EXT(ext, fallback, ret, func, parms) \
-		glfntype_##func func;
-	#include "FNA3D_Driver_OpenGL_glfuncs.h"
-	#undef GL_PROC
-	#undef GL_PROC_EXT
-} OpenGLDevice;
-
 typedef struct OpenGLTexture /* Cast from FNA3D_Texture* */
 {
-	uint8_t filler;
+	uint32_t handle;
+	GLenum target;
+	uint8_t hasMipmaps;
+	FNA3D_TextureAddressMode wrapS;
+	FNA3D_TextureAddressMode wrapT;
+	FNA3D_TextureAddressMode wrapR;
+	FNA3D_TextureFilter filter;
+	float anisotropy;
+	int32_t maxMipmapLevel;
+	float lodBias;
 } OpenGLTexture;
 
 typedef struct OpenGLBuffer /* Cast from FNA3D_Buffer* */
@@ -118,6 +80,97 @@ typedef struct NullBackbuffer /* Cast from FNA3D_Backbuffer */
 {
 	uint8_t type;
 } NullBackbuffer;
+
+typedef struct OpenGLVertexAttribute
+{
+	uint32_t currentBuffer;
+	void *currentPointer;
+	FNA3D_VertexElementFormat currentFormat;
+	uint8_t currentNormalized;
+	uint32_t currentStride;
+} OpenGLVertexAttribute;
+
+typedef struct OpenGLDevice /* Cast from driverData */
+{
+	/* Context */
+	SDL_GLContext context;
+	uint8_t useES3;
+	uint8_t useCoreProfile;
+	FNA3D_DepthFormat windowDepthFormat;
+	GLuint realBackbufferFBO;
+	GLuint realBackbufferRBO;
+	const char *shaderProfile;
+	GLenum backbufferScaleMode;
+	GLuint vao;
+
+	/* Capabilities */
+	/* TODO: Check these...
+	 * - DoublePrecisionDepth/OES_single_precision for ClearDepth/DepthRange
+	 * - EXT_framebuffer_blit for faux-backbuffer
+	 * - ARB_invalidate_subdata for InvalidateFramebuffer
+	 */
+	uint8_t supports_BaseGL;
+	uint8_t supports_CoreGL;
+	uint8_t supports_3DTexture;
+	uint8_t supports_DoublePrecisionDepth;
+	uint8_t supports_OES_single_precision;
+	uint8_t supports_ARB_occlusion_query;
+	uint8_t supports_NonES3;
+	uint8_t supports_NonES3NonCore;
+	uint8_t supports_ARB_framebuffer_object;
+	uint8_t supports_EXT_framebuffer_blit;
+	uint8_t supports_EXT_framebuffer_multisample;
+	uint8_t supports_ARB_invalidate_subdata;
+	uint8_t supports_ARB_draw_instanced;
+	uint8_t supports_ARB_instanced_arrays;
+	uint8_t supports_ARB_draw_elements_base_vertex;
+	uint8_t supports_EXT_draw_buffers2;
+	uint8_t supports_ARB_texture_multisample;
+	uint8_t supports_KHR_debug;
+	uint8_t supports_GREMEDY_string_marker;
+	uint8_t supports_s3tc;
+	uint8_t supports_dxt1;
+	int32_t maxMultiSampleCount;
+
+	/* Textures */
+	int32_t numTextureSlots;
+	OpenGLTexture textures[MAX_TEXTURE_SAMPLERS];
+
+	/* Vertex Attributes */
+	int32_t numVertexAttributes;
+	OpenGLVertexAttribute attributes[MAX_VERTEX_ATTRIBUTES];
+	uint8_t attributeEnabled[MAX_VERTEX_ATTRIBUTES];
+	uint8_t previousAttributeEnabled[MAX_VERTEX_ATTRIBUTES];
+	int32_t attributeDivisor[MAX_VERTEX_ATTRIBUTES];
+	int32_t previousAttributeDivisor[MAX_VERTEX_ATTRIBUTES];
+
+	/* Render Targets */
+	int32_t numAttachments;
+	GLuint attachments[MAX_RENDERTARGET_BINDINGS];
+	GLenum attachmentTypes[MAX_RENDERTARGET_BINDINGS];
+	GLuint currentAttachments[MAX_RENDERTARGET_BINDINGS];
+	GLenum currentAttachmentTypes[MAX_RENDERTARGET_BINDINGS];
+	GLenum drawBuffersArray[MAX_RENDERTARGET_BINDINGS + 2];
+	int32_t currentDrawBuffers;
+	GLuint currentRenderbuffer;
+	FNA3D_DepthFormat currentDepthStencilFormat;
+	GLuint targetFramebuffer;
+	GLuint resolveFramebufferRead;
+	GLuint resolveFramebufferDraw;
+
+	/* State */
+	uint8_t togglePointSprite;
+
+	/* GL entry points */
+	glfntype_glGetString glGetString; /* Loaded early! */
+	#define GL_PROC(ext, ret, func, parms) \
+		glfntype_##func func;
+	#define GL_PROC_EXT(ext, fallback, ret, func, parms) \
+		glfntype_##func func;
+	#include "FNA3D_Driver_OpenGL_glfuncs.h"
+	#undef GL_PROC
+	#undef GL_PROC_EXT
+} OpenGLDevice;
 
 /* Device Implementation */
 
@@ -1157,6 +1210,28 @@ static void LoadEntryPoints(
 	}
 }
 
+static void checkExtensions(
+	const char *ext,
+	uint8_t *supportsS3tc,
+	uint8_t *supportsDxt1
+) {
+	int s3tc = (
+		SDL_strstr(ext, "GL_EXT_texture_compression_s3tc") ||
+		SDL_strstr(ext, "GL_OES_texture_compression_S3TC") ||
+		SDL_strstr(ext, "GL_EXT_texture_compression_dxt3") ||
+		SDL_strstr(ext, "GL_EXT_texture_compression_dxt5")
+	);
+
+	if (s3tc)
+	{
+		*supportsS3tc = 1;
+	}
+	if (s3tc || SDL_strstr(ext, "GL_EXT_texture_compression_dxt1"))
+	{
+		*supportsDxt1 = 1;
+	}
+}
+
 /* Driver */
 
 uint8_t OPENGL_PrepareWindowAttributes(uint8_t debugMode, uint32_t *flags)
@@ -1267,6 +1342,8 @@ FNA3D_Device* OPENGL_CreateDevice(
 	SDL_SysWMinfo wmInfo;
 	const char *renderer, *version, *vendor;
 	char driverInfo[256];
+	int i;
+	int numExtensions, numSamplers, numAttributes, numAttachments;
 	OpenGLDevice *device;
 	FNA3D_Device *result;
 
@@ -1363,10 +1440,142 @@ FNA3D_Device* OPENGL_CreateDevice(
 		device->supports_ARB_draw_elements_base_vertex = 0;
 	}
 
-	/* TODO: The rest of the OpenGLDevice constructor */
-	if (!device->supports_EXT_framebuffer_multisample)
+	/* TODO: Set up MojoShader */
+
+	/* Some users might want pixely upscaling... */
+	device->backbufferScaleMode = SDL_GetHintBoolean(
+		"FNA_GRAPHICS_BACKBUFFER_SCALE_NEAREST", 0
+	) ? GL_NEAREST : GL_LINEAR;
+
+	/* Load the extension list, initialize extension-dependent components */
+	device->supports_s3tc = 0;
+	device->supports_dxt1 = 0;
+	if (device->useCoreProfile)
 	{
-		/* MaxMultiSampleCount = 0; */
+		device->glGetIntegerv(GL_NUM_EXTENSIONS, &numExtensions);
+		for (i = 0; i < numExtensions; i += 1)
+		{
+			checkExtensions(
+				device->glGetStringi(GL_EXTENSIONS, i),
+				&device->supports_s3tc,
+				&device->supports_dxt1
+			);
+
+			if (device->supports_s3tc && device->supports_dxt1)
+			{
+				/* No need to look further. */
+				break;
+			}
+		}
+	}
+	else
+	{
+		checkExtensions(
+			device->glGetString(GL_EXTENSIONS),
+			&device->supports_s3tc,
+			&device->supports_dxt1
+		);
+	}
+
+	/* Check the max multisample count, override parameters if necessary */
+	device->maxMultiSampleCount = 0;
+	if (device->supports_EXT_framebuffer_multisample)
+	{
+		device->glGetIntegerv(
+			GL_MAX_SAMPLES,
+			&device->maxMultiSampleCount
+		);
+	}
+	presentationParameters->multiSampleCount = SDL_min(
+		presentationParameters->multiSampleCount,
+		device->maxMultiSampleCount
+	);
+
+	/* TODO: Initialize the faux backbuffer */
+
+	/* Initialize texture collection array */
+	device->glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &numSamplers);
+	numSamplers = SDL_min(numSamplers, MAX_TEXTURE_SAMPLERS);
+	for (i = 0; i < numSamplers; i += 1)
+	{
+		device->textures[i].handle = 0;
+		device->textures[i].target = GL_TEXTURE_2D;
+		device->textures[i].hasMipmaps = 0;
+		device->textures[i].wrapS = FNA3D_TEXTUREADDRESSMODE_WRAP;
+		device->textures[i].wrapT = FNA3D_TEXTUREADDRESSMODE_WRAP;
+		device->textures[i].wrapR = FNA3D_TEXTUREADDRESSMODE_WRAP;
+		device->textures[i].filter = FNA3D_TEXTUREFILTER_LINEAR;
+		device->textures[i].anisotropy = 0;
+		device->textures[i].maxMipmapLevel = 0;
+		device->textures[i].lodBias = 0;
+	}
+	device->numTextureSlots = numSamplers;
+
+	/* Initialize vertex attribute state arrays */
+	device->glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &numAttributes);
+	numAttributes = SDL_min(numAttributes, MAX_VERTEX_ATTRIBUTES);
+	for (i = 0; i < numAttributes; i += 1)
+	{
+		device->attributes[i].currentBuffer = 0;
+		device->attributes[i].currentPointer = NULL;
+		device->attributes[i].currentFormat = FNA3D_VERTEXELEMENTFORMAT_SINGLE;
+		device->attributes[i].currentNormalized = 0;
+		device->attributes[i].currentStride = 0;
+
+		device->attributeEnabled[i] = 0;
+		device->previousAttributeEnabled[i] = 0;
+		device->attributeDivisor[i] = 0;
+		device->previousAttributeDivisor[i] = 0;
+	}
+	device->numVertexAttributes = numAttributes;
+
+	/* Initialize render target FBO and state arrays */
+	device->glGetIntegerv(GL_MAX_DRAW_BUFFERS, &numAttachments);
+	numAttachments = SDL_min(numAttachments, MAX_RENDERTARGET_BINDINGS);
+	for (i = 0; i < numAttachments; i += 1)
+	{
+		device->attachments[i] = 0;
+		device->attachmentTypes[i] = 0;
+		device->currentAttachments[i] = 0;
+		device->currentAttachmentTypes[i] = GL_TEXTURE_2D;
+		device->drawBuffersArray[i] = GL_COLOR_ATTACHMENT0 + 1;
+	}
+	device->numAttachments = numAttachments;
+
+	device->drawBuffersArray[numAttachments] = GL_DEPTH_ATTACHMENT;
+	device->drawBuffersArray[numAttachments + 1] = GL_STENCIL_ATTACHMENT;
+	device->currentDrawBuffers = 0;
+	device->currentRenderbuffer = 0;
+	device->currentDepthStencilFormat = FNA3D_DEPTHFORMAT_NONE;
+	device->glGenFramebuffers(1, &device->targetFramebuffer);
+	device->glGenFramebuffers(1, &device->resolveFramebufferRead);
+	device->glGenFramebuffers(1, &device->resolveFramebufferDraw);
+
+	/* Generate and bind a VAO, to shut Core up */
+	if (device->useCoreProfile)
+	{
+		device->glGenVertexArrays(1, &device->vao);
+		device->glBindVertexArray(device->vao);
+	}
+
+	/* Point sprites... */
+	device->togglePointSprite = 0;
+	if (!device->useCoreProfile && !device->useES3)
+	{
+		/* Compatibility contexts require that point sprites be enabled
+		 * explicitly. However, Apple's drivers have a blatant spec
+		 * violation that disallows a simple glEnable. So, here we are.
+		 * -flibit
+		 */
+		if (SDL_strcmp(SDL_GetPlatform(), "Mac OS X") == 0)
+		{
+			device->togglePointSprite = 1;
+		}
+		else
+		{
+			device->glEnable(GL_POINT_SPRITE);
+		}
+		device->glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, 1);
 	}
 
 	/* Set up and return the FNA3D_Device */
