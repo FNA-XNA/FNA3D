@@ -73,28 +73,19 @@ typedef struct OpenGLBackbuffer /* Cast from FNA3D_Backbuffer */
 	#define BACKBUFFER_TYPE_NULL 0
 	#define BACKBUFFER_TYPE_OPENGL 1
 	uint8_t type;
-	union
-	{
-		struct
-		{
-			int32_t width;
-			int32_t height;
-			FNA3D_DepthFormat depthFormat;
-			int32_t multiSampleCount;
-		} null;
-		struct
-		{
-			GLuint handle;
-			int32_t width;
-			int32_t height;
-			FNA3D_DepthFormat depthFormat;
-			int32_t multiSampleCount;
 
-			GLuint texture;
-			GLuint colorAttachment;
-			GLuint depthStencilAttachment;
-		} opengl;
-	} buffer;
+	int32_t width;
+	int32_t height;
+	FNA3D_DepthFormat depthFormat;
+	int32_t multiSampleCount;
+	struct
+	{
+		GLuint handle;
+
+		GLuint texture;
+		GLuint colorAttachment;
+		GLuint depthStencilAttachment;
+	} opengl;
 } OpenGLBackbuffer;
 
 typedef struct OpenGLVertexAttribute
@@ -1194,7 +1185,6 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 
 	if (useFauxBackbuffer)
 	{
-		#define GLBACKBUFFER device->backbuffer->buffer.opengl
 		if (	device->backbuffer == NULL ||
 			device->backbuffer->type == BACKBUFFER_TYPE_NULL	)
 		{
@@ -1216,33 +1206,39 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 			);
 			device->backbuffer->type = BACKBUFFER_TYPE_OPENGL;
 
-			GLBACKBUFFER.width = parameters->backBufferWidth;
-			GLBACKBUFFER.height = parameters->backBufferHeight;
-			GLBACKBUFFER.depthFormat = parameters->depthStencilFormat;
-			GLBACKBUFFER.multiSampleCount = parameters->multiSampleCount;
-			GLBACKBUFFER.texture = 0;
+			device->backbuffer->width = parameters->backBufferWidth;
+			device->backbuffer->height = parameters->backBufferHeight;
+			device->backbuffer->depthFormat = parameters->depthStencilFormat;
+			device->backbuffer->multiSampleCount = parameters->multiSampleCount;
+			device->backbuffer->opengl.texture = 0;
 
 			/* Generate and bind the FBO. */
-			device->glGenFramebuffers(1, &GLBACKBUFFER.handle);
-			BindFramebuffer(device, GLBACKBUFFER.handle);
+			device->glGenFramebuffers(
+				1,
+				&device->backbuffer->opengl.handle
+			);
+			BindFramebuffer(
+				device,
+				device->backbuffer->opengl.handle
+			);
 
 			/* Create and attach the color buffer */
 			device->glGenRenderbuffers(
 				1,
-				&GLBACKBUFFER.colorAttachment
+				&device->backbuffer->opengl.colorAttachment
 			);
 			device->glBindRenderbuffer(
 				GL_RENDERBUFFER,
-				GLBACKBUFFER.colorAttachment
+				device->backbuffer->opengl.colorAttachment
 			);
-			if (GLBACKBUFFER.multiSampleCount > 0)
+			if (device->backbuffer->multiSampleCount > 0)
 			{
 				device->glRenderbufferStorageMultisample(
 					GL_RENDERBUFFER,
-					GLBACKBUFFER.multiSampleCount,
+					device->backbuffer->multiSampleCount,
 					GL_RGBA8,
-					GLBACKBUFFER.width,
-					GLBACKBUFFER.height
+					device->backbuffer->width,
+					device->backbuffer->height
 				);
 			}
 			else
@@ -1250,21 +1246,21 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 				device->glRenderbufferStorage(
 					GL_RENDERBUFFER,
 					GL_RGBA8,
-					GLBACKBUFFER.width,
-					GLBACKBUFFER.height
+					device->backbuffer->width,
+					device->backbuffer->height
 				);
 			}
 			device->glFramebufferRenderbuffer(
 				GL_FRAMEBUFFER,
 				GL_COLOR_ATTACHMENT0,
 				GL_RENDERBUFFER,
-				GLBACKBUFFER.colorAttachment
+				device->backbuffer->opengl.colorAttachment
 			);
 
-			if (GLBACKBUFFER.depthFormat == FNA3D_DEPTHFORMAT_NONE)
+			if (device->backbuffer->depthFormat == FNA3D_DEPTHFORMAT_NONE)
 			{
 				/* Don't bother creating a DS buffer */
-				GLBACKBUFFER.depthStencilAttachment = 0;
+				device->backbuffer->opengl.depthStencilAttachment = 0;
 
 				/* Keep this state sane. */
 				device->glBindRenderbuffer(
@@ -1277,22 +1273,22 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 
 			device->glGenRenderbuffers(
 				1,
-				&GLBACKBUFFER.depthStencilAttachment
+				&device->backbuffer->opengl.depthStencilAttachment
 			);
 			device->glBindRenderbuffer(
 				GL_RENDERBUFFER,
-				GLBACKBUFFER.depthStencilAttachment
+				device->backbuffer->opengl.depthStencilAttachment
 			);
-			if (GLBACKBUFFER.multiSampleCount > 0)
+			if (device->backbuffer->multiSampleCount > 0)
 			{
 				device->glRenderbufferStorageMultisample(
 					GL_RENDERBUFFER,
-					GLBACKBUFFER.multiSampleCount,
+					device->backbuffer->multiSampleCount,
 					XNAToGL_DepthStorage[
-						GLBACKBUFFER.depthFormat
+						device->backbuffer->depthFormat
 					],
-					GLBACKBUFFER.width,
-					GLBACKBUFFER.height
+					device->backbuffer->width,
+					device->backbuffer->height
 				);
 			}
 			else
@@ -1300,25 +1296,25 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 				device->glRenderbufferStorage(
 					GL_RENDERBUFFER,
 					XNAToGL_DepthStorage[
-						GLBACKBUFFER.depthFormat
+						device->backbuffer->depthFormat
 					],
-					GLBACKBUFFER.width,
-					GLBACKBUFFER.height
+					device->backbuffer->width,
+					device->backbuffer->height
 				);
 			}
 			device->glFramebufferRenderbuffer(
 				GL_FRAMEBUFFER,
 				GL_DEPTH_ATTACHMENT,
 				GL_RENDERBUFFER,
-				GLBACKBUFFER.depthStencilAttachment
+				device->backbuffer->opengl.depthStencilAttachment
 			);
-			if (GLBACKBUFFER.depthFormat == FNA3D_DEPTHFORMAT_D24S8)
+			if (device->backbuffer->depthFormat == FNA3D_DEPTHFORMAT_D24S8)
 			{
 				device->glFramebufferRenderbuffer(
 					GL_FRAMEBUFFER,
 					GL_STENCIL_ATTACHMENT,
 					GL_RENDERBUFFER,
-					GLBACKBUFFER.depthStencilAttachment
+					device->backbuffer->opengl.depthStencilAttachment
 				);
 			}
 
@@ -1330,20 +1326,23 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 		}
 		else
 		{
-			GLBACKBUFFER.width = parameters->backBufferWidth;
-			GLBACKBUFFER.height = parameters->backBufferHeight;
-			GLBACKBUFFER.multiSampleCount = parameters->multiSampleCount;
-			if (GLBACKBUFFER.texture != 0)
+			device->backbuffer->width = parameters->backBufferWidth;
+			device->backbuffer->height = parameters->backBufferHeight;
+			device->backbuffer->multiSampleCount = parameters->multiSampleCount;
+			if (device->backbuffer->opengl.texture != 0)
 			{
-				device->glDeleteTextures(1, &GLBACKBUFFER.texture);
-				GLBACKBUFFER.texture = 0;
+				device->glDeleteTextures(
+					1,
+					&device->backbuffer->opengl.texture
+				);
+				device->backbuffer->opengl.texture = 0;
 			}
 
 			if (device->renderTargetBound)
 			{
 				device->glBindFramebuffer(
 					GL_FRAMEBUFFER,
-					GLBACKBUFFER.handle
+					device->backbuffer->opengl.handle
 				);
 			}
 
@@ -1356,7 +1355,7 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 			);
 
 			/* Detach depth/stencil attachment, if applicable */
-			if (GLBACKBUFFER.depthStencilAttachment != 0)
+			if (device->backbuffer->opengl.depthStencilAttachment != 0)
 			{
 				device->glFramebufferRenderbuffer(
 					GL_FRAMEBUFFER,
@@ -1364,7 +1363,7 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 					GL_RENDERBUFFER,
 					0
 				);
-				if (GLBACKBUFFER.depthFormat == FNA3D_DEPTHFORMAT_D24S8)
+				if (device->backbuffer->depthFormat == FNA3D_DEPTHFORMAT_D24S8)
 				{
 					device->glFramebufferRenderbuffer(
 						GL_FRAMEBUFFER,
@@ -1378,16 +1377,16 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 			/* Update our color attachment to the new resolution. */
 			device->glBindRenderbuffer(
 				GL_RENDERBUFFER,
-				GLBACKBUFFER.colorAttachment
+				device->backbuffer->opengl.colorAttachment
 			);
-			if (GLBACKBUFFER.multiSampleCount > 0)
+			if (device->backbuffer->multiSampleCount > 0)
 			{
 				device->glRenderbufferStorageMultisample(
 					GL_RENDERBUFFER,
-					GLBACKBUFFER.multiSampleCount,
+					device->backbuffer->multiSampleCount,
 					GL_RGBA8,
-					GLBACKBUFFER.width,
-					GLBACKBUFFER.height
+					device->backbuffer->width,
+					device->backbuffer->height
 				);
 			}
 			else
@@ -1395,77 +1394,77 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 				device->glRenderbufferStorage(
 					GL_RENDERBUFFER,
 					GL_RGBA8,
-					GLBACKBUFFER.width,
-					GLBACKBUFFER.height
+					device->backbuffer->width,
+					device->backbuffer->height
 				);
 			}
 			device->glFramebufferRenderbuffer(
 				GL_FRAMEBUFFER,
 				GL_COLOR_ATTACHMENT0,
 				GL_RENDERBUFFER,
-				GLBACKBUFFER.colorAttachment
+				device->backbuffer->opengl.colorAttachment
 			);
 
 			/* Generate/Delete depth/stencil attachment, if needed */
 			if (parameters->depthStencilFormat == FNA3D_DEPTHFORMAT_NONE)
 			{
-				if (GLBACKBUFFER.depthStencilAttachment != 0)
+				if (device->backbuffer->opengl.depthStencilAttachment != 0)
 				{
 					device->glDeleteRenderbuffers(
 						1,
-						&GLBACKBUFFER.depthStencilAttachment
+						&device->backbuffer->opengl.depthStencilAttachment
 					);
-					GLBACKBUFFER.depthStencilAttachment = 0;
+					device->backbuffer->opengl.depthStencilAttachment = 0;
 				}
 			}
-			else if (GLBACKBUFFER.depthStencilAttachment == 0)
+			else if (device->backbuffer->opengl.depthStencilAttachment == 0)
 			{
 				device->glGenRenderbuffers(
 					1,
-					&GLBACKBUFFER.depthStencilAttachment
+					&device->backbuffer->opengl.depthStencilAttachment
 				);
 			}
 
 			/* Update the depth/stencil buffer, if applicable */
-			GLBACKBUFFER.depthFormat = parameters->depthStencilFormat;
-			if (GLBACKBUFFER.depthStencilAttachment != 0)
+			device->backbuffer->depthFormat = parameters->depthStencilFormat;
+			if (device->backbuffer->opengl.depthStencilAttachment != 0)
 			{
 				device->glBindRenderbuffer(
 					GL_RENDERBUFFER,
-					GLBACKBUFFER.depthStencilAttachment
+					device->backbuffer->opengl.depthStencilAttachment
 				);
-				if (GLBACKBUFFER.multiSampleCount > 0)
+				if (device->backbuffer->multiSampleCount > 0)
 				{
 					device->glRenderbufferStorageMultisample(
 						GL_RENDERBUFFER,
-						GLBACKBUFFER.multiSampleCount,
-						XNAToGL_DepthStorage[GLBACKBUFFER.depthFormat],
-						GLBACKBUFFER.width,
-						GLBACKBUFFER.height
+						device->backbuffer->multiSampleCount,
+						XNAToGL_DepthStorage[device->backbuffer->depthFormat],
+						device->backbuffer->width,
+						device->backbuffer->height
 					);
 				}
 				else
 				{
 					device->glRenderbufferStorage(
 						GL_RENDERBUFFER,
-						XNAToGL_DepthStorage[GLBACKBUFFER.depthFormat],
-						GLBACKBUFFER.width,
-						GLBACKBUFFER.height
+						XNAToGL_DepthStorage[device->backbuffer->depthFormat],
+						device->backbuffer->width,
+						device->backbuffer->height
 					);
 				}
 				device->glFramebufferRenderbuffer(
 					GL_FRAMEBUFFER,
 					GL_DEPTH_ATTACHMENT,
 					GL_RENDERBUFFER,
-					GLBACKBUFFER.depthStencilAttachment
+					device->backbuffer->opengl.depthStencilAttachment
 				);
-				if (GLBACKBUFFER.depthFormat == FNA3D_DEPTHFORMAT_D24S8)
+				if (device->backbuffer->depthFormat == FNA3D_DEPTHFORMAT_D24S8)
 				{
 					device->glFramebufferRenderbuffer(
 						GL_FRAMEBUFFER,
 						GL_STENCIL_ATTACHMENT,
 						GL_RENDERBUFFER,
-						GLBACKBUFFER.depthStencilAttachment
+						device->backbuffer->opengl.depthStencilAttachment
 					);
 				}
 			}
@@ -1484,7 +1483,6 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 				device->realBackbufferRBO
 			);
 		}
-		#undef GLBACKBUFFER
 	}
 	else
 	{
@@ -1501,15 +1499,15 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 			);
 			device->backbuffer->type = BACKBUFFER_TYPE_NULL;
 		}
-		device->backbuffer->buffer.null.width = parameters->backBufferWidth;
-		device->backbuffer->buffer.null.height = parameters->backBufferHeight;
-		device->backbuffer->buffer.null.depthFormat = device->windowDepthFormat;
+		device->backbuffer->width = parameters->backBufferWidth;
+		device->backbuffer->height = parameters->backBufferHeight;
+		device->backbuffer->depthFormat = device->windowDepthFormat;
 	}
 }
 
 static void OPENGL_INTERNAL_DisposeBackbuffer(OpenGLDevice *device)
 {
-	#define GLBACKBUFFER device->backbuffer->buffer.opengl
+	#define GLBACKBUFFER device->backbuffer->opengl
 
 	BindFramebuffer(device, device->realBackbufferFBO);
 	device->glDeleteFramebuffers(1, &GLBACKBUFFER.handle);
@@ -2063,27 +2061,23 @@ void* OPENGL_GetEffectData(FNA3D_Effect *effect)
 
 int32_t OPENGL_GetBackbufferWidth(FNA3D_Backbuffer *backbuffer)
 {
-	/* TODO */
-	return 0;
+	return ((OpenGLBackbuffer*) backbuffer)->width;
 }
 
 int32_t OPENGL_GetBackbufferHeight(FNA3D_Backbuffer *backbuffer)
 {
-	/* TODO */
-	return 0;
+	return ((OpenGLBackbuffer*) backbuffer)->height;
 }
 
 FNA3D_DepthFormat OPENGL_GetBackbufferDepthFormat(
 	FNA3D_Backbuffer *backbuffer
 ) {
-	/* TODO */
-	return FNA3D_DEPTHFORMAT_NONE;
+	return ((OpenGLBackbuffer*) backbuffer)->depthFormat;
 }
 
 int32_t OPENGL_GetBackbufferMultiSampleCount(FNA3D_Backbuffer *backbuffer)
 {
-	/* TODO */
-	return 0;
+	return ((OpenGLBackbuffer*) backbuffer)->multiSampleCount;
 }
 
 /* Load GL Entry Points */
