@@ -1990,9 +1990,11 @@ int32_t OPENGL_GetMaxMultiSampleCount(void* driverData)
 
 void OPENGL_SetStringMarker(void* driverData, const char *text)
 {
-	/* TODO */
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	SDL_assert(device->supports_GREMEDY_string_marker);
+	if (device->supports_GREMEDY_string_marker)
+	{
+		device->glStringMarkerGREMEDY(SDL_strlen(text), text);
+	}
 }
 
 static const char *debugSourceStr[] = {
