@@ -1529,15 +1529,16 @@ static void OPENGL_INTERNAL_DisposeBackbuffer(OpenGLDevice *device)
 
 FNA3D_Backbuffer* OPENGL_GetBackbuffer(void* driverData)
 {
-	/* TODO */
-	return NULL;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	return (FNA3D_Backbuffer*) device->backbuffer;
 }
 
 void OPENGL_ResetBackbuffer(
 	void* driverData,
 	FNA3D_PresentationParameters *presentationParameters
 ) {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OPENGL_INTERNAL_CreateBackbuffer(device, presentationParameters);
 }
 
 void OPENGL_ReadBackbuffer(
