@@ -804,7 +804,54 @@ void OPENGL_SetPresentationInterval(
 	void* driverData,
 	FNA3D_PresentInterval presentInterval
 ) {
-	/* TODO */
+	const char *osVersion;
+	int disableLateSwapTear;
+
+	if (	presentInterval == FNA3D_PRESENTINTERVAL_DEFAULT ||
+		presentInterval == FNA3D_PRESENTINTERVAL_ONE	)
+	{
+		osVersion = SDL_GetPlatform();
+		disableLateSwapTear = (
+			(SDL_strcmp(osVersion, "Mac OS X") == 0) ||
+			(SDL_strcmp(osVersion, "WinRT") == 0) ||
+			SDL_GetHintBoolean("FNA_OPENGL_DISABLE_LATESWAPTEAR", 0)
+		);
+		if (disableLateSwapTear)
+		{
+			SDL_GL_SetSwapInterval(1);
+		}
+		else
+		{
+			if (SDL_GL_SetSwapInterval(-1) != -1)
+			{
+				SDL_LogInfo(
+					SDL_LOG_CATEGORY_APPLICATION,
+					"Using EXT_swap_control_tear VSync!"
+				);
+			}
+			else
+			{
+				SDL_LogInfo(
+					SDL_LOG_CATEGORY_APPLICATION,
+					"EXT_swap_control_tear unsupported. Fall back to standard VSync."
+				);
+				SDL_ClearError();
+				SDL_GL_SetSwapInterval(1);
+			}
+		}
+	}
+	else if (presentInterval == FNA3D_PRESENTINTERVAL_IMMEDIATE)
+	{
+		SDL_GL_SetSwapInterval(0);
+	}
+	else if (presentInterval == FNA3D_PRESENTINTERVAL_TWO)
+	{
+		SDL_GL_SetSwapInterval(2);
+	}
+	else
+	{
+		SDL_assert(0 && "Unrecognized PresentInterval!");
+	}
 }
 
 /* Drawing */
