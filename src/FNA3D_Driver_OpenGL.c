@@ -195,14 +195,28 @@ typedef struct OpenGLDevice /* Cast from driverData */
 	uint8_t renderTargetBound;
 	uint8_t effectApplied;
 
-	/* State */
+	/* Viewport */
+	FNA3D_Viewport viewport;
+	float depthRangeMin;
+	float depthRangeMax;
+
+	/* Scissor Rect */
 	uint8_t scissorTestEnable;
+	FNA3D_Rect scissorRect;
+
+	/* Clear */
 	FNA3D_Vec4 currentClearColor;
 	float currentClearDepth;
 	int32_t currentClearStencil;
+
+	/* Blend State */
 	FNA3D_ColorWriteChannels colorWriteEnable;
+
+	/* Depth Stencil State */
 	uint8_t zWriteEnable;
 	uint32_t stencilWriteMask;
+
+	/* Point Sprite Toggle */
 	uint8_t togglePointSprite;
 
 	/* Threading */
@@ -1042,14 +1056,81 @@ void OPENGL_DrawUserPrimitives(
 
 /* Mutable Render States */
 
+void OPENGL_GetBackbufferSize(void*, int*, int*);
 void OPENGL_SetViewport(void* driverData, FNA3D_Viewport *viewport)
 {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	int bbw, bbh;
+
+	/* Flip viewport when target is not bound */
+	if (!device->renderTargetBound)
+	{
+		OPENGL_GetBackbufferSize(driverData, &bbw, &bbh);
+		viewport->y = bbh - viewport->y - viewport->h;
+	}
+
+	if (	viewport->x != device->viewport.x ||
+		viewport->y != device->viewport.y ||
+		viewport->w != device->viewport.w ||
+		viewport->h != device->viewport.h	)
+	{
+		device->viewport = *viewport;
+		device->glViewport(
+			viewport->x,
+			viewport->y,
+			viewport->w,
+			viewport->h
+		);
+	}
+
+	if (	viewport->minDepth != device->depthRangeMin ||
+		viewport->maxDepth != device->depthRangeMax	)
+	{
+		device->depthRangeMin = viewport->minDepth;
+		device->depthRangeMax = viewport->maxDepth;
+
+		if (device->supports_DoublePrecisionDepth)
+		{
+			device->glDepthRange(
+				(double) viewport->minDepth,
+				(double) viewport->maxDepth
+			);
+		}
+		else
+		{
+			device->glDepthRangef(
+				viewport->minDepth,
+				viewport->maxDepth
+			);
+		}
+	}
 }
 
 void OPENGL_SetScissorRect(void* driverData, FNA3D_Rect *scissor)
 {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	int bbw, bbh;
+
+	/* Flip rectangle when target is not bound */
+	if (!device->renderTargetBound)
+	{
+		OPENGL_GetBackbufferSize(driverData, &bbw, &bbh);
+		scissor->y = bbh - scissor->y - scissor->h;
+	}
+
+	if (	scissor->x != device->scissorRect.x ||
+		scissor->y != device->scissorRect.y ||
+		scissor->w != device->scissorRect.w ||
+		scissor->h != device->scissorRect.h	)
+	{
+		device->scissorRect = *scissor;
+		device->glScissor(
+			scissor->x,
+			scissor->y,
+			scissor->w,
+			scissor->h
+		);
+	}
 }
 
 void OPENGL_GetBlendFactor(
