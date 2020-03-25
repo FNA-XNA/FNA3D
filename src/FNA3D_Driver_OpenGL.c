@@ -175,6 +175,8 @@ typedef struct OpenGLDevice /* Cast from driverData */
 	GLuint targetFramebuffer;
 	GLuint resolveFramebufferRead;
 	GLuint resolveFramebufferDraw;
+	GLuint currentReadFramebuffer;
+	GLuint currentDrawFramebuffer;
 
 	/* MojoShader Interop */
 	const char *shaderProfile;
@@ -509,9 +511,41 @@ static int32_t XNAToGL_PrimitiveVerts(
 
 /* Helper Functions */
 
+static void BindReadFramebuffer(OpenGLDevice *device, GLuint handle)
+{
+	if (handle != device->currentReadFramebuffer)
+	{
+		device->glBindFramebuffer(GL_READ_FRAMEBUFFER, handle);
+		device->currentReadFramebuffer = handle;
+	}
+}
+
+static void BindDrawFramebuffer(OpenGLDevice *device, GLuint handle)
+{
+	if (handle != device->currentDrawFramebuffer)
+	{
+		device->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, handle);
+		device->currentDrawFramebuffer = handle;
+	}
+}
+
 static void BindFramebuffer(OpenGLDevice *device, GLuint handle)
 {
-	/* TODO */
+	if (	device->currentReadFramebuffer != handle &&
+		device->currentDrawFramebuffer != handle	)
+	{
+		device->glBindFramebuffer(GL_FRAMEBUFFER, handle);
+		device->currentReadFramebuffer = handle;
+		device->currentDrawFramebuffer = handle;
+	}
+	else if (device->currentReadFramebuffer != handle)
+	{
+		BindReadFramebuffer(device, handle);
+	}
+	else if (device->currentDrawFramebuffer != handle)
+	{
+		BindDrawFramebuffer(device, handle);
+	}
 }
 
 static void CreateOpenGLBackbuffer(
