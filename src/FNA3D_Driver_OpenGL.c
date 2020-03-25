@@ -1800,6 +1800,8 @@ void OPENGL_GetVertexBufferData(
 	int32_t vertexStride
 ) {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_NonES3);
 }
 
 /* Index Buffers */
@@ -1843,6 +1845,8 @@ void OPENGL_GetIndexBufferData(
 	int32_t elementSizeInBytes
 ) {
 	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_assert(device->supports_NonES3);
 }
 
 /* Effects */
