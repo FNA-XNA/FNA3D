@@ -1598,20 +1598,23 @@ int32_t OPENGL_QueryPixelCount(
 
 uint8_t OPENGL_SupportsDXT1(void* driverData)
 {
-	/* TODO */
-	return 0;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	return device->supports_dxt1;
 }
+
 uint8_t OPENGL_SupportsS3TC(void* driverData)
 {
-	/* TODO */
-	return 0;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	return device->supports_s3tc;
 }
+
 uint8_t OPENGL_SupportsHardwareInstancing(void* driverData)
 {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	return (	device->supports_ARB_draw_instanced &&
 			device->supports_ARB_instanced_arrays	);
 }
+
 uint8_t OPENGL_SupportsNoOverwrite(void* driverData)
 {
 	return 0;
@@ -1619,13 +1622,14 @@ uint8_t OPENGL_SupportsNoOverwrite(void* driverData)
 
 int32_t OPENGL_GetMaxTextureSlots(void* driverData)
 {
-	/* TODO */
-	return 0;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	return device->numTextureSlots;
 }
+
 int32_t OPENGL_GetMaxMultiSampleCount(void* driverData)
 {
-	/* TODO */
-	return 0;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	return device->maxMultiSampleCount;
 }
 
 /* Debugging */
