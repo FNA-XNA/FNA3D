@@ -188,6 +188,13 @@ typedef struct OpenGLDevice /* Cast from driverData */
 	uint8_t effectApplied;
 
 	/* State */
+	uint8_t scissorTestEnable;
+	FNA3D_Vec4 currentClearColor;
+	float currentClearDepth;
+	int32_t currentClearStencil;
+	FNA3D_ColorWriteChannels colorWriteEnable;
+	uint8_t zWriteEnable;
+	uint32_t stencilWriteMask;
 	uint8_t togglePointSprite;
 
 	/* GL entry points */
@@ -856,6 +863,16 @@ void OPENGL_SetPresentationInterval(
 
 /* Drawing */
 
+static uint8_t colorEquals(FNA3D_Vec4 c1, FNA3D_Vec4 c2)
+{
+	return (
+		c1.x == c2.x &&
+		c1.y == c2.y &&
+		c1.z == c2.z &&
+		c1.w == c2.w
+	);
+}
+
 void OPENGL_Clear(
 	void* driverData,
 	FNA3D_ClearOptions options,
@@ -863,7 +880,105 @@ void OPENGL_Clear(
 	float depth,
 	int32_t stencil
 ) {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	uint8_t clearTarget, clearDepth, clearStencil;
+	GLenum clearMask;
+
+	/* glClear depends on the scissor rectangle! */
+	if (device->scissorTestEnable)
+	{
+		device->glDisable(GL_SCISSOR_TEST);
+	}
+
+	clearTarget = (options & FNA3D_CLEAROPTIONS_TARGET) != 0;
+	clearDepth = (options & FNA3D_CLEAROPTIONS_DEPTHBUFFER) != 0;
+	clearStencil = (options & FNA3D_CLEAROPTIONS_STENCIL) != 0;
+
+	/* Get the clear mask, set the clear properties if needed */
+	clearMask = GL_ZERO;
+	if (clearTarget)
+	{
+		clearMask |= GL_COLOR_BUFFER_BIT;
+		if (!colorEquals(*color, device->currentClearColor))
+		{
+			device->glClearColor(
+				color->x,
+				color->y,
+				color->z,
+				color->w
+			);
+			device->currentClearColor = *color;
+		}
+		/* glClear depends on the color write mask! */
+		if (device->colorWriteEnable != FNA3D_COLORWRITECHANNELS_ALL)
+		{
+			/* FIXME: ColorWriteChannels1/2/3? -flibit */
+			device->glColorMask(1, 1, 1, 1);
+		}
+	}
+	if (clearDepth)
+	{
+		clearMask |= GL_DEPTH_BUFFER_BIT;
+		if (depth != device->currentClearDepth)
+		{
+			if (device->supports_DoublePrecisionDepth)
+			{
+				device->glClearDepth((double) depth);
+			}
+			else
+			{
+				device->glClearDepthf(depth);
+			}
+			device->currentClearDepth = depth;
+		}
+		/* glClear depends on the depth write mask! */
+		if (!device->zWriteEnable)
+		{
+			device->glDepthMask(1);
+		}
+	}
+	if (clearStencil)
+	{
+		clearMask |= GL_STENCIL_BUFFER_BIT;
+		if (stencil != device->currentClearStencil)
+		{
+			device->glClearStencil(stencil);
+			device->currentClearStencil = stencil;
+		}
+		/* glClear depends on the stencil write mask! */
+		if (device->stencilWriteMask != -1)
+		{
+			/* AKA 0xFFFFFFFF, ugh -flibit */
+			device->glStencilMask(-1);
+		}
+	}
+
+	/* CLEAR! */
+	device->glClear(clearMask);
+
+	/* Clean up after ourselves. */
+	if (device->scissorTestEnable)
+	{
+		device->glEnable(GL_SCISSOR_TEST);
+	}
+	if (clearTarget && device->colorWriteEnable != FNA3D_COLORWRITECHANNELS_ALL)
+	{
+		/* FIXME: ColorWriteChannels1/2/3? -flibit */
+		device->glColorMask(
+			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_RED) != 0,
+			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
+			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_BLUE) != 0,
+			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_ALPHA) != 0
+		);
+	}
+	if (clearDepth && !device->zWriteEnable)
+	{
+		device->glDepthMask(0);
+	}
+	if (clearStencil && device->stencilWriteMask != -1) /* AKA 0xFFFFFFFF, ugh -flibit */
+	{
+		device->glStencilMask(device->stencilWriteMask);
+	}
 }
 
 void OPENGL_DrawIndexedPrimitives(
