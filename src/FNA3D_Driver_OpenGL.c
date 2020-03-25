@@ -2456,6 +2456,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	SDL_SysWMinfo wmInfo;
 	const char *renderer, *version, *vendor;
 	char driverInfo[256];
+	uint8_t debugMode;
 	int i;
 	int numExtensions, numSamplers, numAttributes, numAttachments;
 	OpenGLDevice *device;
@@ -2474,6 +2475,10 @@ FNA3D_Device* OPENGL_CreateDevice(
 	SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &flags);
 	device->useES3 = (flags & SDL_GL_CONTEXT_PROFILE_ES) != 0;
 	device->useCoreProfile = (flags & SDL_GL_CONTEXT_PROFILE_CORE) != 0;
+
+	/* Check for a possible debug context */
+	SDL_GL_GetAttribute(SDL_GL_CONTEXT_FLAGS, &flags);
+	debugMode = (flags & SDL_GL_CONTEXT_DEBUG_FLAG) != 0;
 
 	/* Check the window's depth/stencil format */
 	SDL_GL_GetAttribute(SDL_GL_DEPTH_SIZE, &depthSize);
@@ -2537,7 +2542,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	);
 
 	/* Initialize entry points */
-	LoadEntryPoints(device, driverInfo, 0); /* FIXME: Debug context check */
+	LoadEntryPoints(device, driverInfo, debugMode);
 
 	/* FIXME: REMOVE ME ASAP! TERRIBLE HACK FOR ANGLE! */
 	if (!SDL_strstr(renderer, "Direct3D11"))
