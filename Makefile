@@ -86,7 +86,7 @@ all: $(FNA3DOBJ) $(MOJOSHADEROBJ)
 	$(CC) $(CFLAGS) -shared -o $(PREFIX)FNA3D.$(SUFFIX) $(FNA3DOBJ) $(MOJOSHADEROBJ) $(DEPENDENCIES) $(LDFLAGS)
 
 initgltest: $(INITGLOBJ)
-	$(CC) $(CFLAGS) $(INITGLOBJ) $(DEPENDENCIES) $(LDFLAGS) -L. -lFNA3D -o initgl.test  -Wl,-R -Wl,`pwd`
+	$(CC) $(CFLAGS) $(INITGLOBJ) $(DEPENDENCIES) $(LDFLAGS) -L. -lFNA3D -o initgl.test
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $< $(INCLUDES) $(DEFINES)
