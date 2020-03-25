@@ -612,21 +612,11 @@ static inline void BindIndexBuffer(OpenGLDevice *device, GLuint handle)
 	}
 }
 
-/* Forward Declarations for Internal Functions */
-
-static void OPENGL_INTERNAL_CreateBackbuffer(
+static inline void ToggleGLState(
 	OpenGLDevice *device,
-	FNA3D_PresentationParameters *parameters
-);
-static void OPENGL_INTERNAL_DisposeBackbuffer(OpenGLDevice *device);
-
-/* Device Implementation */
-void OPENGL_ToggleGLState(
-	void* driverData,
 	GLenum feature,
 	uint8_t enable
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	if (enable)
 	{
 		device->glEnable(feature);
@@ -636,6 +626,16 @@ void OPENGL_ToggleGLState(
 		device->glDisable(feature);
 	}
 }
+
+/* Forward Declarations for Internal Functions */
+
+static void OPENGL_INTERNAL_CreateBackbuffer(
+	OpenGLDevice *device,
+	FNA3D_PresentationParameters *parameters
+);
+static void OPENGL_INTERNAL_DisposeBackbuffer(OpenGLDevice *device);
+
+/* Device Implementation */
 
 /* Quit */
 
@@ -1217,12 +1217,11 @@ void OPENGL_ApplyRasterizerState(
 	void* driverData,
 	FNA3D_RasterizerState *rasterizerState
 ) {
-	/* VALIDATE */
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	if (rasterizerState->scissorTestEnable != device->scissorTestEnable)
 	{
 		device->scissorTestEnable = rasterizerState->scissorTestEnable;
-		OPENGL_ToggleGLState(driverData, GL_SCISSOR_TEST, device->scissorTestEnable);
+		ToggleGLState(driverData, GL_SCISSOR_TEST, device->scissorTestEnable);
 	}
 
 	FNA3D_CullMode actualMode;
@@ -1232,7 +1231,7 @@ void OPENGL_ApplyRasterizerState(
 	}
 	else
 	{
-		// When not rendering offscreen the faces change order.
+		/* When not rendering offscreen the faces change order. */
 		if (rasterizerState->cullMode == FNA3D_CULLMODE_NONE)
 		{
 			actualMode = rasterizerState->cullMode;
@@ -1250,7 +1249,7 @@ void OPENGL_ApplyRasterizerState(
 	{
 		if ((actualMode == FNA3D_CULLMODE_NONE) != (device->cullFrontFace == FNA3D_CULLMODE_NONE))
 		{
-			OPENGL_ToggleGLState(driverData, GL_CULL_FACE, actualMode != FNA3D_CULLMODE_NONE);
+			ToggleGLState(driverData, GL_CULL_FACE, actualMode != FNA3D_CULLMODE_NONE);
 		}
 		device->cullFrontFace = actualMode;
 		if (device->cullFrontFace != FNA3D_CULLMODE_NONE)
@@ -1268,7 +1267,6 @@ void OPENGL_ApplyRasterizerState(
 		);
 	}
 
-	// FIXME: Floating point equality comparisons used for speed -flibit
 	float realDepthBias = rasterizerState->depthBias * XNAToGL_DepthBiasScale[
 		(int)(device->renderTargetBound
 			? device->currentDepthStencilFormat
@@ -1281,14 +1279,14 @@ void OPENGL_ApplyRasterizerState(
 		if (	realDepthBias == 0.0f &&
 			rasterizerState->slopeScaleDepthBias == 0.0f)
 		{
-			// We're changing to disabled bias, disable!
+			/* We're changing to disabled bias, disable! */
 			device->glDisable(GL_POLYGON_OFFSET_FILL);
 		}
 		else
 		{
 			if (device->depthBias == 0.0f && device->slopeScaleDepthBias == 0.0f)
 			{
-				// We're changing away from disabled bias, enable!
+				/* We're changing away from disabled bias, enable! */
 				device->glEnable(GL_POLYGON_OFFSET_FILL);
 			}
 			device->glPolygonOffset(
@@ -1300,8 +1298,7 @@ void OPENGL_ApplyRasterizerState(
 		device->slopeScaleDepthBias = rasterizerState->slopeScaleDepthBias;
 	}
 
-	/**
-	 * If you're reading this, you have a user with broken MSAA!
+	/* If you're reading this, you have a user with broken MSAA!
 	 * Here's the deal: On all modern drivers this should work,
 	 * but there was a period of time where, for some reason,
 	 * IHVs all took a nap and decided that they didn't have to
@@ -1314,11 +1311,11 @@ void OPENGL_ApplyRasterizerState(
 	 * So yeah. Have em update their driver. If they're on Intel,
 	 * tell them to install Linux. Yes, really.
 	 * -flibit
-	 **/
+	 */
 	if (rasterizerState->multiSampleEnable != device->multiSampleEnable)
 	{
 		device->multiSampleEnable = rasterizerState->multiSampleEnable;
-		OPENGL_ToggleGLState(driverData, GL_MULTISAMPLE, device->multiSampleEnable);
+		ToggleGLState(driverData, GL_MULTISAMPLE, device->multiSampleEnable);
 	}
 }
 
