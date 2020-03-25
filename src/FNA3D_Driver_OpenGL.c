@@ -1218,13 +1218,15 @@ void OPENGL_ApplyRasterizerState(
 	FNA3D_RasterizerState *rasterizerState
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	FNA3D_CullMode actualMode;
+	float realDepthBias;
+
 	if (rasterizerState->scissorTestEnable != device->scissorTestEnable)
 	{
 		device->scissorTestEnable = rasterizerState->scissorTestEnable;
 		ToggleGLState(device, GL_SCISSOR_TEST, device->scissorTestEnable);
 	}
 
-	FNA3D_CullMode actualMode;
 	if (device->renderTargetBound)
 	{
 		actualMode = rasterizerState->cullMode;
@@ -1240,8 +1242,8 @@ void OPENGL_ApplyRasterizerState(
 		{
 			actualMode = (
 				rasterizerState->cullMode == FNA3D_CULLMODE_CULLCLOCKWISEFACE ?
-					FNA3D_CULLMODE_CULLCOUNTERCLOCKWISEFACE :
-					FNA3D_CULLMODE_CULLCLOCKWISEFACE
+				FNA3D_CULLMODE_CULLCOUNTERCLOCKWISEFACE :
+				FNA3D_CULLMODE_CULLCLOCKWISEFACE
 			);
 		}
 	}
@@ -1267,10 +1269,10 @@ void OPENGL_ApplyRasterizerState(
 		);
 	}
 
-	float realDepthBias = rasterizerState->depthBias * XNAToGL_DepthBiasScale[
-		(int)(device->renderTargetBound
-			? device->currentDepthStencilFormat
-			: device->backbuffer->depthFormat
+	realDepthBias = rasterizerState->depthBias * XNAToGL_DepthBiasScale[
+		(int) (	device->renderTargetBound ?
+			device->currentDepthStencilFormat :
+			device->backbuffer->depthFormat
 		)
 	];
 	if (	realDepthBias != device->depthBias ||
