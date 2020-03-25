@@ -596,6 +596,7 @@ static void CreateOpenGLBackbuffer(
 
 	if (useFauxBackbuffer)
 	{
+		#define GLBACKBUFFER device->backbuffer->buffer.opengl
 		if (	device->backbuffer == NULL ||
 			device->backbuffer->type == BACKBUFFER_TYPE_NULL	)
 		{
@@ -616,8 +617,6 @@ static void CreateOpenGLBackbuffer(
 				sizeof(OpenGLBackbuffer)
 			);
 			device->backbuffer->type = BACKBUFFER_TYPE_OPENGL;
-
-			#define GLBACKBUFFER device->backbuffer->buffer.opengl
 
 			GLBACKBUFFER.width = parameters->backBufferWidth;
 			GLBACKBUFFER.height = parameters->backBufferHeight;
@@ -733,8 +732,161 @@ static void CreateOpenGLBackbuffer(
 		}
 		else
 		{
-			/* TODO: public void ResetFramebuffer */
+			GLBACKBUFFER.width = parameters->backBufferWidth;
+			GLBACKBUFFER.height = parameters->backBufferHeight;
+			GLBACKBUFFER.multiSampleCount = parameters->multiSampleCount;
+			if (GLBACKBUFFER.texture != 0)
+			{
+				device->glDeleteTextures(1, &GLBACKBUFFER.texture);
+				GLBACKBUFFER.texture = 0;
+			}
+
+			if (device->renderTargetBound)
+			{
+				device->glBindFramebuffer(
+					GL_FRAMEBUFFER,
+					GLBACKBUFFER.handle
+				);
+			}
+
+			/* Detach color attachment */
+			device->glFramebufferRenderbuffer(
+				GL_FRAMEBUFFER,
+				GL_COLOR_ATTACHMENT0,
+				GL_RENDERBUFFER,
+				0
+			);
+
+			/* Detach depth/stencil attachment, if applicable */
+			if (GLBACKBUFFER.depthStencilAttachment != 0)
+			{
+				device->glFramebufferRenderbuffer(
+					GL_FRAMEBUFFER,
+					GL_DEPTH_ATTACHMENT,
+					GL_RENDERBUFFER,
+					0
+				);
+				if (GLBACKBUFFER.depthFormat == FNA3D_DEPTHFORMAT_D24S8)
+				{
+					device->glFramebufferRenderbuffer(
+						GL_FRAMEBUFFER,
+						GL_STENCIL_ATTACHMENT,
+						GL_RENDERBUFFER,
+						0
+					);
+				}
+			}
+
+			/* Update our color attachment to the new resolution. */
+			device->glBindRenderbuffer(
+				GL_RENDERBUFFER,
+				GLBACKBUFFER.colorAttachment
+			);
+			if (GLBACKBUFFER.multiSampleCount > 0)
+			{
+				device->glRenderbufferStorageMultisample(
+					GL_RENDERBUFFER,
+					GLBACKBUFFER.multiSampleCount,
+					GL_RGBA8,
+					GLBACKBUFFER.width,
+					GLBACKBUFFER.height
+				);
+			}
+			else
+			{
+				device->glRenderbufferStorage(
+					GL_RENDERBUFFER,
+					GL_RGBA8,
+					GLBACKBUFFER.width,
+					GLBACKBUFFER.height
+				);
+			}
+			device->glFramebufferRenderbuffer(
+				GL_FRAMEBUFFER,
+				GL_COLOR_ATTACHMENT0,
+				GL_RENDERBUFFER,
+				GLBACKBUFFER.colorAttachment
+			);
+
+			/* Generate/Delete depth/stencil attachment, if needed */
+			if (parameters->depthStencilFormat == FNA3D_DEPTHFORMAT_NONE)
+			{
+				if (GLBACKBUFFER.depthStencilAttachment != 0)
+				{
+					device->glDeleteRenderbuffers(
+						1,
+						&GLBACKBUFFER.depthStencilAttachment
+					);
+					GLBACKBUFFER.depthStencilAttachment = 0;
+				}
+			}
+			else if (GLBACKBUFFER.depthStencilAttachment == 0)
+			{
+				device->glGenRenderbuffers(
+					1,
+					&GLBACKBUFFER.depthStencilAttachment
+				);
+			}
+
+			/* Update the depth/stencil buffer, if applicable */
+			GLBACKBUFFER.depthFormat = parameters->depthStencilFormat;
+			if (GLBACKBUFFER.depthStencilAttachment != 0)
+			{
+				device->glBindRenderbuffer(
+					GL_RENDERBUFFER,
+					GLBACKBUFFER.depthStencilAttachment
+				);
+				if (GLBACKBUFFER.multiSampleCount > 0)
+				{
+					device->glRenderbufferStorageMultisample(
+						GL_RENDERBUFFER,
+						GLBACKBUFFER.multiSampleCount,
+						XNAToGL_DepthStorage[GLBACKBUFFER.depthFormat],
+						GLBACKBUFFER.width,
+						GLBACKBUFFER.height
+					);
+				}
+				else
+				{
+					device->glRenderbufferStorage(
+						GL_RENDERBUFFER,
+						XNAToGL_DepthStorage[GLBACKBUFFER.depthFormat],
+						GLBACKBUFFER.width,
+						GLBACKBUFFER.height
+					);
+				}
+				device->glFramebufferRenderbuffer(
+					GL_FRAMEBUFFER,
+					GL_DEPTH_ATTACHMENT,
+					GL_RENDERBUFFER,
+					GLBACKBUFFER.depthStencilAttachment
+				);
+				if (GLBACKBUFFER.depthFormat == FNA3D_DEPTHFORMAT_D24S8)
+				{
+					device->glFramebufferRenderbuffer(
+						GL_FRAMEBUFFER,
+						GL_STENCIL_ATTACHMENT,
+						GL_RENDERBUFFER,
+						GLBACKBUFFER.depthStencilAttachment
+					);
+				}
+			}
+
+			if (device->renderTargetBound)
+			{
+				device->glBindFramebuffer(
+					GL_FRAMEBUFFER,
+					device->targetFramebuffer
+				);
+			}
+
+			/* Keep this state sane. */
+			device->glBindRenderbuffer(
+				GL_RENDERBUFFER,
+				device->realBackbufferRBO
+			);
 		}
+		#undef GLBACKBUFFER
 	}
 	else
 	{
