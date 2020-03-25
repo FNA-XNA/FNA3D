@@ -655,7 +655,11 @@ FNA3DAPI void FNA3D_SetTextureDataCube(
 );
 FNA3DAPI void FNA3D_SetTextureDataYUV(
 	FNA3D_Device *device,
-	FNA3D_Texture *textures,
+	FNA3D_Texture *y,
+	FNA3D_Texture *u,
+	FNA3D_Texture *v,
+	int32_t w,
+	int32_t h,
 	void* ptr
 );
 FNA3DAPI void FNA3D_GetTextureData2D(
@@ -885,11 +889,6 @@ FNA3DAPI FNA3D_DepthFormat FNA3D_GetBackbufferDepthFormat(
 FNA3DAPI int32_t FNA3D_GetBackbufferMultiSampleCount(
 	FNA3D_Device *device,
 	FNA3D_Backbuffer *backbuffer
-);
-FNA3DAPI void FNA3D_ResetFramebuffer(
-	FNA3D_Device *device,
-	FNA3D_Backbuffer *backbuffer,
-	FNA3D_PresentationParameters *presentationParameters
 );
 
 #ifdef __cplusplus

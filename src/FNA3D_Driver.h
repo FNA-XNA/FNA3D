@@ -274,7 +274,11 @@ struct FNA3D_Device
 	);
 	void (*SetTextureDataYUV)(
 		void* driverData,
-		FNA3D_Texture *textures,
+		FNA3D_Texture *y,
+		FNA3D_Texture *u,
+		FNA3D_Texture *v,
+		int32_t w,
+		int32_t h,
 		void* ptr
 	);
 	void (*GetTextureData2D)(
@@ -472,41 +476,20 @@ struct FNA3D_Device
 
 	/* Buffer Objects */
 
-	intptr_t (*GetBufferSize)(
-		void* driverData,
-		FNA3D_Buffer *buffer
-	);
+	intptr_t (*GetBufferSize)(FNA3D_Buffer *buffer);
 
 	/* Effect Objects */
 
-	void* (*GetEffectData)(
-		void* driverData,
-		FNA3D_Effect *effect
-	);
+	void* (*GetEffectData)(FNA3D_Effect *effect);
 
 	/* Backbuffer Objects */
 
-	int32_t (*GetBackbufferWidth)(
-		void* driverData,
-		FNA3D_Backbuffer *backbuffer
-	);
-	int32_t (*GetBackbufferHeight)(
-		void* driverData,
-		FNA3D_Backbuffer *backbuffer
-	);
+	int32_t (*GetBackbufferWidth)(FNA3D_Backbuffer *backbuffer);
+	int32_t (*GetBackbufferHeight)(FNA3D_Backbuffer *backbuffer);
 	FNA3D_DepthFormat (*GetBackbufferDepthFormat)(
-		void* driverData,
 		FNA3D_Backbuffer *backbuffer
 	);
-	int32_t (*GetBackbufferMultiSampleCount)(
-		void* driverData,
-		FNA3D_Backbuffer *backbuffer
-	);
-	void (*ResetFramebuffer)(
-		void* driverData,
-		FNA3D_Backbuffer *backbuffer,
-		FNA3D_PresentationParameters *presentationParameters
-	);
+	int32_t (*GetBackbufferMultiSampleCount)(FNA3D_Backbuffer *backbuffer);
 
 	/* Opaque pointer for the Driver */
 	void* driverData;
@@ -590,8 +573,7 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(GetBackbufferWidth, name) \
 	ASSIGN_DRIVER_FUNC(GetBackbufferHeight, name) \
 	ASSIGN_DRIVER_FUNC(GetBackbufferDepthFormat, name) \
-	ASSIGN_DRIVER_FUNC(GetBackbufferMultiSampleCount, name) \
-	ASSIGN_DRIVER_FUNC(ResetFramebuffer, name)
+	ASSIGN_DRIVER_FUNC(GetBackbufferMultiSampleCount, name)
 
 typedef struct FNA3D_Driver
 {

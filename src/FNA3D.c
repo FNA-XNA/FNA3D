@@ -721,14 +721,18 @@ void FNA3D_SetTextureDataCube(
 
 void FNA3D_SetTextureDataYUV(
 	FNA3D_Device *device,
-	FNA3D_Texture *textures,
+	FNA3D_Texture *y,
+	FNA3D_Texture *u,
+	FNA3D_Texture *v,
+	int32_t w,
+	int32_t h,
 	void* ptr
 ) {
 	if (device == NULL)
 	{
 		return;
 	}
-	device->SetTextureDataYUV(device->driverData, textures, ptr);
+	device->SetTextureDataYUV(device->driverData, y, u, v, w, h, ptr);
 }
 
 void FNA3D_GetTextureData2D(
@@ -1282,7 +1286,7 @@ intptr_t FNA3D_GetBufferSize(
 	{
 		return 0;
 	}
-	return device->GetBufferSize(device->driverData, buffer);
+	return device->GetBufferSize(buffer);
 }
 
 /* Effect Objects */
@@ -1295,7 +1299,7 @@ void* FNA3D_GetEffectData(
 	{
 		return NULL;
 	}
-	return device->GetEffectData(device->driverData, effect);
+	return device->GetEffectData(effect);
 }
 
 /* Backbuffer Objects */
@@ -1308,7 +1312,7 @@ int32_t FNA3D_GetBackbufferWidth(
 	{
 		return 0;
 	}
-	return device->GetBackbufferWidth(device->driverData, backbuffer);
+	return device->GetBackbufferWidth(backbuffer);
 }
 
 int32_t FNA3D_GetBackbufferHeight(
@@ -1319,7 +1323,7 @@ int32_t FNA3D_GetBackbufferHeight(
 	{
 		return 0;
 	}
-	return device->GetBackbufferHeight(device->driverData, backbuffer);
+	return device->GetBackbufferHeight(backbuffer);
 }
 
 FNA3D_DepthFormat FNA3D_GetBackbufferDepthFormat(
@@ -1330,7 +1334,7 @@ FNA3D_DepthFormat FNA3D_GetBackbufferDepthFormat(
 	{
 		return FNA3D_DEPTHFORMAT_NONE;
 	}
-	return device->GetBackbufferDepthFormat(device->driverData, backbuffer);
+	return device->GetBackbufferDepthFormat(backbuffer);
 }
 
 int32_t FNA3D_GetBackbufferMultiSampleCount(
@@ -1341,24 +1345,5 @@ int32_t FNA3D_GetBackbufferMultiSampleCount(
 	{
 		return 0;
 	}
-	return device->GetBackbufferMultiSampleCount(
-		device->driverData,
-		backbuffer
-	);
-}
-
-void FNA3D_ResetFramebuffer(
-	FNA3D_Device *device,
-	FNA3D_Backbuffer *backbuffer,
-	FNA3D_PresentationParameters *presentationParameters
-) {
-	if (device == NULL)
-	{
-		return;
-	}
-	device->ResetFramebuffer(
-		device->driverData,
-		backbuffer,
-		presentationParameters
-	);
+	return device->GetBackbufferMultiSampleCount(backbuffer);
 }

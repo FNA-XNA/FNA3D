@@ -1303,7 +1303,11 @@ void OPENGL_SetTextureDataCube(
 
 void OPENGL_SetTextureDataYUV(
 	void* driverData,
-	FNA3D_Texture *textures,
+	FNA3D_Texture *y,
+	FNA3D_Texture *u,
+	FNA3D_Texture *v,
+	int32_t w,
+	int32_t h,
 	void* ptr
 ) {
 	/* TODO */
@@ -1681,64 +1685,45 @@ static void GLAPIENTRY DebugCall(
 
 /* Buffer Objects */
 
-intptr_t OPENGL_GetBufferSize(
-	void* driverData,
-	FNA3D_Buffer *buffer
-) {
+intptr_t OPENGL_GetBufferSize(FNA3D_Buffer *buffer)
+{
 	/* TODO */
 	return 0;
 }
 
 /* Effect Objects */
 
-void* OPENGL_GetEffectData(
-	void* driverData,
-	FNA3D_Effect *effect
-) {
+void* OPENGL_GetEffectData(FNA3D_Effect *effect)
+{
 	/* TODO */
 	return NULL;
 }
 
 /* Backbuffer Objects */
 
-int32_t OPENGL_GetBackbufferWidth(
-	void* driverData,
-	FNA3D_Backbuffer *backbuffer
-) {
+int32_t OPENGL_GetBackbufferWidth(FNA3D_Backbuffer *backbuffer)
+{
 	/* TODO */
 	return 0;
 }
 
-int32_t OPENGL_GetBackbufferHeight(
-	void* driverData,
-	FNA3D_Backbuffer *backbuffer
-) {
+int32_t OPENGL_GetBackbufferHeight(FNA3D_Backbuffer *backbuffer)
+{
 	/* TODO */
 	return 0;
 }
 
 FNA3D_DepthFormat OPENGL_GetBackbufferDepthFormat(
-	void* driverData,
 	FNA3D_Backbuffer *backbuffer
 ) {
 	/* TODO */
 	return FNA3D_DEPTHFORMAT_NONE;
 }
 
-int32_t OPENGL_GetBackbufferMultiSampleCount(
-	void* driverData,
-	FNA3D_Backbuffer *backbuffer
-) {
+int32_t OPENGL_GetBackbufferMultiSampleCount(FNA3D_Backbuffer *backbuffer)
+{
 	/* TODO */
 	return 0;
-}
-
-void OPENGL_ResetFramebuffer(
-	void* driverData,
-	FNA3D_Backbuffer *backbuffer,
-	FNA3D_PresentationParameters *presentationParameters
-) {
-	/* TODO */
 }
 
 /* Load GL Entry Points */
