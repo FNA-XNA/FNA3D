@@ -215,259 +215,259 @@ typedef struct OpenGLDevice /* Cast from driverData */
 
 static int32_t XNAToGL_TextureFormat[] =
 {
-	GL_RGBA,			// SurfaceFormat.Color
-	GL_RGB,				// SurfaceFormat.Bgr565
-	GL_BGRA,			// SurfaceFormat.Bgra5551
-	GL_BGRA,			// SurfaceFormat.Bgra4444
-	GL_COMPRESSED_TEXTURE_FORMATS,	// SurfaceFormat.Dxt1
-	GL_COMPRESSED_TEXTURE_FORMATS,	// SurfaceFormat.Dxt3
-	GL_COMPRESSED_TEXTURE_FORMATS,	// SurfaceFormat.Dxt5
-	GL_RG,				// SurfaceFormat.NormalizedByte2
-	GL_RGBA,			// SurfaceFormat.NormalizedByte4
-	GL_RGBA,			// SurfaceFormat.Rgba1010102
-	GL_RG,				// SurfaceFormat.Rg32
-	GL_RGBA,			// SurfaceFormat.Rgba64
-	GL_ALPHA,			// SurfaceFormat.Alpha8
-	GL_RED,				// SurfaceFormat.Single
-	GL_RG,				// SurfaceFormat.Vector2
-	GL_RGBA,			// SurfaceFormat.Vector4
-	GL_RED,				// SurfaceFormat.HalfSingle
-	GL_RG,				// SurfaceFormat.HalfVector2
-	GL_RGBA,			// SurfaceFormat.HalfVector4
-	GL_RGBA,			// SurfaceFormat.HdrBlendable
-	GL_BGRA,			// SurfaceFormat.ColorBgraEXT
+	GL_RGBA,			/* SurfaceFormat.Color */
+	GL_RGB,				/* SurfaceFormat.Bgr565 */
+	GL_BGRA,			/* SurfaceFormat.Bgra5551 */
+	GL_BGRA,			/* SurfaceFormat.Bgra4444 */
+	GL_COMPRESSED_TEXTURE_FORMATS,	/* SurfaceFormat.Dxt1 */
+	GL_COMPRESSED_TEXTURE_FORMATS,	/* SurfaceFormat.Dxt3 */
+	GL_COMPRESSED_TEXTURE_FORMATS,	/* SurfaceFormat.Dxt5 */
+	GL_RG,				/* SurfaceFormat.NormalizedByte2 */
+	GL_RGBA,			/* SurfaceFormat.NormalizedByte4 */
+	GL_RGBA,			/* SurfaceFormat.Rgba1010102 */
+	GL_RG,				/* SurfaceFormat.Rg32 */
+	GL_RGBA,			/* SurfaceFormat.Rgba64 */
+	GL_ALPHA,			/* SurfaceFormat.Alpha8 */
+	GL_RED,				/* SurfaceFormat.Single */
+	GL_RG,				/* SurfaceFormat.Vector2 */
+	GL_RGBA,			/* SurfaceFormat.Vector4 */
+	GL_RED,				/* SurfaceFormat.HalfSingle */
+	GL_RG,				/* SurfaceFormat.HalfVector2 */
+	GL_RGBA,			/* SurfaceFormat.HalfVector4 */
+	GL_RGBA,			/* SurfaceFormat.HdrBlendable */
+	GL_BGRA,			/* SurfaceFormat.ColorBgraEXT */
 };
 
 static int32_t XNAToGL_TextureInternalFormat[] =
 {
-	GL_RGBA8,				// SurfaceFormat.Color
-	GL_RGB8,				// SurfaceFormat.Bgr565
-	GL_RGB5_A1,				// SurfaceFormat.Bgra5551
-	GL_RGBA4,				// SurfaceFormat.Bgra4444
-	GL_COMPRESSED_RGBA_S3TC_DXT1_EXT,	// SurfaceFormat.Dxt1
-	GL_COMPRESSED_RGBA_S3TC_DXT3_EXT,	// SurfaceFormat.Dxt3
-	GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,	// SurfaceFormat.Dxt5
-	GL_RG8,					// SurfaceFormat.NormalizedByte2
-	GL_RGBA8,				// SurfaceFormat.NormalizedByte4
-	GL_RGB10_A2_EXT,			// SurfaceFormat.Rgba1010102
-	GL_RG16,				// SurfaceFormat.Rg32
-	GL_RGBA16,				// SurfaceFormat.Rgba64
-	GL_ALPHA,				// SurfaceFormat.Alpha8
-	GL_R32F,				// SurfaceFormat.Single
-	GL_RG32F,				// SurfaceFormat.Vector2
-	GL_RGBA32F,				// SurfaceFormat.Vector4
-	GL_R16F,				// SurfaceFormat.HalfSingle
-	GL_RG16F,				// SurfaceFormat.HalfVector2
-	GL_RGBA16F,				// SurfaceFormat.HalfVector4
-	GL_RGBA16F,				// SurfaceFormat.HdrBlendable
-	GL_RGBA8				// SurfaceFormat.ColorBgraEXT
+	GL_RGBA8,				/* SurfaceFormat.Color */
+	GL_RGB8,				/* SurfaceFormat.Bgr565 */
+	GL_RGB5_A1,				/* SurfaceFormat.Bgra5551 */
+	GL_RGBA4,				/* SurfaceFormat.Bgra4444 */
+	GL_COMPRESSED_RGBA_S3TC_DXT1_EXT,	/* SurfaceFormat.Dxt1 */
+	GL_COMPRESSED_RGBA_S3TC_DXT3_EXT,	/* SurfaceFormat.Dxt3 */
+	GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,	/* SurfaceFormat.Dxt5 */
+	GL_RG8,					/* SurfaceFormat.NormalizedByte2 */
+	GL_RGBA8,				/* SurfaceFormat.NormalizedByte4 */
+	GL_RGB10_A2_EXT,			/* SurfaceFormat.Rgba1010102 */
+	GL_RG16,				/* SurfaceFormat.Rg32 */
+	GL_RGBA16,				/* SurfaceFormat.Rgba64 */
+	GL_ALPHA,				/* SurfaceFormat.Alpha8 */
+	GL_R32F,				/* SurfaceFormat.Single */
+	GL_RG32F,				/* SurfaceFormat.Vector2 */
+	GL_RGBA32F,				/* SurfaceFormat.Vector4 */
+	GL_R16F,				/* SurfaceFormat.HalfSingle */
+	GL_RG16F,				/* SurfaceFormat.HalfVector2 */
+	GL_RGBA16F,				/* SurfaceFormat.HalfVector4 */
+	GL_RGBA16F,				/* SurfaceFormat.HdrBlendable */
+	GL_RGBA8				/* SurfaceFormat.ColorBgraEXT */
 };
 
 static int32_t XNAToGL_TextureDataType[] =
 {
-	GL_UNSIGNED_BYTE,		// SurfaceFormat.Color
-	GL_UNSIGNED_SHORT_5_6_5,	// SurfaceFormat.Bgr565
-	GL_UNSIGNED_SHORT_5_5_5_1_REV,	// SurfaceFormat.Bgra5551
-	GL_UNSIGNED_SHORT_4_4_4_4_REV,	// SurfaceFormat.Bgra4444
-	GL_ZERO,			// NOPE
-	GL_ZERO,			// NOPE
-	GL_ZERO,			// NOPE
-	GL_BYTE,			// SurfaceFormat.NormalizedByte2
-	GL_BYTE,			// SurfaceFormat.NormalizedByte4
-	GL_UNSIGNED_INT_2_10_10_10_REV,	// SurfaceFormat.Rgba1010102
-	GL_UNSIGNED_SHORT,		// SurfaceFormat.Rg32
-	GL_UNSIGNED_SHORT,		// SurfaceFormat.Rgba64
-	GL_UNSIGNED_BYTE,		// SurfaceFormat.Alpha8
-	GL_FLOAT,			// SurfaceFormat.Single
-	GL_FLOAT,			// SurfaceFormat.Vector2
-	GL_FLOAT,			// SurfaceFormat.Vector4
-	GL_HALF_FLOAT,			// SurfaceFormat.HalfSingle
-	GL_HALF_FLOAT,			// SurfaceFormat.HalfVector2
-	GL_HALF_FLOAT,			// SurfaceFormat.HalfVector4
-	GL_HALF_FLOAT,			// SurfaceFormat.HdrBlendable
-	GL_UNSIGNED_BYTE		// SurfaceFormat.ColorBgraEXT
+	GL_UNSIGNED_BYTE,		/* SurfaceFormat.Color */
+	GL_UNSIGNED_SHORT_5_6_5,	/* SurfaceFormat.Bgr565 */
+	GL_UNSIGNED_SHORT_5_5_5_1_REV,	/* SurfaceFormat.Bgra5551 */
+	GL_UNSIGNED_SHORT_4_4_4_4_REV,	/* SurfaceFormat.Bgra4444 */
+	GL_ZERO,			/* NOPE */
+	GL_ZERO,			/* NOPE */
+	GL_ZERO,			/* NOPE */
+	GL_BYTE,			/* SurfaceFormat.NormalizedByte2 */
+	GL_BYTE,			/* SurfaceFormat.NormalizedByte4 */
+	GL_UNSIGNED_INT_2_10_10_10_REV,	/* SurfaceFormat.Rgba1010102 */
+	GL_UNSIGNED_SHORT,		/* SurfaceFormat.Rg32 */
+	GL_UNSIGNED_SHORT,		/* SurfaceFormat.Rgba64 */
+	GL_UNSIGNED_BYTE,		/* SurfaceFormat.Alpha8 */
+	GL_FLOAT,			/* SurfaceFormat.Single */
+	GL_FLOAT,			/* SurfaceFormat.Vector2 */
+	GL_FLOAT,			/* SurfaceFormat.Vector4 */
+	GL_HALF_FLOAT,			/* SurfaceFormat.HalfSingle */
+	GL_HALF_FLOAT,			/* SurfaceFormat.HalfVector2 */
+	GL_HALF_FLOAT,			/* SurfaceFormat.HalfVector4 */
+	GL_HALF_FLOAT,			/* SurfaceFormat.HdrBlendable */
+	GL_UNSIGNED_BYTE		/* SurfaceFormat.ColorBgraEXT */
 };
 
 static int32_t XNAToGL_BlendMode[] =
 {
-	GL_ONE,				// Blend.One
-	GL_ZERO,			// Blend.Zero
-	GL_SRC_COLOR,			// Blend.SourceColor
-	GL_ONE_MINUS_SRC_COLOR,		// Blend.InverseSourceColor
-	GL_SRC_ALPHA,			// Blend.SourceAlpha
-	GL_ONE_MINUS_SRC_ALPHA,		// Blend.InverseSourceAlpha
-	GL_DST_COLOR,			// Blend.DestinationColor
-	GL_ONE_MINUS_DST_COLOR,		// Blend.InverseDestinationColor
-	GL_DST_ALPHA,			// Blend.DestinationAlpha
-	GL_ONE_MINUS_DST_ALPHA,		// Blend.InverseDestinationAlpha
-	GL_CONSTANT_COLOR,		// Blend.BlendFactor
-	GL_ONE_MINUS_CONSTANT_COLOR,	// Blend.InverseBlendFactor
-	GL_SRC_ALPHA_SATURATE		// Blend.SourceAlphaSaturation
+	GL_ONE,				/* Blend.One */
+	GL_ZERO,			/* Blend.Zero */
+	GL_SRC_COLOR,			/* Blend.SourceColor */
+	GL_ONE_MINUS_SRC_COLOR,		/* Blend.InverseSourceColor */
+	GL_SRC_ALPHA,			/* Blend.SourceAlpha */
+	GL_ONE_MINUS_SRC_ALPHA,		/* Blend.InverseSourceAlpha */
+	GL_DST_COLOR,			/* Blend.DestinationColor */
+	GL_ONE_MINUS_DST_COLOR,		/* Blend.InverseDestinationColor */
+	GL_DST_ALPHA,			/* Blend.DestinationAlpha */
+	GL_ONE_MINUS_DST_ALPHA,		/* Blend.InverseDestinationAlpha */
+	GL_CONSTANT_COLOR,		/* Blend.BlendFactor */
+	GL_ONE_MINUS_CONSTANT_COLOR,	/* Blend.InverseBlendFactor */
+	GL_SRC_ALPHA_SATURATE		/* Blend.SourceAlphaSaturation */
 };
 
 static int32_t XNAToGL_BlendEquation[] =
 {
-	GL_FUNC_ADD,			// BlendFunction.Add
-	GL_FUNC_SUBTRACT,		// BlendFunction.Subtract
-	GL_FUNC_REVERSE_SUBTRACT,	// BlendFunction.ReverseSubtract
-	GL_MAX,				// BlendFunction.Max
-	GL_MIN				// BlendFunction.Min
+	GL_FUNC_ADD,			/* BlendFunction.Add */
+	GL_FUNC_SUBTRACT,		/* BlendFunction.Subtract */
+	GL_FUNC_REVERSE_SUBTRACT,	/* BlendFunction.ReverseSubtract */
+	GL_MAX,				/* BlendFunction.Max */
+	GL_MIN				/* BlendFunction.Min */
 };
 
 static int32_t XNAToGL_CompareFunc[] =
 {
-	GL_ALWAYS,	// CompareFunction.Always
-	GL_NEVER,	// CompareFunction.Never
-	GL_LESS,	// CompareFunction.Less
-	GL_LEQUAL,	// CompareFunction.LessEqual
-	GL_EQUAL,	// CompareFunction.Equal
-	GL_GEQUAL,	// CompareFunction.GreaterEqual
-	GL_GREATER,	// CompareFunction.Greater
-	GL_NOTEQUAL	// CompareFunction.NotEqual
+	GL_ALWAYS,	/* CompareFunction.Always */
+	GL_NEVER,	/* CompareFunction.Never */
+	GL_LESS,	/* CompareFunction.Less */
+	GL_LEQUAL,	/* CompareFunction.LessEqual */
+	GL_EQUAL,	/* CompareFunction.Equal */
+	GL_GEQUAL,	/* CompareFunction.GreaterEqual */
+	GL_GREATER,	/* CompareFunction.Greater */
+	GL_NOTEQUAL	/* CompareFunction.NotEqual */
 };
 
 static int32_t XNAToGL_GLStencilOp[] =
 {
-	GL_KEEP,	// StencilOperation.Keep
-	GL_ZERO,	// StencilOperation.Zero
-	GL_REPLACE,	// StencilOperation.Replace
-	GL_INCR_WRAP,	// StencilOperation.Increment
-	GL_DECR_WRAP,	// StencilOperation.Decrement
-	GL_INCR,	// StencilOperation.IncrementSaturation
-	GL_DECR,	// StencilOperation.DecrementSaturation
-	GL_INVERT	// StencilOperation.Invert
+	GL_KEEP,	/* StencilOperation.Keep */
+	GL_ZERO,	/* StencilOperation.Zero */
+	GL_REPLACE,	/* StencilOperation.Replace */
+	GL_INCR_WRAP,	/* StencilOperation.Increment */
+	GL_DECR_WRAP,	/* StencilOperation.Decrement */
+	GL_INCR,	/* StencilOperation.IncrementSaturation */
+	GL_DECR,	/* StencilOperation.DecrementSaturation */
+	GL_INVERT	/* StencilOperation.Invert */
 };
 
 static int32_t XNAToGL_FrontFace[] =
 {
-	GL_ZERO,	// NOPE
-	GL_CW,		// CullMode.CullClockwiseFace
-	GL_CCW		// CullMode.CullCounterClockwiseFace
+	GL_ZERO,	/* NOPE */
+	GL_CW,		/* CullMode.CullClockwiseFace */
+	GL_CCW		/* CullMode.CullCounterClockwiseFace */
 };
 
 static int32_t XNAToGL_GLFillMode[] =
 {
-	GL_FILL,	// FillMode.Solid
-	GL_LINE		// FillMode.WireFrame
+	GL_FILL,	/* FillMode.Solid */
+	GL_LINE		/* FillMode.WireFrame */
 };
 
 static int32_t XNAToGL_Wrap[] =
 {
-	GL_REPEAT,		// TextureAddressMode.Wrap
-	GL_CLAMP_TO_EDGE,	// TextureAddressMode.Clamp
-	GL_MIRRORED_REPEAT	// TextureAddressMode.Mirror
+	GL_REPEAT,		/* TextureAddressMode.Wrap */
+	GL_CLAMP_TO_EDGE,	/* TextureAddressMode.Clamp */
+	GL_MIRRORED_REPEAT	/* TextureAddressMode.Mirror */
 };
 
 static int32_t XNAToGL_MagFilter[] =
 {
-	GL_LINEAR,	// TextureFilter.Linear
-	GL_NEAREST,	// TextureFilter.Point
-	GL_LINEAR,	// TextureFilter.Anisotropic
-	GL_LINEAR,	// TextureFilter.LinearMipPoint
-	GL_NEAREST,	// TextureFilter.PointMipLinear
-	GL_NEAREST,	// TextureFilter.MinLinearMagPointMipLinear
-	GL_NEAREST,	// TextureFilter.MinLinearMagPointMipPoint
-	GL_LINEAR,	// TextureFilter.MinPointMagLinearMipLinear
-	GL_LINEAR	// TextureFilter.MinPointMagLinearMipPoint
+	GL_LINEAR,	/* TextureFilter.Linear */
+	GL_NEAREST,	/* TextureFilter.Point */
+	GL_LINEAR,	/* TextureFilter.Anisotropic */
+	GL_LINEAR,	/* TextureFilter.LinearMipPoint */
+	GL_NEAREST,	/* TextureFilter.PointMipLinear */
+	GL_NEAREST,	/* TextureFilter.MinLinearMagPointMipLinear */
+	GL_NEAREST,	/* TextureFilter.MinLinearMagPointMipPoint */
+	GL_LINEAR,	/* TextureFilter.MinPointMagLinearMipLinear */
+	GL_LINEAR	/* TextureFilter.MinPointMagLinearMipPoint */
 };
 
 static int32_t XNAToGL_MinMipFilter[] =
 {
-	GL_LINEAR_MIPMAP_LINEAR,	// TextureFilter.Linear
-	GL_NEAREST_MIPMAP_NEAREST,	// TextureFilter.Point
-	GL_LINEAR_MIPMAP_LINEAR,	// TextureFilter.Anisotropic
-	GL_LINEAR_MIPMAP_NEAREST,	// TextureFilter.LinearMipPoint
-	GL_NEAREST_MIPMAP_LINEAR,	// TextureFilter.PointMipLinear
-	GL_LINEAR_MIPMAP_LINEAR,	// TextureFilter.MinLinearMagPointMipLinear
-	GL_LINEAR_MIPMAP_NEAREST,	// TextureFilter.MinLinearMagPointMipPoint
-	GL_NEAREST_MIPMAP_LINEAR,	// TextureFilter.MinPointMagLinearMipLinear
-	GL_NEAREST_MIPMAP_NEAREST	// TextureFilter.MinPointMagLinearMipPoint
+	GL_LINEAR_MIPMAP_LINEAR,	/* TextureFilter.Linear */
+	GL_NEAREST_MIPMAP_NEAREST,	/* TextureFilter.Point */
+	GL_LINEAR_MIPMAP_LINEAR,	/* TextureFilter.Anisotropic */
+	GL_LINEAR_MIPMAP_NEAREST,	/* TextureFilter.LinearMipPoint */
+	GL_NEAREST_MIPMAP_LINEAR,	/* TextureFilter.PointMipLinear */
+	GL_LINEAR_MIPMAP_LINEAR,	/* TextureFilter.MinLinearMagPointMipLinear */
+	GL_LINEAR_MIPMAP_NEAREST,	/* TextureFilter.MinLinearMagPointMipPoint */
+	GL_NEAREST_MIPMAP_LINEAR,	/* TextureFilter.MinPointMagLinearMipLinear */
+	GL_NEAREST_MIPMAP_NEAREST	/* TextureFilter.MinPointMagLinearMipPoint */
 };
 
 static int32_t XNAToGL_MinFilter[] =
 {
-	GL_LINEAR,	// TextureFilter.Linear
-	GL_NEAREST,	// TextureFilter.Point
-	GL_LINEAR,	// TextureFilter.Anisotropic
-	GL_LINEAR,	// TextureFilter.LinearMipPoint
-	GL_NEAREST,	// TextureFilter.PointMipLinear
-	GL_LINEAR,	// TextureFilter.MinLinearMagPointMipLinear
-	GL_LINEAR,	// TextureFilter.MinLinearMagPointMipPoint
-	GL_NEAREST,	// TextureFilter.MinPointMagLinearMipLinear
-	GL_NEAREST	// TextureFilter.MinPointMagLinearMipPoint
+	GL_LINEAR,	/* TextureFilter.Linear */
+	GL_NEAREST,	/* TextureFilter.Point */
+	GL_LINEAR,	/* TextureFilter.Anisotropic */
+	GL_LINEAR,	/* TextureFilter.LinearMipPoint */
+	GL_NEAREST,	/* TextureFilter.PointMipLinear */
+	GL_LINEAR,	/* TextureFilter.MinLinearMagPointMipLinear */
+	GL_LINEAR,	/* TextureFilter.MinLinearMagPointMipPoint */
+	GL_NEAREST,	/* TextureFilter.MinPointMagLinearMipLinear */
+	GL_NEAREST	/* TextureFilter.MinPointMagLinearMipPoint */
 };
 
 static int32_t XNAToGL_DepthStencilAttachment[] =
 {
-	GL_ZERO,			// NOPE
-	GL_DEPTH_ATTACHMENT,		// DepthFormat.Depth16
-	GL_DEPTH_ATTACHMENT,		// DepthFormat.Depth24
-	GL_DEPTH_STENCIL_ATTACHMENT	// DepthFormat.Depth24Stencil8
+	GL_ZERO,			/* NOPE */
+	GL_DEPTH_ATTACHMENT,		/* DepthFormat.Depth16 */
+	GL_DEPTH_ATTACHMENT,		/* DepthFormat.Depth24 */
+	GL_DEPTH_STENCIL_ATTACHMENT	/* DepthFormat.Depth24Stencil8 */
 };
 
 static int32_t XNAToGL_DepthStorage[] =
 {
-	GL_ZERO,		// NOPE
-	GL_DEPTH_COMPONENT16,	// DepthFormat.Depth16
-	GL_DEPTH_COMPONENT24,	// DepthFormat.Depth24
-	GL_DEPTH24_STENCIL8	// DepthFormat.Depth24Stencil8
+	GL_ZERO,		/* NOPE */
+	GL_DEPTH_COMPONENT16,	/* DepthFormat.Depth16 */
+	GL_DEPTH_COMPONENT24,	/* DepthFormat.Depth24 */
+	GL_DEPTH24_STENCIL8	/* DepthFormat.Depth24Stencil8 */
 };
 
 static float XNAToGL_DepthBiasScale[] =
 {
-	0.0f,				// DepthFormat.None
-	(float) ((1 << 16) - 1),	// DepthFormat.Depth16
-	(float) ((1 << 24) - 1),	// DepthFormat.Depth24
-	(float) ((1 << 24) - 1)		// DepthFormat.Depth24Stencil8
+	0.0f,				/* DepthFormat.None */
+	(float) ((1 << 16) - 1),	/* DepthFormat.Depth16 */
+	(float) ((1 << 24) - 1),	/* DepthFormat.Depth24 */
+	(float) ((1 << 24) - 1)		/* DepthFormat.Depth24Stencil8 */
 };
 
 static MOJOSHADER_usage XNAToGL_VertexAttribUsage[] =
 {
-	MOJOSHADER_USAGE_POSITION,	// VertexElementUsage.Position
-	MOJOSHADER_USAGE_COLOR,		// VertexElementUsage.Color
-	MOJOSHADER_USAGE_TEXCOORD,	// VertexElementUsage.TextureCoordinate
-	MOJOSHADER_USAGE_NORMAL,	// VertexElementUsage.Normal
-	MOJOSHADER_USAGE_BINORMAL,	// VertexElementUsage.Binormal
-	MOJOSHADER_USAGE_TANGENT,	// VertexElementUsage.Tangent
-	MOJOSHADER_USAGE_BLENDINDICES,	// VertexElementUsage.BlendIndices
-	MOJOSHADER_USAGE_BLENDWEIGHT,	// VertexElementUsage.BlendWeight
-	MOJOSHADER_USAGE_DEPTH,		// VertexElementUsage.Depth
-	MOJOSHADER_USAGE_FOG,		// VertexElementUsage.Fog
-	MOJOSHADER_USAGE_POINTSIZE,	// VertexElementUsage.PointSize
-	MOJOSHADER_USAGE_SAMPLE,	// VertexElementUsage.Sample
-	MOJOSHADER_USAGE_TESSFACTOR	// VertexElementUsage.TessellateFactor
+	MOJOSHADER_USAGE_POSITION,	/* VertexElementUsage.Position */
+	MOJOSHADER_USAGE_COLOR,		/* VertexElementUsage.Color */
+	MOJOSHADER_USAGE_TEXCOORD,	/* VertexElementUsage.TextureCoordinate */
+	MOJOSHADER_USAGE_NORMAL,	/* VertexElementUsage.Normal */
+	MOJOSHADER_USAGE_BINORMAL,	/* VertexElementUsage.Binormal */
+	MOJOSHADER_USAGE_TANGENT,	/* VertexElementUsage.Tangent */
+	MOJOSHADER_USAGE_BLENDINDICES,	/* VertexElementUsage.BlendIndices */
+	MOJOSHADER_USAGE_BLENDWEIGHT,	/* VertexElementUsage.BlendWeight */
+	MOJOSHADER_USAGE_DEPTH,		/* VertexElementUsage.Depth */
+	MOJOSHADER_USAGE_FOG,		/* VertexElementUsage.Fog */
+	MOJOSHADER_USAGE_POINTSIZE,	/* VertexElementUsage.PointSize */
+	MOJOSHADER_USAGE_SAMPLE,	/* VertexElementUsage.Sample */
+	MOJOSHADER_USAGE_TESSFACTOR	/* VertexElementUsage.TessellateFactor */
 };
 
 static int32_t XNAToGL_VertexAttribSize[] =
 {
-	1,	// VertexElementFormat.Single
-	2,	// VertexElementFormat.Vector2
-	3,	// VertexElementFormat.Vector3
-	4,	// VertexElementFormat.Vector4
-	4,	// VertexElementFormat.Color
-	4,	// VertexElementFormat.Byte4
-	2,	// VertexElementFormat.Short2
-	4,	// VertexElementFormat.Short4
-	2,	// VertexElementFormat.NormalizedShort2
-	4,	// VertexElementFormat.NormalizedShort4
-	2,	// VertexElementFormat.HalfVector2
-	4	// VertexElementFormat.HalfVector4
+	1,	/* VertexElementFormat.Single */
+	2,	/* VertexElementFormat.Vector2 */
+	3,	/* VertexElementFormat.Vector3 */
+	4,	/* VertexElementFormat.Vector4 */
+	4,	/* VertexElementFormat.Color */
+	4,	/* VertexElementFormat.Byte4 */
+	2,	/* VertexElementFormat.Short2 */
+	4,	/* VertexElementFormat.Short4 */
+	2,	/* VertexElementFormat.NormalizedShort2 */
+	4,	/* VertexElementFormat.NormalizedShort4 */
+	2,	/* VertexElementFormat.HalfVector2 */
+	4	/* VertexElementFormat.HalfVector4 */
 };
 
 static int32_t XNAToGL_VertexAttribType[] =
 {
-	GL_FLOAT,		// VertexElementFormat.Single
-	GL_FLOAT,		// VertexElementFormat.Vector2
-	GL_FLOAT,		// VertexElementFormat.Vector3
-	GL_FLOAT,		// VertexElementFormat.Vector4
-	GL_UNSIGNED_BYTE,	// VertexElementFormat.Color
-	GL_UNSIGNED_BYTE,	// VertexElementFormat.Byte4
-	GL_SHORT,		// VertexElementFormat.Short2
-	GL_SHORT,		// VertexElementFormat.Short4
-	GL_SHORT,		// VertexElementFormat.NormalizedShort2
-	GL_SHORT,		// VertexElementFormat.NormalizedShort4
-	GL_HALF_FLOAT,		// VertexElementFormat.HalfVector2
-	GL_HALF_FLOAT		// VertexElementFormat.HalfVector4
+	GL_FLOAT,		/* VertexElementFormat.Single */
+	GL_FLOAT,		/* VertexElementFormat.Vector2 */
+	GL_FLOAT,		/* VertexElementFormat.Vector3 */
+	GL_FLOAT,		/* VertexElementFormat.Vector4 */
+	GL_UNSIGNED_BYTE,	/* VertexElementFormat.Color */
+	GL_UNSIGNED_BYTE,	/* VertexElementFormat.Byte4 */
+	GL_SHORT,		/* VertexElementFormat.Short2 */
+	GL_SHORT,		/* VertexElementFormat.Short4 */
+	GL_SHORT,		/* VertexElementFormat.NormalizedShort2 */
+	GL_SHORT,		/* VertexElementFormat.NormalizedShort4 */
+	GL_HALF_FLOAT,		/* VertexElementFormat.HalfVector2 */
+	GL_HALF_FLOAT		/* VertexElementFormat.HalfVector4 */
 };
 
 static uint8_t XNAToGL_VertexAttribNormalized(FNA3D_VertexElement *element)
@@ -479,23 +479,23 @@ static uint8_t XNAToGL_VertexAttribNormalized(FNA3D_VertexElement *element)
 
 static int32_t XNAToGL_IndexType[] =
 {
-	GL_UNSIGNED_SHORT,	// IndexElementSize.SixteenBits
-	GL_UNSIGNED_INT		// IndexElementSize.ThirtyTwoBits
+	GL_UNSIGNED_SHORT,	/* IndexElementSize.SixteenBits */
+	GL_UNSIGNED_INT		/* IndexElementSize.ThirtyTwoBits */
 };
 
 static int32_t XNAToGL_IndexSize[] =
 {
-	2,	// IndexElementSize.SixteenBits
-	4	// IndexElementSize.ThirtyTwoBits
+	2,	/* IndexElementSize.SixteenBits */
+	4	/* IndexElementSize.ThirtyTwoBits */
 };
 
 static int32_t XNAToGL_Primitive[] =
 {
-	GL_TRIANGLES,		// PrimitiveType.TriangleList
-	GL_TRIANGLE_STRIP,	// PrimitiveType.TriangleStrip
-	GL_LINES,		// PrimitiveType.LineList
-	GL_LINE_STRIP,		// PrimitiveType.LineStrip
-	GL_POINTS		// PrimitiveType.PointListEXT
+	GL_TRIANGLES,		/* PrimitiveType.TriangleList */
+	GL_TRIANGLE_STRIP,	/* PrimitiveType.TriangleStrip */
+	GL_LINES,		/* PrimitiveType.LineList */
+	GL_LINE_STRIP,		/* PrimitiveType.LineStrip */
+	GL_POINTS		/* PrimitiveType.PointListEXT */
 };
 
 static int32_t XNAToGL_PrimitiveVerts(
