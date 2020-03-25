@@ -2441,6 +2441,11 @@ uint8_t OPENGL_PrepareWindowAttributes(uint8_t debugMode, uint32_t *flags)
 	return 1;
 }
 
+void OPENGL_GetDrawableSize(void* window, int32_t *x, int32_t *y)
+{
+	/* TODO: See SDL2_FNAPlatform.CreateWindow */
+}
+
 FNA3D_Device* OPENGL_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
@@ -2717,6 +2722,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 FNA3D_Driver OpenGLDriver = {
 	"OpenGL",
 	OPENGL_PrepareWindowAttributes,
+	OPENGL_GetDrawableSize,
 	OPENGL_CreateDevice
 };
 

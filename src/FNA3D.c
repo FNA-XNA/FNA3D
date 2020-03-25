@@ -94,6 +94,20 @@ uint32_t FNA3D_PrepareWindowAttributes(uint8_t debugMode)
 	return result;
 }
 
+FNA3DAPI void FNA3D_GetDrawableSize(void* window, int32_t *x, int32_t *y)
+{
+	if (selectedDriver < 0)
+	{
+		SDL_LogError(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"Call FNA3D_PrepareWindowAttributes first!"
+		);
+		return;
+	}
+
+	drivers[selectedDriver]->GetDrawableSize(window, x, y);
+}
+
 FNA3D_Device* FNA3D_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
