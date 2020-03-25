@@ -197,6 +197,9 @@ typedef struct OpenGLDevice /* Cast from driverData */
 	uint32_t stencilWriteMask;
 	uint8_t togglePointSprite;
 
+	/* Threading */
+	SDL_threadID threadID;
+
 	/* GL entry points */
 	glfntype_glGetString glGetString; /* Loaded early! */
 	#define GL_PROC(ext, ret, func, parms) \
@@ -784,7 +787,6 @@ void OPENGL_DestroyDevice(FNA3D_Device *device)
 	MOJOSHADER_glMakeContextCurrent(NULL);
 	MOJOSHADER_glDestroyContext(glDevice->shaderContext);
 
-	/* TODO: Delete threaded background context */
 	SDL_GL_DeleteContext(glDevice->context);
 
 	SDL_free(glDevice);
@@ -2161,8 +2163,6 @@ FNA3D_Device* OPENGL_CreateDevice(
 		device->realBackbufferRBO = 0;
 	}
 
-	/* TODO: Init threaded GL crap where applicable */
-
 	/* Print GL information */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
@@ -2364,6 +2364,9 @@ FNA3D_Device* OPENGL_CreateDevice(
 		}
 		device->glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, 1);
 	}
+
+	/* The creation thread will be the "main" thread */
+	device->threadID = SDL_ThreadID();
 
 	/* Set up and return the FNA3D_Device */
 	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
