@@ -51,6 +51,7 @@ typedef struct OpenGLTexture /* Cast from FNA3D_Texture* */
 typedef struct OpenGLBuffer /* Cast from FNA3D_Buffer* */
 {
 	GLuint handle;
+	intptr_t size;
 } OpenGLBuffer;
 
 typedef struct OpenGLRenderbuffer /* Cast from FNA3D_Renderbuffer* */
@@ -60,7 +61,8 @@ typedef struct OpenGLRenderbuffer /* Cast from FNA3D_Renderbuffer* */
 
 typedef struct OpenGLEffect /* Cast from FNA3D_Effect* */
 {
-	uint8_t filler;
+	MOJOSHADER_effect *effect;
+	MOJOSHADER_glEffect *glEffect;
 } OpenGLEffect;
 
 typedef struct OpenGLQuery /* Cast from FNA3D_Query* */
@@ -2045,16 +2047,14 @@ static void GLAPIENTRY DebugCall(
 
 intptr_t OPENGL_GetBufferSize(FNA3D_Buffer *buffer)
 {
-	/* TODO */
-	return 0;
+	return ((OpenGLBuffer*) buffer)->size;
 }
 
 /* Effect Objects */
 
-void* OPENGL_GetEffectData(FNA3D_Effect *effect)
+MOJOSHADER_effect* OPENGL_GetEffectData(FNA3D_Effect *effect)
 {
-	/* TODO */
-	return NULL;
+	return ((OpenGLEffect*) effect)->effect;
 }
 
 /* Backbuffer Objects */

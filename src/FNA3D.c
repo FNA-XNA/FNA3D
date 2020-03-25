@@ -1291,7 +1291,7 @@ intptr_t FNA3D_GetBufferSize(
 
 /* Effect Objects */
 
-void* FNA3D_GetEffectData(
+MOJOSHADER_effect* FNA3D_GetEffectData(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect
 ) {

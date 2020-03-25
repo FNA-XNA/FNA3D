@@ -798,6 +798,7 @@ FNA3DAPI void FNA3D_GetIndexBufferData(
 
 /* Effects */
 
+typedef struct MOJOSHADER_effect MOJOSHADER_effect;
 typedef struct MOJOSHADER_effectTechnique MOJOSHADER_effectTechnique;
 typedef struct MOJOSHADER_effectStateChanges MOJOSHADER_effectStateChanges;
 
@@ -867,7 +868,7 @@ FNA3DAPI intptr_t FNA3D_GetBufferSize(
 
 /* Effect Objects */
 
-FNA3DAPI void* FNA3D_GetEffectData(
+FNA3DAPI MOJOSHADER_effect* FNA3D_GetEffectData(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect
 );

@@ -480,7 +480,7 @@ struct FNA3D_Device
 
 	/* Effect Objects */
 
-	void* (*GetEffectData)(FNA3D_Effect *effect);
+	MOJOSHADER_effect* (*GetEffectData)(FNA3D_Effect *effect);
 
 	/* Backbuffer Objects */
 
