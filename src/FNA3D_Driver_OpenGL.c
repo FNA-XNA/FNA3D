@@ -550,11 +550,13 @@ static void BindFramebuffer(OpenGLDevice *device, GLuint handle)
 	}
 	else if (device->currentReadFramebuffer != handle)
 	{
-		BindReadFramebuffer(device, handle);
+		device->glBindFramebuffer(GL_READ_FRAMEBUFFER, handle);
+		device->currentReadFramebuffer = handle;
 	}
 	else if (device->currentDrawFramebuffer != handle)
 	{
-		BindDrawFramebuffer(device, handle);
+		device->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, handle);
+		device->currentDrawFramebuffer = handle;
 	}
 }
 
