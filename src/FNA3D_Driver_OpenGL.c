@@ -217,7 +217,19 @@ typedef struct OpenGLDevice /* Cast from driverData */
 	int32_t currentClearStencil;
 
 	/* Blend State */
+	uint8_t alphaBlendEnable;// = false;
+	FNA3D_Color blendColor;// = Color.Transparent;
+	FNA3D_BlendFunction blendOp;// = BlendFunction.Add;
+	FNA3D_BlendFunction blendOpAlpha;// = BlendFunction.Add;
+	FNA3D_Blend srcBlend;// = Blend.One;
+	FNA3D_Blend dstBlend;// = Blend.Zero;
+	FNA3D_Blend srcBlendAlpha;// = Blend.One;
+	FNA3D_Blend dstBlendAlpha;// = Blend.Zero;
 	FNA3D_ColorWriteChannels colorWriteEnable;
+	FNA3D_ColorWriteChannels colorWriteEnable1;// = ColorWriteChannels.All;
+	FNA3D_ColorWriteChannels colorWriteEnable2;// = ColorWriteChannels.All;
+	FNA3D_ColorWriteChannels colorWriteEnable3;// = ColorWriteChannels.All;
+	int multisampleMask;// = -1; // AKA 0xFFFFFFFF
 
 	/* Depth Stencil State */
 	uint8_t zWriteEnable;
@@ -1159,14 +1171,32 @@ void OPENGL_GetBlendFactor(
 	void* driverData,
 	FNA3D_Color *blendFactor
 ) {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	SDL_memcpy(blendFactor, &device->blendColor, sizeof(FNA3D_Color));
 }
 
 void OPENGL_SetBlendFactor(
 	void* driverData,
 	FNA3D_Color *blendFactor
 ) {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+
+	if(		device->blendColor.r != blendFactor->r
+		||	device->blendColor.g != blendFactor->g
+		||	device->blendColor.b != blendFactor->b
+		||	device->blendColor.a != blendFactor->a
+	) {
+		device->blendColor.r = blendFactor->r;
+		device->blendColor.g = blendFactor->g;
+		device->blendColor.b = blendFactor->b;
+		device->blendColor.a = blendFactor->a;
+		device->glBlendColor(
+			device->blendColor.r / 255.0f,
+			device->blendColor.g / 255.0f,
+			device->blendColor.b / 255.0f,
+			device->blendColor.a / 255.0f
+		);
+	}
 }
 
 int32_t OPENGL_GetMultiSampleMask(void* driverData)
