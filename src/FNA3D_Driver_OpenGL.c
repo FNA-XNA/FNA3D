@@ -186,6 +186,13 @@ typedef struct OpenGLDevice /* Cast from driverData */
 	GLuint currentReadFramebuffer;
 	GLuint currentDrawFramebuffer;
 
+	/* Rasterizer State Variables */
+	FNA3D_CullMode cullFrontFace;
+	FNA3D_FillMode fillMode;
+	float depthBias;
+	float slopeScaleDepthBias;
+	uint8_t multiSampleEnable;
+
 	/* MojoShader Interop */
 	const char *shaderProfile;
 	MOJOSHADER_glContext *shaderContext;
@@ -614,6 +621,21 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 static void OPENGL_INTERNAL_DisposeBackbuffer(OpenGLDevice *device);
 
 /* Device Implementation */
+void OPENGL_ToggleGLState(
+	void* driverData,
+	GLenum feature,
+	uint8_t enable
+) {
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	if (enable)
+	{
+		device->glEnable(feature);
+	}
+	else
+	{
+		device->glDisable(feature);
+	}
+}
 
 /* Quit */
 
@@ -1195,7 +1217,109 @@ void OPENGL_ApplyRasterizerState(
 	void* driverData,
 	FNA3D_RasterizerState *rasterizerState
 ) {
-	/* TODO */
+	/* VALIDATE */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	if (rasterizerState->scissorTestEnable != device->scissorTestEnable)
+	{
+		device->scissorTestEnable = rasterizerState->scissorTestEnable;
+		OPENGL_ToggleGLState(driverData, GL_SCISSOR_TEST, device->scissorTestEnable);
+	}
+
+	FNA3D_CullMode actualMode;
+	if (device->renderTargetBound)
+	{
+		actualMode = rasterizerState->cullMode;
+	}
+	else
+	{
+		// When not rendering offscreen the faces change order.
+		if (rasterizerState->cullMode == FNA3D_CULLMODE_NONE)
+		{
+			actualMode = rasterizerState->cullMode;
+		}
+		else
+		{
+			actualMode = (
+				rasterizerState->cullMode == FNA3D_CULLMODE_CULLCLOCKWISEFACE ?
+					FNA3D_CULLMODE_CULLCOUNTERCLOCKWISEFACE :
+					FNA3D_CULLMODE_CULLCLOCKWISEFACE
+			);
+		}
+	}
+	if (actualMode !=  device->cullFrontFace)
+	{
+		if ((actualMode == FNA3D_CULLMODE_NONE) != (device->cullFrontFace == FNA3D_CULLMODE_NONE))
+		{
+			OPENGL_ToggleGLState(driverData, GL_CULL_FACE, actualMode != FNA3D_CULLMODE_NONE);
+		}
+		device->cullFrontFace = actualMode;
+		if (device->cullFrontFace != FNA3D_CULLMODE_NONE)
+		{
+			device->glFrontFace(XNAToGL_FrontFace[(int) device->cullFrontFace]);
+		}
+	}
+
+	if (rasterizerState->fillMode != device->fillMode)
+	{
+		device->fillMode = rasterizerState->fillMode;
+		device->glPolygonMode(
+			GL_FRONT_AND_BACK,
+			XNAToGL_GLFillMode[(int) device->fillMode]
+		);
+	}
+
+	// FIXME: Floating point equality comparisons used for speed -flibit
+	float realDepthBias = rasterizerState->depthBias * XNAToGL_DepthBiasScale[
+		(int)(device->renderTargetBound
+			? device->currentDepthStencilFormat
+			: device->backbuffer->depthFormat
+		)
+	];
+	if (	realDepthBias != device->depthBias ||
+		rasterizerState->slopeScaleDepthBias != device->slopeScaleDepthBias	)
+	{
+		if (	realDepthBias == 0.0f &&
+			rasterizerState->slopeScaleDepthBias == 0.0f)
+		{
+			// We're changing to disabled bias, disable!
+			device->glDisable(GL_POLYGON_OFFSET_FILL);
+		}
+		else
+		{
+			if (device->depthBias == 0.0f && device->slopeScaleDepthBias == 0.0f)
+			{
+				// We're changing away from disabled bias, enable!
+				device->glEnable(GL_POLYGON_OFFSET_FILL);
+			}
+			device->glPolygonOffset(
+				rasterizerState->slopeScaleDepthBias,
+				realDepthBias
+			);
+		}
+		device->depthBias = realDepthBias;
+		device->slopeScaleDepthBias = rasterizerState->slopeScaleDepthBias;
+	}
+
+	/**
+	 * If you're reading this, you have a user with broken MSAA!
+	 * Here's the deal: On all modern drivers this should work,
+	 * but there was a period of time where, for some reason,
+	 * IHVs all took a nap and decided that they didn't have to
+	 * respect GL_MULTISAMPLE toggles. A couple sources:
+	 *
+	 * https://developer.apple.com/library/content/documentation/GraphicsImaging/Conceptual/OpenGL-MacProgGuide/opengl_fsaa/opengl_fsaa.html
+	 *
+	 * https://www.opengl.org/discussion_boards/showthread.php/172025-glDisable(GL_MULTISAMPLE)-has-no-effect
+	 *
+	 * So yeah. Have em update their driver. If they're on Intel,
+	 * tell them to install Linux. Yes, really.
+	 * -flibit
+	 **/
+	if (rasterizerState->multiSampleEnable != device->multiSampleEnable)
+	{
+		device->multiSampleEnable = rasterizerState->multiSampleEnable;
+		OPENGL_ToggleGLState(driverData, GL_MULTISAMPLE, device->multiSampleEnable);
+	}
 }
 
 void OPENGL_VerifySampler(

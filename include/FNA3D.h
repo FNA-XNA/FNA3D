@@ -354,7 +354,7 @@ typedef struct FNA3D_DepthStencilState
 typedef struct FNA3D_RasterizerState
 {
 	uint8_t scissorTestEnable;
-	FNA3D_CullMode cullFrontFace;
+	FNA3D_CullMode cullMode;
 	FNA3D_FillMode fillMode;
 	float depthBias;
 	float slopeScaleDepthBias;
