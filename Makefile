@@ -71,13 +71,22 @@ MOJOSHADERSRC = \
 	MojoShader/profiles/mojoshader_profile_metal.c \
 	MojoShader/profiles/mojoshader_profile_spirv.c
 
+INITGLSRC = \
+	tests/initGL.c
+
 # Objects
 FNA3DOBJ = $(FNA3DSRC:%.c=%.o)
 MOJOSHADEROBJ = $(MOJOSHADERSRC:%.c=%.o)
 
+# Tests
+INITGLOBJ = $(INITGLSRC:%.c=%.o)
+
 # Targets
 all: $(FNA3DOBJ) $(MOJOSHADEROBJ)
 	$(CC) $(CFLAGS) -shared -o $(PREFIX)FNA3D.$(SUFFIX) $(FNA3DOBJ) $(MOJOSHADEROBJ) $(DEPENDENCIES) $(LDFLAGS)
+
+initgltest: $(INITGLOBJ)
+	$(CC) $(CFLAGS) $(INITGLOBJ) $(DEPENDENCIES) $(LDFLAGS) -L. -lFNA3D -o initgl.test  -Wl,-R -Wl,`pwd`
 
 %.o: %.c
 	$(CC) $(CFLAGS) -c -o $@ $< $(INCLUDES) $(DEFINES)
