@@ -1221,7 +1221,7 @@ void OPENGL_ApplyRasterizerState(
 	if (rasterizerState->scissorTestEnable != device->scissorTestEnable)
 	{
 		device->scissorTestEnable = rasterizerState->scissorTestEnable;
-		ToggleGLState(driverData, GL_SCISSOR_TEST, device->scissorTestEnable);
+		ToggleGLState(device, GL_SCISSOR_TEST, device->scissorTestEnable);
 	}
 
 	FNA3D_CullMode actualMode;
@@ -1249,7 +1249,7 @@ void OPENGL_ApplyRasterizerState(
 	{
 		if ((actualMode == FNA3D_CULLMODE_NONE) != (device->cullFrontFace == FNA3D_CULLMODE_NONE))
 		{
-			ToggleGLState(driverData, GL_CULL_FACE, actualMode != FNA3D_CULLMODE_NONE);
+			ToggleGLState(device, GL_CULL_FACE, actualMode != FNA3D_CULLMODE_NONE);
 		}
 		device->cullFrontFace = actualMode;
 		if (device->cullFrontFace != FNA3D_CULLMODE_NONE)
@@ -1315,7 +1315,7 @@ void OPENGL_ApplyRasterizerState(
 	if (rasterizerState->multiSampleEnable != device->multiSampleEnable)
 	{
 		device->multiSampleEnable = rasterizerState->multiSampleEnable;
-		ToggleGLState(driverData, GL_MULTISAMPLE, device->multiSampleEnable);
+		ToggleGLState(device, GL_MULTISAMPLE, device->multiSampleEnable);
 	}
 }
 
