@@ -1247,7 +1247,7 @@ void OPENGL_ApplyRasterizerState(
 			);
 		}
 	}
-	if (actualMode !=  device->cullFrontFace)
+	if (actualMode != device->cullFrontFace)
 	{
 		if ((actualMode == FNA3D_CULLMODE_NONE) != (device->cullFrontFace == FNA3D_CULLMODE_NONE))
 		{
@@ -2291,8 +2291,8 @@ static void LoadEntryPoints(
 ) {
 	const char *baseErrorString = (
 		device->useES3 ?
-		"OpenGL ES 3.0 support is required!" :
-		"OpenGL 2.1 support is required!"
+			"OpenGL ES 3.0 support is required!" :
+			"OpenGL 2.1 support is required!"
 	);
 
 	device->supports_BaseGL = 1;
