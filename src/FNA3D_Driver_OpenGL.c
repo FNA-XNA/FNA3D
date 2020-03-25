@@ -797,7 +797,7 @@ void OPENGL_DestroyDevice(FNA3D_Device *device)
 
 void OPENGL_BeginFrame(void* driverData)
 {
-	/* TODO */
+	/* No-op */
 }
 
 void OPENGL_SwapBuffers(
