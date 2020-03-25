@@ -1,6 +1,8 @@
 #include "FNA3D.h"
 #include <SDL.h>
-#include <stdio.h>
+
+#define WIDTH 640
+#define HEIGHT 480
 
 int main(int argc, char **argv)
 {
@@ -18,26 +20,36 @@ int main(int argc, char **argv)
 		"FNA3D Init GL",
 		SDL_WINDOWPOS_CENTERED,
 		SDL_WINDOWPOS_CENTERED,
-		640,
-		480,
+		WIDTH,
+		HEIGHT,
 		(SDL_WindowFlags) flags
 	);
 	if (window == NULL)
 	{
-		printf(
-			"ERROR: Could not create window! %s\n",
+		SDL_LogError(
+			SDL_LOG_CATEGORY_APPLICATION,
 			SDL_GetError()
 		);
-		exit(1);
+		SDL_assert(0 && "Could not create window!");
 	}
 
-	/* Create the device */
+	/* Set up the presentation parameters */
+	pp.backBufferWidth = WIDTH;
+	pp.backBufferHeight = HEIGHT;
+	pp.backBufferFormat = FNA3D_SURFACEFORMAT_COLOR;
+	pp.multiSampleCount = 0;
 	pp.deviceWindowHandle = window;
+	pp.isFullScreen = 0;
+	pp.depthStencilFormat = FNA3D_DEPTHFORMAT_D24S8;
+	pp.presentationInterval = FNA3D_PRESENTINTERVAL_DEFAULT;
+	pp.displayOrientation = FNA3D_DISPLAYORIENTATION_DEFAULT;
+	pp.renderTargetUsage = FNA3D_RENDERTARGETUSAGE_DISCARDCONTENTS;
+
+	/* Create the device */
 	device = FNA3D_CreateDevice(&pp);
 	if (device == NULL)
 	{
-		printf("ERROR: Could not create device!\n");
-		exit(1);
+		SDL_assert(0 && "Device could not be created!");
 	}
 
 	/* Main loop */
