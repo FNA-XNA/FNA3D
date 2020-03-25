@@ -1242,8 +1242,8 @@ void OPENGL_ApplyRasterizerState(
 		{
 			actualMode = (
 				rasterizerState->cullMode == FNA3D_CULLMODE_CULLCLOCKWISEFACE ?
-				FNA3D_CULLMODE_CULLCOUNTERCLOCKWISEFACE :
-				FNA3D_CULLMODE_CULLCLOCKWISEFACE
+					FNA3D_CULLMODE_CULLCOUNTERCLOCKWISEFACE :
+					FNA3D_CULLMODE_CULLCLOCKWISEFACE
 			);
 		}
 	}
@@ -1256,7 +1256,7 @@ void OPENGL_ApplyRasterizerState(
 		device->cullFrontFace = actualMode;
 		if (device->cullFrontFace != FNA3D_CULLMODE_NONE)
 		{
-			device->glFrontFace(XNAToGL_FrontFace[(int) device->cullFrontFace]);
+			device->glFrontFace(XNAToGL_FrontFace[device->cullFrontFace]);
 		}
 	}
 
@@ -1265,15 +1265,14 @@ void OPENGL_ApplyRasterizerState(
 		device->fillMode = rasterizerState->fillMode;
 		device->glPolygonMode(
 			GL_FRONT_AND_BACK,
-			XNAToGL_GLFillMode[(int) device->fillMode]
+			XNAToGL_GLFillMode[device->fillMode]
 		);
 	}
 
 	realDepthBias = rasterizerState->depthBias * XNAToGL_DepthBiasScale[
-		(int) (	device->renderTargetBound ?
+		device->renderTargetBound ?
 			device->currentDepthStencilFormat :
 			device->backbuffer->depthFormat
-		)
 	];
 	if (	realDepthBias != device->depthBias ||
 		rasterizerState->slopeScaleDepthBias != device->slopeScaleDepthBias	)
