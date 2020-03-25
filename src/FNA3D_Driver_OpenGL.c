@@ -1181,11 +1181,11 @@ void OPENGL_SetBlendFactor(
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 
-	if(		device->blendColor.r != blendFactor->r
-		||	device->blendColor.g != blendFactor->g
-		||	device->blendColor.b != blendFactor->b
-		||	device->blendColor.a != blendFactor->a
-	) {
+	if (	device->blendColor.r != blendFactor->r ||
+		device->blendColor.g != blendFactor->g ||
+		device->blendColor.b != blendFactor->b ||
+		device->blendColor.a != blendFactor->a	)
+	{
 		device->blendColor.r = blendFactor->r;
 		device->blendColor.g = blendFactor->g;
 		device->blendColor.b = blendFactor->b;
