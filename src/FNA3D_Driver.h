@@ -28,6 +28,7 @@
 #define FNA3D_DRIVER_H
 
 #include "FNA3D.h"
+#include "mojoshader.h"
 
 struct FNA3D_Device
 {

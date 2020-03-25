@@ -36,7 +36,6 @@
 #endif
 
 #include <stdint.h>
-#include <mojoshader.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -794,6 +793,9 @@ FNA3DAPI void FNA3D_GetIndexBufferData(
 );
 
 /* Effects */
+
+typedef struct MOJOSHADER_effectTechnique MOJOSHADER_effectTechnique;
+typedef struct MOJOSHADER_effectStateChanges MOJOSHADER_effectStateChanges;
 
 FNA3DAPI FNA3D_Effect* FNA3D_CreateEffect(
 	FNA3D_Device *device,
