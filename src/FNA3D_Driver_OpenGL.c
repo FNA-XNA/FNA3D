@@ -580,21 +580,21 @@ static inline void BindFramebuffer(OpenGLDevice *device, GLuint handle)
 	}
 }
 
-static inline void BindVertexBuffer(OpenGLDevice *device, OpenGLBuffer *buffer)
+static inline void BindVertexBuffer(OpenGLDevice *device, GLuint handle)
 {
-	if (buffer->handle != device->currentVertexBuffer)
+	if (handle != device->currentVertexBuffer)
 	{
-		device->glBindBuffer(GL_ARRAY_BUFFER, buffer->handle);
-		device->currentVertexBuffer = buffer->handle;
+		device->glBindBuffer(GL_ARRAY_BUFFER, handle);
+		device->currentVertexBuffer = handle;
 	}
 }
 
-static inline void BindIndexBuffer(OpenGLDevice *device, OpenGLBuffer *buffer)
+static inline void BindIndexBuffer(OpenGLDevice *device, GLuint handle)
 {
-	if (buffer->handle != device->currentIndexBuffer)
+	if (handle != device->currentIndexBuffer)
 	{
-		device->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, buffer->handle);
-		device->currentIndexBuffer = buffer->handle;
+		device->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, handle);
+		device->currentIndexBuffer = handle;
 	}
 }
 
@@ -843,9 +843,48 @@ void OPENGL_DrawIndexedPrimitives(
 	FNA3D_Buffer *indices,
 	FNA3D_IndexElementSize indexElementSize
 ) {
-	/* TODO */
+	uint8_t tps;
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	SDL_assert(device->supports_ARB_draw_elements_base_vertex);
+	OpenGLBuffer *buffer = (OpenGLBuffer*) indices;
+
+	BindIndexBuffer(device, buffer->handle);
+
+	tps = (	device->togglePointSprite &&
+		primitiveType == FNA3D_PRIMITIVETYPE_POINTLIST_EXT	);
+	if (tps)
+	{
+		device->glEnable(GL_POINT_SPRITE);
+	}
+
+	/* Draw! */
+	if (device->supports_ARB_draw_elements_base_vertex)
+	{
+		device->glDrawRangeElementsBaseVertex(
+			XNAToGL_Primitive[primitiveType],
+			minVertexIndex,
+			minVertexIndex + numVertices - 1,
+			XNAToGL_PrimitiveVerts(primitiveType, primitiveCount),
+			XNAToGL_IndexType[indexElementSize],
+			(void*) (size_t) (startIndex * XNAToGL_IndexSize[indexElementSize]),
+			baseVertex
+		);
+	}
+	else
+	{
+		device->glDrawRangeElements(
+			XNAToGL_Primitive[primitiveType],
+			minVertexIndex,
+			minVertexIndex + numVertices - 1,
+			XNAToGL_PrimitiveVerts(primitiveType, primitiveCount),
+			XNAToGL_IndexType[indexElementSize],
+			(void*) (size_t) (startIndex * XNAToGL_IndexSize[indexElementSize])
+		);
+	}
+
+	if (tps)
+	{
+		device->glDisable(GL_POINT_SPRITE);
+	}
 }
 
 void OPENGL_DrawInstancedPrimitives(
@@ -860,10 +899,50 @@ void OPENGL_DrawInstancedPrimitives(
 	FNA3D_Buffer *indices,
 	FNA3D_IndexElementSize indexElementSize
 ) {
-	/* TODO */
+	/* Note that minVertexIndex and numVertices are NOT used! */
+
+	uint8_t tps;
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLBuffer *buffer = (OpenGLBuffer*) indices;
+
 	SDL_assert(device->supports_ARB_draw_instanced);
-	SDL_assert(device->supports_ARB_draw_elements_base_vertex);
+
+	BindIndexBuffer(device, buffer->handle);
+
+	tps = (	device->togglePointSprite &&
+		primitiveType == FNA3D_PRIMITIVETYPE_POINTLIST_EXT	);
+	if (tps)
+	{
+		device->glEnable(GL_POINT_SPRITE);
+	}
+
+	/* Draw! */
+	if (device->supports_ARB_draw_elements_base_vertex)
+	{
+		device->glDrawElementsInstancedBaseVertex(
+			XNAToGL_Primitive[primitiveType],
+			XNAToGL_PrimitiveVerts(primitiveType, primitiveCount),
+			XNAToGL_IndexType[indexElementSize],
+			(void*) (size_t) (startIndex * XNAToGL_IndexSize[indexElementSize]),
+			instanceCount,
+			baseVertex
+		);
+	}
+	else
+	{
+		device->glDrawElementsInstanced(
+			XNAToGL_Primitive[primitiveType],
+			XNAToGL_PrimitiveVerts(primitiveType, primitiveCount),
+			XNAToGL_IndexType[indexElementSize],
+			(void*) (size_t) (startIndex * XNAToGL_IndexSize[indexElementSize]),
+			instanceCount
+		);
+	}
+
+	if (tps)
+	{
+		device->glDisable(GL_POINT_SPRITE);
+	}
 }
 
 void OPENGL_DrawPrimitives(
@@ -872,7 +951,27 @@ void OPENGL_DrawPrimitives(
 	int32_t vertexStart,
 	int32_t primitiveCount
 ) {
-	/* TODO */
+	uint8_t tps;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+
+	tps = (	device->togglePointSprite &&
+		primitiveType == FNA3D_PRIMITIVETYPE_POINTLIST_EXT	);
+	if (tps)
+	{
+		device->glEnable(GL_POINT_SPRITE);
+	}
+
+	/* Draw! */
+	device->glDrawArrays(
+		XNAToGL_Primitive[primitiveType],
+		vertexStart,
+		XNAToGL_PrimitiveVerts(primitiveType, primitiveCount)
+	);
+
+	if (tps)
+	{
+		device->glDisable(GL_POINT_SPRITE);
+	}
 }
 
 void OPENGL_DrawUserIndexedPrimitives(
@@ -886,7 +985,36 @@ void OPENGL_DrawUserIndexedPrimitives(
 	FNA3D_IndexElementSize indexElementSize,
 	int32_t primitiveCount
 ) {
-	/* TODO */
+	uint8_t tps;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+
+	/* Unbind any active index buffer */
+	BindIndexBuffer(device, 0);
+
+	tps = (	device->togglePointSprite &&
+		primitiveType == FNA3D_PRIMITIVETYPE_POINTLIST_EXT	);
+	if (tps)
+	{
+		device->glEnable(GL_POINT_SPRITE);
+	}
+
+	/* Draw! */
+	device->glDrawRangeElements(
+		XNAToGL_Primitive[primitiveType],
+		0,
+		numVertices - 1,
+		XNAToGL_PrimitiveVerts(primitiveType, primitiveCount),
+		XNAToGL_IndexType[indexElementSize],
+		(void*) (
+			((size_t) indexData) +
+			(indexOffset * XNAToGL_IndexSize[indexElementSize])
+		)
+	);
+
+	if (tps)
+	{
+		device->glDisable(GL_POINT_SPRITE);
+	}
 }
 
 void OPENGL_DrawUserPrimitives(
@@ -896,7 +1024,27 @@ void OPENGL_DrawUserPrimitives(
 	int32_t vertexOffset,
 	int32_t primitiveCount
 ) {
-	/* TODO */
+	uint8_t tps;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+
+	tps = (	device->togglePointSprite &&
+		primitiveType == FNA3D_PRIMITIVETYPE_POINTLIST_EXT	);
+	if (tps)
+	{
+		device->glEnable(GL_POINT_SPRITE);
+	}
+
+	/* Draw! */
+	device->glDrawArrays(
+		XNAToGL_Primitive[primitiveType],
+		vertexOffset,
+		XNAToGL_PrimitiveVerts(primitiveType, primitiveCount)
+	);
+
+	if (tps)
+	{
+		device->glDisable(GL_POINT_SPRITE);
+	}
 }
 
 /* Mutable Render States */
