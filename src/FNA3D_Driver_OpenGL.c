@@ -1731,7 +1731,7 @@ static void LoadEntryPoints(
 	}
 }
 
-static void* GLGetProcAddress(const char *ep, void* d)
+static void* MOJOSHADERCALL GLGetProcAddress(const char *ep, void* d)
 {
 	return SDL_GL_GetProcAddress(ep);
 }
