@@ -496,15 +496,6 @@ void FNA3D_ResolveTarget(
 
 /* Backbuffer Functions */
 
-FNA3D_Backbuffer* FNA3D_GetBackbuffer(FNA3D_Device *device)
-{
-	if (device == NULL)
-	{
-		return NULL;
-	}
-	return device->GetBackbuffer(device->driverData);
-}
-
 void FNA3D_ResetBackbuffer(
 	FNA3D_Device *device,
 	FNA3D_PresentationParameters *presentationParameters
@@ -544,6 +535,47 @@ void FNA3D_ReadBackbuffer(
 		w,
 		h
 	);
+}
+
+void FNA3D_GetBackbufferSize(
+	FNA3D_Device *device,
+	int32_t *w,
+	int32_t *h
+) {
+	if (device == NULL)
+	{
+		*w = 0;
+		*h = 0;
+		return;
+	}
+	device->GetBackbufferSize(device->driverData, w, h);
+}
+
+FNA3D_SurfaceFormat FNA3D_GetBackbufferSurfaceFormat(FNA3D_Device *device)
+{
+	if (device == NULL)
+	{
+		return FNA3D_SURFACEFORMAT_COLOR;
+	}
+	return device->GetBackbufferSurfaceFormat(device->driverData);
+}
+
+FNA3D_DepthFormat FNA3D_GetBackbufferDepthFormat(FNA3D_Device *device)
+{
+	if (device == NULL)
+	{
+		return FNA3D_DEPTHFORMAT_NONE;
+	}
+	return device->GetBackbufferDepthFormat(device->driverData);
+}
+
+int32_t FNA3D_GetBackbufferMultiSampleCount(FNA3D_Device *device)
+{
+	if (device == NULL)
+	{
+		return 0;
+	}
+	return device->GetBackbufferMultiSampleCount(device->driverData);
 }
 
 /* Textures */
@@ -1300,50 +1332,4 @@ MOJOSHADER_effect* FNA3D_GetEffectData(
 		return NULL;
 	}
 	return device->GetEffectData(effect);
-}
-
-/* Backbuffer Objects */
-
-int32_t FNA3D_GetBackbufferWidth(
-	FNA3D_Device *device,
-	FNA3D_Backbuffer *backbuffer
-) {
-	if (device == NULL)
-	{
-		return 0;
-	}
-	return device->GetBackbufferWidth(backbuffer);
-}
-
-int32_t FNA3D_GetBackbufferHeight(
-	FNA3D_Device *device,
-	FNA3D_Backbuffer *backbuffer
-) {
-	if (device == NULL)
-	{
-		return 0;
-	}
-	return device->GetBackbufferHeight(backbuffer);
-}
-
-FNA3D_DepthFormat FNA3D_GetBackbufferDepthFormat(
-	FNA3D_Device *device,
-	FNA3D_Backbuffer *backbuffer
-) {
-	if (device == NULL)
-	{
-		return FNA3D_DEPTHFORMAT_NONE;
-	}
-	return device->GetBackbufferDepthFormat(backbuffer);
-}
-
-int32_t FNA3D_GetBackbufferMultiSampleCount(
-	FNA3D_Device *device,
-	FNA3D_Backbuffer *backbuffer
-) {
-	if (device == NULL)
-	{
-		return 0;
-	}
-	return device->GetBackbufferMultiSampleCount(backbuffer);
 }

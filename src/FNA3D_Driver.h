@@ -184,8 +184,6 @@ struct FNA3D_Device
 
 	/* Backbuffer Functions */
 
-	FNA3D_Backbuffer* (*GetBackbuffer)(void* driverData);
-
 	void (*ResetBackbuffer)(
 		void* driverData,
 		FNA3D_PresentationParameters *presentationParameters
@@ -203,6 +201,18 @@ struct FNA3D_Device
 		int32_t w,
 		int32_t h
 	);
+
+	void (*GetBackbufferSize)(
+		void* driverData,
+		int32_t *w,
+		int32_t *h
+	);
+
+	FNA3D_SurfaceFormat (*GetBackbufferSurfaceFormat)(void* driverData);
+
+	FNA3D_DepthFormat (*GetBackbufferDepthFormat)(void* driverData);
+
+	int32_t (*GetBackbufferMultiSampleCount)(void* driverData);
 
 	/* Textures */
 
@@ -482,15 +492,6 @@ struct FNA3D_Device
 
 	MOJOSHADER_effect* (*GetEffectData)(FNA3D_Effect *effect);
 
-	/* Backbuffer Objects */
-
-	int32_t (*GetBackbufferWidth)(FNA3D_Backbuffer *backbuffer);
-	int32_t (*GetBackbufferHeight)(FNA3D_Backbuffer *backbuffer);
-	FNA3D_DepthFormat (*GetBackbufferDepthFormat)(
-		FNA3D_Backbuffer *backbuffer
-	);
-	int32_t (*GetBackbufferMultiSampleCount)(FNA3D_Backbuffer *backbuffer);
-
 	/* Opaque pointer for the Driver */
 	void* driverData;
 };
@@ -525,9 +526,12 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(ApplyVertexDeclaration, name) \
 	ASSIGN_DRIVER_FUNC(SetRenderTargets, name) \
 	ASSIGN_DRIVER_FUNC(ResolveTarget, name) \
-	ASSIGN_DRIVER_FUNC(GetBackbuffer, name) \
 	ASSIGN_DRIVER_FUNC(ResetBackbuffer, name) \
 	ASSIGN_DRIVER_FUNC(ReadBackbuffer, name) \
+	ASSIGN_DRIVER_FUNC(GetBackbufferSize, name) \
+	ASSIGN_DRIVER_FUNC(GetBackbufferSurfaceFormat, name) \
+	ASSIGN_DRIVER_FUNC(GetBackbufferDepthFormat, name) \
+	ASSIGN_DRIVER_FUNC(GetBackbufferMultiSampleCount, name) \
 	ASSIGN_DRIVER_FUNC(CreateTexture2D, name) \
 	ASSIGN_DRIVER_FUNC(CreateTexture3D, name) \
 	ASSIGN_DRIVER_FUNC(CreateTextureCube, name) \
@@ -569,11 +573,7 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(GetMaxMultiSampleCount, name) \
 	ASSIGN_DRIVER_FUNC(SetStringMarker, name) \
 	ASSIGN_DRIVER_FUNC(GetBufferSize, name) \
-	ASSIGN_DRIVER_FUNC(GetEffectData, name) \
-	ASSIGN_DRIVER_FUNC(GetBackbufferWidth, name) \
-	ASSIGN_DRIVER_FUNC(GetBackbufferHeight, name) \
-	ASSIGN_DRIVER_FUNC(GetBackbufferDepthFormat, name) \
-	ASSIGN_DRIVER_FUNC(GetBackbufferMultiSampleCount, name)
+	ASSIGN_DRIVER_FUNC(GetEffectData, name)
 
 typedef struct FNA3D_Driver
 {

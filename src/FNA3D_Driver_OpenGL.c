@@ -70,7 +70,7 @@ typedef struct OpenGLQuery /* Cast from FNA3D_Query* */
 	uint8_t filler;
 } OpenGLQuery;
 
-typedef struct OpenGLBackbuffer /* Cast from FNA3D_Backbuffer */
+typedef struct OpenGLBackbuffer
 {
 	#define BACKBUFFER_TYPE_NULL 0
 	#define BACKBUFFER_TYPE_OPENGL 1
@@ -1527,12 +1527,6 @@ static void OPENGL_INTERNAL_DisposeBackbuffer(OpenGLDevice *device)
 	#undef GLBACKBUFFER
 }
 
-FNA3D_Backbuffer* OPENGL_GetBackbuffer(void* driverData)
-{
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	return (FNA3D_Backbuffer*) device->backbuffer;
-}
-
 void OPENGL_ResetBackbuffer(
 	void* driverData,
 	FNA3D_PresentationParameters *presentationParameters
@@ -1554,6 +1548,33 @@ void OPENGL_ReadBackbuffer(
 	int32_t h
 ) {
 	/* TODO */
+}
+
+void OPENGL_GetBackbufferSize(
+	void* driverData,
+	int32_t *w,
+	int32_t *h
+) {
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	*w = device->backbuffer->width;
+	*h = device->backbuffer->height;
+}
+
+FNA3D_SurfaceFormat OPENGL_GetBackbufferSurfaceFormat(void* driverData)
+{
+	return FNA3D_SURFACEFORMAT_COLOR;
+}
+
+FNA3D_DepthFormat OPENGL_GetBackbufferDepthFormat(void* driverData)
+{
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	return device->backbuffer->depthFormat;
+}
+
+int32_t OPENGL_GetBackbufferMultiSampleCount(void* driverData)
+{
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	return device->backbuffer->multiSampleCount;
 }
 
 /* Textures */
@@ -2056,29 +2077,6 @@ intptr_t OPENGL_GetBufferSize(FNA3D_Buffer *buffer)
 MOJOSHADER_effect* OPENGL_GetEffectData(FNA3D_Effect *effect)
 {
 	return ((OpenGLEffect*) effect)->effect;
-}
-
-/* Backbuffer Objects */
-
-int32_t OPENGL_GetBackbufferWidth(FNA3D_Backbuffer *backbuffer)
-{
-	return ((OpenGLBackbuffer*) backbuffer)->width;
-}
-
-int32_t OPENGL_GetBackbufferHeight(FNA3D_Backbuffer *backbuffer)
-{
-	return ((OpenGLBackbuffer*) backbuffer)->height;
-}
-
-FNA3D_DepthFormat OPENGL_GetBackbufferDepthFormat(
-	FNA3D_Backbuffer *backbuffer
-) {
-	return ((OpenGLBackbuffer*) backbuffer)->depthFormat;
-}
-
-int32_t OPENGL_GetBackbufferMultiSampleCount(FNA3D_Backbuffer *backbuffer)
-{
-	return ((OpenGLBackbuffer*) backbuffer)->multiSampleCount;
 }
 
 /* Load GL Entry Points */

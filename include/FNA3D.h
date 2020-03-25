@@ -49,7 +49,6 @@ typedef struct FNA3D_Buffer FNA3D_Buffer;
 typedef struct FNA3D_Renderbuffer FNA3D_Renderbuffer;
 typedef struct FNA3D_Effect FNA3D_Effect;
 typedef struct FNA3D_Query FNA3D_Query;
-typedef struct FNA3D_Backbuffer FNA3D_Backbuffer;
 
 /* Enumerations, should match XNA 4.0 */
 
@@ -390,8 +389,8 @@ typedef struct FNA3D_VertexDeclaration
 
 typedef struct FNA3D_PresentationParameters
 {
-	uint32_t backBufferWidth;
-	uint32_t backBufferHeight;
+	int32_t backBufferWidth;
+	int32_t backBufferHeight;
 	FNA3D_SurfaceFormat backBufferFormat;
 	int32_t multiSampleCount;
 	void* deviceWindowHandle;
@@ -565,8 +564,6 @@ FNA3DAPI void FNA3D_ResolveTarget(
 
 /* Backbuffer Functions */
 
-FNA3DAPI FNA3D_Backbuffer* FNA3D_GetBackbuffer(FNA3D_Device *device);
-
 FNA3DAPI void FNA3D_ResetBackbuffer(
 	FNA3D_Device *device,
 	FNA3D_PresentationParameters *presentationParameters
@@ -584,6 +581,20 @@ FNA3DAPI void FNA3D_ReadBackbuffer(
 	int32_t w,
 	int32_t h
 );
+
+FNA3DAPI void FNA3D_GetBackbufferSize(
+	FNA3D_Device *device,
+	int32_t *w,
+	int32_t *h
+);
+
+FNA3DAPI FNA3D_SurfaceFormat FNA3D_GetBackbufferSurfaceFormat(
+	FNA3D_Device *device
+);
+
+FNA3DAPI FNA3D_DepthFormat FNA3D_GetBackbufferDepthFormat(FNA3D_Device *device);
+
+FNA3DAPI int32_t FNA3D_GetBackbufferMultiSampleCount(FNA3D_Device *device);
 
 /* Textures */
 
@@ -871,25 +882,6 @@ FNA3DAPI intptr_t FNA3D_GetBufferSize(
 FNA3DAPI MOJOSHADER_effect* FNA3D_GetEffectData(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect
-);
-
-/* Backbuffer Objects */
-
-FNA3DAPI int32_t FNA3D_GetBackbufferWidth(
-	FNA3D_Device *device,
-	FNA3D_Backbuffer *backbuffer
-);
-FNA3DAPI int32_t FNA3D_GetBackbufferHeight(
-	FNA3D_Device *device,
-	FNA3D_Backbuffer *backbuffer
-);
-FNA3DAPI FNA3D_DepthFormat FNA3D_GetBackbufferDepthFormat(
-	FNA3D_Device *device,
-	FNA3D_Backbuffer *backbuffer
-);
-FNA3DAPI int32_t FNA3D_GetBackbufferMultiSampleCount(
-	FNA3D_Device *device,
-	FNA3D_Backbuffer *backbuffer
 );
 
 #ifdef __cplusplus
