@@ -548,6 +548,26 @@ static void BindFramebuffer(OpenGLDevice *device, GLuint handle)
 	}
 }
 
+static void DisposeBackbuffer(OpenGLDevice *device)
+{
+	#define GLBACKBUFFER device->backbuffer->buffer.opengl
+
+	BindFramebuffer(device, device->realBackbufferFBO);
+	device->glDeleteFramebuffers(1, &GLBACKBUFFER.handle);
+	device->glDeleteRenderbuffers(1, &GLBACKBUFFER.colorAttachment);
+	if (GLBACKBUFFER.depthStencilAttachment != 0)
+	{
+		device->glDeleteRenderbuffers(1, &GLBACKBUFFER.depthStencilAttachment);
+	}
+	if (GLBACKBUFFER.texture != 0)
+	{
+		device->glDeleteTextures(1, &GLBACKBUFFER.texture);
+	}
+	GLBACKBUFFER.handle = 0;
+
+	#undef GLBACKBUFFER
+}
+
 static void CreateOpenGLBackbuffer(
 	OpenGLDevice *device,
 	FNA3D_PresentationParameters *parameters
@@ -713,7 +733,7 @@ static void CreateOpenGLBackbuffer(
 		{
 			if (device->backbuffer != NULL)
 			{
-				/* TODO: public void Dispose() */
+				DisposeBackbuffer(device);
 				SDL_free(device->backbuffer);
 			}
 			device->backbuffer = (OpenGLBackbuffer*) SDL_malloc(
@@ -733,7 +753,34 @@ static void CreateOpenGLBackbuffer(
 
 void OPENGL_DestroyDevice(FNA3D_Device *device)
 {
-	/* TODO */
+	OpenGLDevice *glDevice = (OpenGLDevice*) device->driverData;
+	if (glDevice->useCoreProfile)
+	{
+		glDevice->glBindVertexArray(0);
+		glDevice->glDeleteVertexArrays(1, &glDevice->vao);
+	}
+
+	glDevice->glDeleteFramebuffers(1, &glDevice->resolveFramebufferRead);
+	glDevice->resolveFramebufferRead = 0;
+	glDevice->glDeleteFramebuffers(1, &glDevice->resolveFramebufferDraw);
+	glDevice->resolveFramebufferDraw = 0;
+	glDevice->glDeleteFramebuffers(1, &glDevice->targetFramebuffer);
+	glDevice->targetFramebuffer = 0;
+
+	if (glDevice->backbuffer->type == BACKBUFFER_TYPE_OPENGL)
+	{
+		DisposeBackbuffer(glDevice);
+	}
+	SDL_free(glDevice->backbuffer);
+	glDevice->backbuffer = NULL;
+
+	MOJOSHADER_glMakeContextCurrent(NULL);
+	MOJOSHADER_glDestroyContext(glDevice->shaderContext);
+
+	/* TODO: Delete threaded background context */
+	SDL_GL_DeleteContext(glDevice->context);
+
+	SDL_free(glDevice);
 	SDL_free(device);
 }
 

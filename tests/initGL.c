@@ -68,6 +68,7 @@ int main(int argc, char **argv)
 	}
 
 	/* Cleanup */
+	FNA3D_DestroyDevice(device);
 	SDL_DestroyWindow(window);
 	SDL_Quit();
 
