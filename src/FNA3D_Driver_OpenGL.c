@@ -1167,12 +1167,12 @@ void OPENGL_SetScissorRect(void* driverData, FNA3D_Rect *scissor)
 	}
 }
 
-FNA3D_Color OPENGL_GetBlendFactor(
+void OPENGL_GetBlendFactor(
 	void* driverData,
 	FNA3D_Color *blendFactor
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	return device->blendColor;
+	SDL_memcpy(blendFactor, &device->blendColor, sizeof(FNA3D_Color));
 }
 
 void OPENGL_SetBlendFactor(
