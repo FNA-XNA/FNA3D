@@ -820,7 +820,8 @@ typedef struct MOJOSHADER_effectStateChanges MOJOSHADER_effectStateChanges;
 
 FNA3DAPI FNA3D_Effect* FNA3D_CreateEffect(
 	FNA3D_Device *device,
-	uint8_t *effectCode
+	uint8_t *effectCode,
+	uint32_t effectCodeLength
 );
 FNA3DAPI FNA3D_Effect* FNA3D_CloneEffect(
 	FNA3D_Device *device,

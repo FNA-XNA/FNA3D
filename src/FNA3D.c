@@ -1117,13 +1117,18 @@ void FNA3D_GetIndexBufferData(
 
 FNA3D_Effect* FNA3D_CreateEffect(
 	FNA3D_Device *device,
-	uint8_t *effectCode
+	uint8_t *effectCode,
+	uint32_t effectCodeLength
 ) {
 	if (device == NULL)
 	{
 		return NULL;
 	}
-	return device->CreateEffect(device->driverData, effectCode);
+	return device->CreateEffect(
+		device->driverData,
+		effectCode,
+		effectCodeLength
+	);
 }
 
 FNA3D_Effect* FNA3D_CloneEffect(

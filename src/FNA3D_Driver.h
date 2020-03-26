@@ -429,7 +429,8 @@ struct FNA3D_Device
 
 	FNA3D_Effect* (*CreateEffect)(
 		void* driverData,
-		uint8_t *effectCode
+		uint8_t *effectCode,
+		uint32_t effectCodeLength
 	);
 	FNA3D_Effect* (*CloneEffect)(
 		void* driverData,

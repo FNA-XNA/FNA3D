@@ -3699,25 +3699,102 @@ void OPENGL_GetIndexBufferData(
 
 FNA3D_Effect* OPENGL_CreateEffect(
 	void* driverData,
-	uint8_t *effectCode
+	uint8_t *effectCode,
+	uint32_t effectCodeLength
 ) {
-	/* TODO */
-	return NULL;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	MOJOSHADER_effect *effect;
+	MOJOSHADER_glEffect *glEffect;
+	OpenGLEffect *result;
+	int32_t i;
+
+	effect = MOJOSHADER_parseEffect(
+		device->shaderProfile,
+		effectCode,
+		effectCodeLength,
+		NULL,
+		0,
+		NULL,
+		0,
+		NULL,
+		NULL,
+		NULL
+	);
+
+	/* FIXME: Needs a debug check! */
+	for (i = 0; i < effect->error_count; i += 1)
+	{
+		SDL_LogError(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"MOJOSHADER_parseEffect Error: %s",
+			effect->errors[i].error
+		);
+	}
+
+	glEffect = MOJOSHADER_glCompileEffect(effect);
+	if (glEffect == NULL)
+	{
+		SDL_LogError(
+			SDL_LOG_CATEGORY_APPLICATION,
+			MOJOSHADER_glGetError()
+		);
+		SDL_assert(0);
+	}
+
+	result = (OpenGLEffect*) SDL_malloc(sizeof(OpenGLEffect));
+	result->effect = effect;
+	result->glEffect = glEffect;
+
+	return (FNA3D_Effect*) result;
 }
 
 FNA3D_Effect* OPENGL_CloneEffect(
 	void* driverData,
 	FNA3D_Effect *effect
 ) {
-	/* TODO */
-	return NULL;
+	OpenGLEffect *cloneSource = (OpenGLEffect*) effect;
+	MOJOSHADER_effect *effectData;
+	MOJOSHADER_glEffect *glEffect;
+	OpenGLEffect *result;
+
+	effectData = MOJOSHADER_cloneEffect(cloneSource->effect);
+	glEffect = MOJOSHADER_glCompileEffect(effectData);
+	if (glEffect == NULL)
+	{
+		SDL_LogError(
+			SDL_LOG_CATEGORY_APPLICATION,
+			MOJOSHADER_glGetError()
+		);
+		SDL_assert(0);
+	}
+
+	result = (OpenGLEffect*) SDL_malloc(sizeof(OpenGLEffect));
+	result->effect = effectData;
+	result->glEffect = glEffect;
+
+	return (FNA3D_Effect*) result;
 }
 
 void OPENGL_AddDisposeEffect(
 	void* driverData,
 	FNA3D_Effect *effect
 ) {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLEffect *fnaEffect = (OpenGLEffect*) effect;
+	MOJOSHADER_glEffect *glEffect = fnaEffect->glEffect;
+
+	if (glEffect == device->currentEffect)
+	{
+		MOJOSHADER_glEffectEndPass(device->currentEffect);
+		MOJOSHADER_glEffectEnd(device->currentEffect);
+		device->currentEffect = NULL;
+		device->currentTechnique = NULL;
+		device->currentPass = 0;
+	}
+	MOJOSHADER_glDeleteEffect(glEffect);
+	MOJOSHADER_freeEffect(fnaEffect->effect);
+
+	SDL_free(fnaEffect);
 }
 
 void OPENGL_ApplyEffect(
@@ -3727,7 +3804,43 @@ void OPENGL_ApplyEffect(
 	uint32_t pass,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLEffect *fnaEffect = (OpenGLEffect*) effect;
+	MOJOSHADER_glEffect *glEffectData = fnaEffect->glEffect;
+	uint32_t whatever;
+
+	device->effectApplied = 1;
+	if (glEffectData == device->currentEffect)
+	{
+		if (	technique == device->currentTechnique &&
+			pass == device->currentPass		)
+		{
+			MOJOSHADER_glEffectCommitChanges(
+				device->currentEffect
+			);
+			return;
+		}
+		MOJOSHADER_glEffectEndPass(device->currentEffect);
+		MOJOSHADER_glEffectBeginPass(device->currentEffect, pass);
+		device->currentTechnique = technique;
+		device->currentPass = pass;
+		return;
+	}
+	else if (device->currentEffect != NULL)
+	{
+		MOJOSHADER_glEffectEndPass(device->currentEffect);
+		MOJOSHADER_glEffectEnd(device->currentEffect);
+	}
+	MOJOSHADER_glEffectBegin(
+		glEffectData,
+		&whatever,
+		0,
+		stateChanges
+	);
+	MOJOSHADER_glEffectBeginPass(glEffectData, pass);
+	device->currentEffect = glEffectData;
+	device->currentTechnique = technique;
+	device->currentPass = pass;
 }
 
 void OPENGL_BeginPassRestore(
@@ -3735,14 +3848,30 @@ void OPENGL_BeginPassRestore(
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	MOJOSHADER_glEffect *glEffectData = ((OpenGLEffect*) effect)->glEffect;
+	uint32_t whatever;
+
+	MOJOSHADER_glEffectBegin(
+		glEffectData,
+		&whatever,
+		1,
+		stateChanges
+	);
+	MOJOSHADER_glEffectBeginPass(glEffectData, 0);
+	device->effectApplied = 1;
 }
 
 void OPENGL_EndPassRestore(
 	void* driverData,
 	FNA3D_Effect *effect
 ) {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	MOJOSHADER_glEffect *glEffectData = ((OpenGLEffect*) effect)->glEffect;
+
+	MOJOSHADER_glEffectEndPass(glEffectData);
+	MOJOSHADER_glEffectEnd(glEffectData);
+	device->effectApplied = 1;
 }
 
 /* Queries */
