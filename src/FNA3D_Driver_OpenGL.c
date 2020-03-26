@@ -1503,7 +1503,7 @@ void OPENGL_SetBlendState(
 			blendState->blendColor.a != device->blendColor.a	)
 		{
 			device->blendColor = blendState->blendColor;
-			glBlendColor(
+			device->glBlendColor(
 				device->blendColor.r / 255.0f,
 				device->blendColor.g / 255.0f,
 				device->blendColor.b / 255.0f,
@@ -1520,11 +1520,11 @@ void OPENGL_SetBlendState(
 			device->dstBlend = blendState->dstBlend;
 			device->srcBlendAlpha = blendState->srcBlendAlpha;
 			device->dstBlendAlpha = blendState->dstBlendAlpha;
-			glBlendFuncSeparate(
-				device->srcBlend,
-				device->dstBlend,
-				device->srcBlendAlpha,
-				device->dstBlendAlpha
+			device->glBlendFuncSeparate(
+				XNAToGL_BlendMode[device->srcBlend],
+				XNAToGL_BlendMode[device->dstBlend],
+				XNAToGL_BlendMode[device->srcBlendAlpha],
+				XNAToGL_BlendMode[device->dstBlendAlpha]
 			);
 		}
 
@@ -1533,9 +1533,9 @@ void OPENGL_SetBlendState(
 		{
 			device->blendOp = blendState->blendFunc;
 			device->blendOpAlpha = blendState->blendFuncAlpha;
-			glBlendEquationSeparate(
-				device->blendOp,
-				device->blendOpAlpha
+			device->glBlendEquationSeparate(
+				XNAToGL_BlendEquation[device->blendOp],
+				XNAToGL_BlendEquation[device->blendOpAlpha]
 			);
 		}
 	}
@@ -1543,7 +1543,7 @@ void OPENGL_SetBlendState(
 	if (blendState->colorWriteEnable != device->colorWriteEnable)
 	{
 		device->colorWriteEnable = blendState->colorWriteEnable;
-		glColorMask(
+		device->glColorMask(
 			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_RED) != 0,
 			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
 			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_BLUE) != 0,
@@ -1562,7 +1562,7 @@ void OPENGL_SetBlendState(
 	if (blendState->colorWriteEnable1 != device->colorWriteEnable1)
 	{
 		device->colorWriteEnable1 = blendState->colorWriteEnable1;
-		glColorMaski(
+		device->glColorMaski(
 			1,
 			(device->colorWriteEnable1 & FNA3D_COLORWRITECHANNELS_RED) != 0,
 			(device->colorWriteEnable1 & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
@@ -1573,7 +1573,7 @@ void OPENGL_SetBlendState(
 	if (blendState->colorWriteEnable2 != device->colorWriteEnable2)
 	{
 		device->colorWriteEnable2 = blendState->colorWriteEnable2;
-		glColorMaski(
+		device->glColorMaski(
 			2,
 			(device->colorWriteEnable2 & FNA3D_COLORWRITECHANNELS_RED) != 0,
 			(device->colorWriteEnable2 & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
@@ -1584,7 +1584,7 @@ void OPENGL_SetBlendState(
 	if (blendState->colorWriteEnable3 != device->colorWriteEnable3)
 	{
 		device->colorWriteEnable3 = blendState->colorWriteEnable3;
-		glColorMaski(
+		device->glColorMaski(
 			3,
 			(device->colorWriteEnable3 & FNA3D_COLORWRITECHANNELS_RED) != 0,
 			(device->colorWriteEnable3 & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
@@ -1597,16 +1597,16 @@ void OPENGL_SetBlendState(
 	{
 		if (blendState->multiSampleMask == -1)
 		{
-			glDisable(GL_SAMPLE_MASK);
+			device->glDisable(GL_SAMPLE_MASK);
 		}
 		else
 		{
 			if (device->multiSampleMask == -1)
 			{
-				glEnable(GL_SAMPLE_MASK);
+				device->glEnable(GL_SAMPLE_MASK);
 			}
 			/* FIXME: index...? -flibit */
-			glSampleMaski(0, (uint32_t)blendState->multiSampleMask);
+			device->glSampleMaski(0, (uint32_t)blendState->multiSampleMask);
 		}
 		device->multiSampleMask = blendState->multiSampleMask;
 	}
@@ -1834,7 +1834,137 @@ void OPENGL_VerifySampler(
 	FNA3D_Texture *texture,
 	FNA3D_SamplerState *sampler
 ) {
-	/* TODO */
+	OpenGLDevice* device = (OpenGLDevice*)driverData;
+
+	if (texture == NULL)
+	{
+		if (device->textures[index] != &NullTexture)
+		{
+			if (index != 0)
+			{
+				device->glActiveTexture(GL_TEXTURE0 + index);
+			}
+			device->glBindTexture(device->textures[index]->target, 0);
+			if (index != 0)
+			{
+				/* Keep this state sane. -flibit */
+				device->glActiveTexture(GL_TEXTURE0);
+			}
+			device->textures[index] = &NullTexture;
+		}
+		return;
+	}
+
+	OpenGLTexture* tex = (OpenGLTexture*)texture;
+
+	if (	tex == device->textures[index] &&
+		sampler->addressU == tex->wrapS &&
+		sampler->addressV == tex->wrapT &&
+		sampler->addressW == tex->wrapR &&
+		sampler->filter == tex->filter &&
+		sampler->maxAnisotropy == tex->anisotropy &&
+		sampler->maxMipLevel == tex->maxMipmapLevel &&
+		sampler->mipMapLevelOfDetailBias == tex->lodBias	)
+	{
+		/* Nothing's changing, forget it. */
+		return;
+	}
+
+	/* Set the active texture slot */
+	if (index != 0)
+	{
+		device->glActiveTexture(GL_TEXTURE0 + index);
+	}
+
+	/* Bind the correct texture */
+	if (tex != device->textures[index])
+	{
+		if (tex->target != device->textures[index]->target)
+		{
+			/* If we're changing targets, unbind the old texture first! */
+			device->glBindTexture(device->textures[index]->target, 0);
+		}
+		device->glBindTexture(tex->target, tex->handle);
+		device->textures[index] = tex;
+	}
+
+	/* Apply the sampler states to the GL texture */
+	if (sampler->addressU != tex->wrapS)
+	{
+		tex->wrapS = sampler->addressU;
+		device->glTexParameteri(
+			tex->target,
+			GL_TEXTURE_WRAP_S,
+			XNAToGL_Wrap[tex->wrapS]
+		);
+	}
+	if (sampler->addressV != tex->wrapT)
+	{
+		tex->wrapT = sampler->addressV;
+		device->glTexParameteri(
+			tex->target,
+			GL_TEXTURE_WRAP_T,
+			XNAToGL_Wrap[tex->wrapT]
+		);
+	}
+	if (sampler->addressW != tex->wrapR)
+	{
+		tex->wrapR = sampler->addressW;
+		device->glTexParameteri(
+			tex->target,
+			GL_TEXTURE_WRAP_R,
+			XNAToGL_Wrap[tex->wrapR]
+		);
+	}
+	if (sampler->filter != tex->filter ||
+		sampler->maxAnisotropy != tex->anisotropy)
+	{
+		tex->filter = sampler->filter;
+		tex->anisotropy = sampler->maxAnisotropy;
+		device->glTexParameteri(
+			tex->target,
+			GL_TEXTURE_MAG_FILTER,
+			XNAToGL_MagFilter[tex->filter]
+		);
+		device->glTexParameteri(
+			tex->target,
+			GL_TEXTURE_MIN_FILTER,
+			tex->hasMipmaps ?
+				XNAToGL_MinMipFilter[tex->filter] :
+				XNAToGL_MinFilter[tex->filter]
+		);
+		device->glTexParameterf(
+			tex->target,
+			GL_TEXTURE_MAX_ANISOTROPY_EXT,
+			(tex->filter == FNA3D_TEXTUREFILTER_ANISOTROPIC) ?
+				SDL_max(tex->anisotropy, 1.0f) :
+				1.0f
+		);
+	}
+	if (sampler->maxMipLevel != tex->maxMipmapLevel)
+	{
+		tex->maxMipmapLevel = sampler->maxMipLevel;
+		device->glTexParameteri(
+			tex->target,
+			GL_TEXTURE_BASE_LEVEL,
+			tex->maxMipmapLevel
+		);
+	}
+	if (sampler->mipMapLevelOfDetailBias != tex->lodBias && !device->useES3)
+	{
+		tex->lodBias = sampler->mipMapLevelOfDetailBias;
+		device->glTexParameterf(
+			tex->target,
+			GL_TEXTURE_LOD_BIAS,
+			tex->lodBias
+		);
+	}
+
+	if (index != 0)
+	{
+		/* Keep this state sane. -flibit */
+		device->glActiveTexture(GL_TEXTURE0);
+	}
 }
 
 /* Vertex State */
@@ -2333,6 +2463,7 @@ void OPENGL_ReadBackbuffer(
 	int32_t pitch, row;
 	uint8_t *temp;
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	uint8_t *dataPtr = (uint8_t*) data;
 
 	/* FIXME: Right now we're expecting one of the following:
 	 * - byte[]
@@ -2434,9 +2565,9 @@ void OPENGL_ReadBackbuffer(
 	for (row = 0; row < h / 2; row += 1)
 	{
 		/* Top to temp, bottom to top, temp to bottom */
-		SDL_memcpy(temp, data + (row * pitch), pitch);
-		SDL_memcpy(data + (row * pitch), data + ((h - row - 1) * pitch), pitch);
-		SDL_memcpy(data + ((h - row - 1) * pitch), temp, pitch);
+		SDL_memcpy(temp, dataPtr + (row * pitch), pitch);
+		SDL_memcpy(dataPtr + (row * pitch), dataPtr + ((h - row - 1) * pitch), pitch);
+		SDL_memcpy(dataPtr + ((h - row - 1) * pitch), temp, pitch);
 	}
 	SDL_free(temp);
 }
@@ -2943,13 +3074,14 @@ void OPENGL_SetTextureDataYUV(
 	void* ptr
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	uint8_t *dataPtr = (uint8_t*) ptr;
 
 	device->glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, y, w, h, ptr);
-	ptr += (w * h);
-	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, u, w, h, ptr);
-	ptr += (w * h);
-	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, v, w, h, ptr);
+	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, y, w, h, dataPtr);
+	dataPtr += (w * h);
+	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, u, w, h, dataPtr);
+	dataPtr += (w * h);
+	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, v, w, h, dataPtr);
 	device->glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
 
@@ -2970,6 +3102,7 @@ void OPENGL_GetTextureData2D(
 	int32_t elementSizeInBytes
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	uint8_t *dataPtr = (uint8_t*) data;
 	SDL_assert(device->supports_NonES3);
 
 	if (level == 0 && OPENGL_INTERNAL_ReadTargetIfApplicable(
@@ -3008,7 +3141,8 @@ void OPENGL_GetTextureData2D(
 	{
 		/* Get the whole texture... */
 		void *texData = SDL_malloc(textureWidth * textureHeight * elementSizeInBytes);
-		
+		uint8_t *texDataPtr = (uint8_t*) texData;
+
 		device->glGetTexImage(
 			GL_TEXTURE_2D,
 			level,
@@ -3036,8 +3170,8 @@ void OPENGL_GetTextureData2D(
 				}
 				/* FIXME: Can we copy via pitch instead, or something? -flibit */
 				SDL_memcpy(
-					data + ((curPixel - startIndex) * elementSizeInBytes),
-					texData + (((row * w) + col) * elementSizeInBytes),
+					dataPtr + ((curPixel - startIndex) * elementSizeInBytes),
+					texDataPtr + (((row * w) + col) * elementSizeInBytes),
 					elementSizeInBytes
 				);
 			}
@@ -3086,6 +3220,7 @@ void OPENGL_GetTextureDataCube(
 	int32_t elementSizeInBytes
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	uint8_t *dataPtr = (uint8_t*) data;
 	SDL_assert(device->supports_NonES3);
 
 	BindTexture(device, (OpenGLTexture *)texture);
@@ -3109,6 +3244,8 @@ void OPENGL_GetTextureDataCube(
 	{
 		/* Get the whole texture... */
 		void *texData = SDL_malloc(textureSize * textureSize * elementSizeInBytes);
+		uint8_t *texDataPtr = (uint8_t*) texData;
+
 		device->glGetTexImage(
 			GL_TEXTURE_CUBE_MAP_POSITIVE_X + (int) cubeMapFace,
 			level,
@@ -3136,8 +3273,8 @@ void OPENGL_GetTextureDataCube(
 				}
 				/* FIXME: Can we copy via pitch instead, or something? -flibit */
 				SDL_memcpy(
-					data + ((curPixel - startIndex) * elementSizeInBytes),
-					texData + (((row * textureSize) + col) * elementSizeInBytes),
+					dataPtr + ((curPixel - startIndex) * elementSizeInBytes),
+					texDataPtr + (((row * textureSize) + col) * elementSizeInBytes),
 					elementSizeInBytes
 				);
 			}
