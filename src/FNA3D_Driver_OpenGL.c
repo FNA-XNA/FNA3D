@@ -130,9 +130,6 @@ typedef struct OpenGLDevice /* Cast from driverData */
 	GLuint vao;
 
 	/* Capabilities */
-	/* TODO: Check these...
-	 * - ARB_invalidate_subdata for InvalidateFramebuffer
-	 */
 	uint8_t supports_BaseGL;
 	uint8_t supports_CoreGL;
 	uint8_t supports_3DTexture;
