@@ -317,12 +317,12 @@ typedef struct FNA3D_Viewport
 
 typedef struct FNA3D_BlendState
 {
-	FNA3D_BlendFunction alphaBlendFunction;
-	FNA3D_Blend alphaDestinationBlend;
-	FNA3D_Blend alphaSourceBlend;
-	FNA3D_BlendFunction colorBlendFunction;
-	FNA3D_Blend colorDestinationBlend;
 	FNA3D_Blend colorSourceBlend;
+	FNA3D_Blend colorDestinationBlend;
+	FNA3D_BlendFunction colorBlendFunction;
+	FNA3D_Blend alphaSourceBlend;
+	FNA3D_Blend alphaDestinationBlend;
+	FNA3D_BlendFunction alphaBlendFunction;
 	FNA3D_ColorWriteChannels colorWriteEnable;
 	FNA3D_ColorWriteChannels colorWriteEnable1;
 	FNA3D_ColorWriteChannels colorWriteEnable2;
@@ -335,41 +335,41 @@ typedef struct FNA3D_DepthStencilState
 {
 	uint8_t depthBufferEnable;
 	uint8_t depthBufferWriteEnable;
-	FNA3D_StencilOperation ccwStencilDepthBufferFail;
-	FNA3D_StencilOperation ccwStencilFail;
-	FNA3D_CompareFunction ccwStencilFunction;
-	FNA3D_StencilOperation ccwStencilPass;
 	FNA3D_CompareFunction depthBufferFunction;
-	int32_t referenceStencil;
-	FNA3D_StencilOperation stencilDepthBufferFail;
 	uint8_t stencilEnable;
-	FNA3D_StencilOperation stencilFail;
-	FNA3D_CompareFunction stencilFunction;
 	int32_t stencilMask;
-	FNA3D_StencilOperation stencilPass;
 	int32_t stencilWriteMask;
 	uint8_t twoSidedStencilMode;
+	FNA3D_StencilOperation stencilFail;
+	FNA3D_StencilOperation stencilDepthBufferFail;
+	FNA3D_StencilOperation stencilPass;
+	FNA3D_CompareFunction stencilFunction;
+	FNA3D_StencilOperation ccwStencilFail;
+	FNA3D_StencilOperation ccwStencilDepthBufferFail;
+	FNA3D_StencilOperation ccwStencilPass;
+	FNA3D_CompareFunction ccwStencilFunction;
+	int32_t referenceStencil;
 } FNA3D_DepthStencilState;
 
 typedef struct FNA3D_RasterizerState
 {
+	FNA3D_FillMode fillMode;
 	FNA3D_CullMode cullMode;
 	float depthBias;
-	FNA3D_FillMode fillMode;
-	uint8_t multiSampleAntiAlias;
-	uint8_t scissorTestEnable;
 	float slopeScaleDepthBias;
+	uint8_t scissorTestEnable;
+	uint8_t multiSampleAntiAlias;
 } FNA3D_RasterizerState;
 
 typedef struct FNA3D_SamplerState
 {
+	FNA3D_TextureFilter filter;
 	FNA3D_TextureAddressMode addressU;
 	FNA3D_TextureAddressMode addressV;
 	FNA3D_TextureAddressMode addressW;
-	FNA3D_TextureFilter filter;
+	float mipMapLevelOfDetailBias;
 	int32_t maxAnisotropy;
 	int32_t maxMipLevel;
-	float mipMapLevelOfDetailBias;
 } FNA3D_SamplerState;
 
 typedef struct FNA3D_VertexElement
