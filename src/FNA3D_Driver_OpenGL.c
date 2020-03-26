@@ -154,7 +154,7 @@ typedef struct OpenGLDevice /* Cast from driverData */
 	FNA3D_ColorWriteChannels colorWriteEnable1;
 	FNA3D_ColorWriteChannels colorWriteEnable2;
 	FNA3D_ColorWriteChannels colorWriteEnable3;
-	int32_t multisampleMask;
+	int32_t multiSampleMask;
 
 	/* Depth Stencil State */
 	uint8_t zEnable;
@@ -1190,7 +1190,6 @@ void OPENGL_SetBlendFactor(
 	FNA3D_Color *blendFactor
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
-
 	if (	device->blendColor.r != blendFactor->r ||
 		device->blendColor.g != blendFactor->g ||
 		device->blendColor.b != blendFactor->b ||
@@ -1211,28 +1210,70 @@ void OPENGL_SetBlendFactor(
 
 int32_t OPENGL_GetMultiSampleMask(void* driverData)
 {
-	/* TODO */
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	SDL_assert(device->supports_ARB_texture_multisample);
-	return 0;
+	return device->multiSampleMask;
 }
 
 void OPENGL_SetMultiSampleMask(void* driverData, int32_t mask)
 {
-	/* TODO */
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	SDL_assert(device->supports_ARB_texture_multisample);
+	if (mask != device->multiSampleMask)
+	{
+		if (mask == -1)
+		{
+			device->glDisable(GL_SAMPLE_MASK);
+		}
+		else
+		{
+			if (device->multiSampleMask == -1)
+			{
+				device->glEnable(GL_SAMPLE_MASK);
+			}
+			/* FIXME: Index...? -flibit */
+			device->glSampleMaski(0, (GLuint) mask);
+		}
+		device->multiSampleMask = mask;
+	}
 }
 
 int32_t OPENGL_GetReferenceStencil(void* driverData)
 {
-	/* TODO */
-	return 0;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	return device->stencilRef;
 }
 
 void OPENGL_SetReferenceStencil(void* driverData, int32_t ref)
 {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	if (ref != device->stencilRef)
+	{
+		device->stencilRef = ref;
+		if (device->separateStencilEnable)
+		{
+			device->glStencilFuncSeparate(
+				GL_FRONT,
+				XNAToGL_CompareFunc[device->stencilFunc],
+				device->stencilRef,
+				device->stencilMask
+			);
+			device->glStencilFuncSeparate(
+				GL_BACK,
+				XNAToGL_CompareFunc[device->stencilFunc],
+				device->stencilRef,
+				device->stencilMask
+			);
+		}
+		else
+		{
+			device->glStencilFunc(
+				XNAToGL_CompareFunc[device->stencilFunc],
+				device->stencilRef,
+				device->stencilMask
+			);
+		}
+	}
 }
 
 /* Immutable Render States */
@@ -2968,7 +3009,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	device->colorWriteEnable1 = FNA3D_COLORWRITECHANNELS_ALL;
 	device->colorWriteEnable2 = FNA3D_COLORWRITECHANNELS_ALL;
 	device->colorWriteEnable3 = FNA3D_COLORWRITECHANNELS_ALL;
-	device->multisampleMask = -1; /* AKA 0xFFFFFFFF, ugh -flibit */
+	device->multiSampleMask = -1; /* AKA 0xFFFFFFFF, ugh -flibit */
 
 	/* Depth Stencil State Variables */
 	device->zEnable = 0;
