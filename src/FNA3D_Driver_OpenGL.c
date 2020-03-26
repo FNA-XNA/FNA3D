@@ -2043,7 +2043,7 @@ void OPENGL_ApplyVertexBufferBindings(
 			);
 			for (j = 0; j < vertexDeclaration->elementCount; j += 1)
 			{
-				element = &vertexDeclaration->elements[i];
+				element = &vertexDeclaration->elements[j];
 				usage = element->vertexElementUsage;
 				index = element->usageIndex;
 				if (device->attrUse[usage][index])
@@ -5066,7 +5066,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	LoadEntryPoints(device, driverInfo, debugMode);
 
 	/* FIXME: REMOVE ME ASAP! TERRIBLE HACK FOR ANGLE! */
-	if (!SDL_strstr(renderer, "Direct3D11"))
+	if (SDL_strstr(renderer, "Direct3D11") != NULL)
 	{
 		device->supports_ARB_draw_elements_base_vertex = 0;
 	}
