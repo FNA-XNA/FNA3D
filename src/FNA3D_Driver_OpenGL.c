@@ -3007,7 +3007,18 @@ uint8_t OPENGL_PrepareWindowAttributes(uint8_t debugMode, uint32_t *flags)
 
 void OPENGL_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 {
-	/* TODO: See SDL2_FNAPlatform.CreateWindow */
+	/* When using OpenGL, iOS and tvOS require an active GL context to get
+	 * the drawable size of the screen.
+	 */
+#if defined(__IPHONEOS__) || defined(__TVOS__)
+	SDL_GLContext tempContext = SDL_GL_CreateContext(window);
+#endif
+
+	SDL_GL_GetDrawableSize((SDL_Window*) window, x, y);
+
+#if defined(__IPHONEOS__) || defined(__TVOS__)
+	SDL_GL_DestroyContext(tempContext);
+#endif
 }
 
 FNA3D_Device* OPENGL_CreateDevice(
