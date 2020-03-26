@@ -1866,29 +1866,29 @@ void OPENGL_VerifySampler(
 		sampler->maxMipLevel == tex->maxMipmapLevel &&
 		sampler->mipMapLevelOfDetailBias == tex->lodBias)
 	{
-		// Nothing's changing, forget it.
+		/* Nothing's changing, forget it. */
 		return;
 	}
 
-	// Set the active texture slot
+	/* Set the active texture slot */
 	if (index != 0)
 	{
 		device->glActiveTexture(GL_TEXTURE0 + index);
 	}
 
-	// Bind the correct texture
+	/* Bind the correct texture */
 	if (tex != device->textures[index])
 	{
 		if (tex->target != device->textures[index]->target)
 		{
-			// If we're changing targets, unbind the old texture first!
+			/* If we're changing targets, unbind the old texture first! */
 			device->glBindTexture(device->textures[index]->target, 0);
 		}
 		device->glBindTexture(tex->target, tex->handle);
 		device->textures[index] = tex;
 	}
 
-	// Apply the sampler states to the GL texture
+	/* Apply the sampler states to the GL texture */
 	if (sampler->addressU != tex->wrapS)
 	{
 		tex->wrapS = sampler->addressU;
