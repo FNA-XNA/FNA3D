@@ -48,6 +48,20 @@ typedef struct OpenGLTexture /* Cast from FNA3D_Texture* */
 	float lodBias;
 } OpenGLTexture;
 
+static OpenGLTexture NullTexture =
+{
+	.handle = 0,
+	.target = GL_TEXTURE_2D,
+	.hasMipmaps = 0,
+	.wrapS = FNA3D_TEXTUREADDRESSMODE_WRAP,
+	.wrapT = FNA3D_TEXTUREADDRESSMODE_WRAP,
+	.wrapR = FNA3D_TEXTUREADDRESSMODE_WRAP,
+	.filter = FNA3D_TEXTUREFILTER_LINEAR,
+	.anisotropy = 0,
+	.maxMipmapLevel = 0,
+	.lodBias = 0
+};
+
 typedef struct OpenGLBuffer /* Cast from FNA3D_Buffer* */
 {
 	GLuint handle;
@@ -190,7 +204,7 @@ typedef struct OpenGLDevice /* Cast from driverData */
 
 	/* Textures */
 	int32_t numTextureSlots;
-	OpenGLTexture textures[MAX_TEXTURE_SAMPLERS];
+	OpenGLTexture *textures[MAX_TEXTURE_SAMPLERS];
 
 	/* Buffer Binding Cache */
 	GLuint currentVertexBuffer;
@@ -777,8 +791,8 @@ void OPENGL_SwapBuffers(
 					NULL
 				);
 				device->glBindTexture(
-					device->textures[0].target,
-					device->textures[0].handle
+					device->textures[0]->target,
+					device->textures[0]->handle
 				);
 			}
 			BindFramebuffer(device, device->resolveFramebufferDraw);
@@ -2056,8 +2070,8 @@ void OPENGL_ReadBackbuffer(
 				NULL
 			);
 			device->glBindTexture(
-				device->textures[0].target,
-				device->textures[0].handle
+				device->textures[0]->target,
+				device->textures[0]->handle
 			);
 		}
 		BindFramebuffer(device, device->resolveFramebufferDraw);
@@ -3285,16 +3299,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	numSamplers = SDL_min(numSamplers, MAX_TEXTURE_SAMPLERS);
 	for (i = 0; i < numSamplers; i += 1)
 	{
-		device->textures[i].handle = 0;
-		device->textures[i].target = GL_TEXTURE_2D;
-		device->textures[i].hasMipmaps = 0;
-		device->textures[i].wrapS = FNA3D_TEXTUREADDRESSMODE_WRAP;
-		device->textures[i].wrapT = FNA3D_TEXTUREADDRESSMODE_WRAP;
-		device->textures[i].wrapR = FNA3D_TEXTUREADDRESSMODE_WRAP;
-		device->textures[i].filter = FNA3D_TEXTUREFILTER_LINEAR;
-		device->textures[i].anisotropy = 0;
-		device->textures[i].maxMipmapLevel = 0;
-		device->textures[i].lodBias = 0;
+		device->textures[i] = &NullTexture;
 	}
 	device->numTextureSlots = numSamplers;
 
