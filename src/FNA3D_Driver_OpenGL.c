@@ -2026,14 +2026,14 @@ void OPENGL_SetRenderTargets(
 	for (i = 0; i < numRenderTargets; i += 1)
 	{
 		rt = renderTargets[i];
-		if (rt.colorBufferHandle != 0)
+		if (rt.colorBuffer != NULL)
 		{
-			device->attachments[i] = rt.colorBufferHandle;
+			device->attachments[i] = ((OpenGLRenderbuffer*) rt.colorBuffer)->handle;
 			device->attachmentTypes[i] = GL_RENDERBUFFER;
 		}
 		else
 		{
-			device->attachments[i] = rt.textureHandle;
+			device->attachments[i] = ((OpenGLTexture*) rt.texture)->handle;
 			if (rt.type == RENDERTARGET_TYPE_2D)
 			{
 				device->attachmentTypes[i] = GL_TEXTURE_2D;
@@ -2195,7 +2195,9 @@ void OPENGL_ResolveTarget(
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	int32_t width, height;
-	GLuint prevBuffer, prevTex;
+	GLuint prevBuffer;
+	OpenGLTexture *prevTex;
+	OpenGLTexture *rtTex = (OpenGLTexture*) target->texture;
 	GLenum textureTarget = (
 		target->type == RENDERTARGET_TYPE_2D ?
 			GL_TEXTURE_2D :
@@ -2214,7 +2216,7 @@ void OPENGL_ResolveTarget(
 			GL_FRAMEBUFFER,
 			GL_COLOR_ATTACHMENT0,
 			textureTarget,
-			target->textureHandle,
+			rtTex->handle,
 			0
 		);
 
@@ -2224,7 +2226,7 @@ void OPENGL_ResolveTarget(
 			GL_FRAMEBUFFER,
 			GL_COLOR_ATTACHMENT0,
 			GL_RENDERBUFFER,
-			target->colorBufferHandle
+			((OpenGLRenderbuffer*) target->colorBuffer)->handle
 		);
 
 		/* Blit! */
@@ -2259,22 +2261,10 @@ void OPENGL_ResolveTarget(
 	/* If the target has mipmaps, regenerate them now */
 	if (target->levelCount > 1)
 	{
-		prevTex = device->textures[0]->handle;
-		if (prevTex != target->textureHandle)
-		{
-			device->glBindTexture(
-				textureTarget,
-				target->textureHandle
-			);
-		}
+		prevTex = device->textures[0];
+		BindTexture(device, rtTex);
 		device->glGenerateMipmap(textureTarget);
-		if (prevTex != target->textureHandle)
-		{
-			device->glBindTexture(
-				textureTarget,
-				prevTex
-			);
-		}
+		BindTexture(device, prevTex);
 	}
 }
 
