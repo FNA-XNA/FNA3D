@@ -116,8 +116,6 @@ typedef struct OpenGLDevice /* Cast from driverData */
 
 	/* Capabilities */
 	/* TODO: Check these...
-	 * - DoublePrecisionDepth/OES_single_precision for ClearDepth/DepthRange
-	 * - EXT_framebuffer_blit for faux-backbuffer
 	 * - ARB_invalidate_subdata for InvalidateFramebuffer
 	 */
 	uint8_t supports_BaseGL;
