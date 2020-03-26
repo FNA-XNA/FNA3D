@@ -1483,11 +1483,12 @@ void OPENGL_SetBlendState(
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	SDL_assert(device->supports_EXT_draw_buffers2);
 
-	uint8_t newEnable = (
-		!(blendState->srcBlend == FNA3D_BLEND_ONE &&
+	uint8_t newEnable = 
+		!(
+			blendState->srcBlend == FNA3D_BLEND_ONE &&
 			blendState->dstBlend == FNA3D_BLEND_ZERO &&
 			blendState->srcBlendAlpha == FNA3D_BLEND_ONE &&
-			blendState->dstBlendAlpha == FNA3D_BLEND_ZERO)
+			blendState->dstBlendAlpha == FNA3D_BLEND_ZERO
 		);
 
 	if (newEnable != device->alphaBlendEnable)
@@ -1498,12 +1499,10 @@ void OPENGL_SetBlendState(
 
 	if (device->alphaBlendEnable)
 	{
-		if (
-			blendState->blendColor.r != device->blendColor.r ||
-			blendState->blendColor.g != device->blendColor.g ||
-			blendState->blendColor.b != device->blendColor.b ||
-			blendState->blendColor.a != device->blendColor.a
-		)
+		if (	blendState->blendColor.r != device->blendColor.r ||
+				blendState->blendColor.g != device->blendColor.g ||
+				blendState->blendColor.b != device->blendColor.b ||
+				blendState->blendColor.a != device->blendColor.a	)
 		{
 			device->blendColor = blendState->blendColor;
 			glBlendColor(
@@ -1514,10 +1513,10 @@ void OPENGL_SetBlendState(
 			);
 		}
 
-		if (blendState->srcBlend != device->srcBlend ||
-			blendState->dstBlend != device->dstBlend ||
-			blendState->srcBlendAlpha != device->srcBlendAlpha ||
-			blendState->dstBlendAlpha != device->dstBlendAlpha)
+		if (	blendState->srcBlend != device->srcBlend ||
+				blendState->dstBlend != device->dstBlend ||
+				blendState->srcBlendAlpha != device->srcBlendAlpha ||
+				blendState->dstBlendAlpha != device->dstBlendAlpha	)
 		{
 			device->srcBlend = blendState->srcBlend;
 			device->dstBlend = blendState->dstBlend;
@@ -1531,8 +1530,8 @@ void OPENGL_SetBlendState(
 			);
 		}
 
-		if (blendState->blendFunc != device->blendOp ||
-			blendState->blendFuncAlpha != device->blendOpAlpha)
+		if (	blendState->blendFunc != device->blendOp ||
+				blendState->blendFuncAlpha != device->blendOpAlpha	)
 		{
 			device->blendOp = blendState->blendFunc;
 			device->blendOpAlpha = blendState->blendFuncAlpha;
@@ -1596,23 +1595,22 @@ void OPENGL_SetBlendState(
 		);
 	}
 
-	// kind of weird that the capitalization is different here -cosmonaut
-	if (blendState->multisampleMask != device->multiSampleMask)
+	if (blendState->multiSampleMask != device->multiSampleMask)
 	{
-		if (blendState->multisampleMask == -1)
+		if (blendState->multiSampleMask == -1)
 		{
 			glDisable(GL_SAMPLE_MASK);
 		}
 		else
 		{
-			if (blendState->multisampleMask == -1)
+			if (device->multiSampleMask == -1)
 			{
 				glEnable(GL_SAMPLE_MASK);
 			}
-			// FIXME: index...? -flibit
-			glSampleMaski(0, (uint32_t)blendState->multisampleMask);
+			/* FIXME: index...? -flibit */
+			glSampleMaski(0, (uint32_t)blendState->multiSampleMask);
 		}
-		device->multiSampleMask = blendState->multisampleMask;
+		device->multiSampleMask = blendState->multiSampleMask;
 	}
 }
 

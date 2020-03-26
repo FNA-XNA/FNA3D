@@ -318,7 +318,7 @@ typedef struct FNA3D_Viewport
 typedef struct FNA3D_BlendState
 {
 	FNA3D_Color blendColor;
-	int32_t multisampleMask;
+	int32_t multiSampleMask;
 	FNA3D_BlendFunction blendFunc;
 	FNA3D_BlendFunction blendFuncAlpha;
 	FNA3D_Blend srcBlend;
