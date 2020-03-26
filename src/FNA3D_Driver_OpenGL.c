@@ -1481,15 +1481,13 @@ void OPENGL_SetBlendState(
 	FNA3D_BlendState *blendState
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	SDL_assert(device->supports_EXT_draw_buffers2);
 
-	uint8_t newEnable = 
-		!(
-			blendState->srcBlend == FNA3D_BLEND_ONE &&
-			blendState->dstBlend == FNA3D_BLEND_ZERO &&
-			blendState->srcBlendAlpha == FNA3D_BLEND_ONE &&
-			blendState->dstBlendAlpha == FNA3D_BLEND_ZERO
-		);
+	uint8_t newEnable = (
+		!(	blendState->srcBlend == FNA3D_BLEND_ONE &&
+		blendState->dstBlend == FNA3D_BLEND_ZERO &&
+		blendState->srcBlendAlpha == FNA3D_BLEND_ONE &&
+		blendState->dstBlendAlpha == FNA3D_BLEND_ZERO	)
+	);
 
 	if (newEnable != device->alphaBlendEnable)
 	{
@@ -1500,9 +1498,9 @@ void OPENGL_SetBlendState(
 	if (device->alphaBlendEnable)
 	{
 		if (	blendState->blendColor.r != device->blendColor.r ||
-				blendState->blendColor.g != device->blendColor.g ||
-				blendState->blendColor.b != device->blendColor.b ||
-				blendState->blendColor.a != device->blendColor.a	)
+			blendState->blendColor.g != device->blendColor.g ||
+			blendState->blendColor.b != device->blendColor.b ||
+			blendState->blendColor.a != device->blendColor.a	)
 		{
 			device->blendColor = blendState->blendColor;
 			glBlendColor(
@@ -1514,9 +1512,9 @@ void OPENGL_SetBlendState(
 		}
 
 		if (	blendState->srcBlend != device->srcBlend ||
-				blendState->dstBlend != device->dstBlend ||
-				blendState->srcBlendAlpha != device->srcBlendAlpha ||
-				blendState->dstBlendAlpha != device->dstBlendAlpha	)
+			blendState->dstBlend != device->dstBlend ||
+			blendState->srcBlendAlpha != device->srcBlendAlpha ||
+			blendState->dstBlendAlpha != device->dstBlendAlpha	)
 		{
 			device->srcBlend = blendState->srcBlend;
 			device->dstBlend = blendState->dstBlend;
@@ -1531,7 +1529,7 @@ void OPENGL_SetBlendState(
 		}
 
 		if (	blendState->blendFunc != device->blendOp ||
-				blendState->blendFuncAlpha != device->blendOpAlpha	)
+			blendState->blendFuncAlpha != device->blendOpAlpha	)
 		{
 			device->blendOp = blendState->blendFunc;
 			device->blendOpAlpha = blendState->blendFuncAlpha;
