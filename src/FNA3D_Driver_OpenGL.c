@@ -1831,7 +1831,116 @@ void OPENGL_ReadBackbuffer(
 	int32_t w,
 	int32_t h
 ) {
-	/* TODO */
+	GLuint prevReadBuffer, prevDrawBuffer;
+	int32_t pitch, row;
+	uint8_t *temp;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+
+	/* FIXME: Right now we're expecting one of the following:
+	 * - byte[]
+	 * - int[]
+	 * - uint[]
+	 * - Color[]
+	 * Anything else will freak out because we're using
+	 * color backbuffers. Maybe check this out when adding
+	 * support for more backbuffer types!
+	 * -flibit
+	 */
+
+	if (startIndex > 0 || elementCount != (dataLen / elementSizeInBytes))
+	{
+		SDL_LogError(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"ReadBackbuffer startIndex/elementCount combination unimplemented!"
+		);
+		return;
+	}
+
+	prevReadBuffer = device->currentReadFramebuffer;
+
+	if (device->backbuffer->multiSampleCount > 0)
+	{
+		/* We have to resolve the renderbuffer to a texture first. */
+		prevDrawBuffer = device->currentDrawFramebuffer;
+
+		if (device->backbuffer->opengl.texture == 0)
+		{
+			device->glGenTextures(
+				1,
+				&device->backbuffer->opengl.texture
+			);
+			device->glBindTexture(
+				GL_TEXTURE_2D,
+				device->backbuffer->opengl.texture
+			);
+			device->glTexImage2D(
+				GL_TEXTURE_2D,
+				0,
+				GL_RGBA,
+				device->backbuffer->width,
+				device->backbuffer->height,
+				0,
+				GL_RGBA,
+				GL_UNSIGNED_BYTE,
+				NULL
+			);
+			device->glBindTexture(
+				device->textures[0].target,
+				device->textures[0].handle
+			);
+		}
+		BindFramebuffer(device, device->resolveFramebufferDraw);
+		device->glFramebufferTexture2D(
+			GL_FRAMEBUFFER,
+			GL_COLOR_ATTACHMENT0,
+			GL_TEXTURE_2D,
+			device->backbuffer->opengl.texture,
+			0
+		);
+		BindReadFramebuffer(device, device->backbuffer->opengl.handle);
+		device->glBlitFramebuffer(
+			0, 0, device->backbuffer->width, device->backbuffer->height,
+			0, 0, device->backbuffer->width, device->backbuffer->height,
+			GL_COLOR_BUFFER_BIT,
+			GL_LINEAR
+		);
+		/* Don't invalidate the backbuffer here! */
+		BindDrawFramebuffer(device, prevDrawBuffer);
+		BindReadFramebuffer(device, device->resolveFramebufferDraw);
+	}
+	else
+	{
+		BindReadFramebuffer(
+			device,
+			(device->backbuffer->type == BACKBUFFER_TYPE_OPENGL) ?
+				device->backbuffer->opengl.handle :
+				0
+		);
+	}
+
+	device->glReadPixels(
+		x,
+		y,
+		w,
+		h,
+		GL_RGBA,
+		GL_UNSIGNED_BYTE,
+		data
+	);
+
+	BindReadFramebuffer(device, prevReadBuffer);
+
+	/* Now we get to do a software-based flip! Yes, really! -flibit */
+	pitch = w * 4;
+	temp = (uint8_t*) SDL_malloc(pitch);
+	for (row = 0; row < h / 2; row += 1)
+	{
+		/* Top to temp, bottom to top, temp to bottom */
+		SDL_memcpy(temp, data + (row * pitch), pitch);
+		SDL_memcpy(data + (row * pitch), data + ((h - row - 1) * pitch), pitch);
+		SDL_memcpy(data + ((h - row - 1) * pitch), temp, pitch);
+	}
+	SDL_free(temp);
 }
 
 void OPENGL_GetBackbufferSize(
