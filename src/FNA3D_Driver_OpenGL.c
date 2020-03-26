@@ -66,6 +66,7 @@ typedef struct OpenGLBuffer /* Cast from FNA3D_Buffer* */
 {
 	GLuint handle;
 	intptr_t size;
+	GLenum dynamic;
 } OpenGLBuffer;
 
 typedef struct OpenGLRenderbuffer /* Cast from FNA3D_Renderbuffer* */
@@ -3456,15 +3457,53 @@ FNA3D_Buffer* OPENGL_GenVertexBuffer(
 	int32_t vertexCount,
 	int32_t vertexStride
 ) {
-	/* TODO */
-	return NULL;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLBuffer *result = NULL;
+	GLuint handle;
+
+	device->glGenBuffers(1, &handle);
+
+	result = (OpenGLBuffer*) SDL_malloc(sizeof(OpenGLBuffer));
+	result->handle = handle;
+	result->size = (intptr_t) (vertexStride * vertexCount);
+	result->dynamic = (dynamic ? GL_STREAM_DRAW : GL_STATIC_DRAW);
+
+	BindVertexBuffer(device, handle);
+	device->glBufferData(
+		GL_ARRAY_BUFFER,
+		result->size,
+		NULL,
+		result->dynamic
+	);
+
+	return (FNA3D_Buffer*) result;
 }
 
 void OPENGL_AddDisposeVertexBuffer(
 	void* driverData,
 	FNA3D_Buffer *buffer
 ) {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
+	GLuint handle = glBuffer->handle;
+	int32_t i;
+
+	if (handle == device->currentVertexBuffer)
+	{
+		device->glBindBuffer(GL_ARRAY_BUFFER, 0);
+		device->currentVertexBuffer = 0;
+	}
+	for (i = 0; i < device->numVertexAttributes; i += 1)
+	{
+		if (handle == device->attributes[i].currentBuffer)
+		{
+			/* Force the next vertex attrib update! */
+			device->attributes[i].currentBuffer = UINT32_MAX;
+		}
+	}
+	device->glDeleteBuffers(1, &handle);
+
+	SDL_free(glBuffer);
 }
 
 void OPENGL_SetVertexBufferData(
@@ -3475,7 +3514,27 @@ void OPENGL_SetVertexBufferData(
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
 ) {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
+
+	BindVertexBuffer(device, glBuffer->handle);
+
+	if (options == FNA3D_SETDATAOPTIONS_DISCARD)
+	{
+		device->glBufferData(
+			GL_ARRAY_BUFFER,
+			glBuffer->size,
+			NULL,
+			glBuffer->dynamic
+		);
+	}
+
+	device->glBufferSubData(
+		GL_ARRAY_BUFFER,
+		(GLintptr) offsetInBytes,
+		(GLsizeiptr) dataLength,
+		data
+	);
 }
 
 void OPENGL_GetVertexBufferData(
@@ -3488,9 +3547,46 @@ void OPENGL_GetVertexBufferData(
 	int32_t elementSizeInBytes,
 	int32_t vertexStride
 ) {
-	/* TODO */
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
+	uint8_t *dataBytes, *cpy, *src, *dst;
+	uint8_t useStagingBuffer;
+	int32_t i;
+
 	SDL_assert(device->supports_NonES3);
+
+	dataBytes = (uint8_t*) data;
+	useStagingBuffer = elementSizeInBytes < vertexStride;
+	if (useStagingBuffer)
+	{
+		cpy = SDL_malloc(elementCount * vertexStride);
+	}
+	else
+	{
+		cpy = dataBytes + (startIndex * elementSizeInBytes);
+	}
+
+	BindVertexBuffer(device, glBuffer->handle);
+
+	device->glGetBufferSubData(
+		GL_ARRAY_BUFFER,
+		(GLintptr) offsetInBytes,
+		(GLsizeiptr) (elementCount * vertexStride),
+		cpy
+	);
+
+	if (useStagingBuffer)
+	{
+		src = cpy;
+		dst = dataBytes + (startIndex * elementSizeInBytes);
+		for (i = 0; i < elementCount; i += 1)
+		{
+			SDL_memcpy(dst, src, elementSizeInBytes);
+			dst += elementSizeInBytes;
+			src += vertexStride;
+		}
+		SDL_free(cpy);
+	}
 }
 
 /* Index Buffers */
@@ -3502,15 +3598,46 @@ FNA3D_Buffer* OPENGL_GenIndexBuffer(
 	int32_t indexCount,
 	FNA3D_IndexElementSize indexElementSize
 ) {
-	/* TODO */
-	return NULL;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLBuffer *result = NULL;
+	GLuint handle;
+
+	device->glGenBuffers(1, &handle);
+
+	result = (OpenGLBuffer*) SDL_malloc(sizeof(OpenGLBuffer));
+	result->handle = handle;
+	result->size = (intptr_t) (
+		indexCount * XNAToGL_IndexSize[indexElementSize]
+	);
+	result->dynamic = (dynamic ? GL_STREAM_DRAW : GL_STATIC_DRAW);
+
+	BindIndexBuffer(device, handle);
+	device->glBufferData(
+		GL_ELEMENT_ARRAY_BUFFER,
+		result->size,
+		NULL,
+		result->dynamic
+	);
+
+	return (FNA3D_Buffer*) result;
 }
 
 void OPENGL_AddDisposeIndexBuffer(
 	void* driverData,
 	FNA3D_Buffer *buffer
 ) {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
+	GLuint handle = glBuffer->handle;
+
+	if (handle == device->currentIndexBuffer)
+	{
+		device->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+		device->currentIndexBuffer = 0;
+	}
+	device->glDeleteBuffers(1, &handle);
+
+	SDL_free(glBuffer);
 }
 
 void OPENGL_SetIndexBufferData(
@@ -3521,7 +3648,27 @@ void OPENGL_SetIndexBufferData(
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
 ) {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
+
+	BindIndexBuffer(device, glBuffer->handle);
+
+	if (options == FNA3D_SETDATAOPTIONS_DISCARD)
+	{
+		device->glBufferData(
+			GL_ELEMENT_ARRAY_BUFFER,
+			glBuffer->size,
+			NULL,
+			glBuffer->dynamic
+		);
+	}
+
+	device->glBufferSubData(
+		GL_ELEMENT_ARRAY_BUFFER,
+		(GLintptr) offsetInBytes,
+		(GLsizeiptr) dataLength,
+		data
+	);
 }
 
 void OPENGL_GetIndexBufferData(
@@ -3533,9 +3680,19 @@ void OPENGL_GetIndexBufferData(
 	int32_t elementCount,
 	int32_t elementSizeInBytes
 ) {
-	/* TODO */
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
+
 	SDL_assert(device->supports_NonES3);
+
+	BindIndexBuffer(device, glBuffer->handle);
+
+	device->glGetBufferSubData(
+		GL_ELEMENT_ARRAY_BUFFER,
+		(GLintptr) offsetInBytes,
+		(GLsizeiptr) (elementCount * elementSizeInBytes),
+		((uint8_t*) data) + (startIndex * elementSizeInBytes)
+	);
 }
 
 /* Effects */
