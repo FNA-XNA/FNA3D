@@ -630,6 +630,19 @@ static inline void BindFramebuffer(OpenGLDevice *device, GLuint handle)
 	}
 }
 
+static inline void BindTexture(OpenGLDevice *device, OpenGLTexture* tex)
+{
+	if (tex->target != device->textures[0]->target)
+	{
+		device->glBindTexture(device->textures[0]->target, 0);
+	}
+	if (device->textures[0] != tex)
+	{
+		device->glBindTexture(tex->target, tex->handle);
+	}
+	device->textures[0] = tex;
+}
+
 static inline void BindVertexBuffer(OpenGLDevice *device, GLuint handle)
 {
 	if (handle != device->currentVertexBuffer)
@@ -2157,6 +2170,104 @@ int32_t OPENGL_GetBackbufferMultiSampleCount(void* driverData)
 
 /* Textures */
 
+FNA3D_Texture* OPENGL_INTERNAL_CreateTexture(
+	OpenGLDevice *device,
+	GLenum target,
+	int levelCount
+) {
+	GLuint handle;
+	device->glGenTextures(1, &handle);
+	OpenGLTexture* result = (OpenGLTexture*) SDL_malloc(
+		sizeof(OpenGLTexture)
+	);
+	result->handle = handle;
+	result->target = target;
+	result->hasMipmaps = (levelCount > 1);
+	BindTexture(device, result);
+	device->glTexParameteri(
+		result->target,
+		GL_TEXTURE_WRAP_S,
+		XNAToGL_Wrap[result->wrapS]
+	);
+	device->glTexParameteri(
+		result->target,
+		GL_TEXTURE_WRAP_T,
+		XNAToGL_Wrap[result->wrapT]
+	);
+	device->glTexParameteri(
+		result->target,
+		GL_TEXTURE_WRAP_R,
+		XNAToGL_Wrap[result->wrapR]
+	);
+	device->glTexParameteri(
+		result->target,
+		GL_TEXTURE_MAG_FILTER,
+		XNAToGL_MagFilter[result->filter]
+	);
+	device->glTexParameteri(
+		result->target,
+		GL_TEXTURE_MIN_FILTER,
+		result->hasMipmaps ?
+			XNAToGL_MinMipFilter[result->filter] :
+			XNAToGL_MinFilter[result->filter]
+	);
+	device->glTexParameterf(
+		result->target,
+		GL_TEXTURE_MAX_ANISOTROPY_EXT,
+		(result->filter == FNA3D_TEXTUREFILTER_ANISOTROPIC) ? SDL_max(result->anisotropy, 1.0f) : 1.0f
+	);
+	device->glTexParameteri(
+		result->target,
+		GL_TEXTURE_BASE_LEVEL,
+		result->maxMipmapLevel
+	);
+	if (!device->useES3)
+	{
+		device->glTexParameterf(
+			result->target,
+			GL_TEXTURE_LOD_BIAS,
+			result->lodBias
+		);
+	}
+	return result;
+}
+
+int OPENGL_INTERNAL_Texture_GetFormatSize(FNA3D_SurfaceFormat format)
+{
+	switch (format)
+	{
+		case FNA3D_SURFACEFORMAT_DXT1:
+			return 8;
+		case FNA3D_SURFACEFORMAT_DXT3:
+		case FNA3D_SURFACEFORMAT_DXT5:
+			return 16;
+		case FNA3D_SURFACEFORMAT_ALPHA8:
+			return 1;
+		case FNA3D_SURFACEFORMAT_BGR565:
+		case FNA3D_SURFACEFORMAT_BGRA4444:
+		case FNA3D_SURFACEFORMAT_BGRA5551:
+		case FNA3D_SURFACEFORMAT_HALFSINGLE:
+		case FNA3D_SURFACEFORMAT_NORMALIZEDBYTE2:
+			return 2;
+		case FNA3D_SURFACEFORMAT_COLOR:
+		case FNA3D_SURFACEFORMAT_SINGLE:
+		case FNA3D_SURFACEFORMAT_RG32:
+		case FNA3D_SURFACEFORMAT_HALFVECTOR2:
+		case FNA3D_SURFACEFORMAT_NORMALIZEDBYTE4:
+		case FNA3D_SURFACEFORMAT_RGBA1010102:
+		case FNA3D_SURFACEFORMAT_COLORBGRA_EXT:
+			return 4;
+		case FNA3D_SURFACEFORMAT_HALFVECTOR4:
+		case FNA3D_SURFACEFORMAT_RGBA64:
+		case FNA3D_SURFACEFORMAT_VECTOR2:
+			return 8;
+		case FNA3D_SURFACEFORMAT_VECTOR4:
+			return 16;
+		default:
+			abort();
+	}
+}
+
 FNA3D_Texture* OPENGL_CreateTexture2D(
 	void* driverData,
 	FNA3D_SurfaceFormat format,
@@ -2165,8 +2276,55 @@ FNA3D_Texture* OPENGL_CreateTexture2D(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
-	/* TODO */
-	return NULL;
+	OpenGLDevice  *device = (OpenGLDevice*) driverData;
+	OpenGLTexture *result = NULL;
+
+	result = (OpenGLTexture *) OPENGL_INTERNAL_CreateTexture(
+		device,
+		GL_TEXTURE_2D,
+		levelCount
+	);
+
+	GLenum glFormat = XNAToGL_TextureFormat[format];
+	GLenum glInternalFormat = XNAToGL_TextureInternalFormat[format];
+	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
+	{
+		for (int i = 0; i < levelCount; i += 1)
+		{
+			int levelWidth	= SDL_max(width >> i, 1);
+			int levelHeight	= SDL_max(height >> i, 1);
+			device->glCompressedTexImage2D(
+				GL_TEXTURE_2D,
+				i,
+				(int) glInternalFormat,
+				levelWidth,
+				levelHeight,
+				0,
+				((levelWidth + 3) / 4) * ((levelHeight + 3) / 4) * OPENGL_INTERNAL_Texture_GetFormatSize(format),
+				NULL
+			);
+		}
+	}
+	else
+	{
+		GLenum glType = XNAToGL_TextureDataType[format];
+		for (int i = 0; i < levelCount; i += 1)
+		{
+			device->glTexImage2D(
+				GL_TEXTURE_2D,
+				i,
+				(int) glInternalFormat,
+				SDL_max(width >> i, 1),
+				SDL_max(height >> i, 1),
+				0,
+				glFormat,
+				glType,
+				NULL
+			);
+		}
+	}
+
+	return result;
 }
 
 FNA3D_Texture* OPENGL_CreateTexture3D(
@@ -2177,10 +2335,35 @@ FNA3D_Texture* OPENGL_CreateTexture3D(
 	int32_t depth,
 	int32_t levelCount
 ) {
-	/* TODO */
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	SDL_assert(device->supports_3DTexture);
-	return NULL;
+
+	OpenGLTexture* result = NULL;
+	result = OPENGL_INTERNAL_CreateTexture(
+		device,
+		GL_TEXTURE_3D,
+		levelCount
+	);
+
+	GLenum glFormat = XNAToGL_TextureFormat[format];
+	GLenum glInternalFormat = XNAToGL_TextureInternalFormat[format];
+	GLenum glType = XNAToGL_TextureDataType[format];
+	for (int i = 0; i < levelCount; i += 1)
+	{
+		device->glTexImage3D(
+			GL_TEXTURE_3D,
+			i,
+			glInternalFormat,
+			SDL_max(width >> i, 1),
+			SDL_max(height >> i, 1),
+			SDL_max(depth >> i, 1),
+			0,
+			glFormat,
+			glType,
+			NULL
+		);
+	}
+	return result;
 }
 
 FNA3D_Texture* OPENGL_CreateTextureCube(
@@ -2190,8 +2373,61 @@ FNA3D_Texture* OPENGL_CreateTextureCube(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
-	/* TODO */
-	return NULL;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+
+	OpenGLTexture* result = NULL;
+	result = OPENGL_INTERNAL_CreateTexture(
+		device,
+		GL_TEXTURE_CUBE_MAP,
+		levelCount
+	);
+
+	GLenum glFormat = XNAToGL_TextureFormat[format];
+	GLenum glInternalFormat = XNAToGL_TextureInternalFormat[format];
+	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
+	{
+		for (int i = 0; i < 6; i += 1)
+		{
+			for (int l = 0; l < levelCount; l += 1)
+			{
+				int levelSize = SDL_max(size >> l, 1);
+				device->glCompressedTexImage2D(
+					GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+					l,
+					(int) glInternalFormat,
+					levelSize,
+					levelSize,
+					0,
+					((levelSize + 3) / 4) * ((levelSize + 3) / 4) * OPENGL_INTERNAL_Texture_GetFormatSize(format),
+					NULL
+				);
+			}
+		}
+	}
+	else
+	{
+		GLenum glType = XNAToGL_TextureDataType[format];
+		for (int i = 0; i < 6; i += 1)
+		{
+			for (int l = 0; l < levelCount; l += 1)
+			{
+				int levelSize = SDL_max(size >> l, 1);
+				device->glTexImage2D(
+					GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
+					l,
+					glInternalFormat,
+					levelSize,
+					levelSize,
+					0,
+					glFormat,
+					glType,
+					NULL
+				);
+			}
+		}
+	}
+
+	return result;
 }
 
 void OPENGL_AddDisposeTexture(
