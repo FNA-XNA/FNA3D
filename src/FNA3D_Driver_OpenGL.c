@@ -1484,9 +1484,9 @@ void OPENGL_SetBlendState(
 
 	uint8_t newEnable = (
 		!(	blendState->srcBlend == FNA3D_BLEND_ONE &&
-		blendState->dstBlend == FNA3D_BLEND_ZERO &&
-		blendState->srcBlendAlpha == FNA3D_BLEND_ONE &&
-		blendState->dstBlendAlpha == FNA3D_BLEND_ZERO	)
+			blendState->dstBlend == FNA3D_BLEND_ZERO &&
+			blendState->srcBlendAlpha == FNA3D_BLEND_ONE &&
+			blendState->dstBlendAlpha == FNA3D_BLEND_ZERO	)
 	);
 
 	if (newEnable != device->alphaBlendEnable)
