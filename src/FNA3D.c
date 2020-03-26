@@ -443,7 +443,7 @@ void FNA3D_VerifySampler(
 
 void FNA3D_ApplyVertexBufferBindings(
 	FNA3D_Device *device,
-	/* FIXME: Oh shit VertexBufferBinding[] bindings, */
+	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings,
 	uint8_t bindingsUpdated,
 	int32_t baseVertex
@@ -454,6 +454,7 @@ void FNA3D_ApplyVertexBufferBindings(
 	}
 	device->ApplyVertexBufferBindings(
 		device->driverData,
+		bindings,
 		numBindings,
 		bindingsUpdated,
 		baseVertex

@@ -155,7 +155,7 @@ struct FNA3D_Device
 
 	void (*ApplyVertexBufferBindings)(
 		void* driverData,
-		/* FIXME: Oh shit VertexBufferBinding[] bindings, */
+		FNA3D_VertexBufferBinding *bindings,
 		int32_t numBindings,
 		uint8_t bindingsUpdated,
 		int32_t baseVertex

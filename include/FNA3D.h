@@ -387,6 +387,14 @@ typedef struct FNA3D_VertexDeclaration
 	FNA3D_VertexElement *elements;
 } FNA3D_VertexDeclaration;
 
+typedef struct FNA3D_VertexBufferBinding
+{
+	FNA3D_Buffer *vertexBuffer;
+	FNA3D_VertexDeclaration vertexDeclaration;
+	int32_t vertexOffset;
+	int32_t instanceFrequency;
+} FNA3D_VertexBufferBinding;
+
 typedef struct FNA3D_PresentationParameters
 {
 	int32_t backBufferWidth;
@@ -540,7 +548,7 @@ FNA3DAPI void FNA3D_VerifySampler(
 
 FNA3DAPI void FNA3D_ApplyVertexBufferBindings(
 	FNA3D_Device *device,
-	/* FIXME: Oh shit VertexBufferBinding[] bindings, */
+	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings,
 	uint8_t bindingsUpdated,
 	int32_t baseVertex
