@@ -1834,7 +1834,137 @@ void OPENGL_VerifySampler(
 	FNA3D_Texture *texture,
 	FNA3D_SamplerState *sampler
 ) {
-	/* TODO */
+	OpenGLDevice* device = (OpenGLDevice*)driverData;
+
+	if (texture == NULL)
+	{
+		if (device->textures[index] != &NullTexture)
+		{
+			if (index != 0)
+			{
+				device->glActiveTexture(GL_TEXTURE0 + index);
+			}
+			device->glBindTexture(device->textures[index]->target, 0);
+			if (index != 0)
+			{
+				/* Keep this state sane. -flibit */
+				device->glActiveTexture(GL_TEXTURE0);
+			}
+			device->textures[index] = &NullTexture;
+		}
+		return;
+	}
+
+	OpenGLTexture* tex = (OpenGLTexture*)texture;
+
+	if (tex == device->textures[index] &&
+		sampler->addressU == tex->wrapS &&
+		sampler->addressV == tex->wrapT &&
+		sampler->addressW == tex->wrapR &&
+		sampler->filter == tex->filter &&
+		sampler->maxAnisotropy == tex->anisotropy &&
+		sampler->maxMipLevel == tex->maxMipmapLevel &&
+		sampler->mipMapLevelOfDetailBias == tex->lodBias)
+	{
+		// Nothing's changing, forget it.
+		return;
+	}
+
+	// Set the active texture slot
+	if (index != 0)
+	{
+		device->glActiveTexture(GL_TEXTURE0 + index);
+	}
+
+	// Bind the correct texture
+	if (tex != device->textures[index])
+	{
+		if (tex->target != device->textures[index]->target)
+		{
+			// If we're changing targets, unbind the old texture first!
+			device->glBindTexture(device->textures[index]->target, 0);
+		}
+		device->glBindTexture(tex->target, tex->handle);
+		device->textures[index] = tex;
+	}
+
+	// Apply the sampler states to the GL texture
+	if (sampler->addressU != tex->wrapS)
+	{
+		tex->wrapS = sampler->addressU;
+		device->glTexParameteri(
+			tex->target,
+			GL_TEXTURE_WRAP_S,
+			tex->wrapS
+		);
+	}
+	if (sampler->addressV != tex->wrapT)
+	{
+		tex->wrapT = sampler->addressV;
+		device->glTexParameteri(
+			tex->target,
+			GL_TEXTURE_WRAP_T,
+			tex->wrapT
+		);
+	}
+	if (sampler->addressW != tex->wrapR)
+	{
+		tex->wrapR = sampler->addressW;
+		device->glTexParameteri(
+			tex->target,
+			GL_TEXTURE_WRAP_R,
+			tex->wrapR
+		);
+	}
+	if (sampler->filter != tex->filter ||
+		sampler->maxAnisotropy != tex->anisotropy)
+	{
+		tex->filter = sampler->filter;
+		tex->anisotropy = sampler->maxAnisotropy;
+		device->glTexParameteri(
+			tex->target,
+			GL_TEXTURE_MAG_FILTER,
+			tex->filter
+		);
+		device->glTexParameteri(
+			tex->target,
+			GL_TEXTURE_MIN_FILTER,
+			tex->hasMipmaps ?
+			tex->filter :
+			tex->filter
+		);
+		device->glTexParameterf(
+			tex->target,
+			GL_TEXTURE_MAX_ANISOTROPY_EXT,
+			(tex->filter == FNA3D_TEXTUREFILTER_ANISOTROPIC) ?
+				fmaxf(tex->anisotropy, 1.0f) :
+				1.0f
+		);
+	}
+	if (sampler->maxMipLevel != tex->maxMipmapLevel)
+	{
+		tex->maxMipmapLevel = sampler->maxMipLevel;
+		device->glTexParameteri(
+			tex->target,
+			GL_TEXTURE_BASE_LEVEL,
+			tex->maxMipmapLevel
+		);
+	}
+	if (sampler->mipMapLevelOfDetailBias != tex->lodBias && !device->useES3)
+	{
+		tex->lodBias = sampler->mipMapLevelOfDetailBias;
+		device->glTexParameterf(
+			tex->target,
+			GL_TEXTURE_LOD_BIAS,
+			tex->lodBias
+		);
+	}
+
+	if (index != 0)
+	{
+		/* Keep this state sane. -flibit */
+		device->glActiveTexture(GL_TEXTURE0);
+	}
 }
 
 /* Vertex State */
@@ -2248,7 +2378,7 @@ void OPENGL_ResetBackbuffer(
 
 void OPENGL_ReadBackbuffer(
 	void* driverData,
-	void* data,
+	uint8_t* data,
 	int32_t dataLen,
 	int32_t startIndex,
 	int32_t elementCount,
