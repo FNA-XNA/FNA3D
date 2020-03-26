@@ -1521,10 +1521,10 @@ void OPENGL_SetBlendState(
 			device->srcBlendAlpha = blendState->srcBlendAlpha;
 			device->dstBlendAlpha = blendState->dstBlendAlpha;
 			device->glBlendFuncSeparate(
-				device->srcBlend,
-				device->dstBlend,
-				device->srcBlendAlpha,
-				device->dstBlendAlpha
+				XNAToGL_BlendMode[device->srcBlend],
+				XNAToGL_BlendMode[device->dstBlend],
+				XNAToGL_BlendMode[device->srcBlendAlpha],
+				XNAToGL_BlendMode[device->dstBlendAlpha]
 			);
 		}
 
@@ -1534,8 +1534,8 @@ void OPENGL_SetBlendState(
 			device->blendOp = blendState->blendFunc;
 			device->blendOpAlpha = blendState->blendFuncAlpha;
 			device->glBlendEquationSeparate(
-				device->blendOp,
-				device->blendOpAlpha
+				XNAToGL_BlendEquation[device->blendOp],
+				XNAToGL_BlendEquation[device->blendOpAlpha]
 			);
 		}
 	}
@@ -1857,14 +1857,14 @@ void OPENGL_VerifySampler(
 
 	OpenGLTexture* tex = (OpenGLTexture*)texture;
 
-	if (tex == device->textures[index] &&
+	if (	tex == device->textures[index] &&
 		sampler->addressU == tex->wrapS &&
 		sampler->addressV == tex->wrapT &&
 		sampler->addressW == tex->wrapR &&
 		sampler->filter == tex->filter &&
 		sampler->maxAnisotropy == tex->anisotropy &&
 		sampler->maxMipLevel == tex->maxMipmapLevel &&
-		sampler->mipMapLevelOfDetailBias == tex->lodBias)
+		sampler->mipMapLevelOfDetailBias == tex->lodBias	)
 	{
 		/* Nothing's changing, forget it. */
 		return;
@@ -1895,7 +1895,7 @@ void OPENGL_VerifySampler(
 		device->glTexParameteri(
 			tex->target,
 			GL_TEXTURE_WRAP_S,
-			tex->wrapS
+			XNAToGL_Wrap[tex->wrapS]
 		);
 	}
 	if (sampler->addressV != tex->wrapT)
@@ -1904,7 +1904,7 @@ void OPENGL_VerifySampler(
 		device->glTexParameteri(
 			tex->target,
 			GL_TEXTURE_WRAP_T,
-			tex->wrapT
+			XNAToGL_Wrap[tex->wrapT]
 		);
 	}
 	if (sampler->addressW != tex->wrapR)
@@ -1913,7 +1913,7 @@ void OPENGL_VerifySampler(
 		device->glTexParameteri(
 			tex->target,
 			GL_TEXTURE_WRAP_R,
-			tex->wrapR
+			XNAToGL_Wrap[tex->wrapR]
 		);
 	}
 	if (sampler->filter != tex->filter ||
@@ -1924,20 +1924,20 @@ void OPENGL_VerifySampler(
 		device->glTexParameteri(
 			tex->target,
 			GL_TEXTURE_MAG_FILTER,
-			tex->filter
+			XNAToGL_MagFilter[tex->filter]
 		);
 		device->glTexParameteri(
 			tex->target,
 			GL_TEXTURE_MIN_FILTER,
 			tex->hasMipmaps ?
-			tex->filter :
-			tex->filter
+				XNAToGL_MinMipFilter[tex->filter] :
+				XNAToGL_MinFilter[tex->filter]
 		);
 		device->glTexParameterf(
 			tex->target,
 			GL_TEXTURE_MAX_ANISOTROPY_EXT,
 			(tex->filter == FNA3D_TEXTUREFILTER_ANISOTROPIC) ?
-				fmaxf(tex->anisotropy, 1.0f) :
+				SDL_max(tex->anisotropy, 1.0f) :
 				1.0f
 		);
 	}
