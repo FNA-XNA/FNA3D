@@ -1489,7 +1489,109 @@ void OPENGL_SetDepthStencilState(
 	void* driverData,
 	FNA3D_DepthStencilState *depthStencilState
 ) {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+
+	if (depthStencilState->zEnable != device->zEnable)
+	{
+		device->zEnable = depthStencilState->zEnable;
+		ToggleGLState(device, GL_DEPTH_TEST, device->zEnable);
+	}
+
+	if (device->zEnable)
+	{
+		if (depthStencilState->zWriteEnable != device->zWriteEnable)
+		{
+			device->zWriteEnable = depthStencilState->zWriteEnable;
+			device->glDepthMask(device->zWriteEnable);
+		}
+
+		if (depthStencilState->depthFunc != device->depthFunc)
+		{
+			device->depthFunc = depthStencilState->depthFunc;
+			device->glDepthFunc(XNAToGL_CompareFunc[device->depthFunc]);
+		}
+	}
+
+	if (depthStencilState->stencilEnable != device->stencilEnable)
+	{
+		device->stencilEnable = depthStencilState->stencilEnable;
+		ToggleGLState(device, GL_STENCIL_TEST, device->stencilEnable);
+	}
+
+	if (device->stencilEnable)
+	{
+		if (depthStencilState->stencilWriteMask != device->stencilWriteMask)
+		{
+			device->stencilWriteMask = depthStencilState->stencilWriteMask;
+			device->glStencilMask(device->stencilWriteMask);
+		}
+
+		/* TODO: Can we split up StencilFunc/StencilOp nicely? -flibit */
+		if (	depthStencilState->separateStencilEnable != device->separateStencilEnable ||
+			depthStencilState->stencilRef != device->stencilRef ||
+			depthStencilState->stencilMask != device->stencilMask ||
+			depthStencilState->stencilFunc != device->stencilFunc ||
+			depthStencilState->ccwStencilFunc != device->ccwStencilFunc ||
+			depthStencilState->stencilFail != device->stencilFail ||
+			depthStencilState->stencilZFail != device->stencilZFail ||
+			depthStencilState->stencilPass != device->stencilPass ||
+			depthStencilState->ccwStencilFail != device->ccwStencilFail ||
+			depthStencilState->ccwStencilZFail != device->ccwStencilZFail ||
+			depthStencilState->ccwStencilPass != device->ccwStencilPass	)
+		{
+			device->separateStencilEnable = depthStencilState->separateStencilEnable;
+			device->stencilRef = depthStencilState->stencilRef;
+			device->stencilMask = depthStencilState->stencilMask;
+			device->stencilFunc = depthStencilState->stencilFunc;
+			device->stencilFail = depthStencilState->stencilFail;
+			device->stencilZFail = depthStencilState->stencilZFail;
+			device->stencilPass = depthStencilState->stencilPass;
+			if (device->separateStencilEnable)
+			{
+				device->ccwStencilFunc = depthStencilState->ccwStencilFunc;
+				device->ccwStencilFail = depthStencilState->ccwStencilFail;
+				device->ccwStencilZFail = depthStencilState->ccwStencilZFail;
+				device->ccwStencilPass = depthStencilState->ccwStencilPass;
+				device->glStencilFuncSeparate(
+					GL_FRONT,
+					XNAToGL_CompareFunc[device->stencilFunc],
+					device->stencilRef,
+					device->stencilMask
+				);
+				device->glStencilFuncSeparate(
+					GL_BACK,
+					XNAToGL_CompareFunc[device->ccwStencilFunc],
+					device->stencilRef,
+					device->stencilMask
+				);
+				device->glStencilOpSeparate(
+					GL_FRONT,
+					XNAToGL_GLStencilOp[device->stencilFail],
+					XNAToGL_GLStencilOp[device->stencilZFail],
+					XNAToGL_GLStencilOp[device->stencilPass]
+				);
+				device->glStencilOpSeparate(
+					GL_BACK,
+					XNAToGL_GLStencilOp[device->ccwStencilFail],
+					XNAToGL_GLStencilOp[device->ccwStencilZFail],
+					XNAToGL_GLStencilOp[device->ccwStencilPass]
+				);
+			}
+			else
+			{
+				device->glStencilFunc(
+					XNAToGL_CompareFunc[device->stencilFunc],
+					device->stencilRef,
+					device->stencilMask
+				);
+				device->glStencilOp(
+					XNAToGL_GLStencilOp[device->stencilFail],
+					XNAToGL_GLStencilOp[device->stencilZFail],
+					XNAToGL_GLStencilOp[device->stencilPass]
+				);
+			}
+		}
+	}
 }
 
 void OPENGL_ApplyRasterizerState(
