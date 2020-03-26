@@ -549,6 +549,7 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(GenDepthStencilRenderbuffer, name) \
 	ASSIGN_DRIVER_FUNC(AddDisposeRenderbuffer, name) \
 	ASSIGN_DRIVER_FUNC(GenVertexBuffer, name) \
+	ASSIGN_DRIVER_FUNC(GenIndexBuffer, name) \
 	ASSIGN_DRIVER_FUNC(AddDisposeVertexBuffer, name) \
 	ASSIGN_DRIVER_FUNC(SetVertexBufferData, name) \
 	ASSIGN_DRIVER_FUNC(GetVertexBufferData, name) \
