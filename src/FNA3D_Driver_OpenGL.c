@@ -2190,7 +2190,7 @@ void OPENGL_ApplyVertexDeclaration(
 			);
 			if (attribLoc == -1)
 			{
-				// Stream not used!
+				/* Stream not used! */
 				continue;
 			}
 			device->attributeEnabled[attribLoc] = 1;
