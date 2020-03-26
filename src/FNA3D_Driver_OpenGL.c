@@ -2896,7 +2896,22 @@ void OPENGL_AddDisposeTexture(
 	void* driverData,
 	FNA3D_Texture *texture
 ) {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLTexture *glTexture = (OpenGLTexture*) texture;
+	GLuint handle = glTexture->handle;
+
+	int32_t i;
+	for (i = 0; i < device->numAttachments; i += 1)
+	{
+		if (handle == device->currentAttachments[i])
+		{
+			/* Force an attachment update, this no longer exists! */
+			device->currentAttachments[i] = UINT32_MAX;
+		}
+	}
+	device->glDeleteTextures(1, &handle);
+
+	SDL_free(glTexture);
 }
 
 void OPENGL_SetTextureData2D(
