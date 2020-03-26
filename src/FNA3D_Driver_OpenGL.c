@@ -706,7 +706,178 @@ void OPENGL_SwapBuffers(
 	FNA3D_Rect *destinationRectangle,
 	void* overrideWindowHandle
 ) {
-	/* TODO */
+	int32_t srcX, srcY, srcW, srcH;
+	int32_t dstX, dstY, dstW, dstH;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+
+	/* Only the faux-backbuffer supports presenting
+	 * specific regions given to Present().
+	 * -flibit
+	 */
+	if (device->backbuffer->type == BACKBUFFER_TYPE_OPENGL)
+	{
+		if (sourceRectangle != NULL)
+		{
+			srcX = sourceRectangle->x;
+			srcY = sourceRectangle->y;
+			srcW = sourceRectangle->w;
+			srcH = sourceRectangle->h;
+		}
+		else
+		{
+			srcX = 0;
+			srcY = 0;
+			srcW = device->backbuffer->width;
+			srcH = device->backbuffer->height;
+		}
+		if (destinationRectangle != NULL)
+		{
+			dstX = destinationRectangle->x;
+			dstY = destinationRectangle->y;
+			dstW = destinationRectangle->w;
+			dstH = destinationRectangle->h;
+		}
+		else
+		{
+			dstX = 0;
+			dstY = 0;
+			SDL_GL_GetDrawableSize(
+				(SDL_Window*) overrideWindowHandle,
+				&dstW,
+				&dstH
+			);
+		}
+
+		if (device->scissorTestEnable)
+		{
+			device->glDisable(GL_SCISSOR_TEST);
+		}
+
+		if (	device->backbuffer->multiSampleCount > 0 &&
+			(srcX != dstX || srcY != dstY || srcW != dstW || srcH != dstH)	)
+		{
+			/* We have to resolve the renderbuffer to a texture first.
+			 * For whatever reason, we can't blit a multisample renderbuffer
+			 * to the backbuffer. Not sure why, but oh well.
+			 * -flibit
+			 */
+			if (device->backbuffer->opengl.texture == 0)
+			{
+				device->glGenTextures(1, &device->backbuffer->opengl.texture);
+				device->glBindTexture(GL_TEXTURE_2D, device->backbuffer->opengl.texture);
+				device->glTexImage2D(
+					GL_TEXTURE_2D,
+					0,
+					GL_RGBA,
+					device->backbuffer->width,
+					device->backbuffer->height,
+					0,
+					GL_RGBA,
+					GL_UNSIGNED_BYTE,
+					NULL
+				);
+				device->glBindTexture(
+					device->textures[0].target,
+					device->textures[0].handle
+				);
+			}
+			BindFramebuffer(device, device->resolveFramebufferDraw);
+			device->glFramebufferTexture2D(
+				GL_FRAMEBUFFER,
+				GL_COLOR_ATTACHMENT0,
+				GL_TEXTURE_2D,
+				device->backbuffer->opengl.texture,
+				0
+			);
+			BindReadFramebuffer(device, device->backbuffer->opengl.handle);
+			device->glBlitFramebuffer(
+				0, 0, device->backbuffer->width, device->backbuffer->height,
+				0, 0, device->backbuffer->width, device->backbuffer->height,
+				GL_COLOR_BUFFER_BIT,
+				GL_LINEAR
+			);
+			/* Invalidate the MSAA faux-backbuffer */
+			if (device->supports_ARB_invalidate_subdata)
+			{
+				device->glInvalidateFramebuffer(
+					GL_READ_FRAMEBUFFER,
+					device->numAttachments + 2,
+					device->drawBuffersArray
+				);
+			}
+			BindReadFramebuffer(device, device->resolveFramebufferDraw);
+		}
+		else
+		{
+			BindReadFramebuffer(device, device->backbuffer->opengl.handle);
+		}
+		BindDrawFramebuffer(device, device->realBackbufferFBO);
+
+		device->glBlitFramebuffer(
+			srcX, srcY, srcW, srcH,
+			dstX, dstY, dstW, dstH,
+			GL_COLOR_BUFFER_BIT,
+			device->backbufferScaleMode
+		);
+		/* Invalidate the faux-backbuffer */
+		if (device->supports_ARB_invalidate_subdata)
+		{
+			device->glInvalidateFramebuffer(
+				GL_READ_FRAMEBUFFER,
+				device->numAttachments + 2,
+				device->drawBuffersArray
+			);
+		}
+
+		BindFramebuffer(device, device->realBackbufferFBO);
+
+		if (device->scissorTestEnable)
+		{
+			device->glEnable(GL_SCISSOR_TEST);
+		}
+
+		SDL_GL_SwapWindow((SDL_Window*) overrideWindowHandle);
+
+		BindFramebuffer(device, device->backbuffer->opengl.handle);
+	}
+	else
+	{
+		/* Nothing left to do, just swap! */
+		SDL_GL_SwapWindow((SDL_Window*) overrideWindowHandle);
+	}
+
+/* FIXME: Oh shit -flibit
+	RunActions();
+	IGLTexture gcTexture;
+	while (GCTextures.TryDequeue(out gcTexture))
+	{
+		DeleteTexture(gcTexture);
+	}
+	IGLRenderbuffer gcDepthBuffer;
+	while (GCDepthBuffers.TryDequeue(out gcDepthBuffer))
+	{
+		DeleteRenderbuffer(gcDepthBuffer);
+	}
+	IGLBuffer gcBuffer;
+	while (GCVertexBuffers.TryDequeue(out gcBuffer))
+	{
+		DeleteVertexBuffer(gcBuffer);
+	}
+	while (GCIndexBuffers.TryDequeue(out gcBuffer))
+	{
+		DeleteIndexBuffer(gcBuffer);
+	}
+	IGLEffect gcEffect;
+	while (GCEffects.TryDequeue(out gcEffect))
+	{
+		DeleteEffect(gcEffect);
+	}
+	IGLQuery gcQuery;
+	while (GCQueries.TryDequeue(out gcQuery))
+	{
+		DeleteQuery(gcQuery);
+	}
+*/
 }
 
 void OPENGL_SetPresentationInterval(
