@@ -81,7 +81,7 @@ typedef struct OpenGLEffect /* Cast from FNA3D_Effect* */
 
 typedef struct OpenGLQuery /* Cast from FNA3D_Query* */
 {
-	uint8_t filler;
+	GLuint handle;
 } OpenGLQuery;
 
 typedef struct OpenGLBackbuffer
@@ -3537,49 +3537,82 @@ void OPENGL_EndPassRestore(
 
 FNA3D_Query* OPENGL_CreateQuery(void* driverData)
 {
-	/* TODO */
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	SDL_assert(device->supports_ARB_occlusion_query);
-	return NULL;
+
+	OpenGLQuery *result = SDL_malloc(sizeof(OpenGLQuery));
+	device->glGenQueries(1, &result->handle);
+
+	return (FNA3D_Query *)result;
 }
 
 void OPENGL_AddDisposeQuery(void* driverData, FNA3D_Query *query)
 {
-	/* TODO */
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	SDL_assert(device->supports_ARB_occlusion_query);
+	OpenGLQuery *_query = (OpenGLQuery *)query;
+
+	device->glDeleteQueries(
+		1,
+		&_query->handle
+	);
+
+	SDL_free(_query);
 }
 
 void OPENGL_QueryBegin(void* driverData, FNA3D_Query *query)
 {
-	/* TODO */
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	SDL_assert(device->supports_ARB_occlusion_query);
+	OpenGLQuery *_query = (OpenGLQuery *)query;
+
+	device->glBeginQuery(
+		GL_SAMPLES_PASSED,
+		_query->handle
+	);
 }
 
 void OPENGL_QueryEnd(void* driverData, FNA3D_Query *query)
 {
-	/* TODO */
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	SDL_assert(device->supports_ARB_occlusion_query);
+
+	// May need to check active queries...?
+	device->glEndQuery(
+		GL_SAMPLES_PASSED
+	);
 }
 
 uint8_t OPENGL_QueryComplete(void* driverData, FNA3D_Query *query)
 {
-	/* TODO */
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	SDL_assert(device->supports_ARB_occlusion_query);
-	return 1;
+	OpenGLQuery *_query = (OpenGLQuery *)query;
+
+	GLuint result;
+	device->glGetQueryObjectuiv(
+		_query->handle,
+		GL_QUERY_RESULT_AVAILABLE,
+		&result
+	);
+	return result != 0;
 }
 
 int32_t OPENGL_QueryPixelCount(
 	void* driverData,
 	FNA3D_Query *query
 ) {
-	/* TODO */
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	SDL_assert(device->supports_ARB_occlusion_query);
-	return 0;
+	OpenGLQuery *_query = (OpenGLQuery *)query;
+
+	GLuint result;
+	device->glGetQueryObjectuiv(
+		_query->handle,
+		GL_QUERY_RESULT,
+		&result
+	);
+	return (int) result;
 }
 
 /* Feature Queries */
