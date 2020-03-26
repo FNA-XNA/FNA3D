@@ -56,7 +56,7 @@ typedef struct OpenGLBuffer /* Cast from FNA3D_Buffer* */
 
 typedef struct OpenGLRenderbuffer /* Cast from FNA3D_Renderbuffer* */
 {
-	uint8_t filler;
+	GLuint handle;
 } OpenGLRenderbuffer;
 
 typedef struct OpenGLEffect /* Cast from FNA3D_Effect* */
@@ -2322,8 +2322,35 @@ FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
 	int32_t multiSampleCount,
 	FNA3D_Texture *texture
 ) {
-	/* TODO */
-	return NULL;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderbuffer *renderbuffer = (OpenGLRenderbuffer*) SDL_malloc(
+		sizeof(OpenGLRenderbuffer)
+	);
+
+	device->glGenRenderbuffers(1, &renderbuffer->handle);
+	device->glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer->handle);
+	if (multiSampleCount > 0)
+	{
+		device->glRenderbufferStorageMultisample(
+			GL_RENDERBUFFER,
+			multiSampleCount,
+			XNAToGL_TextureInternalFormat[format],
+			width,
+			height
+		);
+	}
+	else
+	{
+		device->glRenderbufferStorage(
+			GL_RENDERBUFFER,
+			XNAToGL_TextureInternalFormat[format],
+			width,
+			height
+		);
+	}
+	device->glBindRenderbuffer(GL_RENDERBUFFER, device->realBackbufferRBO);
+
+	return (FNA3D_Renderbuffer*) renderbuffer;
 }
 
 FNA3D_Renderbuffer* OPENGL_GenDepthStencilRenderbuffer(
@@ -2333,15 +2360,65 @@ FNA3D_Renderbuffer* OPENGL_GenDepthStencilRenderbuffer(
 	FNA3D_DepthFormat format,
 	int32_t multiSampleCount
 ) {
-	/* TODO */
-	return NULL;
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderbuffer *renderbuffer = (OpenGLRenderbuffer*) SDL_malloc(
+		sizeof(OpenGLRenderbuffer)
+	);
+
+	device->glGenRenderbuffers(1, &renderbuffer->handle);
+	device->glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer->handle);
+	if (multiSampleCount > 0)
+	{
+		device->glRenderbufferStorageMultisample(
+			GL_RENDERBUFFER,
+			multiSampleCount,
+			XNAToGL_DepthStorage[format],
+			width,
+			height
+		);
+	}
+	else
+	{
+		device->glRenderbufferStorage(
+			GL_RENDERBUFFER,
+			XNAToGL_DepthStorage[format],
+			width,
+			height
+		);
+	}
+	device->glBindRenderbuffer(GL_RENDERBUFFER, device->realBackbufferRBO);
+
+	return (FNA3D_Renderbuffer*) renderbuffer;
 }
 
 void OPENGL_AddDisposeRenderbuffer(
 	void* driverData,
 	FNA3D_Renderbuffer *renderbuffer
 ) {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderbuffer *buffer = (OpenGLRenderbuffer*) renderbuffer;
+	int32_t i;
+
+	/* Check color attachments */
+	for (i = 0; i < device->numAttachments; i += 1)
+	{
+		if (buffer->handle == device->currentAttachments[i])
+		{
+			/* Force an attachment update, this no longer exists! */
+			device->currentAttachments[i] = ~0;
+		}
+	}
+
+	/* Check depth/stencil attachment */
+	if (buffer->handle == device->currentRenderbuffer)
+	{
+		/* Force a renderbuffer update, this no longer exists! */
+		device->currentRenderbuffer = ~0;
+	}
+
+	/* Finally. */
+	device->glDeleteRenderbuffers(1, &buffer->handle);
+	SDL_free(buffer);
 }
 
 /* Vertex Buffers */
