@@ -1480,9 +1480,136 @@ void OPENGL_SetBlendState(
 	void* driverData,
 	FNA3D_BlendState *blendState
 ) {
-	/* TODO */
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	SDL_assert(device->supports_EXT_draw_buffers2);
+
+	uint8_t newEnable = (
+		!(	blendState->srcBlend == FNA3D_BLEND_ONE &&
+			blendState->dstBlend == FNA3D_BLEND_ZERO &&
+			blendState->srcBlendAlpha == FNA3D_BLEND_ONE &&
+			blendState->dstBlendAlpha == FNA3D_BLEND_ZERO	)
+	);
+
+	if (newEnable != device->alphaBlendEnable)
+	{
+		device->alphaBlendEnable = newEnable;
+		ToggleGLState(device, GL_BLEND, device->alphaBlendEnable);
+	}
+
+	if (device->alphaBlendEnable)
+	{
+		if (	blendState->blendColor.r != device->blendColor.r ||
+			blendState->blendColor.g != device->blendColor.g ||
+			blendState->blendColor.b != device->blendColor.b ||
+			blendState->blendColor.a != device->blendColor.a	)
+		{
+			device->blendColor = blendState->blendColor;
+			glBlendColor(
+				device->blendColor.r / 255.0f,
+				device->blendColor.g / 255.0f,
+				device->blendColor.b / 255.0f,
+				device->blendColor.a / 255.0f
+			);
+		}
+
+		if (	blendState->srcBlend != device->srcBlend ||
+			blendState->dstBlend != device->dstBlend ||
+			blendState->srcBlendAlpha != device->srcBlendAlpha ||
+			blendState->dstBlendAlpha != device->dstBlendAlpha	)
+		{
+			device->srcBlend = blendState->srcBlend;
+			device->dstBlend = blendState->dstBlend;
+			device->srcBlendAlpha = blendState->srcBlendAlpha;
+			device->dstBlendAlpha = blendState->dstBlendAlpha;
+			glBlendFuncSeparate(
+				device->srcBlend,
+				device->dstBlend,
+				device->srcBlendAlpha,
+				device->dstBlendAlpha
+			);
+		}
+
+		if (	blendState->blendFunc != device->blendOp ||
+			blendState->blendFuncAlpha != device->blendOpAlpha	)
+		{
+			device->blendOp = blendState->blendFunc;
+			device->blendOpAlpha = blendState->blendFuncAlpha;
+			glBlendEquationSeparate(
+				device->blendOp,
+				device->blendOpAlpha
+			);
+		}
+	}
+
+	if (blendState->colorWriteEnable != device->colorWriteEnable)
+	{
+		device->colorWriteEnable = blendState->colorWriteEnable;
+		glColorMask(
+			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_RED) != 0,
+			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
+			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_BLUE) != 0,
+			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_ALPHA) != 0
+		);
+	}
+	/* FIXME: So how exactly do we factor in
+	 * COLORWRITEENABLE for buffer 0? Do we just assume that
+	 * the default is just buffer 0, and all other calls
+	 * update the other write masks afterward? Or do we
+	 * assume that COLORWRITEENABLE only touches 0, and the
+	 * other 3 buffers are left alone unless we don't have
+	 * EXT_draw_buffers2?
+	 * -flibit
+	 */
+	if (blendState->colorWriteEnable1 != device->colorWriteEnable1)
+	{
+		device->colorWriteEnable1 = blendState->colorWriteEnable1;
+		glColorMaski(
+			1,
+			(device->colorWriteEnable1 & FNA3D_COLORWRITECHANNELS_RED) != 0,
+			(device->colorWriteEnable1 & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
+			(device->colorWriteEnable1 & FNA3D_COLORWRITECHANNELS_BLUE) != 0,
+			(device->colorWriteEnable1 & FNA3D_COLORWRITECHANNELS_ALPHA) != 0
+		);
+	}
+	if (blendState->colorWriteEnable2 != device->colorWriteEnable2)
+	{
+		device->colorWriteEnable2 = blendState->colorWriteEnable2;
+		glColorMaski(
+			2,
+			(device->colorWriteEnable2 & FNA3D_COLORWRITECHANNELS_RED) != 0,
+			(device->colorWriteEnable2 & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
+			(device->colorWriteEnable2 & FNA3D_COLORWRITECHANNELS_BLUE) != 0,
+			(device->colorWriteEnable2 & FNA3D_COLORWRITECHANNELS_ALPHA) != 0
+		);
+	}
+	if (blendState->colorWriteEnable3 != device->colorWriteEnable3)
+	{
+		device->colorWriteEnable3 = blendState->colorWriteEnable3;
+		glColorMaski(
+			3,
+			(device->colorWriteEnable3 & FNA3D_COLORWRITECHANNELS_RED) != 0,
+			(device->colorWriteEnable3 & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
+			(device->colorWriteEnable3 & FNA3D_COLORWRITECHANNELS_BLUE) != 0,
+			(device->colorWriteEnable3 & FNA3D_COLORWRITECHANNELS_ALPHA) != 0
+		);
+	}
+
+	if (blendState->multiSampleMask != device->multiSampleMask)
+	{
+		if (blendState->multiSampleMask == -1)
+		{
+			glDisable(GL_SAMPLE_MASK);
+		}
+		else
+		{
+			if (device->multiSampleMask == -1)
+			{
+				glEnable(GL_SAMPLE_MASK);
+			}
+			/* FIXME: index...? -flibit */
+			glSampleMaski(0, (uint32_t)blendState->multiSampleMask);
+		}
+		device->multiSampleMask = blendState->multiSampleMask;
+	}
 }
 
 void OPENGL_SetDepthStencilState(
