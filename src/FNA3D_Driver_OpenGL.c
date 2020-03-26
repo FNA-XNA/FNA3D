@@ -1919,7 +1919,7 @@ void OPENGL_VerifySampler(
 		sampler->maxAnisotropy != tex->anisotropy	)
 	{
 		tex->filter = sampler->filter;
-		tex->anisotropy = sampler->maxAnisotropy;
+		tex->anisotropy = (float) sampler->maxAnisotropy;
 		device->glTexParameteri(
 			tex->target,
 			GL_TEXTURE_MAG_FILTER,
@@ -2833,7 +2833,7 @@ FNA3D_Texture* OPENGL_CreateTextureCube(
 	uint8_t isRenderTarget
 ) {
 	OpenGLTexture *result;
-	GLenum glFormat, glInternalFormat, glType;
+	GLenum glFormat, glInternalFormat;
 	int32_t levelSize, i, l;
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 
