@@ -2238,7 +2238,7 @@ static void OPENGL_INTERNAL_DisposeBackbuffer(OpenGLDevice *device)
 	#undef GLBACKBUFFER
 }
 
-uint8_t OPENGL_INTERNAL_ReadTargetIfApplicable(
+static uint8_t OPENGL_INTERNAL_ReadTargetIfApplicable(
 	void* driverData,
 	FNA3D_Texture* textureIn,
 	int width,
@@ -2577,7 +2577,7 @@ int OPENGL_INTERNAL_Texture_GetFormatSize(FNA3D_SurfaceFormat format)
 	}
 }
 
-int OPENGL_INTERNAL_Texture_GetPixelStoreAlignment(FNA3D_SurfaceFormat format) {
+static int OPENGL_INTERNAL_Texture_GetPixelStoreAlignment(FNA3D_SurfaceFormat format) {
 	/*
 	 * https://github.com/FNA-XNA/FNA/pull/238
 	 * https://www.khronos.org/registry/OpenGL/specs/gl/glspec21.pdf
@@ -2642,7 +2642,7 @@ FNA3D_Texture* OPENGL_CreateTexture2D(
 		}
 	}
 
-	return (FNA3D_Texture*)result;
+	return (FNA3D_Texture *)result;
 }
 
 FNA3D_Texture* OPENGL_CreateTexture3D(
@@ -2681,7 +2681,7 @@ FNA3D_Texture* OPENGL_CreateTexture3D(
 			NULL
 		);
 	}
-	return (FNA3D_Texture*)result;
+	return (FNA3D_Texture *)result;
 }
 
 FNA3D_Texture* OPENGL_CreateTextureCube(
@@ -2745,7 +2745,7 @@ FNA3D_Texture* OPENGL_CreateTextureCube(
 		}
 	}
 
-	return (FNA3D_Texture*)result;
+	return (FNA3D_Texture *)result;
 }
 
 void OPENGL_AddDisposeTexture(
@@ -2863,10 +2863,10 @@ void OPENGL_SetTextureDataCube(
 	void* driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int32_t xOffset,
-	int32_t yOffset,
-	int32_t width,
-	int32_t height,
+	int32_t x,
+	int32_t y,
+	int32_t w,
+	int32_t h,
 	FNA3D_CubeMapFace cubeMapFace,
 	int32_t level,
 	void* data,
@@ -2887,10 +2887,10 @@ void OPENGL_SetTextureDataCube(
 		device->glCompressedTexSubImage2D(
 			GL_TEXTURE_CUBE_MAP_POSITIVE_X + (int) cubeMapFace,
 			level,
-			xOffset,
-			yOffset,
-			width,
-			height,
+			x,
+			y,
+			w,
+			h,
 			XNAToGL_TextureInternalFormat[format],
 			dataLength,
 			data
@@ -2901,10 +2901,10 @@ void OPENGL_SetTextureDataCube(
 		device->glTexSubImage2D(
 			GL_TEXTURE_CUBE_MAP_POSITIVE_X + (int) cubeMapFace,
 			level,
-			xOffset,
-			yOffset,
-			width,
-			height,
+			x,
+			y,
+			w,
+			h,
 			glFormat,
 			XNAToGL_TextureDataType[format],
 			data
@@ -2912,7 +2912,7 @@ void OPENGL_SetTextureDataCube(
 	}
 }
 
-void OPENGL_INTERNAL_SetTextureData_YUV_Channel(
+static void OPENGL_INTERNAL_SetTextureData_YUV_Channel(
 	OpenGLDevice *device,
 	FNA3D_Texture *target,
 	int32_t width,
@@ -2938,18 +2938,18 @@ void OPENGL_SetTextureDataYUV(
 	FNA3D_Texture *y,
 	FNA3D_Texture *u,
 	FNA3D_Texture *v,
-	int32_t width,
-	int32_t height,
+	int32_t w,
+	int32_t h,
 	void* ptr
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 
 	device->glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, y, width, height, ptr);
-	ptr += (width * height);
-	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, u, width, height, ptr);
-	ptr += (width * height);
-	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, v, width, height, ptr);
+	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, y, w, h, ptr);
+	ptr += (w * h);
+	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, u, w, h, ptr);
+	ptr += (w * h);
+	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, v, w, h, ptr);
 	device->glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
 
@@ -2957,13 +2957,13 @@ void OPENGL_GetTextureData2D(
 	void* driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int width,
-	int height,
+	int32_t textureWidth,
+	int32_t textureHeight,
 	int32_t level,
-	int subX,
-	int subY,
-	int subW,
-	int subH,
+	int32_t x,
+	int32_t y,
+	int32_t w,
+	int32_t h,
 	void* data,
 	int32_t startIndex,
 	int32_t elementCount,
@@ -2975,14 +2975,14 @@ void OPENGL_GetTextureData2D(
 	if (level == 0 && OPENGL_INTERNAL_ReadTargetIfApplicable(
 		driverData,
 		texture,
-		width,
-		height,
+		textureWidth,
+		textureHeight,
 		level,
 		data,
-		subX,
-		subY,
-		subW,
-		subH
+		x,
+		y,
+		w,
+		h
 	)) {
 		return;
 	}
@@ -2993,7 +2993,7 @@ void OPENGL_GetTextureData2D(
 	{
 		abort();
 	}
-	else if (subX == 0 && subY == 0 && subW == width && subH == height)
+	else if (x == 0 && y == 0 && w == textureWidth && h == textureHeight)
 	{
 		/* Just throw the whole texture into the user array. */
 		device->glGetTexImage(
@@ -3007,7 +3007,7 @@ void OPENGL_GetTextureData2D(
 	else
 	{
 		/* Get the whole texture... */
-		void *texData = SDL_malloc(width * height * elementSizeInBytes);
+		void *texData = SDL_malloc(textureWidth * textureHeight * elementSizeInBytes);
 		
 		device->glGetTexImage(
 			GL_TEXTURE_2D,
@@ -3019,9 +3019,9 @@ void OPENGL_GetTextureData2D(
 
 		/* Now, blit the rect region into the user array. */
 		int curPixel = -1;
-		for (int row = subY; row < subY + subH; row += 1)
+		for (int row = y; row < y + h; row += 1)
 		{
-			for (int col = subX; col < subX + subW; col += 1)
+			for (int col = x; col < x + w; col += 1)
 			{
 				curPixel += 1;
 				if (curPixel < startIndex)
@@ -3037,7 +3037,7 @@ void OPENGL_GetTextureData2D(
 				/* FIXME: Can we copy via pitch instead, or something? -flibit */
 				SDL_memcpy(
 					data + ((curPixel - startIndex) * elementSizeInBytes),
-					texData + (((row * width) + col) * elementSizeInBytes),
+					texData + (((row * w) + col) * elementSizeInBytes),
 					elementSizeInBytes
 				);
 			}
@@ -3073,13 +3073,13 @@ void OPENGL_GetTextureDataCube(
 	void* driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int32_t size,
+	int32_t textureSize,
 	FNA3D_CubeMapFace cubeMapFace,
 	int32_t level,
-	int32_t subX,
-	int32_t subY,
-	int32_t subW,
-	int32_t subH,
+	int32_t x,
+	int32_t y,
+	int32_t w,
+	int32_t h,
 	void* data,
 	int32_t startIndex,
 	int32_t elementCount,
@@ -3094,7 +3094,7 @@ void OPENGL_GetTextureDataCube(
 	{
 		abort();
 	}
-	else if (subX == 0 && subY == 0 && subW == size && subH == size)
+	else if (x == 0 && y == 0 && w == textureSize && h == textureSize)
 	{
 		/* Just throw the whole texture into the user array. */
 		device->glGetTexImage(
@@ -3108,7 +3108,7 @@ void OPENGL_GetTextureDataCube(
 	else
 	{
 		/* Get the whole texture... */
-		void *texData = SDL_malloc(size * size * elementSizeInBytes);
+		void *texData = SDL_malloc(textureSize * textureSize * elementSizeInBytes);
 		device->glGetTexImage(
 			GL_TEXTURE_CUBE_MAP_POSITIVE_X + (int) cubeMapFace,
 			level,
@@ -3119,9 +3119,9 @@ void OPENGL_GetTextureDataCube(
 
 		/* Now, blit the rect region into the user array. */
 		int curPixel = -1;
-		for (int row = subY; row < subY + subH; row += 1)
+		for (int row = y; row < y + h; row += 1)
 		{
-			for (int col = subX; col < subX + subW; col += 1)
+			for (int col = x; col < x + w; col += 1)
 			{
 				curPixel += 1;
 				if (curPixel < startIndex)
@@ -3137,7 +3137,7 @@ void OPENGL_GetTextureDataCube(
 				/* FIXME: Can we copy via pitch instead, or something? -flibit */
 				SDL_memcpy(
 					data + ((curPixel - startIndex) * elementSizeInBytes),
-					texData + (((row * size) + col) * elementSizeInBytes),
+					texData + (((row * textureSize) + col) * elementSizeInBytes),
 					elementSizeInBytes
 				);
 			}
