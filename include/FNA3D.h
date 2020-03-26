@@ -409,6 +409,34 @@ typedef struct FNA3D_PresentationParameters
 	FNA3D_RenderTargetUsage renderTargetUsage;
 } FNA3D_PresentationParameters;
 
+typedef struct FNA3D_RenderTargetBinding
+{
+	/* FNA3D */
+	#define RENDERTARGET_TYPE_2D 0
+	#define RENDERTARGET_TYPE_CUBE 1
+	uint8_t type;
+
+	/* Texture */
+	FNA3D_SurfaceFormat format;
+	int32_t levelCount;
+	uint32_t textureHandle;
+
+	/* IRenderTarget */
+	int32_t width;
+	int32_t height;
+	FNA3D_RenderTargetUsage renderTargetUsage;
+	uint32_t depthStencilBufferHandle;
+	uint32_t colorBufferHandle;
+	FNA3D_DepthFormat depthStencilFormat;
+	int32_t multiSampleCount;
+
+	/* RenderTarget2D/Cube */
+	uint8_t isContentLost;
+
+	/* RenderTargetBinding */
+	FNA3D_CubeMapFace cubeMapFace;
+} FNA3D_RenderTargetBinding;
+
 /* Functions */
 
 /* Init/Quit */
@@ -565,14 +593,15 @@ FNA3DAPI void FNA3D_ApplyVertexDeclaration(
 
 FNA3DAPI void FNA3D_SetRenderTargets(
 	FNA3D_Device *device,
-	/* FIXME: Oh shit RenderTargetBinding[] renderTargets, */
+	FNA3D_RenderTargetBinding *renderTargets,
+	int32_t numRenderTargets,
 	FNA3D_Renderbuffer *renderbuffer,
 	FNA3D_DepthFormat depthFormat
 );
 
 FNA3DAPI void FNA3D_ResolveTarget(
-	FNA3D_Device *device
-	/* FIXME: Oh shit RenderTargetBinding target */
+	FNA3D_Device *device,
+	FNA3D_RenderTargetBinding *target
 );
 
 /* Backbuffer Functions */

@@ -483,7 +483,8 @@ void FNA3D_ApplyVertexDeclaration(
 
 void FNA3D_SetRenderTargets(
 	FNA3D_Device *device,
-	/* FIXME: Oh shit RenderTargetBinding[] renderTargets, */
+	FNA3D_RenderTargetBinding *renderTargets,
+	int32_t numRenderTargets,
 	FNA3D_Renderbuffer *renderbuffer,
 	FNA3D_DepthFormat depthFormat
 ) {
@@ -493,20 +494,22 @@ void FNA3D_SetRenderTargets(
 	}
 	device->SetRenderTargets(
 		device->driverData,
+		renderTargets,
+		numRenderTargets,
 		renderbuffer,
 		depthFormat
 	);
 }
 
 void FNA3D_ResolveTarget(
-	FNA3D_Device *device
-	/* FIXME: Oh shit RenderTargetBinding target */
+	FNA3D_Device *device,
+	FNA3D_RenderTargetBinding *target
 ) {
 	if (device == NULL)
 	{
 		return;
 	}
-	device->ResolveTarget(device->driverData);
+	device->ResolveTarget(device->driverData, target);
 }
 
 /* Backbuffer Functions */

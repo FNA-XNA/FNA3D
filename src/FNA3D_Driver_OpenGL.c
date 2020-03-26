@@ -2242,18 +2242,288 @@ void OPENGL_ApplyVertexDeclaration(
 
 void OPENGL_SetRenderTargets(
 	void* driverData,
-	/* FIXME: Oh shit RenderTargetBinding[] renderTargets, */
+	FNA3D_RenderTargetBinding *renderTargets,
+	int32_t numRenderTargets,
 	FNA3D_Renderbuffer *renderbuffer,
 	FNA3D_DepthFormat depthFormat
 ) {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderbuffer *rb = (OpenGLRenderbuffer*) renderbuffer;
+	FNA3D_RenderTargetBinding rt;
+	int32_t i;
+	GLuint handle;
+
+	/* Bind the right framebuffer, if needed */
+	if (renderTargets == NULL)
+	{
+		BindFramebuffer(
+			device,
+			device->backbuffer->type == BACKBUFFER_TYPE_OPENGL ?
+				device->backbuffer->opengl.handle :
+				device->realBackbufferFBO
+		);
+		device->renderTargetBound = 0;
+		return;
+	}
+	else
+	{
+		BindFramebuffer(device, device->targetFramebuffer);
+		device->renderTargetBound = 1;
+	}
+
+	for (i = 0; i < numRenderTargets; i += 1)
+	{
+		rt = renderTargets[i];
+		if (rt.colorBufferHandle != 0)
+		{
+			device->attachments[i] = rt.colorBufferHandle;
+			device->attachmentTypes[i] = GL_RENDERBUFFER;
+		}
+		else
+		{
+			device->attachments[i] = rt.textureHandle;
+			if (rt.type == RENDERTARGET_TYPE_2D)
+			{
+				device->attachmentTypes[i] = GL_TEXTURE_2D;
+			}
+			else
+			{
+				device->attachmentTypes[i] = GL_TEXTURE_CUBE_MAP_POSITIVE_X + rt.cubeMapFace;
+			}
+		}
+	}
+
+	/* Update the color attachments, DrawBuffers state */
+	for (i = 0; i < numRenderTargets; i += 1)
+	{
+		if (device->attachments[i] != device->currentAttachments[i])
+		{
+			if (device->currentAttachments[i] != 0)
+			{
+				if (	device->attachmentTypes[i] != GL_RENDERBUFFER &&
+					device->currentAttachmentTypes[i] == GL_RENDERBUFFER	)
+				{
+					device->glFramebufferRenderbuffer(
+						GL_FRAMEBUFFER,
+						GL_COLOR_ATTACHMENT0 + i,
+						GL_RENDERBUFFER,
+						0
+					);
+				}
+				else if (	device->attachmentTypes[i] == GL_RENDERBUFFER &&
+						device->currentAttachmentTypes[i] != GL_RENDERBUFFER	)
+				{
+					device->glFramebufferTexture2D(
+						GL_FRAMEBUFFER,
+						GL_COLOR_ATTACHMENT0 + i,
+						device->currentAttachmentTypes[i],
+						0,
+						0
+					);
+				}
+			}
+			if (device->attachmentTypes[i] == GL_RENDERBUFFER)
+			{
+				device->glFramebufferRenderbuffer(
+					GL_FRAMEBUFFER,
+					GL_COLOR_ATTACHMENT0 + i,
+					GL_RENDERBUFFER,
+					device->attachments[i]
+				);
+			}
+			else
+			{
+				device->glFramebufferTexture2D(
+					GL_FRAMEBUFFER,
+					GL_COLOR_ATTACHMENT0 + i,
+					device->attachmentTypes[i],
+					device->attachments[i],
+					0
+				);
+			}
+			device->currentAttachments[i] = device->attachments[i];
+			device->currentAttachmentTypes[i] = device->attachmentTypes[i];
+		}
+		else if (device->attachmentTypes[i] != device->currentAttachmentTypes[i])
+		{
+			/* Texture cube face change! */
+			device->glFramebufferTexture2D(
+				GL_FRAMEBUFFER,
+				GL_COLOR_ATTACHMENT0 + i,
+				device->attachmentTypes[i],
+				device->attachments[i],
+				0
+			);
+			device->currentAttachmentTypes[i] = device->attachmentTypes[i];
+		}
+	}
+	while (i < device->numAttachments)
+	{
+		if (device->currentAttachments[i] != 0)
+		{
+			if (device->currentAttachmentTypes[i] == GL_RENDERBUFFER)
+			{
+				device->glFramebufferRenderbuffer(
+					GL_FRAMEBUFFER,
+					GL_COLOR_ATTACHMENT0 + i,
+					GL_RENDERBUFFER,
+					0
+				);
+			}
+			else
+			{
+				device->glFramebufferTexture2D(
+					GL_FRAMEBUFFER,
+					GL_COLOR_ATTACHMENT0 + i,
+					device->currentAttachmentTypes[i],
+					0,
+					0
+				);
+			}
+			device->currentAttachments[i] = 0;
+			device->currentAttachmentTypes[i] = GL_TEXTURE_2D;
+		}
+		i += 1;
+	}
+	if (numRenderTargets != device->currentDrawBuffers)
+	{
+		device->glDrawBuffers(numRenderTargets, device->drawBuffersArray);
+		device->currentDrawBuffers = numRenderTargets;
+	}
+
+	/* Update the depth/stencil attachment */
+	/* FIXME: Notice that we do separate attach calls for the stencil.
+	 * We _should_ be able to do a single attach for depthstencil, but
+	 * some drivers (like Mesa) cannot into GL_DEPTH_STENCIL_ATTACHMENT.
+	 * Use XNAToGL.DepthStencilAttachment when this isn't a problem.
+	 * -flibit
+	 */
+	if (renderbuffer == NULL)
+	{
+		handle = 0;
+	}
+	else
+	{
+		handle = rb->handle;
+	}
+	if (handle != device->currentRenderbuffer)
+	{
+		if (device->currentDepthStencilFormat == FNA3D_DEPTHFORMAT_D24S8)
+		{
+			device->glFramebufferRenderbuffer(
+				GL_FRAMEBUFFER,
+				GL_STENCIL_ATTACHMENT,
+				GL_RENDERBUFFER,
+				0
+			);
+		}
+		device->currentDepthStencilFormat = depthFormat;
+		device->glFramebufferRenderbuffer(
+			GL_FRAMEBUFFER,
+			GL_DEPTH_ATTACHMENT,
+			GL_RENDERBUFFER,
+			handle
+		);
+		if (device->currentDepthStencilFormat == FNA3D_DEPTHFORMAT_D24S8)
+		{
+			device->glFramebufferRenderbuffer(
+				GL_FRAMEBUFFER,
+				GL_STENCIL_ATTACHMENT,
+				GL_RENDERBUFFER,
+				handle
+			);
+		}
+		device->currentRenderbuffer = handle;
+	}
 }
 
 void OPENGL_ResolveTarget(
-	void* driverData
-	/* FIXME: Oh shit RenderTargetBinding target */
+	void* driverData,
+	FNA3D_RenderTargetBinding *target
 ) {
-	/* TODO */
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	int32_t width, height;
+	GLuint prevBuffer, prevTex;
+	GLenum textureTarget = (
+		target->type == RENDERTARGET_TYPE_2D ?
+			GL_TEXTURE_2D :
+			GL_TEXTURE_CUBE_MAP_POSITIVE_X + target->cubeMapFace
+	);
+
+	if (target->multiSampleCount > 0)
+	{
+		prevBuffer = device->currentDrawFramebuffer;
+
+		/* Set up the texture framebuffer */
+		width = target->width;
+		height = target->height;
+		BindFramebuffer(device, device->resolveFramebufferRead);
+		device->glFramebufferTexture2D(
+			GL_FRAMEBUFFER,
+			GL_COLOR_ATTACHMENT0,
+			textureTarget,
+			target->textureHandle,
+			0
+		);
+
+		/* Set up the renderbuffer framebuffer */
+		BindFramebuffer(device, device->resolveFramebufferRead);
+		device->glFramebufferRenderbuffer(
+			GL_FRAMEBUFFER,
+			GL_COLOR_ATTACHMENT0,
+			GL_RENDERBUFFER,
+			target->colorBufferHandle
+		);
+
+		/* Blit! */
+		if (device->scissorTestEnable)
+		{
+			device->glDisable(GL_SCISSOR_TEST);
+		}
+		BindDrawFramebuffer(device, device->resolveFramebufferDraw);
+		device->glBlitFramebuffer(
+			0, 0, width, height,
+			0, 0, width, height,
+			GL_COLOR_BUFFER_BIT,
+			GL_LINEAR
+		);
+		/* Invalidate the MSAA buffer */
+		if (device->supports_ARB_invalidate_subdata)
+		{
+			device->glInvalidateFramebuffer(
+				GL_READ_FRAMEBUFFER,
+				device->numAttachments + 2,
+				device->drawBuffersArray
+			);
+		}
+		if (device->scissorTestEnable)
+		{
+			device->glEnable(GL_SCISSOR_TEST);
+		}
+
+		BindFramebuffer(device, prevBuffer);
+	}
+
+	/* If the target has mipmaps, regenerate them now */
+	if (target->levelCount > 1)
+	{
+		prevTex = device->textures[0]->handle;
+		if (prevTex != target->textureHandle)
+		{
+			device->glBindTexture(
+				textureTarget,
+				target->textureHandle
+			);
+		}
+		device->glGenerateMipmap(textureTarget);
+		if (prevTex != target->textureHandle)
+		{
+			device->glBindTexture(
+				textureTarget,
+				prevTex
+			);
+		}
+	}
 }
 
 /* Backbuffer Functions */

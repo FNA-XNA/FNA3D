@@ -172,14 +172,15 @@ struct FNA3D_Device
 
 	void (*SetRenderTargets)(
 		void* driverData,
-		/* FIXME: Oh shit RenderTargetBinding[] renderTargets, */
+		FNA3D_RenderTargetBinding *renderTargets,
+		int32_t numRenderTargets,
 		FNA3D_Renderbuffer *renderbuffer,
 		FNA3D_DepthFormat depthFormat
 	);
 
 	void (*ResolveTarget)(
-		void* driverData
-		/* FIXME: Oh shit RenderTargetBinding target */
+		void* driverData,
+		FNA3D_RenderTargetBinding *target
 	);
 
 	/* Backbuffer Functions */
