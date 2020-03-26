@@ -1482,11 +1482,11 @@ void OPENGL_SetBlendState(
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 
-	uint8_t newEnable = (
-		!(	blendState->srcBlend == FNA3D_BLEND_ONE &&
-			blendState->dstBlend == FNA3D_BLEND_ZERO &&
-			blendState->srcBlendAlpha == FNA3D_BLEND_ONE &&
-			blendState->dstBlendAlpha == FNA3D_BLEND_ZERO	)
+	uint8_t newEnable = !(
+		blendState->colorSourceBlend == FNA3D_BLEND_ONE &&
+		blendState->colorDestinationBlend == FNA3D_BLEND_ZERO &&
+		blendState->alphaSourceBlend == FNA3D_BLEND_ONE &&
+		blendState->alphaDestinationBlend == FNA3D_BLEND_ZERO
 	);
 
 	if (newEnable != device->alphaBlendEnable)
@@ -1497,12 +1497,12 @@ void OPENGL_SetBlendState(
 
 	if (device->alphaBlendEnable)
 	{
-		if (	blendState->blendColor.r != device->blendColor.r ||
-			blendState->blendColor.g != device->blendColor.g ||
-			blendState->blendColor.b != device->blendColor.b ||
-			blendState->blendColor.a != device->blendColor.a	)
+		if (	blendState->blendFactor.r != device->blendColor.r ||
+			blendState->blendFactor.g != device->blendColor.g ||
+			blendState->blendFactor.b != device->blendColor.b ||
+			blendState->blendFactor.a != device->blendColor.a	)
 		{
-			device->blendColor = blendState->blendColor;
+			device->blendColor = blendState->blendFactor;
 			device->glBlendColor(
 				device->blendColor.r / 255.0f,
 				device->blendColor.g / 255.0f,
@@ -1511,15 +1511,15 @@ void OPENGL_SetBlendState(
 			);
 		}
 
-		if (	blendState->srcBlend != device->srcBlend ||
-			blendState->dstBlend != device->dstBlend ||
-			blendState->srcBlendAlpha != device->srcBlendAlpha ||
-			blendState->dstBlendAlpha != device->dstBlendAlpha	)
+		if (	blendState->colorSourceBlend != device->srcBlend ||
+			blendState->colorDestinationBlend != device->dstBlend ||
+			blendState->alphaSourceBlend != device->srcBlendAlpha ||
+			blendState->alphaDestinationBlend != device->dstBlendAlpha	)
 		{
-			device->srcBlend = blendState->srcBlend;
-			device->dstBlend = blendState->dstBlend;
-			device->srcBlendAlpha = blendState->srcBlendAlpha;
-			device->dstBlendAlpha = blendState->dstBlendAlpha;
+			device->srcBlend = blendState->colorSourceBlend;
+			device->dstBlend = blendState->colorDestinationBlend;
+			device->srcBlendAlpha = blendState->alphaSourceBlend;
+			device->dstBlendAlpha = blendState->alphaDestinationBlend;
 			device->glBlendFuncSeparate(
 				XNAToGL_BlendMode[device->srcBlend],
 				XNAToGL_BlendMode[device->dstBlend],
@@ -1528,11 +1528,11 @@ void OPENGL_SetBlendState(
 			);
 		}
 
-		if (	blendState->blendFunc != device->blendOp ||
-			blendState->blendFuncAlpha != device->blendOpAlpha	)
+		if (	blendState->colorBlendFunction != device->blendOp ||
+			blendState->alphaBlendFunction != device->blendOpAlpha	)
 		{
-			device->blendOp = blendState->blendFunc;
-			device->blendOpAlpha = blendState->blendFuncAlpha;
+			device->blendOp = blendState->colorBlendFunction;
+			device->blendOpAlpha = blendState->alphaBlendFunction;
 			device->glBlendEquationSeparate(
 				XNAToGL_BlendEquation[device->blendOp],
 				XNAToGL_BlendEquation[device->blendOpAlpha]
@@ -1618,23 +1618,23 @@ void OPENGL_SetDepthStencilState(
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 
-	if (depthStencilState->zEnable != device->zEnable)
+	if (depthStencilState->depthBufferEnable != device->zEnable)
 	{
-		device->zEnable = depthStencilState->zEnable;
+		device->zEnable = depthStencilState->depthBufferEnable;
 		ToggleGLState(device, GL_DEPTH_TEST, device->zEnable);
 	}
 
 	if (device->zEnable)
 	{
-		if (depthStencilState->zWriteEnable != device->zWriteEnable)
+		if (depthStencilState->depthBufferWriteEnable != device->zWriteEnable)
 		{
-			device->zWriteEnable = depthStencilState->zWriteEnable;
+			device->zWriteEnable = depthStencilState->depthBufferWriteEnable;
 			device->glDepthMask(device->zWriteEnable);
 		}
 
-		if (depthStencilState->depthFunc != device->depthFunc)
+		if (depthStencilState->depthBufferFunction != device->depthFunc)
 		{
-			device->depthFunc = depthStencilState->depthFunc;
+			device->depthFunc = depthStencilState->depthBufferFunction;
 			device->glDepthFunc(XNAToGL_CompareFunc[device->depthFunc]);
 		}
 	}
@@ -1654,30 +1654,30 @@ void OPENGL_SetDepthStencilState(
 		}
 
 		/* TODO: Can we split up StencilFunc/StencilOp nicely? -flibit */
-		if (	depthStencilState->separateStencilEnable != device->separateStencilEnable ||
-			depthStencilState->stencilRef != device->stencilRef ||
+		if (	depthStencilState->twoSidedStencilMode != device->separateStencilEnable ||
+			depthStencilState->referenceStencil != device->stencilRef ||
 			depthStencilState->stencilMask != device->stencilMask ||
-			depthStencilState->stencilFunc != device->stencilFunc ||
-			depthStencilState->ccwStencilFunc != device->ccwStencilFunc ||
+			depthStencilState->stencilFunction != device->stencilFunc ||
+			depthStencilState->ccwStencilFunction != device->ccwStencilFunc ||
 			depthStencilState->stencilFail != device->stencilFail ||
-			depthStencilState->stencilZFail != device->stencilZFail ||
+			depthStencilState->stencilDepthBufferFail != device->stencilZFail ||
 			depthStencilState->stencilPass != device->stencilPass ||
 			depthStencilState->ccwStencilFail != device->ccwStencilFail ||
-			depthStencilState->ccwStencilZFail != device->ccwStencilZFail ||
-			depthStencilState->ccwStencilPass != device->ccwStencilPass	)
+			depthStencilState->ccwStencilDepthBufferFail != device->ccwStencilZFail ||
+			depthStencilState->ccwStencilPass != device->ccwStencilPass			)
 		{
-			device->separateStencilEnable = depthStencilState->separateStencilEnable;
-			device->stencilRef = depthStencilState->stencilRef;
+			device->separateStencilEnable = depthStencilState->twoSidedStencilMode;
+			device->stencilRef = depthStencilState->referenceStencil;
 			device->stencilMask = depthStencilState->stencilMask;
-			device->stencilFunc = depthStencilState->stencilFunc;
+			device->stencilFunc = depthStencilState->stencilFunction;
 			device->stencilFail = depthStencilState->stencilFail;
-			device->stencilZFail = depthStencilState->stencilZFail;
+			device->stencilZFail = depthStencilState->stencilDepthBufferFail;
 			device->stencilPass = depthStencilState->stencilPass;
 			if (device->separateStencilEnable)
 			{
-				device->ccwStencilFunc = depthStencilState->ccwStencilFunc;
+				device->ccwStencilFunc = depthStencilState->ccwStencilFunction;
 				device->ccwStencilFail = depthStencilState->ccwStencilFail;
-				device->ccwStencilZFail = depthStencilState->ccwStencilZFail;
+				device->ccwStencilZFail = depthStencilState->ccwStencilDepthBufferFail;
 				device->ccwStencilPass = depthStencilState->ccwStencilPass;
 				device->glStencilFuncSeparate(
 					GL_FRONT,
@@ -1821,9 +1821,9 @@ void OPENGL_ApplyRasterizerState(
 	 * tell them to install Linux. Yes, really.
 	 * -flibit
 	 */
-	if (rasterizerState->multiSampleEnable != device->multiSampleEnable)
+	if (rasterizerState->multiSampleAntiAlias != device->multiSampleEnable)
 	{
-		device->multiSampleEnable = rasterizerState->multiSampleEnable;
+		device->multiSampleEnable = rasterizerState->multiSampleAntiAlias;
 		ToggleGLState(device, GL_MULTISAMPLE, device->multiSampleEnable);
 	}
 }

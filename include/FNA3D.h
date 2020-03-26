@@ -317,48 +317,48 @@ typedef struct FNA3D_Viewport
 
 typedef struct FNA3D_BlendState
 {
-	FNA3D_Color blendColor;
-	int32_t multiSampleMask;
-	FNA3D_BlendFunction blendFunc;
-	FNA3D_BlendFunction blendFuncAlpha;
-	FNA3D_Blend srcBlend;
-	FNA3D_Blend dstBlend;
-	FNA3D_Blend srcBlendAlpha;
-	FNA3D_Blend dstBlendAlpha;
+	FNA3D_BlendFunction alphaBlendFunction;
+	FNA3D_Blend alphaDestinationBlend;
+	FNA3D_Blend alphaSourceBlend;
+	FNA3D_BlendFunction colorBlendFunction;
+	FNA3D_Blend colorDestinationBlend;
+	FNA3D_Blend colorSourceBlend;
 	FNA3D_ColorWriteChannels colorWriteEnable;
 	FNA3D_ColorWriteChannels colorWriteEnable1;
 	FNA3D_ColorWriteChannels colorWriteEnable2;
 	FNA3D_ColorWriteChannels colorWriteEnable3;
+	FNA3D_Color blendFactor;
+	int32_t multiSampleMask;
 } FNA3D_BlendState;
 
 typedef struct FNA3D_DepthStencilState
 {
-	uint8_t zEnable;
-	uint8_t zWriteEnable;
-	FNA3D_CompareFunction depthFunc;
-	uint8_t stencilEnable;
-	int32_t stencilWriteMask;
-	uint8_t separateStencilEnable;
-	int32_t stencilRef;
-	int32_t stencilMask;
-	FNA3D_CompareFunction stencilFunc;
-	FNA3D_StencilOperation stencilFail;
-	FNA3D_StencilOperation stencilZFail;
-	FNA3D_StencilOperation stencilPass;
-	FNA3D_CompareFunction ccwStencilFunc;
+	uint8_t depthBufferEnable;
+	uint8_t depthBufferWriteEnable;
+	FNA3D_StencilOperation ccwStencilDepthBufferFail;
 	FNA3D_StencilOperation ccwStencilFail;
-	FNA3D_StencilOperation ccwStencilZFail;
+	FNA3D_CompareFunction ccwStencilFunction;
 	FNA3D_StencilOperation ccwStencilPass;
+	FNA3D_CompareFunction depthBufferFunction;
+	int32_t referenceStencil;
+	FNA3D_StencilOperation stencilDepthBufferFail;
+	uint8_t stencilEnable;
+	FNA3D_StencilOperation stencilFail;
+	FNA3D_CompareFunction stencilFunction;
+	int32_t stencilMask;
+	FNA3D_StencilOperation stencilPass;
+	int32_t stencilWriteMask;
+	uint8_t twoSidedStencilMode;
 } FNA3D_DepthStencilState;
 
 typedef struct FNA3D_RasterizerState
 {
-	uint8_t scissorTestEnable;
 	FNA3D_CullMode cullMode;
-	FNA3D_FillMode fillMode;
 	float depthBias;
+	FNA3D_FillMode fillMode;
+	uint8_t multiSampleAntiAlias;
+	uint8_t scissorTestEnable;
 	float slopeScaleDepthBias;
-	uint8_t multiSampleEnable;
 } FNA3D_RasterizerState;
 
 typedef struct FNA3D_SamplerState
