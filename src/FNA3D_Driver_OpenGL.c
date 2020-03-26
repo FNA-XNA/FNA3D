@@ -1503,7 +1503,7 @@ void OPENGL_SetBlendState(
 			blendState->blendColor.a != device->blendColor.a	)
 		{
 			device->blendColor = blendState->blendColor;
-			glBlendColor(
+			device->glBlendColor(
 				device->blendColor.r / 255.0f,
 				device->blendColor.g / 255.0f,
 				device->blendColor.b / 255.0f,
@@ -1520,7 +1520,7 @@ void OPENGL_SetBlendState(
 			device->dstBlend = blendState->dstBlend;
 			device->srcBlendAlpha = blendState->srcBlendAlpha;
 			device->dstBlendAlpha = blendState->dstBlendAlpha;
-			glBlendFuncSeparate(
+			device->glBlendFuncSeparate(
 				device->srcBlend,
 				device->dstBlend,
 				device->srcBlendAlpha,
@@ -1533,7 +1533,7 @@ void OPENGL_SetBlendState(
 		{
 			device->blendOp = blendState->blendFunc;
 			device->blendOpAlpha = blendState->blendFuncAlpha;
-			glBlendEquationSeparate(
+			device->glBlendEquationSeparate(
 				device->blendOp,
 				device->blendOpAlpha
 			);
@@ -1543,7 +1543,7 @@ void OPENGL_SetBlendState(
 	if (blendState->colorWriteEnable != device->colorWriteEnable)
 	{
 		device->colorWriteEnable = blendState->colorWriteEnable;
-		glColorMask(
+		device->glColorMask(
 			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_RED) != 0,
 			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
 			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_BLUE) != 0,
@@ -1562,7 +1562,7 @@ void OPENGL_SetBlendState(
 	if (blendState->colorWriteEnable1 != device->colorWriteEnable1)
 	{
 		device->colorWriteEnable1 = blendState->colorWriteEnable1;
-		glColorMaski(
+		device->glColorMaski(
 			1,
 			(device->colorWriteEnable1 & FNA3D_COLORWRITECHANNELS_RED) != 0,
 			(device->colorWriteEnable1 & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
@@ -1573,7 +1573,7 @@ void OPENGL_SetBlendState(
 	if (blendState->colorWriteEnable2 != device->colorWriteEnable2)
 	{
 		device->colorWriteEnable2 = blendState->colorWriteEnable2;
-		glColorMaski(
+		device->glColorMaski(
 			2,
 			(device->colorWriteEnable2 & FNA3D_COLORWRITECHANNELS_RED) != 0,
 			(device->colorWriteEnable2 & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
@@ -1584,7 +1584,7 @@ void OPENGL_SetBlendState(
 	if (blendState->colorWriteEnable3 != device->colorWriteEnable3)
 	{
 		device->colorWriteEnable3 = blendState->colorWriteEnable3;
-		glColorMaski(
+		device->glColorMaski(
 			3,
 			(device->colorWriteEnable3 & FNA3D_COLORWRITECHANNELS_RED) != 0,
 			(device->colorWriteEnable3 & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
@@ -1597,16 +1597,16 @@ void OPENGL_SetBlendState(
 	{
 		if (blendState->multiSampleMask == -1)
 		{
-			glDisable(GL_SAMPLE_MASK);
+			device->glDisable(GL_SAMPLE_MASK);
 		}
 		else
 		{
 			if (device->multiSampleMask == -1)
 			{
-				glEnable(GL_SAMPLE_MASK);
+				device->glEnable(GL_SAMPLE_MASK);
 			}
 			/* FIXME: index...? -flibit */
-			glSampleMaski(0, (uint32_t)blendState->multiSampleMask);
+			device->glSampleMaski(0, (uint32_t)blendState->multiSampleMask);
 		}
 		device->multiSampleMask = blendState->multiSampleMask;
 	}
@@ -2449,7 +2449,7 @@ void OPENGL_ResetBackbuffer(
 
 void OPENGL_ReadBackbuffer(
 	void* driverData,
-	uint8_t* data,
+	void* data,
 	int32_t dataLen,
 	int32_t startIndex,
 	int32_t elementCount,
@@ -2463,6 +2463,7 @@ void OPENGL_ReadBackbuffer(
 	int32_t pitch, row;
 	uint8_t *temp;
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	uint8_t *dataPtr = (uint8_t*) data;
 
 	/* FIXME: Right now we're expecting one of the following:
 	 * - byte[]
@@ -2564,9 +2565,9 @@ void OPENGL_ReadBackbuffer(
 	for (row = 0; row < h / 2; row += 1)
 	{
 		/* Top to temp, bottom to top, temp to bottom */
-		SDL_memcpy(temp, data + (row * pitch), pitch);
-		SDL_memcpy(data + (row * pitch), data + ((h - row - 1) * pitch), pitch);
-		SDL_memcpy(data + ((h - row - 1) * pitch), temp, pitch);
+		SDL_memcpy(temp, dataPtr + (row * pitch), pitch);
+		SDL_memcpy(dataPtr + (row * pitch), dataPtr + ((h - row - 1) * pitch), pitch);
+		SDL_memcpy(dataPtr + ((h - row - 1) * pitch), temp, pitch);
 	}
 	SDL_free(temp);
 }
@@ -3073,13 +3074,14 @@ void OPENGL_SetTextureDataYUV(
 	void* ptr
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	uint8_t *dataPtr = (uint8_t*) ptr;
 
 	device->glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, y, w, h, ptr);
-	ptr += (w * h);
-	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, u, w, h, ptr);
-	ptr += (w * h);
-	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, v, w, h, ptr);
+	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, y, w, h, dataPtr);
+	dataPtr += (w * h);
+	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, u, w, h, dataPtr);
+	dataPtr += (w * h);
+	OPENGL_INTERNAL_SetTextureData_YUV_Channel(device, v, w, h, dataPtr);
 	device->glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
 
@@ -3100,6 +3102,7 @@ void OPENGL_GetTextureData2D(
 	int32_t elementSizeInBytes
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	uint8_t *dataPtr = (uint8_t*) data;
 	SDL_assert(device->supports_NonES3);
 
 	if (level == 0 && OPENGL_INTERNAL_ReadTargetIfApplicable(
@@ -3138,7 +3141,8 @@ void OPENGL_GetTextureData2D(
 	{
 		/* Get the whole texture... */
 		void *texData = SDL_malloc(textureWidth * textureHeight * elementSizeInBytes);
-		
+		uint8_t *texDataPtr = (uint8_t*) texData;
+
 		device->glGetTexImage(
 			GL_TEXTURE_2D,
 			level,
@@ -3166,8 +3170,8 @@ void OPENGL_GetTextureData2D(
 				}
 				/* FIXME: Can we copy via pitch instead, or something? -flibit */
 				SDL_memcpy(
-					data + ((curPixel - startIndex) * elementSizeInBytes),
-					texData + (((row * w) + col) * elementSizeInBytes),
+					dataPtr + ((curPixel - startIndex) * elementSizeInBytes),
+					texDataPtr + (((row * w) + col) * elementSizeInBytes),
 					elementSizeInBytes
 				);
 			}
@@ -3216,6 +3220,7 @@ void OPENGL_GetTextureDataCube(
 	int32_t elementSizeInBytes
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	uint8_t *dataPtr = (uint8_t*) data;
 	SDL_assert(device->supports_NonES3);
 
 	BindTexture(device, (OpenGLTexture *)texture);
@@ -3239,6 +3244,8 @@ void OPENGL_GetTextureDataCube(
 	{
 		/* Get the whole texture... */
 		void *texData = SDL_malloc(textureSize * textureSize * elementSizeInBytes);
+		uint8_t *texDataPtr = (uint8_t*) texData;
+
 		device->glGetTexImage(
 			GL_TEXTURE_CUBE_MAP_POSITIVE_X + (int) cubeMapFace,
 			level,
@@ -3266,8 +3273,8 @@ void OPENGL_GetTextureDataCube(
 				}
 				/* FIXME: Can we copy via pitch instead, or something? -flibit */
 				SDL_memcpy(
-					data + ((curPixel - startIndex) * elementSizeInBytes),
-					texData + (((row * textureSize) + col) * elementSizeInBytes),
+					dataPtr + ((curPixel - startIndex) * elementSizeInBytes),
+					texDataPtr + (((row * textureSize) + col) * elementSizeInBytes),
 					elementSizeInBytes
 				);
 			}
