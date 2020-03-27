@@ -4978,7 +4978,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	const char *renderer, *version, *vendor;
 	char driverInfo[256];
 	uint8_t debugMode;
-	int32_t i, j;
+	int32_t i;
 	int32_t numExtensions, numSamplers, numAttributes, numAttachments;
 	OpenGLDevice *device;
 	FNA3D_Device *result;
@@ -5223,109 +5223,19 @@ FNA3D_Device* OPENGL_CreateDevice(
 		device->glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, 1);
 	}
 
-	/* Blend State Variables */
-	device->alphaBlendEnable = 0;
-	device->blendColor.r = 0;
-	device->blendColor.g = 0;
-	device->blendColor.b = 0;
-	device->blendColor.a = 0;
-	device->blendOp = FNA3D_BLENDFUNCTION_ADD;
-	device->blendOpAlpha = FNA3D_BLENDFUNCTION_ADD;
-	device->srcBlend = FNA3D_BLEND_ONE;
-	device->dstBlend = FNA3D_BLEND_ZERO;
-	device->srcBlendAlpha = FNA3D_BLEND_ONE;
-	device->dstBlendAlpha = FNA3D_BLEND_ZERO;
+	/* Initialize device members not covered by SDL_memset('\0') */
+	device->dstBlend = FNA3D_BLEND_ZERO; /* ZERO is really 1. -caleb */
+	device->dstBlendAlpha = FNA3D_BLEND_ZERO; /* ZERO is really 1. -caleb */
 	device->colorWriteEnable = FNA3D_COLORWRITECHANNELS_ALL;
 	device->colorWriteEnable1 = FNA3D_COLORWRITECHANNELS_ALL;
 	device->colorWriteEnable2 = FNA3D_COLORWRITECHANNELS_ALL;
 	device->colorWriteEnable3 = FNA3D_COLORWRITECHANNELS_ALL;
 	device->multiSampleMask = -1; /* AKA 0xFFFFFFFF, ugh -flibit */
-
-	/* Depth Stencil State Variables */
-	device->zEnable = 0;
-	device->zWriteEnable = 0;
-	device->depthFunc = 0;
-	device->stencilEnable = 0;
 	device->stencilWriteMask = -1; /* AKA 0xFFFFFFFF, ugh -flibit */
-	device->separateStencilEnable = 0;
-	device->stencilRef = 0;
 	device->stencilMask = -1; /* AKA 0xFFFFFFFF, ugh -flibit */
-	device->stencilFunc = FNA3D_COMPAREFUNCTION_ALWAYS;
-	device->stencilFail = FNA3D_STENCILOPERATION_KEEP;
-	device->stencilZFail = FNA3D_STENCILOPERATION_KEEP;
-	device->stencilPass = FNA3D_STENCILOPERATION_KEEP;
-	device->ccwStencilFunc = FNA3D_COMPAREFUNCTION_ALWAYS;
-	device->ccwStencilFail = FNA3D_STENCILOPERATION_KEEP;
-	device->ccwStencilZFail = FNA3D_STENCILOPERATION_KEEP;
-	device->ccwStencilPass = FNA3D_STENCILOPERATION_KEEP;
-
-	/* Rasterizer State Variables */
-	device->scissorTestEnable = 0;
-	device->cullFrontFace = FNA3D_CULLMODE_NONE;
-	device->fillMode = FNA3D_FILLMODE_SOLID;
-	device->depthBias = 0.0f;
-	device->slopeScaleDepthBias = 0.0f;
 	device->multiSampleEnable = 1;
-
-	/* Viewport State Variables */
-	device->scissorRect.x = 0;
-	device->scissorRect.y = 0;
-	device->scissorRect.w = 0;
-	device->scissorRect.h = 0;
-	device->viewport.x = 0;
-	device->viewport.y = 0;
-	device->viewport.w = 0;
-	device->viewport.h = 0;
-	device->viewport.minDepth = 0;
-	device->viewport.maxDepth = 0;
-	device->depthRangeMin = 0.0f;
 	device->depthRangeMax = 1.0f;
-
-	/* Buffer Binding Cache Variables */
-	device->currentVertexBuffer = 0;
-	device->currentIndexBuffer = 0;
-
-	/* ld, or LastDrawn, effect/vertex attributes */
-	device->ldBaseVertex = -1;
-	device->ldVertexDeclaration = NULL;
-	device->ldPointer = NULL;
-	device->ldEffect = NULL;
-	device->ldTechnique = NULL;
-	device->ldPass = 0;
-
-	/* Some vertex declarations may have overlapping attributes :/ */
-	for (i = 0; i < MOJOSHADER_USAGE_TOTAL; i += 1)
-	{
-		for (j = 0; j < 16; j += 1)
-		{
-			device->attrUse[i][j] = 0;
-		}
-	}
-
-	/* Render Target Cache Variables */
-	device->currentReadFramebuffer = 0;
-	device->currentDrawFramebuffer = 0;
-	device->targetFramebuffer = 0;
-	device->resolveFramebufferRead = 0;
-	device->resolveFramebufferDraw = 0;
-	device->currentDrawBuffers = 0;
-	device->currentRenderbuffer = 0;
-	device->currentDepthStencilFormat = FNA3D_DEPTHFORMAT_NONE;
-
-	/* Clear Cache Variables */
-	device->currentClearColor.x = 0;
-	device->currentClearColor.y = 0;
-	device->currentClearColor.z = 0;
-	device->currentClearColor.w = 0;
 	device->currentClearDepth = 1.0f;
-	device->currentClearStencil = 0;
-
-	/* MojoShader Variables */
-	device->currentEffect = NULL;
-	device->currentTechnique = NULL;
-	device->currentPass = 0;
-	device->renderTargetBound = 0;
-	device->effectApplied = 0;
 
 	/* The creation thread will be the "main" thread */
 	device->threadID = SDL_ThreadID();
