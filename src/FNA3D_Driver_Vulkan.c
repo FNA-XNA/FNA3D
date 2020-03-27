@@ -68,7 +68,7 @@ void VULKAN_BeginFrame(void* driverData)
     /* TODO */
 }
 
-void FNA3D_SwapBuffers(
+void VULKAN_SwapBuffers(
 	void* driverData,
 	FNA3D_Rect *sourceRectangle,
 	FNA3D_Rect *destinationRectangle,
