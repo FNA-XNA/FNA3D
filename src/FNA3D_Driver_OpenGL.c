@@ -5256,3 +5256,5 @@ FNA3D_Driver OpenGLDriver = {
 };
 
 #endif /* FNA3D_DRIVER_OPENGL */
+
+/* vim: set noexpandtab shiftwidth=8 tabstop=8: */

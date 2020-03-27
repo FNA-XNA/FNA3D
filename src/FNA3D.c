@@ -1356,3 +1356,5 @@ MOJOSHADER_effect* FNA3D_GetEffectData(
 	}
 	return device->GetEffectData(effect);
 }
+
+/* vim: set noexpandtab shiftwidth=8 tabstop=8: */

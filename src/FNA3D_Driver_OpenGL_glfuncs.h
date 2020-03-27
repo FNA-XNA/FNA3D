@@ -154,3 +154,5 @@ GL_PROC_EXT(KHR_debug, KHR, void, glDebugMessageControl, (GLenum a, GLenum b, GL
 
 /* Nice feature for apitrace */
 GL_PROC(GREMEDY_string_marker, void, glStringMarkerGREMEDY, (GLsizei a, const GLchar *b))
+
+/* vim: set noexpandtab shiftwidth=8 tabstop=8: */

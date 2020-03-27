@@ -306,3 +306,5 @@ typedef void (GLAPIENTRY *DEBUGPROC)(
 typedef const GLubyte* (GLAPIENTRY *glfntype_glGetString)(GLenum a);
 
 #endif /* FNA3D_DRIVER_OPENGL_H */
+
+/* vim: set noexpandtab shiftwidth=8 tabstop=8: */

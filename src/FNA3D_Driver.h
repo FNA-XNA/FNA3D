@@ -595,3 +595,5 @@ extern FNA3D_Driver ThreadedGLDriver;
 extern FNA3D_Driver GNMXDriver;
 
 #endif /* FNA3D_DRIVER_H */
+
+/* vim: set noexpandtab shiftwidth=8 tabstop=8: */
