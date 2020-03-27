@@ -3608,6 +3608,7 @@ void OPENGL_SetTextureDataYUV(
 		GL_UNSIGNED_BYTE,
 		dataPtr
 	);
+	dataPtr += (w * h);
 	BindTexture(device, (OpenGLTexture*) u);
 	device->glTexSubImage2D(
 		GL_TEXTURE_2D,
@@ -3618,9 +3619,9 @@ void OPENGL_SetTextureDataYUV(
 		h / 2,
 		GL_ALPHA,
 		GL_UNSIGNED_BYTE,
-		dataPtr + (w * h)
+		dataPtr
 	);
-	dataPtr += (w * h);
+	dataPtr += (w/2 * h/2);
 	BindTexture(device, (OpenGLTexture*) v);
 	device->glTexSubImage2D(
 		GL_TEXTURE_2D,
@@ -3631,7 +3632,7 @@ void OPENGL_SetTextureDataYUV(
 		h / 2,
 		GL_ALPHA,
 		GL_UNSIGNED_BYTE,
-		dataPtr + (w * h) + ((w * h) / 2)
+		dataPtr
 	);
 	device->glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
