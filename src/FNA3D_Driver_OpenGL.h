@@ -24,6 +24,8 @@
  *
  */
 
+#include <stdint.h>
+
 #ifndef FNA3D_DRIVER_OPENGL_H
 #define FNA3D_DRIVER_OPENGL_H
 
