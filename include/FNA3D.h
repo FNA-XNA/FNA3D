@@ -429,9 +429,6 @@ typedef struct FNA3D_RenderTargetBinding
 	FNA3D_DepthFormat depthStencilFormat;
 	int32_t multiSampleCount;
 
-	/* RenderTarget2D/Cube */
-	uint8_t isContentLost;
-
 	/* RenderTargetBinding */
 	FNA3D_CubeMapFace cubeMapFace;
 } FNA3D_RenderTargetBinding;
