@@ -5188,7 +5188,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 		device->attachmentTypes[i] = 0;
 		device->currentAttachments[i] = 0;
 		device->currentAttachmentTypes[i] = GL_TEXTURE_2D;
-		device->drawBuffersArray[i] = GL_COLOR_ATTACHMENT0 + 1;
+		device->drawBuffersArray[i] = GL_COLOR_ATTACHMENT0 + i;
 	}
 	device->numAttachments = numAttachments;
 
