@@ -2139,7 +2139,7 @@ void OPENGL_ApplyVertexDeclaration(
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 
 	BindVertexBuffer(device, 0);
-	basePtr = ptr + (vertexDeclaration->vertexStride * vertexOffset);
+	basePtr += (vertexDeclaration->vertexStride * vertexOffset);
 
 	if (	vertexDeclaration != device->ldVertexDeclaration ||
 		basePtr != device->ldPointer ||
