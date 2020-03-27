@@ -56,20 +56,20 @@ FNA3D_Device* VULKAN_CreateDevice(
     /* TODO */
 }
 
-void VULKAN_DestroyDevice(FNA3D_Device *device)
+void VULKAN_DestroyDevice(void* driverData)
 {
     /* TODO */
 }
 
 /* Begin/End Frame */
 
-void VULKAN_BeginFrame(FNA3D_Device *device)
+void VULKAN_BeginFrame(void* driverData)
 {
     /* TODO */
 }
 
 void FNA3D_SwapBuffers(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Rect *sourceRectangle,
 	FNA3D_Rect *destinationRectangle,
 	void* overrideWindowHandle
@@ -78,7 +78,7 @@ void FNA3D_SwapBuffers(
 }
 
 void VULKAN_SetPresentationInterval(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_PresentInterval presentInterval
 ) {
     /* TODO */
@@ -87,7 +87,7 @@ void VULKAN_SetPresentationInterval(
 /* Drawing */
 
 void VULKAN_Clear(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_ClearOptions options,
 	FNA3D_Vec4 *color,
 	float depth,
@@ -97,7 +97,7 @@ void VULKAN_Clear(
 }
 
 void VULKAN_DrawIndexedPrimitives(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_PrimitiveType primitiveType,
 	int32_t baseVertex,
 	int32_t minVertexIndex,
@@ -111,7 +111,7 @@ void VULKAN_DrawIndexedPrimitives(
 }
 
 void VULKAN_DrawInstancedPrimitives(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_PrimitiveType primitiveType,
 	int32_t baseVertex,
 	int32_t minVertexIndex,
@@ -126,7 +126,7 @@ void VULKAN_DrawInstancedPrimitives(
 }
 
 void VULKAN_DrawPrimitives(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_PrimitiveType primitiveType,
 	int32_t vertexStart,
 	int32_t primitiveCount
@@ -135,7 +135,7 @@ void VULKAN_DrawPrimitives(
 }
 
 FNA3DAPI void VULKAN_DrawUserIndexedPrimitives(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_PrimitiveType primitiveType,
 	void* vertexData,
 	int32_t vertexOffset,
@@ -149,7 +149,7 @@ FNA3DAPI void VULKAN_DrawUserIndexedPrimitives(
 }
 
 FNA3DAPI void VULKAN_DrawUserPrimitives(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_PrimitiveType primitiveType,
 	void* vertexData,
 	int32_t vertexOffset,
@@ -160,46 +160,46 @@ FNA3DAPI void VULKAN_DrawUserPrimitives(
 
 /* Mutable Render States */
 
-void VULKAN_SetViewport(FNA3D_Device *device, FNA3D_Viewport *viewport)
+void VULKAN_SetViewport(void* driverData, FNA3D_Viewport *viewport)
 {
     /* TODO */
 }
 
-void VULKAN_SetScissorRect(FNA3D_Device *device, FNA3D_Rect *scissor)
+void VULKAN_SetScissorRect(void* driverData, FNA3D_Rect *scissor)
 {
     /* TODO */
 }
 
 void VULKAN_GetBlendFactor(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Color *blendFactor
 ) {
     /* TODO */
 }
 
 void VULKAN_SetBlendFactor(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Color *blendFactor
 ) {
     /* TODO */
 }
 
-int32_t VULKAN_GetMultiSampleMask(FNA3D_Device *device)
+int32_t VULKAN_GetMultiSampleMask(void* driverData)
 {
     /* TODO */
 }
 
-void VULKAN_SetMultiSampleMask(FNA3D_Device *device, int32_t mask)
+void VULKAN_SetMultiSampleMask(void* driverData, int32_t mask)
 {
     /* TODO */
 }
 
-int32_t VULKAN_GetReferenceStencil(FNA3D_Device *device)
+int32_t VULKAN_GetReferenceStencil(void* driverData)
 {
     /* TODO */
 }
 
-void VULKAN_SetReferenceStencil(FNA3D_Device *device, int32_t ref)
+void VULKAN_SetReferenceStencil(void* driverData, int32_t ref)
 {
     /* TODO */
 }
@@ -207,28 +207,28 @@ void VULKAN_SetReferenceStencil(FNA3D_Device *device, int32_t ref)
 /* Immutable Render States */
 
 void VULKAN_SetBlendState(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_BlendState *blendState
 ) {
     /* TODO */
 }
 
 void VULKAN_SetDepthStencilState(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_DepthStencilState *depthStencilState
 ) {
     /* TODO */
 }
 
 void VULKAN_ApplyRasterizerState(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_RasterizerState *rasterizerState
 ) {
     /* TODO */
 }
 
 void VULKAN_VerifySampler(
-	FNA3D_Device *device,
+	void* driverData,
 	int32_t index,
 	FNA3D_Texture *texture,
 	FNA3D_SamplerState *sampler
@@ -239,7 +239,7 @@ void VULKAN_VerifySampler(
 /* Vertex State */
 
 void VULKAN_ApplyVertexBufferBindings(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings,
 	uint8_t bindingsUpdated,
@@ -249,7 +249,7 @@ void VULKAN_ApplyVertexBufferBindings(
 }
 
 void VULKAN_ApplyVertexDeclaration(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_VertexDeclaration *vertexDeclaration,
 	void* ptr,
 	int32_t vertexOffset
@@ -260,7 +260,7 @@ void VULKAN_ApplyVertexDeclaration(
 /* Render Targets */
 
 void VULKAN_SetRenderTargets(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_RenderTargetBinding *renderTargets,
 	int32_t numRenderTargets,
 	FNA3D_Renderbuffer *renderbuffer,
@@ -270,7 +270,7 @@ void VULKAN_SetRenderTargets(
 }
 
 void VULKAN_ResolveTarget(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_RenderTargetBinding *target
 ) {
     /* TODO */
@@ -279,14 +279,14 @@ void VULKAN_ResolveTarget(
 /* Backbuffer Functions */
 
 void VULKAN_ResetBackbuffer(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_PresentationParameters *presentationParameters
 ) {
     /* TODO */
 }
 
 void VULKAN_ReadBackbuffer(
-	FNA3D_Device *device,
+	void* driverData,
 	void* data,
 	int32_t dataLen,
 	int32_t startIndex,
@@ -301,7 +301,7 @@ void VULKAN_ReadBackbuffer(
 }
 
 void VULKAN_GetBackbufferSize(
-	FNA3D_Device *device,
+	void* driverData,
 	int32_t *w,
 	int32_t *h
 ) {
@@ -309,17 +309,17 @@ void VULKAN_GetBackbufferSize(
 }
 
 FNA3D_SurfaceFormat VULKAN_GetBackbufferSurfaceFormat(
-	FNA3D_Device *device
+	void* driverData
 ) {
     /* TODO */
 }
 
-FNA3D_DepthFormat VULKAN_GetBackbufferDepthFormat(FNA3D_Device *device)
+FNA3D_DepthFormat VULKAN_GetBackbufferDepthFormat(void* driverData)
 {
     /* TODO */
 }
 
-int32_t VULKAN_GetBackbufferMultiSampleCount(FNA3D_Device *device)
+int32_t VULKAN_GetBackbufferMultiSampleCount(void* driverData)
 {
     /* TODO */
 }
@@ -327,7 +327,7 @@ int32_t VULKAN_GetBackbufferMultiSampleCount(FNA3D_Device *device)
 /* Textures */
 
 FNA3D_Texture* VULKAN_CreateTexture2D(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_SurfaceFormat format,
 	int32_t width,
 	int32_t height,
@@ -338,7 +338,7 @@ FNA3D_Texture* VULKAN_CreateTexture2D(
 }
 
 FNA3D_Texture* VULKAN_CreateTexture3D(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_SurfaceFormat format,
 	int32_t width,
 	int32_t height,
@@ -349,7 +349,7 @@ FNA3D_Texture* VULKAN_CreateTexture3D(
 }
 
 FNA3D_Texture* VULKAN_CreateTextureCube(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_SurfaceFormat format,
 	int32_t size,
 	int32_t levelCount,
@@ -359,14 +359,14 @@ FNA3D_Texture* VULKAN_CreateTextureCube(
 }
 
 void VULKAN_AddDisposeTexture(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Texture *texture
 ) {
     /* TODO */
 }
 
 void VULKAN_SetTextureData2D(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
 	int32_t x,
@@ -381,7 +381,7 @@ void VULKAN_SetTextureData2D(
 }
 
 void VULKAN_SetTextureData3D(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
 	int32_t level,
@@ -398,7 +398,7 @@ void VULKAN_SetTextureData3D(
 }
 
 void VULKAN_SetTextureDataCube(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
 	int32_t x,
@@ -414,7 +414,7 @@ void VULKAN_SetTextureDataCube(
 }
 
 void VULKAN_SetTextureDataYUV(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Texture *y,
 	FNA3D_Texture *u,
 	FNA3D_Texture *v,
@@ -426,7 +426,7 @@ void VULKAN_SetTextureDataYUV(
 }
 
 void VULKAN_GetTextureData2D(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
 	int32_t textureWidth,
@@ -445,7 +445,7 @@ void VULKAN_GetTextureData2D(
 }
 
 void VULKAN_GetTextureData3D(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
 	int32_t left,
@@ -464,7 +464,7 @@ void VULKAN_GetTextureData3D(
 }
 
 void VULKAN_GetTextureDataCube(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
 	int32_t textureSize,
@@ -485,7 +485,7 @@ void VULKAN_GetTextureDataCube(
 /* Renderbuffers */
 
 FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
-	FNA3D_Device *device,
+	void* driverData,
 	int32_t width,
 	int32_t height,
 	FNA3D_SurfaceFormat format,
@@ -496,7 +496,7 @@ FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 }
 
 FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
-	FNA3D_Device *device,
+	void* driverData,
 	int32_t width,
 	int32_t height,
 	FNA3D_DepthFormat format,
@@ -506,7 +506,7 @@ FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 }
 
 void VULKAN_AddDisposeRenderbuffer(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Renderbuffer *renderbuffer
 ) {
     /* TODO */
@@ -515,7 +515,7 @@ void VULKAN_AddDisposeRenderbuffer(
 /* Vertex Buffers */
 
 FNA3D_Buffer* VULKAN_GenVertexBuffer(
-	FNA3D_Device *device,
+	void* driverData,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
 	int32_t vertexCount,
@@ -524,14 +524,14 @@ FNA3D_Buffer* VULKAN_GenVertexBuffer(
     /* TODO */
 }
 void VULKAN_AddDisposeVertexBuffer(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Buffer *buffer
 ) {
     /* TODO */
 }
 
 void VULKAN_SetVertexBufferData(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
@@ -542,7 +542,7 @@ void VULKAN_SetVertexBufferData(
 }
 
 void VULKAN_GetVertexBufferData(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
@@ -557,7 +557,7 @@ void VULKAN_GetVertexBufferData(
 /* Index Buffers */
 
 FNA3D_Buffer* VULKAN_GenIndexBuffer(
-	FNA3D_Device *device,
+	void* driverData,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
 	int32_t indexCount,
@@ -567,14 +567,14 @@ FNA3D_Buffer* VULKAN_GenIndexBuffer(
 }
 
 FNA3DAPI void VULKAN_AddDisposeIndexBuffer(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Buffer *buffer
 ) {
     /* TODO */
 }
 
 void VULKAN_SetIndexBufferData(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
@@ -585,7 +585,7 @@ void VULKAN_SetIndexBufferData(
 }
 
 void VULKAN_GetIndexBufferData(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
@@ -603,7 +603,7 @@ typedef struct MOJOSHADER_effectTechnique MOJOSHADER_effectTechnique;
 typedef struct MOJOSHADER_effectStateChanges MOJOSHADER_effectStateChanges;
 
 FNA3D_Effect* VULKAN_CreateEffect(
-	FNA3D_Device *device,
+	void* driverData,
 	uint8_t *effectCode,
 	uint32_t effectCodeLength
 ) {
@@ -611,21 +611,21 @@ FNA3D_Effect* VULKAN_CreateEffect(
 }
 
 FNA3D_Effect* VULKAN_CloneEffect(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Effect *effect
 ) {
     /* TODO */
 }
 
 void VULKAN_AddDisposeEffect(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Effect *effect
 ) {
     /* TODO */
 }
 
 void VULKAN_ApplyEffect(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectTechnique *technique,
 	uint32_t pass,
@@ -635,7 +635,7 @@ void VULKAN_ApplyEffect(
 }
 
 void VULKAN_BeginPassRestore(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
@@ -643,7 +643,7 @@ void VULKAN_BeginPassRestore(
 }
 
 void VULKAN_EndPassRestore(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Effect *effect
 ) {
     /* TODO */
@@ -651,33 +651,33 @@ void VULKAN_EndPassRestore(
 
 /* Queries */
 
-FNA3D_Query* VULKAN_CreateQuery(FNA3D_Device *device)
+FNA3D_Query* VULKAN_CreateQuery(void* driverData)
 {
     /* TODO */
 }
 
-void VULKAN_AddDisposeQuery(FNA3D_Device *device, FNA3D_Query *query)
+void VULKAN_AddDisposeQuery(void* driverData, FNA3D_Query *query)
 {
     /* TODO */
 }
 
-void VULKAN_QueryBegin(FNA3D_Device *device, FNA3D_Query *query)
+void VULKAN_QueryBegin(void* driverData, FNA3D_Query *query)
 {
     /* TODO */
 }
 
-void VULKAN_QueryEnd(FNA3D_Device *device, FNA3D_Query *query)
+void VULKAN_QueryEnd(void* driverData, FNA3D_Query *query)
 {
     /* TODO */
 }
 
-uint8_t VULKAN_QueryComplete(FNA3D_Device *device, FNA3D_Query *query)
+uint8_t VULKAN_QueryComplete(void* driverData, FNA3D_Query *query)
 {
     /* TODO */
 }
 
 int32_t VULKAN_QueryPixelCount(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Query *query
 ) {
     /* TODO */
@@ -685,39 +685,39 @@ int32_t VULKAN_QueryPixelCount(
 
 /* Feature Queries */
 
-uint8_t VULKAN_SupportsDXT1(FNA3D_Device *device)
+uint8_t VULKAN_SupportsDXT1(void* driverData)
 {
     /* TODO */
 }
 
-uint8_t VULKAN_SupportsS3TC(FNA3D_Device *device)
+uint8_t VULKAN_SupportsS3TC(void* driverData)
 {
     /* TODO */
 }
 
-uint8_t VULKAN_SupportsHardwareInstancing(FNA3D_Device *device)
+uint8_t VULKAN_SupportsHardwareInstancing(void* driverData)
 {
     /* TODO */
 }
 
-uint8_t VULKAN_SupportsNoOverwrite(FNA3D_Device *device)
+uint8_t VULKAN_SupportsNoOverwrite(void* driverData)
 {
     /* TODO */
 }
 
-int32_t VULKAN_GetMaxTextureSlots(FNA3D_Device *device)
+int32_t VULKAN_GetMaxTextureSlots(void* driverData)
 {
     /* TODO */
 }
 
-int32_t VULKAN_GetMaxMultiSampleCount(FNA3D_Device *device)
+int32_t VULKAN_GetMaxMultiSampleCount(void* driverData)
 {
     /* TODO */
 }
 
 /* Debugging */
 
-FNA3DAPI void VULKAN_SetStringMarker(FNA3D_Device *device, const char *text)
+FNA3DAPI void VULKAN_SetStringMarker(void* driverData, const char *text)
 {
     /* TODO */
 }
@@ -725,7 +725,7 @@ FNA3DAPI void VULKAN_SetStringMarker(FNA3D_Device *device, const char *text)
 /* Buffer Objects */
 
 intptr_t VULKAN_GetBufferSize(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Buffer *buffer
 ) {
     /* TODO */
@@ -734,7 +734,7 @@ intptr_t VULKAN_GetBufferSize(
 /* Effect Objects */
 
 MOJOSHADER_effect* VULKAN_GetEffectData(
-	FNA3D_Device *device,
+	void* driverData,
 	FNA3D_Effect *effect
 ) {
     /* TODO */
