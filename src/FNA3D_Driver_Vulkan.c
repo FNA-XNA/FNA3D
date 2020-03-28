@@ -1035,6 +1035,8 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
+	char const* layerNames[] = { "VK_LAYER_LUNARG_standard_validation" };
+
 	VkInstanceCreateInfo createInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 
 	char const* layerNames[] = { "VK_LAYER_KHRONOS_validation" };
