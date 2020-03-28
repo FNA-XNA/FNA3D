@@ -3563,6 +3563,14 @@ void OPENGL_AddDisposeTexture(
 			device->currentAttachments[i] = UINT32_MAX;
 		}
 	}
+	for (i = 0; i < device->numTextureSlots; i += 1)
+	{
+		if (device->textures[i] == glTexture)
+		{
+			/* Remove this texture from the sampler cache */
+			device->textures[i] = &NullTexture;
+		}
+	}
 	device->glDeleteTextures(1, &handle);
 
 	SDL_free(glTexture);
