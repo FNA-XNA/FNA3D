@@ -4672,7 +4672,7 @@ FNA3D_Effect* OPENGL_CreateEffect(
 	{
 		SDL_LogError(
 			SDL_LOG_CATEGORY_APPLICATION,
-			MOJOSHADER_glGetError()
+			"%s", MOJOSHADER_glGetError()
 		);
 		SDL_assert(0);
 	}
@@ -4713,7 +4713,7 @@ FNA3D_Effect* OPENGL_CloneEffect(
 	{
 		SDL_LogError(
 			SDL_LOG_CATEGORY_APPLICATION,
-			MOJOSHADER_glGetError()
+			"%s", MOJOSHADER_glGetError()
 		);
 		SDL_assert(0);
 	}
