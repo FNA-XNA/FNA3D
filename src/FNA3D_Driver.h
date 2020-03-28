@@ -583,9 +583,12 @@ struct FNA3D_Device
 typedef struct FNA3D_Driver
 {
 	const char *Name;
-	uint8_t (*PrepareWindowAttributes)(uint8_t debugMode, uint32_t *flags);
+	uint8_t (*PrepareWindowAttributes)(uint32_t *flags);
 	void (*GetDrawableSize)(void* window, int32_t *x, int32_t *y);
-	FNA3D_Device* (*CreateDevice)(FNA3D_PresentationParameters *presentationParameters);
+	FNA3D_Device* (*CreateDevice)(
+		FNA3D_PresentationParameters *presentationParameters,
+		uint8_t debugMode
+	);
 } FNA3D_Driver;
 
 extern FNA3D_Driver VulkanDriver;

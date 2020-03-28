@@ -440,7 +440,7 @@ typedef struct FNA3D_RenderTargetBinding
 /* This should be called before window creation!
  * Returns an SDL_WindowFlags mask.
  */
-FNA3DAPI uint32_t FNA3D_PrepareWindowAttributes(uint8_t debugMode);
+FNA3DAPI uint32_t FNA3D_PrepareWindowAttributes();
 
 /* This should be called after window creation!
  * Use this for detecting high-DPI windows.
@@ -448,7 +448,8 @@ FNA3DAPI uint32_t FNA3D_PrepareWindowAttributes(uint8_t debugMode);
 FNA3DAPI void FNA3D_GetDrawableSize(void* window, int32_t *x, int32_t *y);
 
 FNA3DAPI FNA3D_Device* FNA3D_CreateDevice(
-	FNA3D_PresentationParameters *presentationParameters
+	FNA3D_PresentationParameters *presentationParameters,
+	uint8_t debugMode
 );
 
 FNA3DAPI void FNA3D_DestroyDevice(FNA3D_Device *device);

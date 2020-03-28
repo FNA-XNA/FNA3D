@@ -5265,7 +5265,7 @@ static void checkExtensions(
 
 /* Driver */
 
-uint8_t OPENGL_PrepareWindowAttributes(uint8_t debugMode, uint32_t *flags)
+uint8_t OPENGL_PrepareWindowAttributes(uint32_t *flags)
 {
 	uint8_t forceES3, forceCore, forceCompat;
 	const char *osVersion;
@@ -5353,13 +5353,6 @@ uint8_t OPENGL_PrepareWindowAttributes(uint8_t debugMode, uint32_t *flags)
 			SDL_GL_CONTEXT_PROFILE_COMPATIBILITY
 		);
 	}
-	if (debugMode)
-	{
-		SDL_GL_SetAttribute(
-			SDL_GL_CONTEXT_FLAGS,
-			SDL_GL_CONTEXT_DEBUG_FLAG
-		);
-	}
 
 	*flags = SDL_WINDOW_OPENGL;
 	return 1;
@@ -5382,14 +5375,14 @@ void OPENGL_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 }
 
 FNA3D_Device* OPENGL_CreateDevice(
-	FNA3D_PresentationParameters *presentationParameters
+	FNA3D_PresentationParameters *presentationParameters,
+	uint8_t debugMode
 ) {
 	int32_t flags;
 	int32_t depthSize, stencilSize;
 	SDL_SysWMinfo wmInfo;
 	const char *renderer, *version, *vendor;
 	char driverInfo[256];
-	uint8_t debugMode;
 	int32_t i;
 	int32_t numExtensions, numSamplers, numAttributes, numAttachments;
 	OpenGLDevice *device;
@@ -5406,6 +5399,15 @@ FNA3D_Device* OPENGL_CreateDevice(
 	/* The FNA3D_Device and OpenGLDevice need to reference each other */
 	device->parentDevice = result;
 	result->driverData = (FNA3D_Renderer*) device;
+
+	/* Debug context support */
+	if (debugMode)
+	{
+		SDL_GL_SetAttribute(
+			SDL_GL_CONTEXT_FLAGS,
+			SDL_GL_CONTEXT_DEBUG_FLAG
+		);
+	}
 
 	/* Create OpenGL context */
 	device->context = SDL_GL_CreateContext(

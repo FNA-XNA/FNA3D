@@ -60,7 +60,7 @@ static int32_t selectedDriver = -1;
 
 /* Init/Quit */
 
-uint32_t FNA3D_PrepareWindowAttributes(uint8_t debugMode)
+uint32_t FNA3D_PrepareWindowAttributes()
 {
 	uint32_t result = 0;
 	uint32_t i;
@@ -74,7 +74,7 @@ uint32_t FNA3D_PrepareWindowAttributes(uint8_t debugMode)
 				continue;
 			}
 		}
-		if (drivers[i]->PrepareWindowAttributes(debugMode, &result))
+		if (drivers[i]->PrepareWindowAttributes(&result))
 		{
 			break;
 		}
@@ -109,7 +109,8 @@ FNA3DAPI void FNA3D_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 }
 
 FNA3D_Device* FNA3D_CreateDevice(
-	FNA3D_PresentationParameters *presentationParameters
+	FNA3D_PresentationParameters *presentationParameters,
+	uint8_t debugMode
 ) {
 	if (selectedDriver < 0)
 	{
@@ -120,7 +121,10 @@ FNA3D_Device* FNA3D_CreateDevice(
 		return NULL;
 	}
 
-	return drivers[selectedDriver]->CreateDevice(presentationParameters);
+	return drivers[selectedDriver]->CreateDevice(
+		presentationParameters,
+		debugMode
+	);
 }
 
 void FNA3D_DestroyDevice(FNA3D_Device *device)
