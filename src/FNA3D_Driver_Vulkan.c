@@ -45,6 +45,7 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
 
 typedef struct FNAVulkanRenderer
 {
+	FNA3D_Device *parentDevice;
 	VkInstance instance;
 	VkDevice logicalDevice;
 
@@ -189,7 +190,7 @@ static uint8_t IsDeviceSuitable(FNAVulkanRenderer *renderer, VkPhysicalDevice ph
 
 /* Init/Quit */
 
-uint32_t VULKAN_PrepareWindowAttributes(uint8_t debugMode, uint32_t *flags)
+uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 {
 	/* TODO */
 }
@@ -199,7 +200,7 @@ void VULKAN_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 	SDL_Vulkan_GetDrawableSize((SDL_Window*) window, x, y);
 }
 
-void VULKAN_DestroyDevice(FNA3D_Renderer *driverData)
+void VULKAN_DestroyDevice(FNA3D_Device *driverData)
 {
 	/* TODO */
 }
@@ -867,19 +868,15 @@ FNA3DAPI void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *tex
 
 /* Buffer Objects */
 
-intptr_t VULKAN_GetBufferSize(
-	FNA3D_Renderer *driverData,
-	FNA3D_Buffer *buffer
-) {
+intptr_t VULKAN_GetBufferSize(FNA3D_Buffer *buffer)
+{
 	/* TODO */
 }
 
 /* Effect Objects */
 
-MOJOSHADER_effect* VULKAN_GetEffectData(
-	FNA3D_Renderer *driverData,
-	FNA3D_Effect *effect
-) {
+MOJOSHADER_effect* VULKAN_GetEffectData(FNA3D_Effect *effect)
+{
 	/* TODO */
 }
 
@@ -927,7 +924,8 @@ static void LoadEntryPoints(
 }
 
 FNA3D_Device* VULKAN_CreateDevice(
-	FNA3D_PresentationParameters *presentationParameters
+	FNA3D_PresentationParameters *presentationParameters,
+	uint8_t debugMode
 ) {
 	/* TODO */
 	FNAVulkanRenderer *renderer;
@@ -943,44 +941,90 @@ FNA3D_Device* VULKAN_CreateDevice(
 	VkQueue presentQueue;
 	VkCommandPool commandPool;
 	uint32_t extensionCount;
-	char* extensionNames[64];
+    const char **extensionNames = NULL;
 
-	/* Init the FNAVulkanDevice */
+	/* Create the FNA3D_Device */
+	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
+	ASSIGN_DRIVER(VULKAN)
+
+	/* Init the FNAVulkanRenderer */
 	renderer = (FNAVulkanRenderer*) SDL_malloc(sizeof(FNAVulkanRenderer));
 	SDL_memset(renderer, '\0', sizeof(FNAVulkanRenderer));
 
 	/* load library so we can load vk functions dynamically */
-
 	SDL_Vulkan_LoadLibrary(NULL);
 	LoadGlobalFunctions();
-	/* create instance */
 
+	/* The FNA3D_Device and OpenGLDevice need to reference each other */
+	renderer->parentDevice = result;
+	result->driverData = (FNA3D_Renderer*) renderer;
+
+	/* create instance */
 	VkApplicationInfo appInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
 	appInfo.pApplicationName = "FNA";
 	appInfo.apiVersion = VK_MAKE_VERSION(1, 2, 136);
 
-	SDL_Vulkan_GetInstanceExtensions(
-		presentationParameters->deviceWindowHandle,
-		&extensionCount,
-		NULL
-	);
+	if (
+		!SDL_Vulkan_GetInstanceExtensions(
+			presentationParameters->deviceWindowHandle,
+			&extensionCount,
+			NULL
+		)
+	) {
+		SDL_LogError(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"SDL_Vulkan_GetInstanceExtensions(): %s\n",
+			SDL_GetError()
+		);
+		return NULL;
+	}
 
-	SDL_Vulkan_GetInstanceExtensions(
-		presentationParameters->deviceWindowHandle,
-		&extensionCount,
-		&extensionNames
-	);
+    extensionNames = SDL_malloc(sizeof(const char *) * extensionCount);
+	if (!extensionNames)
+	{
+        SDL_OutOfMemory();
+        return NULL;
+	}
 
-	char const* layerNames[] = { "VK_LAYER_LUNARG_standard_validation" };
+	if (
+		SDL_Vulkan_GetInstanceExtensions(
+			presentationParameters->deviceWindowHandle,
+			&extensionCount,
+			extensionNames
+		)
+	) {
+		SDL_free((void*)extensionNames);
+        SDL_LogError(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"SDL_Vulkan_GetInstanceExtensions(): %s\n",
+			SDL_GetError()
+		);
+		return NULL;
+	}
 
 	VkInstanceCreateInfo createInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
-	createInfo.pApplicationInfo = &appInfo;
-	createInfo.enabledExtensionCount = extensionCount;
-	createInfo.ppEnabledExtensionNames = extensionNames;
-	createInfo.ppEnabledLayerNames = layerNames;
-	createInfo.enabledLayerCount = sizeof(layerNames)/sizeof(layerNames[0]);
+
+	if (debugMode)
+	{
+		char const* layerNames[] = { "VK_LAYER_LUNARG_standard_validation" };
+		createInfo.pApplicationInfo = &appInfo;
+		createInfo.enabledExtensionCount = extensionCount;
+		createInfo.ppEnabledExtensionNames = extensionNames;
+		createInfo.ppEnabledLayerNames = layerNames;
+		createInfo.enabledLayerCount = sizeof(layerNames)/sizeof(layerNames[0]);
+	}
+	else
+	{
+		char const* layerNames[] = { };
+		createInfo.pApplicationInfo = &appInfo;
+		createInfo.enabledExtensionCount = extensionCount;
+		createInfo.ppEnabledExtensionNames = extensionNames;
+		createInfo.ppEnabledLayerNames = layerNames;
+		createInfo.enabledLayerCount = 0;
+	}
 
 	vulkanResult = vkCreateInstance(&createInfo, NULL, &instance);
+	SDL_free((void*)extensionNames);
 	if (vulkanResult != VK_SUCCESS)
 	{
 		SDL_LogError(
@@ -992,8 +1036,8 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
+	/* assign the instance and load function entry points */
 	renderer->instance = instance;
-
 	LoadEntryPoints(renderer);
 
 	/* create surface */
@@ -1105,7 +1149,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 
 	VkDeviceCreateInfo deviceCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
 	deviceCreateInfo.queueCreateInfoCount = 2;
-	deviceCreateInfo.pQueueCreateInfos = &queueCreateInfos;
+	deviceCreateInfo.pQueueCreateInfos = queueCreateInfos;
 	deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
 	deviceCreateInfo.enabledExtensionCount = 0;
 
@@ -1126,9 +1170,6 @@ FNA3D_Device* VULKAN_CreateDevice(
 
 	/* TODO: create swap chain */
 
-	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
-	ASSIGN_DRIVER(VULKAN)
-	result->driverData = renderer;
 	return result;
 }
 
