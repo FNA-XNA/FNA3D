@@ -107,10 +107,12 @@
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="..\..\src\FNA3D.c" />
+    <ClCompile Include="..\..\src\FNA3D_CommandStream.c" />
     <ClCompile Include="..\..\src\FNA3D_Driver_OpenGL.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\include\FNA3D.h" />
+    <ClInclude Include="..\..\src\FNA3D_CommandStream.h" />
     <ClInclude Include="..\..\src\FNA3D_Driver.h" />
     <ClInclude Include="..\..\src\FNA3D_Driver_OpenGL.h" />
     <ClInclude Include="..\..\src\FNA3D_Driver_OpenGL_glfuncs.h" />

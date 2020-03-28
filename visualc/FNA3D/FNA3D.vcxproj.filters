@@ -30,12 +30,14 @@
     <ClCompile Include="..\..\MojoShader\profiles\mojoshader_profile_spirv.c">
       <Filter>mojoshader</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\FNA3D_CommandStream.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\include\FNA3D.h" />
     <ClInclude Include="..\..\src\FNA3D_Driver.h" />
     <ClInclude Include="..\..\src\FNA3D_Driver_OpenGL.h" />
     <ClInclude Include="..\..\src\FNA3D_Driver_OpenGL_glfuncs.h" />
+    <ClInclude Include="..\..\src\FNA3D_CommandStream.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="mojoshader">
