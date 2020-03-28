@@ -3916,7 +3916,7 @@ void OPENGL_GetTextureData2D(
 		return;
 	}
 
-	BindTexture(device, (OpenGLTexture *)texture);
+	BindTexture(device, (OpenGLTexture*) texture);
 	glFormat = XNAToGL_TextureFormat[format];
 	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
 	{
@@ -3974,7 +3974,7 @@ void OPENGL_GetTextureData2D(
 				/* FIXME: Can we copy via pitch instead, or something? -flibit */
 				SDL_memcpy(
 					dataPtr + ((curPixel - startIndex) * elementSizeInBytes),
-					texData + (((row * w) + col) * elementSizeInBytes),
+					texData + (((row * textureWidth) + col) * elementSizeInBytes),
 					elementSizeInBytes
 				);
 			}
@@ -4058,7 +4058,7 @@ void OPENGL_GetTextureDataCube(
 		return;
 	}
 
-	BindTexture(device, (OpenGLTexture *)texture);
+	BindTexture(device, (OpenGLTexture*) texture);
 	glFormat = XNAToGL_TextureFormat[format];
 	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
 	{
