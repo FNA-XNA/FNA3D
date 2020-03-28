@@ -33,9 +33,36 @@
 #include <SDL_syswm.h>
 #include <SDL_vulkan.h>
 
-#include "vulkan.h"
+/* static vars */
+
+static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
+
+#define VULKAN_GLOBAL_FUNCTION(name) static PFN_##name name = NULL;
+#include "FNA3D_Driver_Vulkan_global_funcs.h"
+#undef VULKAN_GLOBAL_FUNCTION
 
 /* Internal Structures */
+
+typedef struct FNAVulkanRenderer
+{
+	VkInstance instance;
+	VkDevice logicalDevice;
+
+	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
+		vkfntype_##func func;
+	#include "FNA3D_Driver_Vulkan_instance_funcs.h"
+	#undef VULKAN_INSTANCE_FUNCTION
+
+	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
+		vkfntype_##func func;
+	#include "FNA3D_Driver_Vulkan_device_funcs.h"
+	#undef VULKAN_DEVICE_FUNCTION
+} FNAVulkanRenderer;
+
+typedef struct QueueFamilyIndices {
+	uint32_t graphicsFamily;
+	uint32_t presentFamily;
+} QueueFamilyIndices;
 
 /* translations arrays */
 
@@ -89,19 +116,14 @@ static const char* VkErrorMessages(VkResult code)
 	return errorString;
 }
 
-typedef struct QueueFamilyIndices {
-	uint32_t graphicsFamily;
-	uint32_t presentFamily;
-} QueueFamilyIndices;
-
 /* we want a physical device that is dedicated and supports our features */
-static uint8_t isDeviceIdeal(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, QueueFamilyIndices* queueFamilyIndices)
+static uint8_t IsDeviceIdeal(FNAVulkanRenderer *renderer, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, QueueFamilyIndices* queueFamilyIndices)
 {
 	queueFamilyIndices->graphicsFamily = UINT32_MAX;
 	queueFamilyIndices->presentFamily = UINT32_MAX;
 
 	VkPhysicalDeviceProperties deviceProperties;
-	vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
+	renderer->vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
 
 	if (deviceProperties.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
 	{
@@ -109,7 +131,7 @@ static uint8_t isDeviceIdeal(VkPhysicalDevice physicalDevice, VkSurfaceKHR surfa
 	}
 
 	uint32_t queueFamilyCount;
-	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, NULL);
+	renderer->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, NULL);
 
 	if (queueFamilyCount == 0)
 	{
@@ -117,11 +139,11 @@ static uint8_t isDeviceIdeal(VkPhysicalDevice physicalDevice, VkSurfaceKHR surfa
 	}
 
 	VkQueueFamilyProperties queueProps[queueFamilyCount];
-	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueProps);
+	renderer->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueProps);
 
 	for (uint32_t i = 0; i < queueFamilyCount; i++) {
 		VkBool32 supportsPresent;
-		vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &supportsPresent);
+		renderer->vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &supportsPresent);
 		if (supportsPresent && (queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0) {
 			queueFamilyIndices->graphicsFamily = i;
 			queueFamilyIndices->presentFamily = i;
@@ -133,16 +155,16 @@ static uint8_t isDeviceIdeal(VkPhysicalDevice physicalDevice, VkSurfaceKHR surfa
 }
 
 /* if no dedicated device exists, one that supports our features would be fine */
-static uint8_t isDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, QueueFamilyIndices* queueFamilyIndices)
+static uint8_t IsDeviceSuitable(FNAVulkanRenderer *renderer, VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, QueueFamilyIndices* queueFamilyIndices)
 {
 	queueFamilyIndices->graphicsFamily = UINT32_MAX;
 	queueFamilyIndices->presentFamily = UINT32_MAX;
 
 	VkPhysicalDeviceProperties deviceProperties;
-	vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
+	renderer->vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
 
 	uint32_t queueFamilyCount;
-	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, NULL);
+	renderer->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, NULL);
 
 	if (queueFamilyCount == 0)
 	{
@@ -150,11 +172,11 @@ static uint8_t isDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceKHR su
 	}
 
 	VkQueueFamilyProperties queueProps[queueFamilyCount];
-	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueProps);
+	renderer->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueProps);
 
 	for (uint32_t i = 0; i < queueFamilyCount; i++) {
 		VkBool32 supportsPresent;
-		vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &supportsPresent);
+		renderer->vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &supportsPresent);
 		if (supportsPresent && (queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0) {
 			queueFamilyIndices->graphicsFamily = i;
 			queueFamilyIndices->presentFamily = i;
@@ -861,10 +883,54 @@ MOJOSHADER_effect* VULKAN_GetEffectData(
 	/* TODO */
 }
 
+static uint8_t LoadGlobalFunctions(void)
+{
+    vkGetInstanceProcAddr = SDL_Vulkan_GetVkGetInstanceProcAddr();
+    if(!vkGetInstanceProcAddr)
+    {
+        SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                     "SDL_Vulkan_GetVkGetInstanceProcAddr(): %s\n",
+                     SDL_GetError());
+
+        return 0;
+    }
+
+	#define VULKAN_GLOBAL_FUNCTION(name)                                               		\
+		name = (PFN_##name)vkGetInstanceProcAddr(VK_NULL_HANDLE, #name);                  	\
+		if(!name)                                                                         	\
+		{                                                                                 	\
+			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,                                    	\
+						"vkGetInstanceProcAddr(VK_NULL_HANDLE, \"" #name "\") failed\n");	\
+			return 0;                                                             		   	\
+		}
+
+	#include "FNA3D_Driver_Vulkan_global_funcs.h"
+	#undef VULKAN_GLOBAL_FUNCTION
+
+	return 1;
+}
+
+#undef VULKAN_FUNCTIONS
+
+static void LoadEntryPoints(
+	FNAVulkanRenderer *renderer
+) {
+	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
+		renderer->func = (vkfntype_##func) vkGetInstanceProcAddr(renderer->instance, #func);
+	#include "FNA3D_Driver_Vulkan_instance_funcs.h"
+	#undef VULKAN_INSTANCE_FUNCTION
+
+	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
+		renderer->func = (vkfntype_##func) renderer->vkGetDeviceProcAddr(renderer->logicalDevice, #func);
+	#include "FNA3D_Driver_Vulkan_device_funcs.h"
+	#undef VULKAN_DEVICE_FUNCTION
+}
+
 FNA3D_Device* VULKAN_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
 	/* TODO */
+	FNAVulkanRenderer *renderer;
 	FNA3D_Device *result;
 	VkResult vulkanResult;
 	VkInstance instance;
@@ -872,13 +938,21 @@ FNA3D_Device* VULKAN_CreateDevice(
 	uint32_t physicalDeviceCount;
 	VkPhysicalDevice physicalDevice;
 	VkPhysicalDevice physicalDevices[physicalDeviceCount];
-	VkDevice device;
+	VkDevice logicalDevice;
 	VkQueue graphicsQueue;
 	VkQueue presentQueue;
 	VkCommandPool commandPool;
 	uint32_t extensionCount;
 	char* extensionNames[64];
 
+	/* Init the FNAVulkanDevice */
+	renderer = (FNAVulkanRenderer*) SDL_malloc(sizeof(FNAVulkanRenderer));
+	SDL_memset(renderer, '\0', sizeof(FNAVulkanRenderer));
+
+	/* load library so we can load vk functions dynamically */
+
+	SDL_Vulkan_LoadLibrary(NULL);
+	LoadGlobalFunctions();
 	/* create instance */
 
 	VkApplicationInfo appInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
@@ -914,6 +988,10 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
+	renderer->instance = instance;
+
+	LoadEntryPoints(renderer);
+
 	/* create surface */
 
 	if (
@@ -934,7 +1012,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 
 	/* determine a suitable physical device */
 
-	vulkanResult = vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, NULL);
+	vulkanResult = renderer->vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, NULL);
 	if (vulkanResult != VK_SUCCESS)
 	{
 		SDL_LogError(
@@ -955,7 +1033,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
-	vulkanResult = vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices);
+	vulkanResult = renderer->vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices);
 	if (vulkanResult != VK_SUCCESS)
 	{
 		SDL_LogError(
@@ -971,7 +1049,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 	uint8_t physicalDeviceAssigned = 0;
 	for (int i = 0; i < physicalDeviceCount; i++)
 	{
-		if (isDeviceIdeal(physicalDevices[i], surface, &queueFamilyIndices))
+		if (IsDeviceIdeal(renderer, physicalDevices[i], surface, &queueFamilyIndices))
 		{
 			physicalDevice = physicalDevices[i];
 			physicalDeviceAssigned = 1;
@@ -983,7 +1061,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 	{
 		for (int i = 0; i < physicalDeviceCount; i++)
 		{
-			if (isDeviceSuitable(physicalDevices[i], surface, &queueFamilyIndices))
+			if (IsDeviceSuitable(renderer, physicalDevices[i], surface, &queueFamilyIndices))
 			{
 				physicalDevice = physicalDevices[i];
 				physicalDeviceAssigned = 1;
@@ -1027,7 +1105,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 	deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
 	deviceCreateInfo.enabledExtensionCount = 0;
 
-	vulkanResult = vkCreateDevice(physicalDevice, &deviceCreateInfo, NULL, &device);
+	vulkanResult = renderer->vkCreateDevice(physicalDevice, &deviceCreateInfo, NULL, &logicalDevice);
    	if (vulkanResult != VK_SUCCESS)
 	{
 		SDL_LogError(
@@ -1039,14 +1117,14 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
-	vkGetDeviceQueue(device, queueFamilyIndices.graphicsFamily, 0, &graphicsQueue);
-	vkGetDeviceQueue(device, queueFamilyIndices.presentFamily, 0, &presentQueue);
+	renderer->vkGetDeviceQueue(logicalDevice, queueFamilyIndices.graphicsFamily, 0, &graphicsQueue);
+	renderer->vkGetDeviceQueue(logicalDevice, queueFamilyIndices.presentFamily, 0, &presentQueue);
 
 	/* TODO: create swap chain */
 
 	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
 	ASSIGN_DRIVER(VULKAN)
-	result->driverData = device;
+	result->driverData = renderer;
 	return result;
 }
 
