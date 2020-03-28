@@ -30,6 +30,8 @@
 #include "FNA3D.h"
 #include "mojoshader.h"
 
+typedef struct FNA3D_Renderer FNA3D_Renderer;
+
 struct FNA3D_Device
 {
 	/* Quit */
@@ -38,24 +40,24 @@ struct FNA3D_Device
 
 	/* Begin/End Frame */
 
-	void (*BeginFrame)(void* driverData);
+	void (*BeginFrame)(FNA3D_Renderer *driverData);
 
 	void (*SwapBuffers)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Rect *sourceRectangle,
 		FNA3D_Rect *destinationRectangle,
 		void* overrideWindowHandle
 	);
 
 	void (*SetPresentationInterval)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_PresentInterval presentInterval
 	);
 
 	/* Drawing */
 
 	void (*Clear)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_ClearOptions options,
 		FNA3D_Vec4 *color,
 		float depth,
@@ -63,7 +65,7 @@ struct FNA3D_Device
 	);
 
 	void (*DrawIndexedPrimitives)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_PrimitiveType primitiveType,
 		int32_t baseVertex,
 		int32_t minVertexIndex,
@@ -74,7 +76,7 @@ struct FNA3D_Device
 		FNA3D_IndexElementSize indexElementSize
 	);
 	void (*DrawInstancedPrimitives)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_PrimitiveType primitiveType,
 		int32_t baseVertex,
 		int32_t minVertexIndex,
@@ -86,13 +88,13 @@ struct FNA3D_Device
 		FNA3D_IndexElementSize indexElementSize
 	);
 	void (*DrawPrimitives)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_PrimitiveType primitiveType,
 		int32_t vertexStart,
 		int32_t primitiveCount
 	);
 	void (*DrawUserIndexedPrimitives)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_PrimitiveType primitiveType,
 		void* vertexData,
 		int32_t vertexOffset,
@@ -103,7 +105,7 @@ struct FNA3D_Device
 		int32_t primitiveCount
 	);
 	void (*DrawUserPrimitives)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_PrimitiveType primitiveType,
 		void* vertexData,
 		int32_t vertexOffset,
@@ -112,40 +114,40 @@ struct FNA3D_Device
 
 	/* Mutable Render States */
 
-	void (*SetViewport)(void* driverData, FNA3D_Viewport *viewport);
-	void (*SetScissorRect)(void* driverData, FNA3D_Rect *scissor);
+	void (*SetViewport)(FNA3D_Renderer *driverData, FNA3D_Viewport *viewport);
+	void (*SetScissorRect)(FNA3D_Renderer *driverData, FNA3D_Rect *scissor);
 
 	void (*GetBlendFactor)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Color *blendFactor
 	);
 	void (*SetBlendFactor)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Color *blendFactor
 	);
 
-	int32_t (*GetMultiSampleMask)(void* driverData);
-	void (*SetMultiSampleMask)(void* driverData, int32_t mask);
+	int32_t (*GetMultiSampleMask)(FNA3D_Renderer *driverData);
+	void (*SetMultiSampleMask)(FNA3D_Renderer *driverData, int32_t mask);
 
-	int32_t (*GetReferenceStencil)(void* driverData);
-	void (*SetReferenceStencil)(void* driverData, int32_t ref);
+	int32_t (*GetReferenceStencil)(FNA3D_Renderer *driverData);
+	void (*SetReferenceStencil)(FNA3D_Renderer *driverData, int32_t ref);
 
 	/* Immutable Render States */
 
 	void (*SetBlendState)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_BlendState *blendState
 	);
 	void (*SetDepthStencilState)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_DepthStencilState *depthStencilState
 	);
 	void (*ApplyRasterizerState)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_RasterizerState *rasterizerState
 	);
 	void (*VerifySampler)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		int32_t index,
 		FNA3D_Texture *texture,
 		FNA3D_SamplerState *sampler
@@ -154,7 +156,7 @@ struct FNA3D_Device
 	/* Vertex State */
 
 	void (*ApplyVertexBufferBindings)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_VertexBufferBinding *bindings,
 		int32_t numBindings,
 		uint8_t bindingsUpdated,
@@ -162,7 +164,7 @@ struct FNA3D_Device
 	);
 
 	void (*ApplyVertexDeclaration)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_VertexDeclaration *vertexDeclaration,
 		void* ptr,
 		int32_t vertexOffset
@@ -171,7 +173,7 @@ struct FNA3D_Device
 	/* Render Targets */
 
 	void (*SetRenderTargets)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_RenderTargetBinding *renderTargets,
 		int32_t numRenderTargets,
 		FNA3D_Renderbuffer *renderbuffer,
@@ -179,19 +181,19 @@ struct FNA3D_Device
 	);
 
 	void (*ResolveTarget)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_RenderTargetBinding *target
 	);
 
 	/* Backbuffer Functions */
 
 	void (*ResetBackbuffer)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_PresentationParameters *presentationParameters
 	);
 
 	void (*ReadBackbuffer)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		void* data,
 		int32_t dataLen,
 		int32_t startIndex,
@@ -204,21 +206,21 @@ struct FNA3D_Device
 	);
 
 	void (*GetBackbufferSize)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		int32_t *w,
 		int32_t *h
 	);
 
-	FNA3D_SurfaceFormat (*GetBackbufferSurfaceFormat)(void* driverData);
+	FNA3D_SurfaceFormat (*GetBackbufferSurfaceFormat)(FNA3D_Renderer *driverData);
 
-	FNA3D_DepthFormat (*GetBackbufferDepthFormat)(void* driverData);
+	FNA3D_DepthFormat (*GetBackbufferDepthFormat)(FNA3D_Renderer *driverData);
 
-	int32_t (*GetBackbufferMultiSampleCount)(void* driverData);
+	int32_t (*GetBackbufferMultiSampleCount)(FNA3D_Renderer *driverData);
 
 	/* Textures */
 
 	FNA3D_Texture* (*CreateTexture2D)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_SurfaceFormat format,
 		int32_t width,
 		int32_t height,
@@ -226,7 +228,7 @@ struct FNA3D_Device
 		uint8_t isRenderTarget
 	);
 	FNA3D_Texture* (*CreateTexture3D)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_SurfaceFormat format,
 		int32_t width,
 		int32_t height,
@@ -234,18 +236,18 @@ struct FNA3D_Device
 		int32_t levelCount
 	);
 	FNA3D_Texture* (*CreateTextureCube)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_SurfaceFormat format,
 		int32_t size,
 		int32_t levelCount,
 		uint8_t isRenderTarget
 	);
 	void (*AddDisposeTexture)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Texture *texture
 	);
 	void (*SetTextureData2D)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Texture *texture,
 		FNA3D_SurfaceFormat format,
 		int32_t x,
@@ -257,7 +259,7 @@ struct FNA3D_Device
 		int32_t dataLength
 	);
 	void (*SetTextureData3D)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Texture *texture,
 		FNA3D_SurfaceFormat format,
 		int32_t level,
@@ -271,7 +273,7 @@ struct FNA3D_Device
 		int32_t dataLength
 	);
 	void (*SetTextureDataCube)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Texture *texture,
 		FNA3D_SurfaceFormat format,
 		int32_t x,
@@ -284,7 +286,7 @@ struct FNA3D_Device
 		int32_t dataLength
 	);
 	void (*SetTextureDataYUV)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Texture *y,
 		FNA3D_Texture *u,
 		FNA3D_Texture *v,
@@ -293,7 +295,7 @@ struct FNA3D_Device
 		void* ptr
 	);
 	void (*GetTextureData2D)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Texture *texture,
 		FNA3D_SurfaceFormat format,
 		int32_t textureWidth,
@@ -309,7 +311,7 @@ struct FNA3D_Device
 		int32_t elementSizeInBytes
 	);
 	void (*GetTextureData3D)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Texture *texture,
 		FNA3D_SurfaceFormat format,
 		int32_t left,
@@ -325,7 +327,7 @@ struct FNA3D_Device
 		int32_t elementSizeInBytes
 	);
 	void (*GetTextureDataCube)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Texture *texture,
 		FNA3D_SurfaceFormat format,
 		int32_t textureSize,
@@ -344,7 +346,7 @@ struct FNA3D_Device
 	/* Renderbuffers */
 
 	FNA3D_Renderbuffer* (*GenColorRenderbuffer)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		int32_t width,
 		int32_t height,
 		FNA3D_SurfaceFormat format,
@@ -352,32 +354,32 @@ struct FNA3D_Device
 		FNA3D_Texture *texture
 	);
 	FNA3D_Renderbuffer* (*GenDepthStencilRenderbuffer)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		int32_t width,
 		int32_t height,
 		FNA3D_DepthFormat format,
 		int32_t multiSampleCount
 	);
 	void (*AddDisposeRenderbuffer)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Renderbuffer *renderbuffer
 	);
 
 	/* Vertex Buffers */
 
 	FNA3D_Buffer* (*GenVertexBuffer)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		uint8_t dynamic,
 		FNA3D_BufferUsage usage,
 		int32_t vertexCount,
 		int32_t vertexStride
 	);
 	void (*AddDisposeVertexBuffer)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Buffer *buffer
 	);
 	void (*SetVertexBufferData)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Buffer *buffer,
 		int32_t offsetInBytes,
 		void* data,
@@ -385,7 +387,7 @@ struct FNA3D_Device
 		FNA3D_SetDataOptions options
 	);
 	void (*GetVertexBufferData)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Buffer *buffer,
 		int32_t offsetInBytes,
 		void* data,
@@ -398,18 +400,18 @@ struct FNA3D_Device
 	/* Index Buffers */
 
 	FNA3D_Buffer* (*GenIndexBuffer)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		uint8_t dynamic,
 		FNA3D_BufferUsage usage,
 		int32_t indexCount,
 		FNA3D_IndexElementSize indexElementSize
 	);
 	void (*AddDisposeIndexBuffer)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Buffer *buffer
 	);
 	void (*SetIndexBufferData)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Buffer *buffer,
 		int32_t offsetInBytes,
 		void* data,
@@ -417,7 +419,7 @@ struct FNA3D_Device
 		FNA3D_SetDataOptions options
 	);
 	void (*GetIndexBufferData)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Buffer *buffer,
 		int32_t offsetInBytes,
 		void* data,
@@ -429,60 +431,60 @@ struct FNA3D_Device
 	/* Effects */
 
 	FNA3D_Effect* (*CreateEffect)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		uint8_t *effectCode,
 		uint32_t effectCodeLength
 	);
 	FNA3D_Effect* (*CloneEffect)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Effect *effect
 	);
 	void (*AddDisposeEffect)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Effect *effect
 	);
 	void (*ApplyEffect)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Effect *effect,
 		MOJOSHADER_effectTechnique *technique,
 		uint32_t pass,
 		MOJOSHADER_effectStateChanges *stateChanges
 	);
 	void (*BeginPassRestore)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Effect *effect,
 		MOJOSHADER_effectStateChanges *stateChanges
 	);
 	void (*EndPassRestore)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Effect *effect
 	);
 
 	/* Queries */
 
-	FNA3D_Query* (*CreateQuery)(void* driverData);
-	void (*AddDisposeQuery)(void* driverData, FNA3D_Query *query);
-	void (*QueryBegin)(void* driverData, FNA3D_Query *query);
-	void (*QueryEnd)(void* driverData, FNA3D_Query *query);
-	uint8_t (*QueryComplete)(void* driverData, FNA3D_Query *query);
+	FNA3D_Query* (*CreateQuery)(FNA3D_Renderer *driverData);
+	void (*AddDisposeQuery)(FNA3D_Renderer *driverData, FNA3D_Query *query);
+	void (*QueryBegin)(FNA3D_Renderer *driverData, FNA3D_Query *query);
+	void (*QueryEnd)(FNA3D_Renderer *driverData, FNA3D_Query *query);
+	uint8_t (*QueryComplete)(FNA3D_Renderer *driverData, FNA3D_Query *query);
 	int32_t (*QueryPixelCount)(
-		void* driverData,
+		FNA3D_Renderer *driverData,
 		FNA3D_Query *query
 	);
 
 	/* Feature Queries */
 
-	uint8_t (*SupportsDXT1)(void* driverData);
-	uint8_t (*SupportsS3TC)(void* driverData);
-	uint8_t (*SupportsHardwareInstancing)(void* driverData);
-	uint8_t (*SupportsNoOverwrite)(void* driverData);
+	uint8_t (*SupportsDXT1)(FNA3D_Renderer *driverData);
+	uint8_t (*SupportsS3TC)(FNA3D_Renderer *driverData);
+	uint8_t (*SupportsHardwareInstancing)(FNA3D_Renderer *driverData);
+	uint8_t (*SupportsNoOverwrite)(FNA3D_Renderer *driverData);
 
-	int32_t (*GetMaxTextureSlots)(void* driverData);
-	int32_t (*GetMaxMultiSampleCount)(void* driverData);
+	int32_t (*GetMaxTextureSlots)(FNA3D_Renderer *driverData);
+	int32_t (*GetMaxMultiSampleCount)(FNA3D_Renderer *driverData);
 
 	/* Debugging */
 
-	void (*SetStringMarker)(void* driverData, const char *text);
+	void (*SetStringMarker)(FNA3D_Renderer *driverData, const char *text);
 
 	/* TODO: Debug callback function...? */
 
@@ -495,7 +497,7 @@ struct FNA3D_Device
 	MOJOSHADER_effect* (*GetEffectData)(FNA3D_Effect *effect);
 
 	/* Opaque pointer for the Driver */
-	void* driverData;
+	FNA3D_Renderer *driverData;
 };
 
 #define ASSIGN_DRIVER_FUNC(func, name) \
