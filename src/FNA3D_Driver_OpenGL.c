@@ -28,6 +28,7 @@
 
 #include "FNA3D_Driver.h"
 #include "FNA3D_Driver_OpenGL.h"
+#include "FNA3D_CommandStream.h"
 
 #include <SDL.h>
 #include <SDL_syswm.h>
@@ -114,8 +115,13 @@ typedef struct OpenGLVertexAttribute
 	uint32_t currentStride;
 } OpenGLVertexAttribute;
 
+typedef struct LinkedList LinkedList;
+
 typedef struct OpenGLDevice /* Cast from driverData */
 {
+	/* Associated FNA3D_Device */
+	FNA3D_Device *parentDevice;
+
 	/* Context */
 	SDL_GLContext context;
 	uint8_t useES3;
@@ -262,6 +268,9 @@ typedef struct OpenGLDevice /* Cast from driverData */
 
 	/* Threading */
 	SDL_threadID threadID;
+	SDL_mutex *actionsMutex;
+	LinkedList *actions;
+	LinkedList *semaphores;
 
 	/* GL entry points */
 	glfntype_glGetString glGetString; /* Loaded early! */
@@ -582,6 +591,78 @@ static int32_t XNAToGL_PrimitiveVerts(
 	return 0;
 }
 
+/* Linked Lists */
+
+struct LinkedList
+{
+	void* data;
+	LinkedList *next;
+};
+
+static void LinkedList_Add(
+	LinkedList **start,
+	void* toAdd
+) {
+	LinkedList *newEntry, *latest;
+	newEntry = (LinkedList*) SDL_malloc(sizeof(LinkedList));
+	newEntry->data = toAdd;
+	newEntry->next = NULL;
+	if (*start == NULL)
+	{
+		*start = newEntry;
+	}
+	else
+	{
+		latest = *start;
+		while (latest->next != NULL)
+		{
+			latest = latest->next;
+		}
+		latest->next = newEntry;
+	}
+}
+
+static void LinkedList_Clear(LinkedList **start)
+{
+	LinkedList *current, *next;
+	current = *start;
+	while (current != NULL)
+	{
+		next = current->next;
+		SDL_free(current);
+		current = next;
+	}
+	*start = NULL;
+}
+
+/* Command Processing */
+
+static void RunActions(OpenGLDevice *device)
+{
+	LinkedList *action, *semaphore;
+
+	SDL_LockMutex(device->actionsMutex);
+
+	action = device->actions;
+	semaphore = device->semaphores;
+
+	while (action != NULL)
+	{
+		FNA3D_ExecuteCommand(
+			device->parentDevice,
+			(FNA3D_Command*) action->data
+		);
+		SDL_SemPost((SDL_sem*) semaphore->data);
+
+		action = action->next;
+		semaphore = semaphore->next;
+	}
+	LinkedList_Clear(&device->actions);
+	LinkedList_Clear(&device->semaphores);
+
+	SDL_UnlockMutex(device->actionsMutex);
+}
+
 /* Inline Functions */
 
 /* Windows/Visual Studio cruft */
@@ -674,6 +755,19 @@ static inline void ToggleGLState(
 	}
 }
 
+static inline void ForceToMainThread(
+	OpenGLDevice *device,
+	FNA3D_Command *action,
+	SDL_sem *semaphore
+) {
+	SDL_LockMutex(device->actionsMutex);
+
+	LinkedList_Add(&device->actions, (void*) action);
+	LinkedList_Add(&device->semaphores, (void*) semaphore);
+
+	SDL_UnlockMutex(device->actionsMutex);
+}
+
 /* Forward Declarations for Internal Functions */
 
 static void OPENGL_INTERNAL_CreateBackbuffer(
@@ -711,6 +805,10 @@ void OPENGL_DestroyDevice(FNA3D_Device *device)
 
 	MOJOSHADER_glMakeContextCurrent(NULL);
 	MOJOSHADER_glDestroyContext(glDevice->shaderContext);
+
+	LinkedList_Clear(&glDevice->actions);
+	LinkedList_Clear(&glDevice->semaphores);
+	SDL_DestroyMutex(glDevice->actionsMutex);
 
 	SDL_GL_DeleteContext(glDevice->context);
 
@@ -871,8 +969,9 @@ void OPENGL_SwapBuffers(
 		SDL_GL_SwapWindow((SDL_Window*) overrideWindowHandle);
 	}
 
+	RunActions(device);
+
 /* FIXME: Oh shit -flibit
-	RunActions();
 	IGLTexture gcTexture;
 	while (GCTextures.TryDequeue(out gcTexture))
 	{
@@ -3236,10 +3335,27 @@ FNA3D_Texture* OPENGL_CreateTexture2D(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	OpenGLTexture *result;
 	GLenum glFormat, glInternalFormat, glType;
 	int32_t levelWidth, levelHeight, i;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	FNA3D_Command cmd;
+	SDL_sem *sem;
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_CREATETEXTURE2D;
+		cmd.createTexture2D.format = format;
+		cmd.createTexture2D.width = width;
+		cmd.createTexture2D.height = height;
+		cmd.createTexture2D.levelCount = levelCount;
+		cmd.createTexture2D.isRenderTarget = isRenderTarget;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return cmd.createTexture2D.retval;
+	}
 
 	result = (OpenGLTexture*) OPENGL_INTERNAL_CreateTexture(
 		device,
@@ -3297,12 +3413,29 @@ FNA3D_Texture* OPENGL_CreateTexture3D(
 	int32_t depth,
 	int32_t levelCount
 ) {
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	OpenGLTexture *result;
 	GLenum glFormat, glInternalFormat, glType;
 	int32_t i;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	FNA3D_Command cmd;
+	SDL_sem *sem;
 
 	SDL_assert(device->supports_3DTexture);
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_CREATETEXTURE3D;
+		cmd.createTexture3D.format = format;
+		cmd.createTexture3D.width = width;
+		cmd.createTexture3D.height = height;
+		cmd.createTexture3D.depth = depth;
+		cmd.createTexture3D.levelCount = levelCount;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return cmd.createTexture3D.retval;
+	}
 
 	result = OPENGL_INTERNAL_CreateTexture(
 		device,
@@ -3338,10 +3471,26 @@ FNA3D_Texture* OPENGL_CreateTextureCube(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	OpenGLTexture *result;
 	GLenum glFormat, glInternalFormat;
 	int32_t levelSize, i, l;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	FNA3D_Command cmd;
+	SDL_sem *sem;
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_CREATETEXTURECUBE;
+		cmd.createTextureCube.format = format;
+		cmd.createTextureCube.size = size;
+		cmd.createTextureCube.levelCount = levelCount;
+		cmd.createTextureCube.isRenderTarget = isRenderTarget;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return cmd.createTextureCube.retval;
+	}
 
 	result = OPENGL_INTERNAL_CreateTexture(
 		device,
@@ -3431,9 +3580,30 @@ void OPENGL_SetTextureData2D(
 	void* data,
 	int32_t dataLength
 ) {
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	GLenum glFormat;
 	int32_t packSize;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	FNA3D_Command cmd;
+	SDL_sem *sem;
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_SETTEXTUREDATA2D;
+		cmd.setTextureData2D.texture = texture;
+		cmd.setTextureData2D.format = format;
+		cmd.setTextureData2D.x = x;
+		cmd.setTextureData2D.y = y;
+		cmd.setTextureData2D.w = w;
+		cmd.setTextureData2D.h = h;
+		cmd.setTextureData2D.level = level;
+		cmd.setTextureData2D.data = data;
+		cmd.setTextureData2D.dataLength = dataLength;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return;
+	}
 
 	BindTexture(device, (OpenGLTexture*) texture);
 
@@ -3508,8 +3678,31 @@ void OPENGL_SetTextureData3D(
 	int32_t dataLength
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	FNA3D_Command cmd;
+	SDL_sem *sem;
 
 	SDL_assert(device->supports_3DTexture);
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_SETTEXTUREDATA3D;
+		cmd.setTextureData3D.texture = texture;
+		cmd.setTextureData3D.format = format;
+		cmd.setTextureData3D.level = level;
+		cmd.setTextureData3D.left = left;
+		cmd.setTextureData3D.top = top;
+		cmd.setTextureData3D.right = right;
+		cmd.setTextureData3D.bottom = bottom;
+		cmd.setTextureData3D.front = front;
+		cmd.setTextureData3D.back = back;
+		cmd.setTextureData3D.data = data;
+		cmd.setTextureData3D.dataLength = dataLength;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return;
+	}
 
 	BindTexture(device, (OpenGLTexture*) texture);
 
@@ -3541,8 +3734,30 @@ void OPENGL_SetTextureDataCube(
 	void* data,
 	int32_t dataLength
 ) {
-	GLenum glFormat;
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	GLenum glFormat;
+	FNA3D_Command cmd;
+	SDL_sem *sem;
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_SETTEXTUREDATACUBE;
+		cmd.setTextureDataCube.texture = texture;
+		cmd.setTextureDataCube.format = format;
+		cmd.setTextureDataCube.x = x;
+		cmd.setTextureDataCube.y = y;
+		cmd.setTextureDataCube.w = w;
+		cmd.setTextureDataCube.h = h;
+		cmd.setTextureDataCube.cubeMapFace = cubeMapFace;
+		cmd.setTextureDataCube.level = level;
+		cmd.setTextureDataCube.data = data;
+		cmd.setTextureDataCube.dataLength = dataLength;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return;
+	}
 
 	BindTexture(device, (OpenGLTexture*) texture);
 
@@ -3653,13 +3868,38 @@ void OPENGL_GetTextureData2D(
 	int32_t elementCount,
 	int32_t elementSizeInBytes
 ) {
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	GLenum glFormat;
 	uint8_t *texData;
 	int32_t curPixel, row, col;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	uint8_t *dataPtr = (uint8_t*) data;
+	FNA3D_Command cmd;
+	SDL_sem *sem;
 
 	SDL_assert(device->supports_NonES3);
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_GETTEXTUREDATA2D;
+		cmd.getTextureData2D.texture = texture;
+		cmd.getTextureData2D.format = format;
+		cmd.getTextureData2D.textureWidth = textureWidth;
+		cmd.getTextureData2D.textureHeight = textureHeight;
+		cmd.getTextureData2D.level = level;
+		cmd.getTextureData2D.x = x;
+		cmd.getTextureData2D.y = y;
+		cmd.getTextureData2D.w = w;
+		cmd.getTextureData2D.h = h;
+		cmd.getTextureData2D.data = data;
+		cmd.getTextureData2D.startIndex = startIndex;
+		cmd.getTextureData2D.elementCount = elementCount;
+		cmd.getTextureData2D.elementSizeInBytes = elementSizeInBytes;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return;
+	}
 
 	if (level == 0 && OPENGL_INTERNAL_ReadTargetIfApplicable(
 		driverData,
@@ -3785,13 +4025,38 @@ void OPENGL_GetTextureDataCube(
 	int32_t elementCount,
 	int32_t elementSizeInBytes
 ) {
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	GLenum glFormat;
 	uint8_t *texData;
 	int32_t curPixel, row, col;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	uint8_t *dataPtr = (uint8_t*) data;
+	FNA3D_Command cmd;
+	SDL_sem *sem;
 
 	SDL_assert(device->supports_NonES3);
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_GETTEXTUREDATACUBE;
+		cmd.getTextureDataCube.texture = texture;
+		cmd.getTextureDataCube.format = format;
+		cmd.getTextureDataCube.textureSize = textureSize;
+		cmd.getTextureDataCube.cubeMapFace = cubeMapFace;
+		cmd.getTextureDataCube.level = level;
+		cmd.getTextureDataCube.x = x;
+		cmd.getTextureDataCube.y = y;
+		cmd.getTextureDataCube.w = w;
+		cmd.getTextureDataCube.h = h;
+		cmd.getTextureDataCube.data = data;
+		cmd.getTextureDataCube.startIndex = startIndex;
+		cmd.getTextureDataCube.elementCount = elementCount;
+		cmd.getTextureDataCube.elementSizeInBytes = elementSizeInBytes;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return;
+	}
 
 	BindTexture(device, (OpenGLTexture *)texture);
 	glFormat = XNAToGL_TextureFormat[format];
@@ -3874,6 +4139,23 @@ FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
 	OpenGLRenderbuffer *renderbuffer = (OpenGLRenderbuffer*) SDL_malloc(
 		sizeof(OpenGLRenderbuffer)
 	);
+	FNA3D_Command cmd;
+	SDL_sem *sem;
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_GENCOLORRENDERBUFFER;
+		cmd.genColorRenderbuffer.width = width;
+		cmd.genColorRenderbuffer.height = height;
+		cmd.genColorRenderbuffer.format = format;
+		cmd.genColorRenderbuffer.multiSampleCount = multiSampleCount;
+		cmd.genColorRenderbuffer.texture = texture;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return cmd.genColorRenderbuffer.retval;
+	}
 
 	device->glGenRenderbuffers(1, &renderbuffer->handle);
 	device->glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer->handle);
@@ -3912,6 +4194,22 @@ FNA3D_Renderbuffer* OPENGL_GenDepthStencilRenderbuffer(
 	OpenGLRenderbuffer *renderbuffer = (OpenGLRenderbuffer*) SDL_malloc(
 		sizeof(OpenGLRenderbuffer)
 	);
+	FNA3D_Command cmd;
+	SDL_sem *sem;
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_GENDEPTHRENDERBUFFER;
+		cmd.genDepthStencilRenderbuffer.width = width;
+		cmd.genDepthStencilRenderbuffer.height = height;
+		cmd.genDepthStencilRenderbuffer.format = format;
+		cmd.genDepthStencilRenderbuffer.multiSampleCount = multiSampleCount;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return cmd.genDepthStencilRenderbuffer.retval;
+	}
 
 	device->glGenRenderbuffers(1, &renderbuffer->handle);
 	device->glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer->handle);
@@ -3981,6 +4279,22 @@ FNA3D_Buffer* OPENGL_GenVertexBuffer(
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	OpenGLBuffer *result = NULL;
 	GLuint handle;
+	FNA3D_Command cmd;
+	SDL_sem *sem;
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_GENVERTEXBUFFER;
+		cmd.genVertexBuffer.dynamic = dynamic;
+		cmd.genVertexBuffer.usage = usage;
+		cmd.genVertexBuffer.vertexCount = vertexCount;
+		cmd.genVertexBuffer.vertexStride = vertexStride;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return cmd.genVertexBuffer.retval;
+	}
 
 	device->glGenBuffers(1, &handle);
 
@@ -4037,6 +4351,23 @@ void OPENGL_SetVertexBufferData(
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
+	FNA3D_Command cmd;
+	SDL_sem *sem;
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_SETVERTEXBUFFERDATA;
+		cmd.setVertexBufferData.buffer = buffer;
+		cmd.setVertexBufferData.offsetInBytes = offsetInBytes;
+		cmd.setVertexBufferData.data = data;
+		cmd.setVertexBufferData.dataLength = dataLength;
+		cmd.setVertexBufferData.options = options;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return;
+	}
 
 	BindVertexBuffer(device, glBuffer->handle);
 
@@ -4073,8 +4404,27 @@ void OPENGL_GetVertexBufferData(
 	uint8_t *dataBytes, *cpy, *src, *dst;
 	uint8_t useStagingBuffer;
 	int32_t i;
+	FNA3D_Command cmd;
+	SDL_sem *sem;
 
 	SDL_assert(device->supports_NonES3);
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_GETVERTEXBUFFERDATA;
+		cmd.getVertexBufferData.buffer = buffer;
+		cmd.getVertexBufferData.offsetInBytes = offsetInBytes;
+		cmd.getVertexBufferData.data = data;
+		cmd.getVertexBufferData.startIndex = startIndex;
+		cmd.getVertexBufferData.elementCount = elementCount;
+		cmd.getVertexBufferData.elementSizeInBytes = elementSizeInBytes;
+		cmd.getVertexBufferData.vertexStride = vertexStride;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return;
+	}
 
 	dataBytes = (uint8_t*) data;
 	useStagingBuffer = elementSizeInBytes < vertexStride;
@@ -4122,6 +4472,22 @@ FNA3D_Buffer* OPENGL_GenIndexBuffer(
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	OpenGLBuffer *result = NULL;
 	GLuint handle;
+	FNA3D_Command cmd;
+	SDL_sem *sem;
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_GENINDEXBUFFER;
+		cmd.genIndexBuffer.dynamic = dynamic;
+		cmd.genIndexBuffer.usage = usage;
+		cmd.genIndexBuffer.indexCount = indexCount;
+		cmd.genIndexBuffer.indexElementSize = indexElementSize;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return cmd.genIndexBuffer.retval;
+	}
 
 	device->glGenBuffers(1, &handle);
 
@@ -4171,6 +4537,23 @@ void OPENGL_SetIndexBufferData(
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
+	FNA3D_Command cmd;
+	SDL_sem *sem;
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_SETINDEXBUFFERDATA;
+		cmd.setIndexBufferData.buffer = buffer;
+		cmd.setIndexBufferData.offsetInBytes = offsetInBytes;
+		cmd.setIndexBufferData.data = data;
+		cmd.setIndexBufferData.dataLength = dataLength;
+		cmd.setIndexBufferData.options = options;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return;
+	}
 
 	BindIndexBuffer(device, glBuffer->handle);
 
@@ -4203,8 +4586,26 @@ void OPENGL_GetIndexBufferData(
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
+	FNA3D_Command cmd;
+	SDL_sem *sem;
 
 	SDL_assert(device->supports_NonES3);
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_GETINDEXBUFFERDATA;
+		cmd.getIndexBufferData.buffer = buffer;
+		cmd.getIndexBufferData.offsetInBytes = offsetInBytes;
+		cmd.getIndexBufferData.data = data;
+		cmd.getIndexBufferData.startIndex = startIndex;
+		cmd.getIndexBufferData.elementCount = elementCount;
+		cmd.getIndexBufferData.elementSizeInBytes = elementSizeInBytes;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return;
+	}
 
 	BindIndexBuffer(device, glBuffer->handle);
 
@@ -4228,6 +4629,20 @@ FNA3D_Effect* OPENGL_CreateEffect(
 	MOJOSHADER_glEffect *glEffect;
 	OpenGLEffect *result;
 	int32_t i;
+	FNA3D_Command cmd;
+	SDL_sem *sem;
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_CREATEEFFECT;
+		cmd.createEffect.effectCode = effectCode;
+		cmd.createEffect.effectCodeLength = effectCodeLength;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return cmd.createEffect.retval;
+	}
 
 	effect = MOJOSHADER_parseEffect(
 		device->shaderProfile,
@@ -4273,10 +4688,24 @@ FNA3D_Effect* OPENGL_CloneEffect(
 	void* driverData,
 	FNA3D_Effect *effect
 ) {
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	OpenGLEffect *cloneSource = (OpenGLEffect*) effect;
 	MOJOSHADER_effect *effectData;
 	MOJOSHADER_glEffect *glEffect;
 	OpenGLEffect *result;
+	FNA3D_Command cmd;
+	SDL_sem *sem;
+
+	if (device->threadID != SDL_ThreadID())
+	{
+		cmd.type = FNA3D_COMMAND_CLONEEFFECT;
+		cmd.cloneEffect.cloneSource = effect;
+		sem = SDL_CreateSemaphore(0);
+		ForceToMainThread(device, &cmd, sem);
+		SDL_SemWait(sem);
+		SDL_DestroySemaphore(sem);
+		return cmd.cloneEffect.retval;
+	}
 
 	effectData = MOJOSHADER_cloneEffect(cloneSource->effect);
 	glEffect = MOJOSHADER_glCompileEffect(effectData);
@@ -4984,9 +5413,17 @@ FNA3D_Device* OPENGL_CreateDevice(
 	OpenGLDevice *device;
 	FNA3D_Device *result;
 
+	/* Create the FNA3D_Device */
+	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
+	ASSIGN_DRIVER(OPENGL)
+
 	/* Init the OpenGLDevice */
 	device = (OpenGLDevice*) SDL_malloc(sizeof(OpenGLDevice));
 	SDL_memset(device, '\0', sizeof(OpenGLDevice));
+
+	/* The FNA3D_Device and OpenGLDevice need to reference each other */
+	device->parentDevice = result;
+	result->driverData = device;
 
 	/* Create OpenGL context */
 	device->context = SDL_GL_CreateContext(
@@ -5240,11 +5677,11 @@ FNA3D_Device* OPENGL_CreateDevice(
 
 	/* The creation thread will be the "main" thread */
 	device->threadID = SDL_ThreadID();
+	device->actionsMutex = SDL_CreateMutex();
+	device->actions = NULL;
+	device->semaphores = NULL;
 
-	/* Set up and return the FNA3D_Device */
-	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
-	ASSIGN_DRIVER(OPENGL)
-	result->driverData = device;
+	/* Return the FNA3D_Device */
 	return result;
 }
 

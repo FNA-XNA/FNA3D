@@ -59,7 +59,8 @@ endif
 # Source
 FNA3DSRC = \
 	src/FNA3D.c \
-	src/FNA3D_Driver_OpenGL.c
+	src/FNA3D_Driver_OpenGL.c \
+	src/FNA3D_CommandStream.c
 MOJOSHADERSRC = \
 	MojoShader/mojoshader.c \
 	MojoShader/mojoshader_effects.c \
