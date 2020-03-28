@@ -119,6 +119,9 @@ typedef struct LinkedList LinkedList;
 
 typedef struct OpenGLDevice /* Cast from driverData */
 {
+	/* Associated FNA3D_Device */
+	FNA3D_Device *parentDevice;
+
 	/* Context */
 	SDL_GLContext context;
 	uint8_t useES3;
@@ -636,12 +639,17 @@ static void LinkedList_Clear(LinkedList **start)
 
 static void RunActions(OpenGLDevice *device)
 {
-	LinkedList *action = device->actions;
-	LinkedList *semaphore = device->semaphores;
+	LinkedList *action, *semaphore;
+
+	SDL_LockMutex(device->actionsMutex);
+
+	action = device->actions;
+	semaphore = device->semaphores;
+
 	while (action != NULL)
 	{
 		FNA3D_ExecuteCommand(
-			(FNA3D_Device*) device,
+			device->parentDevice,
 			(FNA3D_Command*) action->data
 		);
 		SDL_SemPost((SDL_sem*) semaphore->data);
@@ -651,6 +659,8 @@ static void RunActions(OpenGLDevice *device)
 	}
 	LinkedList_Clear(&device->actions);
 	LinkedList_Clear(&device->semaphores);
+
+	SDL_UnlockMutex(device->actionsMutex);
 }
 
 /* Inline Functions */
@@ -752,8 +762,8 @@ static inline void ForceToMainThread(
 ) {
 	SDL_LockMutex(device->actionsMutex);
 
-	LinkedList_Add(&device->actions, action);
-	LinkedList_Add(&device->semaphores, semaphore);
+	LinkedList_Add(&device->actions, (void*) action);
+	LinkedList_Add(&device->semaphores, (void*) semaphore);
 
 	SDL_UnlockMutex(device->actionsMutex);
 }
@@ -795,6 +805,10 @@ void OPENGL_DestroyDevice(FNA3D_Device *device)
 
 	MOJOSHADER_glMakeContextCurrent(NULL);
 	MOJOSHADER_glDestroyContext(glDevice->shaderContext);
+
+	LinkedList_Clear(&glDevice->actions);
+	LinkedList_Clear(&glDevice->semaphores);
+	SDL_DestroyMutex(glDevice->actionsMutex);
 
 	SDL_GL_DeleteContext(glDevice->context);
 
@@ -3331,11 +3345,12 @@ FNA3D_Texture* OPENGL_CreateTexture2D(
 	if (device->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_CREATETEXTURE2D;
+		cmd.createTexture2D.format = format;
 		cmd.createTexture2D.width = width;
 		cmd.createTexture2D.height = height;
 		cmd.createTexture2D.levelCount = levelCount;
 		cmd.createTexture2D.isRenderTarget = isRenderTarget;
-		sem = SDL_CreateSemaphore(1);
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -3415,7 +3430,7 @@ FNA3D_Texture* OPENGL_CreateTexture3D(
 		cmd.createTexture3D.height = height;
 		cmd.createTexture3D.depth = depth;
 		cmd.createTexture3D.levelCount = levelCount;
-		sem = SDL_CreateSemaphore(1);
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -3470,7 +3485,7 @@ FNA3D_Texture* OPENGL_CreateTextureCube(
 		cmd.createTextureCube.size = size;
 		cmd.createTextureCube.levelCount = levelCount;
 		cmd.createTextureCube.isRenderTarget = isRenderTarget;
-		sem = SDL_CreateSemaphore(1);
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -3583,7 +3598,7 @@ void OPENGL_SetTextureData2D(
 		cmd.setTextureData2D.level = level;
 		cmd.setTextureData2D.data = data;
 		cmd.setTextureData2D.dataLength = dataLength;
-		sem = SDL_CreateSemaphore(1);
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -3682,7 +3697,7 @@ void OPENGL_SetTextureData3D(
 		cmd.setTextureData3D.back = back;
 		cmd.setTextureData3D.data = data;
 		cmd.setTextureData3D.dataLength = dataLength;
-		sem = SDL_CreateSemaphore(1);
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -3737,7 +3752,7 @@ void OPENGL_SetTextureDataCube(
 		cmd.setTextureDataCube.level = level;
 		cmd.setTextureDataCube.data = data;
 		cmd.setTextureDataCube.dataLength = dataLength;
-		sem = SDL_CreateSemaphore(1);
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -3879,7 +3894,7 @@ void OPENGL_GetTextureData2D(
 		cmd.getTextureData2D.startIndex = startIndex;
 		cmd.getTextureData2D.elementCount = elementCount;
 		cmd.getTextureData2D.elementSizeInBytes = elementSizeInBytes;
-		sem = SDL_CreateSemaphore(1);
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -4036,7 +4051,7 @@ void OPENGL_GetTextureDataCube(
 		cmd.getTextureDataCube.startIndex = startIndex;
 		cmd.getTextureDataCube.elementCount = elementCount;
 		cmd.getTextureDataCube.elementSizeInBytes = elementSizeInBytes;
-		sem = SDL_CreateSemaphore(1);
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -4135,7 +4150,7 @@ FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
 		cmd.genColorRenderbuffer.format = format;
 		cmd.genColorRenderbuffer.multiSampleCount = multiSampleCount;
 		cmd.genColorRenderbuffer.texture = texture;
-		sem = SDL_CreateSemaphore(1);
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -4189,7 +4204,7 @@ FNA3D_Renderbuffer* OPENGL_GenDepthStencilRenderbuffer(
 		cmd.genDepthStencilRenderbuffer.height = height;
 		cmd.genDepthStencilRenderbuffer.format = format;
 		cmd.genDepthStencilRenderbuffer.multiSampleCount = multiSampleCount;
-		sem = SDL_CreateSemaphore(1);
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -4274,7 +4289,7 @@ FNA3D_Buffer* OPENGL_GenVertexBuffer(
 		cmd.genVertexBuffer.usage = usage;
 		cmd.genVertexBuffer.vertexCount = vertexCount;
 		cmd.genVertexBuffer.vertexStride = vertexStride;
-		sem = SDL_CreateSemaphore(1);
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -4347,7 +4362,7 @@ void OPENGL_SetVertexBufferData(
 		cmd.setVertexBufferData.data = data;
 		cmd.setVertexBufferData.dataLength = dataLength;
 		cmd.setVertexBufferData.options = options;
-		sem = SDL_CreateSemaphore(1);
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -4404,7 +4419,7 @@ void OPENGL_GetVertexBufferData(
 		cmd.getVertexBufferData.elementCount = elementCount;
 		cmd.getVertexBufferData.elementSizeInBytes = elementSizeInBytes;
 		cmd.getVertexBufferData.vertexStride = vertexStride;
-		sem = SDL_CreateSemaphore(1);
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -4467,7 +4482,7 @@ FNA3D_Buffer* OPENGL_GenIndexBuffer(
 		cmd.genIndexBuffer.usage = usage;
 		cmd.genIndexBuffer.indexCount = indexCount;
 		cmd.genIndexBuffer.indexElementSize = indexElementSize;
-		sem = SDL_CreateSemaphore(1);
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -4533,7 +4548,7 @@ void OPENGL_SetIndexBufferData(
 		cmd.setIndexBufferData.data = data;
 		cmd.setIndexBufferData.dataLength = dataLength;
 		cmd.setIndexBufferData.options = options;
-		sem = SDL_CreateSemaphore(1);
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -4585,7 +4600,7 @@ void OPENGL_GetIndexBufferData(
 		cmd.getIndexBufferData.startIndex = startIndex;
 		cmd.getIndexBufferData.elementCount = elementCount;
 		cmd.getIndexBufferData.elementSizeInBytes = elementSizeInBytes;
-		sem = SDL_CreateSemaphore(1);
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -4621,7 +4636,8 @@ FNA3D_Effect* OPENGL_CreateEffect(
 	{
 		cmd.type = FNA3D_COMMAND_CREATEEFFECT;
 		cmd.createEffect.effectCode = effectCode;
-		sem = SDL_CreateSemaphore(1);
+		cmd.createEffect.effectCodeLength = effectCodeLength;
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -4684,7 +4700,7 @@ FNA3D_Effect* OPENGL_CloneEffect(
 	{
 		cmd.type = FNA3D_COMMAND_CLONEEFFECT;
 		cmd.cloneEffect.cloneSource = effect;
-		sem = SDL_CreateSemaphore(1);
+		sem = SDL_CreateSemaphore(0);
 		ForceToMainThread(device, &cmd, sem);
 		SDL_SemWait(sem);
 		SDL_DestroySemaphore(sem);
@@ -5397,9 +5413,17 @@ FNA3D_Device* OPENGL_CreateDevice(
 	OpenGLDevice *device;
 	FNA3D_Device *result;
 
+	/* Create the FNA3D_Device */
+	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
+	ASSIGN_DRIVER(OPENGL)
+
 	/* Init the OpenGLDevice */
 	device = (OpenGLDevice*) SDL_malloc(sizeof(OpenGLDevice));
 	SDL_memset(device, '\0', sizeof(OpenGLDevice));
+
+	/* The FNA3D_Device and OpenGLDevice need to reference each other */
+	device->parentDevice = result;
+	result->driverData = device;
 
 	/* Create OpenGL context */
 	device->context = SDL_GL_CreateContext(
@@ -5657,10 +5681,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	device->actions = NULL;
 	device->semaphores = NULL;
 
-	/* Set up and return the FNA3D_Device */
-	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
-	ASSIGN_DRIVER(OPENGL)
-	result->driverData = device;
+	/* Return the FNA3D_Device */
 	return result;
 }
 
