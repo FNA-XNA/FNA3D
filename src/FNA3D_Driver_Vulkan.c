@@ -1035,7 +1035,21 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
-	char const* layerNames[] = { "VK_LAYER_LUNARG_standard_validation" };
+	if (
+		SDL_Vulkan_GetInstanceExtensions(
+			presentationParameters->deviceWindowHandle,
+			&extensionCount,
+			extensionNames
+		)
+	) {
+		SDL_free((void*)extensionNames);
+        SDL_LogError(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"SDL_Vulkan_GetInstanceExtensions(): %s\n",
+			SDL_GetError()
+		);
+		return NULL;
+	}
 
 	VkInstanceCreateInfo createInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 
