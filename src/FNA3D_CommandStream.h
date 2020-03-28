@@ -271,4 +271,6 @@ void FNA3D_ExecuteCommand(
 	FNA3D_Command *cmd
 );
 
-#endif
+#endif /* FNA3D_COMMANDSTREAM_H */
+
+/* vim: set noexpandtab shiftwidth=8 tabstop=8: */
