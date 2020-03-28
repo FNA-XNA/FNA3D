@@ -31,29 +31,116 @@
 
 #include <SDL.h>
 #include <SDL_syswm.h>
+#include <SDL_vulkan.h>
 
 #include "vulkan.h"
-#include <SDL_vulkan.h>
 
 /* Internal Structures */
 
+/* translations arrays */
+
+static const char* VkErrorMessages(VkResult code)
+{
+    const char *errorString;
+
+    switch(code)
+    {
+        case VK_ERROR_OUT_OF_HOST_MEMORY:
+            errorString = "Out of host memory";
+            break;
+
+        case VK_ERROR_OUT_OF_DEVICE_MEMORY:
+            errorString = "Out of device memory";
+            break;
+
+        case VK_ERROR_INITIALIZATION_FAILED:
+            errorString = "Initialization failed";
+            break;
+
+        case VK_ERROR_LAYER_NOT_PRESENT:
+            errorString = "Layer not present";
+            break;
+
+        case VK_ERROR_EXTENSION_NOT_PRESENT:
+            errorString = "Extension not present";
+            break;
+
+		case VK_ERROR_FEATURE_NOT_PRESENT:
+			errorString = "Feature not present";
+			break;
+
+		case VK_ERROR_TOO_MANY_OBJECTS:
+			errorString = "Too many objects";
+			break;
+
+		case VK_ERROR_DEVICE_LOST:
+			errorString = "Device lost";
+			break;
+
+        case VK_ERROR_INCOMPATIBLE_DRIVER:
+            errorString = "Incompatible driver";
+            break;
+
+        default:
+            errorString = "Unknown";
+            break;
+    }
+
+    return errorString;
+}
+
+typedef struct QueueFamilyIndices {
+	uint32_t graphicsFamily;
+	uint32_t presentFamily;
+} QueueFamilyIndices;
+
+static uint8_t isDeviceSuitable(VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, QueueFamilyIndices* queueFamilyIndices)
+{
+	queueFamilyIndices->graphicsFamily = UINT32_MAX;
+	queueFamilyIndices->presentFamily = UINT32_MAX;
+
+    VkPhysicalDeviceProperties deviceProperties;
+    vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
+
+	if (deviceProperties.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+	{
+		return 0;
+	}
+
+    uint32_t queueFamilyCount;
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, NULL);
+
+	if (queueFamilyCount == 0)
+	{
+		return 0;
+	}
+
+    VkQueueFamilyProperties queueProps[queueFamilyCount];
+    vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueProps);
+
+    for (uint32_t i = 0; i < queueFamilyCount; i++) {
+        VkBool32 supportsPresent;
+        vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &supportsPresent);
+        if (supportsPresent && (queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0) {
+			queueFamilyIndices->graphicsFamily = i;
+			queueFamilyIndices->presentFamily = i;
+			return 1;
+        }
+    }
+
+    return 0;
+}
 
 /* Init/Quit */
 
-uint32_t VULKAN_PrepareWindowAttributes(uint8_t debugMode)
+uint32_t VULKAN_PrepareWindowAttributes(uint8_t debugMode, uint32_t *flags)
 {
     /* TODO */
 }
 
 void VULKAN_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 {
-    /* TODO */
-}
-
-FNA3D_Device* VULKAN_CreateDevice(
-    FNA3D_PresentationParameters *presentationParameters
-) {
-    /* TODO */
+    SDL_Vulkan_GetDrawableSize((SDL_Window*) window, x, y);
 }
 
 void VULKAN_DestroyDevice(void* driverData)
@@ -738,6 +825,175 @@ MOJOSHADER_effect* VULKAN_GetEffectData(
 	FNA3D_Effect *effect
 ) {
     /* TODO */
+}
+
+FNA3D_Device* VULKAN_CreateDevice(
+    FNA3D_PresentationParameters *presentationParameters
+) {
+    /* TODO */
+    FNA3D_Device *result;
+    VkResult vulkanResult;
+    VkInstance instance;
+	VkSurfaceKHR surface;
+    uint32_t physicalDeviceCount;
+    VkPhysicalDevice physicalDevice;
+    VkPhysicalDevice physicalDevices[physicalDeviceCount];
+    VkDevice device;
+    VkQueue graphicsQueue;
+	VkQueue presentQueue;
+    VkCommandPool commandPool;
+	uint32_t extensionCount;
+	char* extensionNames[64];
+
+    /* create instance */
+
+    VkApplicationInfo appInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
+    appInfo.pApplicationName = "FNA";
+    appInfo.apiVersion = VK_MAKE_VERSION(1, 2, 136);
+
+    SDL_Vulkan_GetInstanceExtensions(
+        presentationParameters->deviceWindowHandle,
+        &extensionCount,
+        NULL
+    );
+
+    SDL_Vulkan_GetInstanceExtensions(
+        presentationParameters->deviceWindowHandle,
+        &extensionCount,
+        &extensionNames
+    );
+
+    VkInstanceCreateInfo createInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
+    createInfo.pApplicationInfo = &appInfo;
+    createInfo.enabledExtensionCount = extensionCount;
+    createInfo.ppEnabledExtensionNames = extensionNames;
+
+    vulkanResult = vkCreateInstance(&createInfo, NULL, &instance);
+    if (vulkanResult != VK_SUCCESS)
+    {
+        SDL_LogError(
+            SDL_LOG_CATEGORY_APPLICATION,
+            "vkCreateInstance failed: %s\n",
+            VkErrorMessages(vulkanResult)
+        );
+
+        return NULL;
+    }
+
+    /* create surface */
+
+    if (
+        !SDL_Vulkan_CreateSurface(
+            presentationParameters->deviceWindowHandle,
+            instance,
+            &surface
+        )
+    ) {
+        SDL_LogError(
+            SDL_LOG_CATEGORY_APPLICATION,
+            "SDL_Vulkan_CreateSurface failed: %s\n",
+            SDL_GetError()
+        );
+
+        return NULL;
+    }
+
+    /* determine a suitable physical device */
+
+    vulkanResult = vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, NULL);
+    if (vulkanResult != VK_SUCCESS)
+    {
+        SDL_LogError(
+            SDL_LOG_CATEGORY_APPLICATION,
+            "vkEnumeratePhysicalDevices failed: %s\n",
+            VkErrorMessages(vulkanResult)
+        );
+
+        return NULL;
+    }
+
+    if (physicalDeviceCount == 0)
+    {
+        SDL_LogError(
+            SDL_LOG_CATEGORY_APPLICATION,
+            "Failed to find any GPUs with Vulkan support\n"
+        );
+        return NULL;
+    }
+
+    vulkanResult = vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices);
+    if (vulkanResult != VK_SUCCESS)
+    {
+        SDL_LogError(
+            SDL_LOG_CATEGORY_APPLICATION,
+            "vkEnumeratePhysicalDevices failed: %s\n",
+            VkErrorMessages(vulkanResult)
+        );
+
+        return NULL;
+    }
+
+	QueueFamilyIndices queueFamilyIndices;
+    uint8_t physicalDeviceAssigned = 0;
+    for (int i = 0; i < physicalDeviceCount; i++)
+    {
+        if (isDeviceSuitable(physicalDevices[i], surface, &queueFamilyIndices))
+        {
+            physicalDevice = physicalDevices[i];
+            physicalDeviceAssigned = 1;
+            break;
+        }
+    }
+
+    if (!physicalDeviceAssigned)
+    {
+        physicalDevice = physicalDevices[0];
+    }
+
+    float queuePriority = 1.0f;
+    VkDeviceQueueCreateInfo queueCreateInfoGraphics = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
+    queueCreateInfoGraphics.queueFamilyIndex = queueFamilyIndices.graphicsFamily;
+    queueCreateInfoGraphics.queueCount = 1;
+    queueCreateInfoGraphics.pQueuePriorities = &queuePriority;
+
+    VkDeviceQueueCreateInfo queueCreateInfoPresent = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
+    queueCreateInfoPresent.queueFamilyIndex = queueFamilyIndices.presentFamily;
+    queueCreateInfoPresent.queueCount = 1;
+    queueCreateInfoPresent.pQueuePriorities = &queuePriority;
+
+	/* specifying used device features */
+	/* empty for now because i don't know what we need yet... --cosmonaut */
+	VkPhysicalDeviceFeatures deviceFeatures;
+
+    /* creating the logical device */
+
+	VkDeviceQueueCreateInfo queueCreateInfos[2] = { queueCreateInfoGraphics, queueCreateInfoPresent };
+
+    VkDeviceCreateInfo deviceCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
+	deviceCreateInfo.queueCreateInfoCount = 2;
+	deviceCreateInfo.pQueueCreateInfos = &queueCreateInfos;
+	deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
+    deviceCreateInfo.enabledExtensionCount = 0;
+
+    vulkanResult = vkCreateDevice(physicalDevice, &deviceCreateInfo, NULL, &device);
+   	if (vulkanResult != VK_SUCCESS)
+	{
+		SDL_LogError(
+            SDL_LOG_CATEGORY_APPLICATION,
+            "vkCreateDevice failed: %s\n",
+            VkErrorMessages(vulkanResult)
+        );
+
+        return NULL;
+	}
+
+    vkGetDeviceQueue(device, queueFamilyIndices.graphicsFamily, 0, &graphicsQueue);
+	vkGetDeviceQueue(device, queueFamilyIndices.presentFamily, 0, &presentQueue);
+
+    result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
+    ASSIGN_DRIVER(VULKAN)
+    result->driverData = device;
+    return result;
 }
 
 FNA3D_Driver VulkanDriver = {
