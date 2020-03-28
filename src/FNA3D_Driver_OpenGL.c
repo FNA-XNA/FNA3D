@@ -2555,7 +2555,7 @@ void OPENGL_ResolveTarget(
 		/* Set up the texture framebuffer */
 		width = target->width;
 		height = target->height;
-		BindFramebuffer(device, device->resolveFramebufferRead);
+		BindFramebuffer(device, device->resolveFramebufferDraw);
 		device->glFramebufferTexture2D(
 			GL_FRAMEBUFFER,
 			GL_COLOR_ATTACHMENT0,
