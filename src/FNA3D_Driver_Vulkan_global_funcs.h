@@ -24,28 +24,6 @@
  *
  */
 
-#ifndef FNA3D_DRIVER_VULKAN_H
-#define FNA3D_DRIVER_VULKAN_H
-
-#define VK_NO_PROTOTYPES
-#include "vulkan.h"
-
-/* In case this needs to be exported in a certain way... */
-#ifdef _WIN32 /* Windows OpenGL uses stdcall */
-#define VKAPIENTRY __stdcall
-#else
-#define VKAPIENTRY
-#endif
-
-/* Instance Function typedefs */
-#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
-	typedef ret (VKAPIENTRY *vkfntype_##func) params;
-#include "FNA3D_Driver_Vulkan_instance_funcs.h"
-#undef VULKAN_INSTANCE_FUNCTION
-
-#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
-	typedef ret (VKAPIENTRY *vkfntype_##func) params;
-#include "FNA3D_Driver_Vulkan_device_funcs.h"
-#undef VULKAN_DEVICE_FUNCTION
-
-#endif FNA3D_DRIVER_VULKAN_H
+VULKAN_GLOBAL_FUNCTION(vkCreateInstance)
+VULKAN_GLOBAL_FUNCTION(vkEnumerateInstanceExtensionProperties)
+VULKAN_GLOBAL_FUNCTION(vkEnumerateInstanceLayerProperties)
