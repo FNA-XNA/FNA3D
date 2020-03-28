@@ -28,8 +28,10 @@
 #define FNA3D_COMMANDSTREAM_H
 
 #include "FNA3D.h"
+#include <SDL.h>
 
-typedef struct FNA3D_Command
+typedef struct FNA3D_Command FNA3D_Command;
+struct FNA3D_Command
 {
 	#define FNA3D_COMMAND_CREATEEFFECT 0
 	#define FNA3D_COMMAND_CLONEEFFECT 1
@@ -264,7 +266,9 @@ typedef struct FNA3D_Command
 			FNA3D_Renderbuffer *retval;
 		} genDepthStencilRenderbuffer;
 	};
-} FNA3D_Command;
+	SDL_sem *semaphore;
+	FNA3D_Command *next;
+};
 
 void FNA3D_ExecuteCommand(
 	FNA3D_Device *device,
