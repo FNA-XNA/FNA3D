@@ -4118,9 +4118,7 @@ FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
 	FNA3D_Texture *texture
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	OpenGLRenderbuffer *renderbuffer = (OpenGLRenderbuffer*) SDL_malloc(
-		sizeof(OpenGLRenderbuffer)
-	);
+	OpenGLRenderbuffer *renderbuffer;
 	FNA3D_Command cmd;
 	SDL_sem *sem;
 
@@ -4138,6 +4136,10 @@ FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
 		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.genColorRenderbuffer.retval;
 	}
+
+	renderbuffer = (OpenGLRenderbuffer*) SDL_malloc(
+		sizeof(OpenGLRenderbuffer)
+	);
 
 	device->glGenRenderbuffers(1, &renderbuffer->handle);
 	device->glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer->handle);
@@ -4173,9 +4175,7 @@ FNA3D_Renderbuffer* OPENGL_GenDepthStencilRenderbuffer(
 	int32_t multiSampleCount
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	OpenGLRenderbuffer *renderbuffer = (OpenGLRenderbuffer*) SDL_malloc(
-		sizeof(OpenGLRenderbuffer)
-	);
+	OpenGLRenderbuffer *renderbuffer;
 	FNA3D_Command cmd;
 	SDL_sem *sem;
 
@@ -4192,6 +4192,10 @@ FNA3D_Renderbuffer* OPENGL_GenDepthStencilRenderbuffer(
 		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.genDepthStencilRenderbuffer.retval;
 	}
+
+	renderbuffer = (OpenGLRenderbuffer*) SDL_malloc(
+		sizeof(OpenGLRenderbuffer)
+	);
 
 	device->glGenRenderbuffers(1, &renderbuffer->handle);
 	device->glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer->handle);
