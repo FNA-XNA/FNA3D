@@ -127,7 +127,7 @@ typedef struct OpenGLVertexAttribute
 	uint32_t currentStride;
 } OpenGLVertexAttribute;
 
-typedef struct OpenGLDevice /* Cast from FNA3D_Renderer* */
+typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 {
 	/* Associated FNA3D_Device */
 	FNA3D_Device *parentDevice;
@@ -302,7 +302,7 @@ typedef struct OpenGLDevice /* Cast from FNA3D_Renderer* */
 	#include "FNA3D_Driver_OpenGL_glfuncs.h"
 	#undef GL_PROC
 	#undef GL_PROC_EXT
-} OpenGLDevice;
+} OpenGLRenderer;
 
 /* XNA->OpenGL Translation Arrays */
 
@@ -619,175 +619,175 @@ static int32_t XNAToGL_PrimitiveVerts(
 	#define inline __inline
 #endif
 
-static inline void BindReadFramebuffer(OpenGLDevice *device, GLuint handle)
+static inline void BindReadFramebuffer(OpenGLRenderer *renderer, GLuint handle)
 {
-	if (handle != device->currentReadFramebuffer)
+	if (handle != renderer->currentReadFramebuffer)
 	{
-		device->glBindFramebuffer(GL_READ_FRAMEBUFFER, handle);
-		device->currentReadFramebuffer = handle;
+		renderer->glBindFramebuffer(GL_READ_FRAMEBUFFER, handle);
+		renderer->currentReadFramebuffer = handle;
 	}
 }
 
-static inline void BindDrawFramebuffer(OpenGLDevice *device, GLuint handle)
+static inline void BindDrawFramebuffer(OpenGLRenderer *renderer, GLuint handle)
 {
-	if (handle != device->currentDrawFramebuffer)
+	if (handle != renderer->currentDrawFramebuffer)
 	{
-		device->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, handle);
-		device->currentDrawFramebuffer = handle;
+		renderer->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, handle);
+		renderer->currentDrawFramebuffer = handle;
 	}
 }
 
-static inline void BindFramebuffer(OpenGLDevice *device, GLuint handle)
+static inline void BindFramebuffer(OpenGLRenderer *renderer, GLuint handle)
 {
-	if (	device->currentReadFramebuffer != handle &&
-		device->currentDrawFramebuffer != handle	)
+	if (	renderer->currentReadFramebuffer != handle &&
+		renderer->currentDrawFramebuffer != handle	)
 	{
-		device->glBindFramebuffer(GL_FRAMEBUFFER, handle);
-		device->currentReadFramebuffer = handle;
-		device->currentDrawFramebuffer = handle;
+		renderer->glBindFramebuffer(GL_FRAMEBUFFER, handle);
+		renderer->currentReadFramebuffer = handle;
+		renderer->currentDrawFramebuffer = handle;
 	}
-	else if (device->currentReadFramebuffer != handle)
+	else if (renderer->currentReadFramebuffer != handle)
 	{
-		device->glBindFramebuffer(GL_READ_FRAMEBUFFER, handle);
-		device->currentReadFramebuffer = handle;
+		renderer->glBindFramebuffer(GL_READ_FRAMEBUFFER, handle);
+		renderer->currentReadFramebuffer = handle;
 	}
-	else if (device->currentDrawFramebuffer != handle)
+	else if (renderer->currentDrawFramebuffer != handle)
 	{
-		device->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, handle);
-		device->currentDrawFramebuffer = handle;
+		renderer->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, handle);
+		renderer->currentDrawFramebuffer = handle;
 	}
 }
 
-static inline void BindTexture(OpenGLDevice *device, OpenGLTexture* tex)
+static inline void BindTexture(OpenGLRenderer *renderer, OpenGLTexture* tex)
 {
-	if (tex->target != device->textures[0]->target)
+	if (tex->target != renderer->textures[0]->target)
 	{
-		device->glBindTexture(device->textures[0]->target, 0);
+		renderer->glBindTexture(renderer->textures[0]->target, 0);
 	}
-	if (device->textures[0] != tex)
+	if (renderer->textures[0] != tex)
 	{
-		device->glBindTexture(tex->target, tex->handle);
+		renderer->glBindTexture(tex->target, tex->handle);
 	}
-	device->textures[0] = tex;
+	renderer->textures[0] = tex;
 }
 
-static inline void BindVertexBuffer(OpenGLDevice *device, GLuint handle)
+static inline void BindVertexBuffer(OpenGLRenderer *renderer, GLuint handle)
 {
-	if (handle != device->currentVertexBuffer)
+	if (handle != renderer->currentVertexBuffer)
 	{
-		device->glBindBuffer(GL_ARRAY_BUFFER, handle);
-		device->currentVertexBuffer = handle;
+		renderer->glBindBuffer(GL_ARRAY_BUFFER, handle);
+		renderer->currentVertexBuffer = handle;
 	}
 }
 
-static inline void BindIndexBuffer(OpenGLDevice *device, GLuint handle)
+static inline void BindIndexBuffer(OpenGLRenderer *renderer, GLuint handle)
 {
-	if (handle != device->currentIndexBuffer)
+	if (handle != renderer->currentIndexBuffer)
 	{
-		device->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, handle);
-		device->currentIndexBuffer = handle;
+		renderer->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, handle);
+		renderer->currentIndexBuffer = handle;
 	}
 }
 
 static inline void ToggleGLState(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	GLenum feature,
 	uint8_t enable
 ) {
 	if (enable)
 	{
-		device->glEnable(feature);
+		renderer->glEnable(feature);
 	}
 	else
 	{
-		device->glDisable(feature);
+		renderer->glDisable(feature);
 	}
 }
 
 static inline void ForceToMainThread(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	FNA3D_Command *command
 ) {
 	FNA3D_Command *curr;
-	SDL_LockMutex(device->commandsLock);
-	LinkedList_Add(device->commands, command, curr);
-	SDL_UnlockMutex(device->commandsLock);
+	SDL_LockMutex(renderer->commandsLock);
+	LinkedList_Add(renderer->commands, command, curr);
+	SDL_UnlockMutex(renderer->commandsLock);
 }
 
 /* Forward Declarations for Internal Functions */
 
 static void OPENGL_INTERNAL_CreateBackbuffer(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	FNA3D_PresentationParameters *parameters
 );
-static void OPENGL_INTERNAL_DisposeBackbuffer(OpenGLDevice *device);
+static void OPENGL_INTERNAL_DisposeBackbuffer(OpenGLRenderer *renderer);
 static void OPENGL_INTERNAL_DestroyTexture(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	OpenGLTexture *texture
 );
 static void OPENGL_INTERNAL_DestroyRenderbuffer(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	OpenGLRenderbuffer *renderbuffer
 );
 static void OPENGL_INTERNAL_DestroyVertexBuffer(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	OpenGLBuffer *buffer
 );
 static void OPENGL_INTERNAL_DestroyIndexBuffer(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	OpenGLBuffer *buffer
 );
 static void OPENGL_INTERNAL_DestroyEffect(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	OpenGLEffect *effect
 );
 static void OPENGL_INTERNAL_DestroyQuery(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	OpenGLQuery *query
 );
 
-/* Device Implementation */
+/* Renderer Implementation */
 
 /* Quit */
 
 void OPENGL_DestroyDevice(FNA3D_Device *device)
 {
-	OpenGLDevice *glDevice = (OpenGLDevice*) device->driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) device->driverData;
 
-	if (glDevice->useCoreProfile)
+	if (renderer->useCoreProfile)
 	{
-		glDevice->glBindVertexArray(0);
-		glDevice->glDeleteVertexArrays(1, &glDevice->vao);
+		renderer->glBindVertexArray(0);
+		renderer->glDeleteVertexArrays(1, &renderer->vao);
 	}
 
-	glDevice->glDeleteFramebuffers(1, &glDevice->resolveFramebufferRead);
-	glDevice->resolveFramebufferRead = 0;
-	glDevice->glDeleteFramebuffers(1, &glDevice->resolveFramebufferDraw);
-	glDevice->resolveFramebufferDraw = 0;
-	glDevice->glDeleteFramebuffers(1, &glDevice->targetFramebuffer);
-	glDevice->targetFramebuffer = 0;
+	renderer->glDeleteFramebuffers(1, &renderer->resolveFramebufferRead);
+	renderer->resolveFramebufferRead = 0;
+	renderer->glDeleteFramebuffers(1, &renderer->resolveFramebufferDraw);
+	renderer->resolveFramebufferDraw = 0;
+	renderer->glDeleteFramebuffers(1, &renderer->targetFramebuffer);
+	renderer->targetFramebuffer = 0;
 
-	if (glDevice->backbuffer->type == BACKBUFFER_TYPE_OPENGL)
+	if (renderer->backbuffer->type == BACKBUFFER_TYPE_OPENGL)
 	{
-		OPENGL_INTERNAL_DisposeBackbuffer(glDevice);
+		OPENGL_INTERNAL_DisposeBackbuffer(renderer);
 	}
-	SDL_free(glDevice->backbuffer);
-	glDevice->backbuffer = NULL;
+	SDL_free(renderer->backbuffer);
+	renderer->backbuffer = NULL;
 
 	MOJOSHADER_glMakeContextCurrent(NULL);
-	MOJOSHADER_glDestroyContext(glDevice->shaderContext);
+	MOJOSHADER_glDestroyContext(renderer->shaderContext);
 
-	SDL_DestroyMutex(glDevice->commandsLock);
-	SDL_DestroyMutex(glDevice->disposeTexturesLock);
-	SDL_DestroyMutex(glDevice->disposeRenderbuffersLock);
-	SDL_DestroyMutex(glDevice->disposeVertexBuffersLock);
-	SDL_DestroyMutex(glDevice->disposeIndexBuffersLock);
-	SDL_DestroyMutex(glDevice->disposeEffectsLock);
-	SDL_DestroyMutex(glDevice->disposeQueriesLock);
+	SDL_DestroyMutex(renderer->commandsLock);
+	SDL_DestroyMutex(renderer->disposeTexturesLock);
+	SDL_DestroyMutex(renderer->disposeRenderbuffersLock);
+	SDL_DestroyMutex(renderer->disposeVertexBuffersLock);
+	SDL_DestroyMutex(renderer->disposeIndexBuffersLock);
+	SDL_DestroyMutex(renderer->disposeEffectsLock);
+	SDL_DestroyMutex(renderer->disposeQueriesLock);
 
-	SDL_GL_DeleteContext(glDevice->context);
+	SDL_GL_DeleteContext(renderer->context);
 
-	SDL_free(glDevice);
+	SDL_free(renderer);
 	SDL_free(device);
 }
 
@@ -798,26 +798,26 @@ void OPENGL_BeginFrame(FNA3D_Renderer *driverData)
 	/* No-op */
 }
 
-static void ExecuteCommands(OpenGLDevice *device)
+static void ExecuteCommands(OpenGLRenderer *renderer)
 {
 	FNA3D_Command *cmd;
 
-	SDL_LockMutex(device->commandsLock);
-	cmd = device->commands;
+	SDL_LockMutex(renderer->commandsLock);
+	cmd = renderer->commands;
 	while (cmd != NULL)
 	{
 		FNA3D_ExecuteCommand(
-			device->parentDevice,
+			renderer->parentDevice,
 			cmd
 		);
 		SDL_SemPost(cmd->semaphore);
 		cmd = cmd->next;
 	}
-	device->commands = NULL; /* No heap memory to free! -caleb */
-	SDL_UnlockMutex(device->commandsLock);
+	renderer->commands = NULL; /* No heap memory to free! -caleb */
+	SDL_UnlockMutex(renderer->commandsLock);
 }
 
-static void DisposeResources(OpenGLDevice *device)
+static void DisposeResources(OpenGLRenderer *renderer)
 {
 	OpenGLTexture *tex, *texNext;
 	OpenGLEffect *eff, *effNext;
@@ -832,18 +832,18 @@ static void DisposeResources(OpenGLDevice *device)
 		while (prefix != NULL) \
 		{ \
 			prefix##Next = prefix->next; \
-			OPENGL_INTERNAL_##func(device, prefix); \
+			OPENGL_INTERNAL_##func(renderer, prefix); \
 			prefix = prefix##Next; \
 		} \
 		list = NULL; \
 		SDL_UnlockMutex(list##Lock);
 
-	DISPOSE(tex, device->disposeTextures, DestroyTexture)
-	DISPOSE(ren, device->disposeRenderbuffers, DestroyRenderbuffer)
-	DISPOSE(buf, device->disposeVertexBuffers, DestroyVertexBuffer)
-	DISPOSE(buf, device->disposeIndexBuffers, DestroyIndexBuffer)
-	DISPOSE(eff, device->disposeEffects, DestroyEffect)
-	DISPOSE(qry, device->disposeQueries, DestroyQuery)
+	DISPOSE(tex, renderer->disposeTextures, DestroyTexture)
+	DISPOSE(ren, renderer->disposeRenderbuffers, DestroyRenderbuffer)
+	DISPOSE(buf, renderer->disposeVertexBuffers, DestroyVertexBuffer)
+	DISPOSE(buf, renderer->disposeIndexBuffers, DestroyIndexBuffer)
+	DISPOSE(eff, renderer->disposeEffects, DestroyEffect)
+	DISPOSE(qry, renderer->disposeQueries, DestroyQuery)
 
 	#undef DISPOSE
 }
@@ -856,13 +856,13 @@ void OPENGL_SwapBuffers(
 ) {
 	int32_t srcX, srcY, srcW, srcH;
 	int32_t dstX, dstY, dstW, dstH;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 
 	/* Only the faux-backbuffer supports presenting
 	 * specific regions given to Present().
 	 * -flibit
 	 */
-	if (device->backbuffer->type == BACKBUFFER_TYPE_OPENGL)
+	if (renderer->backbuffer->type == BACKBUFFER_TYPE_OPENGL)
 	{
 		if (sourceRectangle != NULL)
 		{
@@ -875,8 +875,8 @@ void OPENGL_SwapBuffers(
 		{
 			srcX = 0;
 			srcY = 0;
-			srcW = device->backbuffer->width;
-			srcH = device->backbuffer->height;
+			srcW = renderer->backbuffer->width;
+			srcH = renderer->backbuffer->height;
 		}
 		if (destinationRectangle != NULL)
 		{
@@ -896,12 +896,12 @@ void OPENGL_SwapBuffers(
 			);
 		}
 
-		if (device->scissorTestEnable)
+		if (renderer->scissorTestEnable)
 		{
-			device->glDisable(GL_SCISSOR_TEST);
+			renderer->glDisable(GL_SCISSOR_TEST);
 		}
 
-		if (	device->backbuffer->multiSampleCount > 0 &&
+		if (	renderer->backbuffer->multiSampleCount > 0 &&
 			(srcX != dstX || srcY != dstY || srcW != dstW || srcH != dstH)	)
 		{
 			/* We have to resolve the renderbuffer to a texture first.
@@ -909,84 +909,84 @@ void OPENGL_SwapBuffers(
 			 * to the backbuffer. Not sure why, but oh well.
 			 * -flibit
 			 */
-			if (device->backbuffer->opengl.texture == 0)
+			if (renderer->backbuffer->opengl.texture == 0)
 			{
-				device->glGenTextures(1, &device->backbuffer->opengl.texture);
-				device->glBindTexture(GL_TEXTURE_2D, device->backbuffer->opengl.texture);
-				device->glTexImage2D(
+				renderer->glGenTextures(1, &renderer->backbuffer->opengl.texture);
+				renderer->glBindTexture(GL_TEXTURE_2D, renderer->backbuffer->opengl.texture);
+				renderer->glTexImage2D(
 					GL_TEXTURE_2D,
 					0,
 					GL_RGBA,
-					device->backbuffer->width,
-					device->backbuffer->height,
+					renderer->backbuffer->width,
+					renderer->backbuffer->height,
 					0,
 					GL_RGBA,
 					GL_UNSIGNED_BYTE,
 					NULL
 				);
-				device->glBindTexture(
-					device->textures[0]->target,
-					device->textures[0]->handle
+				renderer->glBindTexture(
+					renderer->textures[0]->target,
+					renderer->textures[0]->handle
 				);
 			}
-			BindFramebuffer(device, device->resolveFramebufferDraw);
-			device->glFramebufferTexture2D(
+			BindFramebuffer(renderer, renderer->resolveFramebufferDraw);
+			renderer->glFramebufferTexture2D(
 				GL_FRAMEBUFFER,
 				GL_COLOR_ATTACHMENT0,
 				GL_TEXTURE_2D,
-				device->backbuffer->opengl.texture,
+				renderer->backbuffer->opengl.texture,
 				0
 			);
-			BindReadFramebuffer(device, device->backbuffer->opengl.handle);
-			device->glBlitFramebuffer(
-				0, 0, device->backbuffer->width, device->backbuffer->height,
-				0, 0, device->backbuffer->width, device->backbuffer->height,
+			BindReadFramebuffer(renderer, renderer->backbuffer->opengl.handle);
+			renderer->glBlitFramebuffer(
+				0, 0, renderer->backbuffer->width, renderer->backbuffer->height,
+				0, 0, renderer->backbuffer->width, renderer->backbuffer->height,
 				GL_COLOR_BUFFER_BIT,
 				GL_LINEAR
 			);
 			/* Invalidate the MSAA faux-backbuffer */
-			if (device->supports_ARB_invalidate_subdata)
+			if (renderer->supports_ARB_invalidate_subdata)
 			{
-				device->glInvalidateFramebuffer(
+				renderer->glInvalidateFramebuffer(
 					GL_READ_FRAMEBUFFER,
-					device->numAttachments + 2,
-					device->drawBuffersArray
+					renderer->numAttachments + 2,
+					renderer->drawBuffersArray
 				);
 			}
-			BindReadFramebuffer(device, device->resolveFramebufferDraw);
+			BindReadFramebuffer(renderer, renderer->resolveFramebufferDraw);
 		}
 		else
 		{
-			BindReadFramebuffer(device, device->backbuffer->opengl.handle);
+			BindReadFramebuffer(renderer, renderer->backbuffer->opengl.handle);
 		}
-		BindDrawFramebuffer(device, device->realBackbufferFBO);
+		BindDrawFramebuffer(renderer, renderer->realBackbufferFBO);
 
-		device->glBlitFramebuffer(
+		renderer->glBlitFramebuffer(
 			srcX, srcY, srcW, srcH,
 			dstX, dstY, dstW, dstH,
 			GL_COLOR_BUFFER_BIT,
-			device->backbufferScaleMode
+			renderer->backbufferScaleMode
 		);
 		/* Invalidate the faux-backbuffer */
-		if (device->supports_ARB_invalidate_subdata)
+		if (renderer->supports_ARB_invalidate_subdata)
 		{
-			device->glInvalidateFramebuffer(
+			renderer->glInvalidateFramebuffer(
 				GL_READ_FRAMEBUFFER,
-				device->numAttachments + 2,
-				device->drawBuffersArray
+				renderer->numAttachments + 2,
+				renderer->drawBuffersArray
 			);
 		}
 
-		BindFramebuffer(device, device->realBackbufferFBO);
+		BindFramebuffer(renderer, renderer->realBackbufferFBO);
 
-		if (device->scissorTestEnable)
+		if (renderer->scissorTestEnable)
 		{
-			device->glEnable(GL_SCISSOR_TEST);
+			renderer->glEnable(GL_SCISSOR_TEST);
 		}
 
 		SDL_GL_SwapWindow((SDL_Window*) overrideWindowHandle);
 
-		BindFramebuffer(device, device->backbuffer->opengl.handle);
+		BindFramebuffer(renderer, renderer->backbuffer->opengl.handle);
 	}
 	else
 	{
@@ -995,10 +995,10 @@ void OPENGL_SwapBuffers(
 	}
 
 	/* Run any threaded commands */
-	ExecuteCommands(device);
+	ExecuteCommands(renderer);
 
 	/* Destroy any disposed resources */
-	DisposeResources(device);
+	DisposeResources(renderer);
 }
 
 void OPENGL_SetPresentationInterval(
@@ -1074,14 +1074,14 @@ void OPENGL_Clear(
 	float depth,
 	int32_t stencil
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	uint8_t clearTarget, clearDepth, clearStencil;
 	GLenum clearMask;
 
 	/* glClear depends on the scissor rectangle! */
-	if (device->scissorTestEnable)
+	if (renderer->scissorTestEnable)
 	{
-		device->glDisable(GL_SCISSOR_TEST);
+		renderer->glDisable(GL_SCISSOR_TEST);
 	}
 
 	clearTarget = (options & FNA3D_CLEAROPTIONS_TARGET) != 0;
@@ -1093,85 +1093,85 @@ void OPENGL_Clear(
 	if (clearTarget)
 	{
 		clearMask |= GL_COLOR_BUFFER_BIT;
-		if (!colorEquals(*color, device->currentClearColor))
+		if (!colorEquals(*color, renderer->currentClearColor))
 		{
-			device->glClearColor(
+			renderer->glClearColor(
 				color->x,
 				color->y,
 				color->z,
 				color->w
 			);
-			device->currentClearColor = *color;
+			renderer->currentClearColor = *color;
 		}
 		/* glClear depends on the color write mask! */
-		if (device->colorWriteEnable != FNA3D_COLORWRITECHANNELS_ALL)
+		if (renderer->colorWriteEnable != FNA3D_COLORWRITECHANNELS_ALL)
 		{
 			/* FIXME: ColorWriteChannels1/2/3? -flibit */
-			device->glColorMask(1, 1, 1, 1);
+			renderer->glColorMask(1, 1, 1, 1);
 		}
 	}
 	if (clearDepth)
 	{
 		clearMask |= GL_DEPTH_BUFFER_BIT;
-		if (depth != device->currentClearDepth)
+		if (depth != renderer->currentClearDepth)
 		{
-			if (device->supports_DoublePrecisionDepth)
+			if (renderer->supports_DoublePrecisionDepth)
 			{
-				device->glClearDepth((double) depth);
+				renderer->glClearDepth((double) depth);
 			}
 			else
 			{
-				device->glClearDepthf(depth);
+				renderer->glClearDepthf(depth);
 			}
-			device->currentClearDepth = depth;
+			renderer->currentClearDepth = depth;
 		}
 		/* glClear depends on the depth write mask! */
-		if (!device->zWriteEnable)
+		if (!renderer->zWriteEnable)
 		{
-			device->glDepthMask(1);
+			renderer->glDepthMask(1);
 		}
 	}
 	if (clearStencil)
 	{
 		clearMask |= GL_STENCIL_BUFFER_BIT;
-		if (stencil != device->currentClearStencil)
+		if (stencil != renderer->currentClearStencil)
 		{
-			device->glClearStencil(stencil);
-			device->currentClearStencil = stencil;
+			renderer->glClearStencil(stencil);
+			renderer->currentClearStencil = stencil;
 		}
 		/* glClear depends on the stencil write mask! */
-		if (device->stencilWriteMask != -1)
+		if (renderer->stencilWriteMask != -1)
 		{
 			/* AKA 0xFFFFFFFF, ugh -flibit */
-			device->glStencilMask(-1);
+			renderer->glStencilMask(-1);
 		}
 	}
 
 	/* CLEAR! */
-	device->glClear(clearMask);
+	renderer->glClear(clearMask);
 
 	/* Clean up after ourselves. */
-	if (device->scissorTestEnable)
+	if (renderer->scissorTestEnable)
 	{
-		device->glEnable(GL_SCISSOR_TEST);
+		renderer->glEnable(GL_SCISSOR_TEST);
 	}
-	if (clearTarget && device->colorWriteEnable != FNA3D_COLORWRITECHANNELS_ALL)
+	if (clearTarget && renderer->colorWriteEnable != FNA3D_COLORWRITECHANNELS_ALL)
 	{
 		/* FIXME: ColorWriteChannels1/2/3? -flibit */
-		device->glColorMask(
-			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_RED) != 0,
-			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
-			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_BLUE) != 0,
-			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_ALPHA) != 0
+		renderer->glColorMask(
+			(renderer->colorWriteEnable & FNA3D_COLORWRITECHANNELS_RED) != 0,
+			(renderer->colorWriteEnable & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
+			(renderer->colorWriteEnable & FNA3D_COLORWRITECHANNELS_BLUE) != 0,
+			(renderer->colorWriteEnable & FNA3D_COLORWRITECHANNELS_ALPHA) != 0
 		);
 	}
-	if (clearDepth && !device->zWriteEnable)
+	if (clearDepth && !renderer->zWriteEnable)
 	{
-		device->glDepthMask(0);
+		renderer->glDepthMask(0);
 	}
-	if (clearStencil && device->stencilWriteMask != -1) /* AKA 0xFFFFFFFF, ugh -flibit */
+	if (clearStencil && renderer->stencilWriteMask != -1) /* AKA 0xFFFFFFFF, ugh -flibit */
 	{
-		device->glStencilMask(device->stencilWriteMask);
+		renderer->glStencilMask(renderer->stencilWriteMask);
 	}
 }
 
@@ -1187,22 +1187,22 @@ void OPENGL_DrawIndexedPrimitives(
 	FNA3D_IndexElementSize indexElementSize
 ) {
 	uint8_t tps;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLBuffer *buffer = (OpenGLBuffer*) indices;
 
-	BindIndexBuffer(device, buffer->handle);
+	BindIndexBuffer(renderer, buffer->handle);
 
-	tps = (	device->togglePointSprite &&
+	tps = (	renderer->togglePointSprite &&
 		primitiveType == FNA3D_PRIMITIVETYPE_POINTLIST_EXT	);
 	if (tps)
 	{
-		device->glEnable(GL_POINT_SPRITE);
+		renderer->glEnable(GL_POINT_SPRITE);
 	}
 
 	/* Draw! */
-	if (device->supports_ARB_draw_elements_base_vertex)
+	if (renderer->supports_ARB_draw_elements_base_vertex)
 	{
-		device->glDrawRangeElementsBaseVertex(
+		renderer->glDrawRangeElementsBaseVertex(
 			XNAToGL_Primitive[primitiveType],
 			minVertexIndex,
 			minVertexIndex + numVertices - 1,
@@ -1214,7 +1214,7 @@ void OPENGL_DrawIndexedPrimitives(
 	}
 	else
 	{
-		device->glDrawRangeElements(
+		renderer->glDrawRangeElements(
 			XNAToGL_Primitive[primitiveType],
 			minVertexIndex,
 			minVertexIndex + numVertices - 1,
@@ -1226,7 +1226,7 @@ void OPENGL_DrawIndexedPrimitives(
 
 	if (tps)
 	{
-		device->glDisable(GL_POINT_SPRITE);
+		renderer->glDisable(GL_POINT_SPRITE);
 	}
 }
 
@@ -1245,24 +1245,24 @@ void OPENGL_DrawInstancedPrimitives(
 	/* Note that minVertexIndex and numVertices are NOT used! */
 
 	uint8_t tps;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLBuffer *buffer = (OpenGLBuffer*) indices;
 
-	SDL_assert(device->supports_ARB_draw_instanced);
+	SDL_assert(renderer->supports_ARB_draw_instanced);
 
-	BindIndexBuffer(device, buffer->handle);
+	BindIndexBuffer(renderer, buffer->handle);
 
-	tps = (	device->togglePointSprite &&
+	tps = (	renderer->togglePointSprite &&
 		primitiveType == FNA3D_PRIMITIVETYPE_POINTLIST_EXT	);
 	if (tps)
 	{
-		device->glEnable(GL_POINT_SPRITE);
+		renderer->glEnable(GL_POINT_SPRITE);
 	}
 
 	/* Draw! */
-	if (device->supports_ARB_draw_elements_base_vertex)
+	if (renderer->supports_ARB_draw_elements_base_vertex)
 	{
-		device->glDrawElementsInstancedBaseVertex(
+		renderer->glDrawElementsInstancedBaseVertex(
 			XNAToGL_Primitive[primitiveType],
 			XNAToGL_PrimitiveVerts(primitiveType, primitiveCount),
 			XNAToGL_IndexType[indexElementSize],
@@ -1273,7 +1273,7 @@ void OPENGL_DrawInstancedPrimitives(
 	}
 	else
 	{
-		device->glDrawElementsInstanced(
+		renderer->glDrawElementsInstanced(
 			XNAToGL_Primitive[primitiveType],
 			XNAToGL_PrimitiveVerts(primitiveType, primitiveCount),
 			XNAToGL_IndexType[indexElementSize],
@@ -1284,7 +1284,7 @@ void OPENGL_DrawInstancedPrimitives(
 
 	if (tps)
 	{
-		device->glDisable(GL_POINT_SPRITE);
+		renderer->glDisable(GL_POINT_SPRITE);
 	}
 }
 
@@ -1295,17 +1295,17 @@ void OPENGL_DrawPrimitives(
 	int32_t primitiveCount
 ) {
 	uint8_t tps;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 
-	tps = (	device->togglePointSprite &&
+	tps = (	renderer->togglePointSprite &&
 		primitiveType == FNA3D_PRIMITIVETYPE_POINTLIST_EXT	);
 	if (tps)
 	{
-		device->glEnable(GL_POINT_SPRITE);
+		renderer->glEnable(GL_POINT_SPRITE);
 	}
 
 	/* Draw! */
-	device->glDrawArrays(
+	renderer->glDrawArrays(
 		XNAToGL_Primitive[primitiveType],
 		vertexStart,
 		XNAToGL_PrimitiveVerts(primitiveType, primitiveCount)
@@ -1313,7 +1313,7 @@ void OPENGL_DrawPrimitives(
 
 	if (tps)
 	{
-		device->glDisable(GL_POINT_SPRITE);
+		renderer->glDisable(GL_POINT_SPRITE);
 	}
 }
 
@@ -1329,20 +1329,20 @@ void OPENGL_DrawUserIndexedPrimitives(
 	int32_t primitiveCount
 ) {
 	uint8_t tps;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 
 	/* Unbind any active index buffer */
-	BindIndexBuffer(device, 0);
+	BindIndexBuffer(renderer, 0);
 
-	tps = (	device->togglePointSprite &&
+	tps = (	renderer->togglePointSprite &&
 		primitiveType == FNA3D_PRIMITIVETYPE_POINTLIST_EXT	);
 	if (tps)
 	{
-		device->glEnable(GL_POINT_SPRITE);
+		renderer->glEnable(GL_POINT_SPRITE);
 	}
 
 	/* Draw! */
-	device->glDrawRangeElements(
+	renderer->glDrawRangeElements(
 		XNAToGL_Primitive[primitiveType],
 		0,
 		numVertices - 1,
@@ -1356,7 +1356,7 @@ void OPENGL_DrawUserIndexedPrimitives(
 
 	if (tps)
 	{
-		device->glDisable(GL_POINT_SPRITE);
+		renderer->glDisable(GL_POINT_SPRITE);
 	}
 }
 
@@ -1368,17 +1368,17 @@ void OPENGL_DrawUserPrimitives(
 	int32_t primitiveCount
 ) {
 	uint8_t tps;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 
-	tps = (	device->togglePointSprite &&
+	tps = (	renderer->togglePointSprite &&
 		primitiveType == FNA3D_PRIMITIVETYPE_POINTLIST_EXT	);
 	if (tps)
 	{
-		device->glEnable(GL_POINT_SPRITE);
+		renderer->glEnable(GL_POINT_SPRITE);
 	}
 
 	/* Draw! */
-	device->glDrawArrays(
+	renderer->glDrawArrays(
 		XNAToGL_Primitive[primitiveType],
 		vertexOffset,
 		XNAToGL_PrimitiveVerts(primitiveType, primitiveCount)
@@ -1386,7 +1386,7 @@ void OPENGL_DrawUserPrimitives(
 
 	if (tps)
 	{
-		device->glDisable(GL_POINT_SPRITE);
+		renderer->glDisable(GL_POINT_SPRITE);
 	}
 }
 
@@ -1396,23 +1396,23 @@ void OPENGL_GetBackbufferSize(FNA3D_Renderer*, int*, int*);
 
 void OPENGL_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewport)
 {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	int32_t bbw, bbh;
 
 	/* Flip viewport when target is not bound */
-	if (!device->renderTargetBound)
+	if (!renderer->renderTargetBound)
 	{
 		OPENGL_GetBackbufferSize(driverData, &bbw, &bbh);
 		viewport->y = bbh - viewport->y - viewport->h;
 	}
 
-	if (	viewport->x != device->viewport.x ||
-		viewport->y != device->viewport.y ||
-		viewport->w != device->viewport.w ||
-		viewport->h != device->viewport.h	)
+	if (	viewport->x != renderer->viewport.x ||
+		viewport->y != renderer->viewport.y ||
+		viewport->w != renderer->viewport.w ||
+		viewport->h != renderer->viewport.h	)
 	{
-		device->viewport = *viewport;
-		device->glViewport(
+		renderer->viewport = *viewport;
+		renderer->glViewport(
 			viewport->x,
 			viewport->y,
 			viewport->w,
@@ -1420,22 +1420,22 @@ void OPENGL_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewport)
 		);
 	}
 
-	if (	viewport->minDepth != device->depthRangeMin ||
-		viewport->maxDepth != device->depthRangeMax	)
+	if (	viewport->minDepth != renderer->depthRangeMin ||
+		viewport->maxDepth != renderer->depthRangeMax	)
 	{
-		device->depthRangeMin = viewport->minDepth;
-		device->depthRangeMax = viewport->maxDepth;
+		renderer->depthRangeMin = viewport->minDepth;
+		renderer->depthRangeMax = viewport->maxDepth;
 
-		if (device->supports_DoublePrecisionDepth)
+		if (renderer->supports_DoublePrecisionDepth)
 		{
-			device->glDepthRange(
+			renderer->glDepthRange(
 				(double) viewport->minDepth,
 				(double) viewport->maxDepth
 			);
 		}
 		else
 		{
-			device->glDepthRangef(
+			renderer->glDepthRangef(
 				viewport->minDepth,
 				viewport->maxDepth
 			);
@@ -1445,23 +1445,23 @@ void OPENGL_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewport)
 
 void OPENGL_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor)
 {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	int32_t bbw, bbh;
 
 	/* Flip rectangle when target is not bound */
-	if (!device->renderTargetBound)
+	if (!renderer->renderTargetBound)
 	{
 		OPENGL_GetBackbufferSize(driverData, &bbw, &bbh);
 		scissor->y = bbh - scissor->y - scissor->h;
 	}
 
-	if (	scissor->x != device->scissorRect.x ||
-		scissor->y != device->scissorRect.y ||
-		scissor->w != device->scissorRect.w ||
-		scissor->h != device->scissorRect.h	)
+	if (	scissor->x != renderer->scissorRect.x ||
+		scissor->y != renderer->scissorRect.y ||
+		scissor->w != renderer->scissorRect.w ||
+		scissor->h != renderer->scissorRect.h	)
 	{
-		device->scissorRect = *scissor;
-		device->glScissor(
+		renderer->scissorRect = *scissor;
+		renderer->glScissor(
 			scissor->x,
 			scissor->y,
 			scissor->w,
@@ -1474,96 +1474,96 @@ void OPENGL_GetBlendFactor(
 	FNA3D_Renderer *driverData,
 	FNA3D_Color *blendFactor
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	SDL_memcpy(blendFactor, &device->blendColor, sizeof(FNA3D_Color));
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	SDL_memcpy(blendFactor, &renderer->blendColor, sizeof(FNA3D_Color));
 }
 
 void OPENGL_SetBlendFactor(
 	FNA3D_Renderer *driverData,
 	FNA3D_Color *blendFactor
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	if (	device->blendColor.r != blendFactor->r ||
-		device->blendColor.g != blendFactor->g ||
-		device->blendColor.b != blendFactor->b ||
-		device->blendColor.a != blendFactor->a	)
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	if (	renderer->blendColor.r != blendFactor->r ||
+		renderer->blendColor.g != blendFactor->g ||
+		renderer->blendColor.b != blendFactor->b ||
+		renderer->blendColor.a != blendFactor->a	)
 	{
-		device->blendColor.r = blendFactor->r;
-		device->blendColor.g = blendFactor->g;
-		device->blendColor.b = blendFactor->b;
-		device->blendColor.a = blendFactor->a;
-		device->glBlendColor(
-			device->blendColor.r / 255.0f,
-			device->blendColor.g / 255.0f,
-			device->blendColor.b / 255.0f,
-			device->blendColor.a / 255.0f
+		renderer->blendColor.r = blendFactor->r;
+		renderer->blendColor.g = blendFactor->g;
+		renderer->blendColor.b = blendFactor->b;
+		renderer->blendColor.a = blendFactor->a;
+		renderer->glBlendColor(
+			renderer->blendColor.r / 255.0f,
+			renderer->blendColor.g / 255.0f,
+			renderer->blendColor.b / 255.0f,
+			renderer->blendColor.a / 255.0f
 		);
 	}
 }
 
 int32_t OPENGL_GetMultiSampleMask(FNA3D_Renderer *driverData)
 {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	SDL_assert(device->supports_ARB_texture_multisample);
-	return device->multiSampleMask;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	SDL_assert(renderer->supports_ARB_texture_multisample);
+	return renderer->multiSampleMask;
 }
 
 void OPENGL_SetMultiSampleMask(FNA3D_Renderer *driverData, int32_t mask)
 {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	SDL_assert(device->supports_ARB_texture_multisample);
-	if (mask != device->multiSampleMask)
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	SDL_assert(renderer->supports_ARB_texture_multisample);
+	if (mask != renderer->multiSampleMask)
 	{
 		if (mask == -1)
 		{
-			device->glDisable(GL_SAMPLE_MASK);
+			renderer->glDisable(GL_SAMPLE_MASK);
 		}
 		else
 		{
-			if (device->multiSampleMask == -1)
+			if (renderer->multiSampleMask == -1)
 			{
-				device->glEnable(GL_SAMPLE_MASK);
+				renderer->glEnable(GL_SAMPLE_MASK);
 			}
 			/* FIXME: Index...? -flibit */
-			device->glSampleMaski(0, (GLuint) mask);
+			renderer->glSampleMaski(0, (GLuint) mask);
 		}
-		device->multiSampleMask = mask;
+		renderer->multiSampleMask = mask;
 	}
 }
 
 int32_t OPENGL_GetReferenceStencil(FNA3D_Renderer *driverData)
 {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	return device->stencilRef;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	return renderer->stencilRef;
 }
 
 void OPENGL_SetReferenceStencil(FNA3D_Renderer *driverData, int32_t ref)
 {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	if (ref != device->stencilRef)
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	if (ref != renderer->stencilRef)
 	{
-		device->stencilRef = ref;
-		if (device->separateStencilEnable)
+		renderer->stencilRef = ref;
+		if (renderer->separateStencilEnable)
 		{
-			device->glStencilFuncSeparate(
+			renderer->glStencilFuncSeparate(
 				GL_FRONT,
-				XNAToGL_CompareFunc[device->stencilFunc],
-				device->stencilRef,
-				device->stencilMask
+				XNAToGL_CompareFunc[renderer->stencilFunc],
+				renderer->stencilRef,
+				renderer->stencilMask
 			);
-			device->glStencilFuncSeparate(
+			renderer->glStencilFuncSeparate(
 				GL_BACK,
-				XNAToGL_CompareFunc[device->stencilFunc],
-				device->stencilRef,
-				device->stencilMask
+				XNAToGL_CompareFunc[renderer->stencilFunc],
+				renderer->stencilRef,
+				renderer->stencilMask
 			);
 		}
 		else
 		{
-			device->glStencilFunc(
-				XNAToGL_CompareFunc[device->stencilFunc],
-				device->stencilRef,
-				device->stencilMask
+			renderer->glStencilFunc(
+				XNAToGL_CompareFunc[renderer->stencilFunc],
+				renderer->stencilRef,
+				renderer->stencilMask
 			);
 		}
 	}
@@ -1575,7 +1575,7 @@ void OPENGL_SetBlendState(
 	FNA3D_Renderer *driverData,
 	FNA3D_BlendState *blendState
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 
 	uint8_t newEnable = !(
 		blendState->colorSourceBlend == FNA3D_BLEND_ONE &&
@@ -1584,65 +1584,65 @@ void OPENGL_SetBlendState(
 		blendState->alphaDestinationBlend == FNA3D_BLEND_ZERO
 	);
 
-	if (newEnable != device->alphaBlendEnable)
+	if (newEnable != renderer->alphaBlendEnable)
 	{
-		device->alphaBlendEnable = newEnable;
-		ToggleGLState(device, GL_BLEND, device->alphaBlendEnable);
+		renderer->alphaBlendEnable = newEnable;
+		ToggleGLState(renderer, GL_BLEND, renderer->alphaBlendEnable);
 	}
 
-	if (device->alphaBlendEnable)
+	if (renderer->alphaBlendEnable)
 	{
-		if (	blendState->blendFactor.r != device->blendColor.r ||
-			blendState->blendFactor.g != device->blendColor.g ||
-			blendState->blendFactor.b != device->blendColor.b ||
-			blendState->blendFactor.a != device->blendColor.a	)
+		if (	blendState->blendFactor.r != renderer->blendColor.r ||
+			blendState->blendFactor.g != renderer->blendColor.g ||
+			blendState->blendFactor.b != renderer->blendColor.b ||
+			blendState->blendFactor.a != renderer->blendColor.a	)
 		{
-			device->blendColor = blendState->blendFactor;
-			device->glBlendColor(
-				device->blendColor.r / 255.0f,
-				device->blendColor.g / 255.0f,
-				device->blendColor.b / 255.0f,
-				device->blendColor.a / 255.0f
+			renderer->blendColor = blendState->blendFactor;
+			renderer->glBlendColor(
+				renderer->blendColor.r / 255.0f,
+				renderer->blendColor.g / 255.0f,
+				renderer->blendColor.b / 255.0f,
+				renderer->blendColor.a / 255.0f
 			);
 		}
 
-		if (	blendState->colorSourceBlend != device->srcBlend ||
-			blendState->colorDestinationBlend != device->dstBlend ||
-			blendState->alphaSourceBlend != device->srcBlendAlpha ||
-			blendState->alphaDestinationBlend != device->dstBlendAlpha	)
+		if (	blendState->colorSourceBlend != renderer->srcBlend ||
+			blendState->colorDestinationBlend != renderer->dstBlend ||
+			blendState->alphaSourceBlend != renderer->srcBlendAlpha ||
+			blendState->alphaDestinationBlend != renderer->dstBlendAlpha	)
 		{
-			device->srcBlend = blendState->colorSourceBlend;
-			device->dstBlend = blendState->colorDestinationBlend;
-			device->srcBlendAlpha = blendState->alphaSourceBlend;
-			device->dstBlendAlpha = blendState->alphaDestinationBlend;
-			device->glBlendFuncSeparate(
-				XNAToGL_BlendMode[device->srcBlend],
-				XNAToGL_BlendMode[device->dstBlend],
-				XNAToGL_BlendMode[device->srcBlendAlpha],
-				XNAToGL_BlendMode[device->dstBlendAlpha]
+			renderer->srcBlend = blendState->colorSourceBlend;
+			renderer->dstBlend = blendState->colorDestinationBlend;
+			renderer->srcBlendAlpha = blendState->alphaSourceBlend;
+			renderer->dstBlendAlpha = blendState->alphaDestinationBlend;
+			renderer->glBlendFuncSeparate(
+				XNAToGL_BlendMode[renderer->srcBlend],
+				XNAToGL_BlendMode[renderer->dstBlend],
+				XNAToGL_BlendMode[renderer->srcBlendAlpha],
+				XNAToGL_BlendMode[renderer->dstBlendAlpha]
 			);
 		}
 
-		if (	blendState->colorBlendFunction != device->blendOp ||
-			blendState->alphaBlendFunction != device->blendOpAlpha	)
+		if (	blendState->colorBlendFunction != renderer->blendOp ||
+			blendState->alphaBlendFunction != renderer->blendOpAlpha	)
 		{
-			device->blendOp = blendState->colorBlendFunction;
-			device->blendOpAlpha = blendState->alphaBlendFunction;
-			device->glBlendEquationSeparate(
-				XNAToGL_BlendEquation[device->blendOp],
-				XNAToGL_BlendEquation[device->blendOpAlpha]
+			renderer->blendOp = blendState->colorBlendFunction;
+			renderer->blendOpAlpha = blendState->alphaBlendFunction;
+			renderer->glBlendEquationSeparate(
+				XNAToGL_BlendEquation[renderer->blendOp],
+				XNAToGL_BlendEquation[renderer->blendOpAlpha]
 			);
 		}
 	}
 
-	if (blendState->colorWriteEnable != device->colorWriteEnable)
+	if (blendState->colorWriteEnable != renderer->colorWriteEnable)
 	{
-		device->colorWriteEnable = blendState->colorWriteEnable;
-		device->glColorMask(
-			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_RED) != 0,
-			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
-			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_BLUE) != 0,
-			(device->colorWriteEnable & FNA3D_COLORWRITECHANNELS_ALPHA) != 0
+		renderer->colorWriteEnable = blendState->colorWriteEnable;
+		renderer->glColorMask(
+			(renderer->colorWriteEnable & FNA3D_COLORWRITECHANNELS_RED) != 0,
+			(renderer->colorWriteEnable & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
+			(renderer->colorWriteEnable & FNA3D_COLORWRITECHANNELS_BLUE) != 0,
+			(renderer->colorWriteEnable & FNA3D_COLORWRITECHANNELS_ALPHA) != 0
 		);
 	}
 	/* FIXME: So how exactly do we factor in
@@ -1654,56 +1654,56 @@ void OPENGL_SetBlendState(
 	 * EXT_draw_buffers2?
 	 * -flibit
 	 */
-	if (blendState->colorWriteEnable1 != device->colorWriteEnable1)
+	if (blendState->colorWriteEnable1 != renderer->colorWriteEnable1)
 	{
-		device->colorWriteEnable1 = blendState->colorWriteEnable1;
-		device->glColorMaski(
+		renderer->colorWriteEnable1 = blendState->colorWriteEnable1;
+		renderer->glColorMaski(
 			1,
-			(device->colorWriteEnable1 & FNA3D_COLORWRITECHANNELS_RED) != 0,
-			(device->colorWriteEnable1 & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
-			(device->colorWriteEnable1 & FNA3D_COLORWRITECHANNELS_BLUE) != 0,
-			(device->colorWriteEnable1 & FNA3D_COLORWRITECHANNELS_ALPHA) != 0
+			(renderer->colorWriteEnable1 & FNA3D_COLORWRITECHANNELS_RED) != 0,
+			(renderer->colorWriteEnable1 & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
+			(renderer->colorWriteEnable1 & FNA3D_COLORWRITECHANNELS_BLUE) != 0,
+			(renderer->colorWriteEnable1 & FNA3D_COLORWRITECHANNELS_ALPHA) != 0
 		);
 	}
-	if (blendState->colorWriteEnable2 != device->colorWriteEnable2)
+	if (blendState->colorWriteEnable2 != renderer->colorWriteEnable2)
 	{
-		device->colorWriteEnable2 = blendState->colorWriteEnable2;
-		device->glColorMaski(
+		renderer->colorWriteEnable2 = blendState->colorWriteEnable2;
+		renderer->glColorMaski(
 			2,
-			(device->colorWriteEnable2 & FNA3D_COLORWRITECHANNELS_RED) != 0,
-			(device->colorWriteEnable2 & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
-			(device->colorWriteEnable2 & FNA3D_COLORWRITECHANNELS_BLUE) != 0,
-			(device->colorWriteEnable2 & FNA3D_COLORWRITECHANNELS_ALPHA) != 0
+			(renderer->colorWriteEnable2 & FNA3D_COLORWRITECHANNELS_RED) != 0,
+			(renderer->colorWriteEnable2 & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
+			(renderer->colorWriteEnable2 & FNA3D_COLORWRITECHANNELS_BLUE) != 0,
+			(renderer->colorWriteEnable2 & FNA3D_COLORWRITECHANNELS_ALPHA) != 0
 		);
 	}
-	if (blendState->colorWriteEnable3 != device->colorWriteEnable3)
+	if (blendState->colorWriteEnable3 != renderer->colorWriteEnable3)
 	{
-		device->colorWriteEnable3 = blendState->colorWriteEnable3;
-		device->glColorMaski(
+		renderer->colorWriteEnable3 = blendState->colorWriteEnable3;
+		renderer->glColorMaski(
 			3,
-			(device->colorWriteEnable3 & FNA3D_COLORWRITECHANNELS_RED) != 0,
-			(device->colorWriteEnable3 & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
-			(device->colorWriteEnable3 & FNA3D_COLORWRITECHANNELS_BLUE) != 0,
-			(device->colorWriteEnable3 & FNA3D_COLORWRITECHANNELS_ALPHA) != 0
+			(renderer->colorWriteEnable3 & FNA3D_COLORWRITECHANNELS_RED) != 0,
+			(renderer->colorWriteEnable3 & FNA3D_COLORWRITECHANNELS_GREEN) != 0,
+			(renderer->colorWriteEnable3 & FNA3D_COLORWRITECHANNELS_BLUE) != 0,
+			(renderer->colorWriteEnable3 & FNA3D_COLORWRITECHANNELS_ALPHA) != 0
 		);
 	}
 
-	if (blendState->multiSampleMask != device->multiSampleMask)
+	if (blendState->multiSampleMask != renderer->multiSampleMask)
 	{
 		if (blendState->multiSampleMask == -1)
 		{
-			device->glDisable(GL_SAMPLE_MASK);
+			renderer->glDisable(GL_SAMPLE_MASK);
 		}
 		else
 		{
-			if (device->multiSampleMask == -1)
+			if (renderer->multiSampleMask == -1)
 			{
-				device->glEnable(GL_SAMPLE_MASK);
+				renderer->glEnable(GL_SAMPLE_MASK);
 			}
 			/* FIXME: index...? -flibit */
-			device->glSampleMaski(0, (uint32_t) blendState->multiSampleMask);
+			renderer->glSampleMaski(0, (uint32_t) blendState->multiSampleMask);
 		}
-		device->multiSampleMask = blendState->multiSampleMask;
+		renderer->multiSampleMask = blendState->multiSampleMask;
 	}
 }
 
@@ -1711,105 +1711,105 @@ void OPENGL_SetDepthStencilState(
 	FNA3D_Renderer *driverData,
 	FNA3D_DepthStencilState *depthStencilState
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 
-	if (depthStencilState->depthBufferEnable != device->zEnable)
+	if (depthStencilState->depthBufferEnable != renderer->zEnable)
 	{
-		device->zEnable = depthStencilState->depthBufferEnable;
-		ToggleGLState(device, GL_DEPTH_TEST, device->zEnable);
+		renderer->zEnable = depthStencilState->depthBufferEnable;
+		ToggleGLState(renderer, GL_DEPTH_TEST, renderer->zEnable);
 	}
 
-	if (device->zEnable)
+	if (renderer->zEnable)
 	{
-		if (depthStencilState->depthBufferWriteEnable != device->zWriteEnable)
+		if (depthStencilState->depthBufferWriteEnable != renderer->zWriteEnable)
 		{
-			device->zWriteEnable = depthStencilState->depthBufferWriteEnable;
-			device->glDepthMask(device->zWriteEnable);
+			renderer->zWriteEnable = depthStencilState->depthBufferWriteEnable;
+			renderer->glDepthMask(renderer->zWriteEnable);
 		}
 
-		if (depthStencilState->depthBufferFunction != device->depthFunc)
+		if (depthStencilState->depthBufferFunction != renderer->depthFunc)
 		{
-			device->depthFunc = depthStencilState->depthBufferFunction;
-			device->glDepthFunc(XNAToGL_CompareFunc[device->depthFunc]);
+			renderer->depthFunc = depthStencilState->depthBufferFunction;
+			renderer->glDepthFunc(XNAToGL_CompareFunc[renderer->depthFunc]);
 		}
 	}
 
-	if (depthStencilState->stencilEnable != device->stencilEnable)
+	if (depthStencilState->stencilEnable != renderer->stencilEnable)
 	{
-		device->stencilEnable = depthStencilState->stencilEnable;
-		ToggleGLState(device, GL_STENCIL_TEST, device->stencilEnable);
+		renderer->stencilEnable = depthStencilState->stencilEnable;
+		ToggleGLState(renderer, GL_STENCIL_TEST, renderer->stencilEnable);
 	}
 
-	if (device->stencilEnable)
+	if (renderer->stencilEnable)
 	{
-		if (depthStencilState->stencilWriteMask != device->stencilWriteMask)
+		if (depthStencilState->stencilWriteMask != renderer->stencilWriteMask)
 		{
-			device->stencilWriteMask = depthStencilState->stencilWriteMask;
-			device->glStencilMask(device->stencilWriteMask);
+			renderer->stencilWriteMask = depthStencilState->stencilWriteMask;
+			renderer->glStencilMask(renderer->stencilWriteMask);
 		}
 
 		/* TODO: Can we split up StencilFunc/StencilOp nicely? -flibit */
-		if (	depthStencilState->twoSidedStencilMode != device->separateStencilEnable ||
-			depthStencilState->referenceStencil != device->stencilRef ||
-			depthStencilState->stencilMask != device->stencilMask ||
-			depthStencilState->stencilFunction != device->stencilFunc ||
-			depthStencilState->ccwStencilFunction != device->ccwStencilFunc ||
-			depthStencilState->stencilFail != device->stencilFail ||
-			depthStencilState->stencilDepthBufferFail != device->stencilZFail ||
-			depthStencilState->stencilPass != device->stencilPass ||
-			depthStencilState->ccwStencilFail != device->ccwStencilFail ||
-			depthStencilState->ccwStencilDepthBufferFail != device->ccwStencilZFail ||
-			depthStencilState->ccwStencilPass != device->ccwStencilPass			)
+		if (	depthStencilState->twoSidedStencilMode != renderer->separateStencilEnable ||
+			depthStencilState->referenceStencil != renderer->stencilRef ||
+			depthStencilState->stencilMask != renderer->stencilMask ||
+			depthStencilState->stencilFunction != renderer->stencilFunc ||
+			depthStencilState->ccwStencilFunction != renderer->ccwStencilFunc ||
+			depthStencilState->stencilFail != renderer->stencilFail ||
+			depthStencilState->stencilDepthBufferFail != renderer->stencilZFail ||
+			depthStencilState->stencilPass != renderer->stencilPass ||
+			depthStencilState->ccwStencilFail != renderer->ccwStencilFail ||
+			depthStencilState->ccwStencilDepthBufferFail != renderer->ccwStencilZFail ||
+			depthStencilState->ccwStencilPass != renderer->ccwStencilPass			)
 		{
-			device->separateStencilEnable = depthStencilState->twoSidedStencilMode;
-			device->stencilRef = depthStencilState->referenceStencil;
-			device->stencilMask = depthStencilState->stencilMask;
-			device->stencilFunc = depthStencilState->stencilFunction;
-			device->stencilFail = depthStencilState->stencilFail;
-			device->stencilZFail = depthStencilState->stencilDepthBufferFail;
-			device->stencilPass = depthStencilState->stencilPass;
-			if (device->separateStencilEnable)
+			renderer->separateStencilEnable = depthStencilState->twoSidedStencilMode;
+			renderer->stencilRef = depthStencilState->referenceStencil;
+			renderer->stencilMask = depthStencilState->stencilMask;
+			renderer->stencilFunc = depthStencilState->stencilFunction;
+			renderer->stencilFail = depthStencilState->stencilFail;
+			renderer->stencilZFail = depthStencilState->stencilDepthBufferFail;
+			renderer->stencilPass = depthStencilState->stencilPass;
+			if (renderer->separateStencilEnable)
 			{
-				device->ccwStencilFunc = depthStencilState->ccwStencilFunction;
-				device->ccwStencilFail = depthStencilState->ccwStencilFail;
-				device->ccwStencilZFail = depthStencilState->ccwStencilDepthBufferFail;
-				device->ccwStencilPass = depthStencilState->ccwStencilPass;
-				device->glStencilFuncSeparate(
+				renderer->ccwStencilFunc = depthStencilState->ccwStencilFunction;
+				renderer->ccwStencilFail = depthStencilState->ccwStencilFail;
+				renderer->ccwStencilZFail = depthStencilState->ccwStencilDepthBufferFail;
+				renderer->ccwStencilPass = depthStencilState->ccwStencilPass;
+				renderer->glStencilFuncSeparate(
 					GL_FRONT,
-					XNAToGL_CompareFunc[device->stencilFunc],
-					device->stencilRef,
-					device->stencilMask
+					XNAToGL_CompareFunc[renderer->stencilFunc],
+					renderer->stencilRef,
+					renderer->stencilMask
 				);
-				device->glStencilFuncSeparate(
+				renderer->glStencilFuncSeparate(
 					GL_BACK,
-					XNAToGL_CompareFunc[device->ccwStencilFunc],
-					device->stencilRef,
-					device->stencilMask
+					XNAToGL_CompareFunc[renderer->ccwStencilFunc],
+					renderer->stencilRef,
+					renderer->stencilMask
 				);
-				device->glStencilOpSeparate(
+				renderer->glStencilOpSeparate(
 					GL_FRONT,
-					XNAToGL_GLStencilOp[device->stencilFail],
-					XNAToGL_GLStencilOp[device->stencilZFail],
-					XNAToGL_GLStencilOp[device->stencilPass]
+					XNAToGL_GLStencilOp[renderer->stencilFail],
+					XNAToGL_GLStencilOp[renderer->stencilZFail],
+					XNAToGL_GLStencilOp[renderer->stencilPass]
 				);
-				device->glStencilOpSeparate(
+				renderer->glStencilOpSeparate(
 					GL_BACK,
-					XNAToGL_GLStencilOp[device->ccwStencilFail],
-					XNAToGL_GLStencilOp[device->ccwStencilZFail],
-					XNAToGL_GLStencilOp[device->ccwStencilPass]
+					XNAToGL_GLStencilOp[renderer->ccwStencilFail],
+					XNAToGL_GLStencilOp[renderer->ccwStencilZFail],
+					XNAToGL_GLStencilOp[renderer->ccwStencilPass]
 				);
 			}
 			else
 			{
-				device->glStencilFunc(
-					XNAToGL_CompareFunc[device->stencilFunc],
-					device->stencilRef,
-					device->stencilMask
+				renderer->glStencilFunc(
+					XNAToGL_CompareFunc[renderer->stencilFunc],
+					renderer->stencilRef,
+					renderer->stencilMask
 				);
-				device->glStencilOp(
-					XNAToGL_GLStencilOp[device->stencilFail],
-					XNAToGL_GLStencilOp[device->stencilZFail],
-					XNAToGL_GLStencilOp[device->stencilPass]
+				renderer->glStencilOp(
+					XNAToGL_GLStencilOp[renderer->stencilFail],
+					XNAToGL_GLStencilOp[renderer->stencilZFail],
+					XNAToGL_GLStencilOp[renderer->stencilPass]
 				);
 			}
 		}
@@ -1820,17 +1820,17 @@ void OPENGL_ApplyRasterizerState(
 	FNA3D_Renderer *driverData,
 	FNA3D_RasterizerState *rasterizerState
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	FNA3D_CullMode actualMode;
 	float realDepthBias;
 
-	if (rasterizerState->scissorTestEnable != device->scissorTestEnable)
+	if (rasterizerState->scissorTestEnable != renderer->scissorTestEnable)
 	{
-		device->scissorTestEnable = rasterizerState->scissorTestEnable;
-		ToggleGLState(device, GL_SCISSOR_TEST, device->scissorTestEnable);
+		renderer->scissorTestEnable = rasterizerState->scissorTestEnable;
+		ToggleGLState(renderer, GL_SCISSOR_TEST, renderer->scissorTestEnable);
 	}
 
-	if (device->renderTargetBound)
+	if (renderer->renderTargetBound)
 	{
 		actualMode = rasterizerState->cullMode;
 	}
@@ -1850,56 +1850,56 @@ void OPENGL_ApplyRasterizerState(
 			);
 		}
 	}
-	if (actualMode != device->cullFrontFace)
+	if (actualMode != renderer->cullFrontFace)
 	{
-		if ((actualMode == FNA3D_CULLMODE_NONE) != (device->cullFrontFace == FNA3D_CULLMODE_NONE))
+		if ((actualMode == FNA3D_CULLMODE_NONE) != (renderer->cullFrontFace == FNA3D_CULLMODE_NONE))
 		{
-			ToggleGLState(device, GL_CULL_FACE, actualMode != FNA3D_CULLMODE_NONE);
+			ToggleGLState(renderer, GL_CULL_FACE, actualMode != FNA3D_CULLMODE_NONE);
 		}
-		device->cullFrontFace = actualMode;
-		if (device->cullFrontFace != FNA3D_CULLMODE_NONE)
+		renderer->cullFrontFace = actualMode;
+		if (renderer->cullFrontFace != FNA3D_CULLMODE_NONE)
 		{
-			device->glFrontFace(XNAToGL_FrontFace[device->cullFrontFace]);
+			renderer->glFrontFace(XNAToGL_FrontFace[renderer->cullFrontFace]);
 		}
 	}
 
-	if (rasterizerState->fillMode != device->fillMode)
+	if (rasterizerState->fillMode != renderer->fillMode)
 	{
-		device->fillMode = rasterizerState->fillMode;
-		device->glPolygonMode(
+		renderer->fillMode = rasterizerState->fillMode;
+		renderer->glPolygonMode(
 			GL_FRONT_AND_BACK,
-			XNAToGL_GLFillMode[device->fillMode]
+			XNAToGL_GLFillMode[renderer->fillMode]
 		);
 	}
 
 	realDepthBias = rasterizerState->depthBias * XNAToGL_DepthBiasScale[
-		device->renderTargetBound ?
-			device->currentDepthStencilFormat :
-			device->backbuffer->depthFormat
+		renderer->renderTargetBound ?
+			renderer->currentDepthStencilFormat :
+			renderer->backbuffer->depthFormat
 	];
-	if (	realDepthBias != device->depthBias ||
-		rasterizerState->slopeScaleDepthBias != device->slopeScaleDepthBias	)
+	if (	realDepthBias != renderer->depthBias ||
+		rasterizerState->slopeScaleDepthBias != renderer->slopeScaleDepthBias	)
 	{
 		if (	realDepthBias == 0.0f &&
 			rasterizerState->slopeScaleDepthBias == 0.0f)
 		{
 			/* We're changing to disabled bias, disable! */
-			device->glDisable(GL_POLYGON_OFFSET_FILL);
+			renderer->glDisable(GL_POLYGON_OFFSET_FILL);
 		}
 		else
 		{
-			if (device->depthBias == 0.0f && device->slopeScaleDepthBias == 0.0f)
+			if (renderer->depthBias == 0.0f && renderer->slopeScaleDepthBias == 0.0f)
 			{
 				/* We're changing away from disabled bias, enable! */
-				device->glEnable(GL_POLYGON_OFFSET_FILL);
+				renderer->glEnable(GL_POLYGON_OFFSET_FILL);
 			}
-			device->glPolygonOffset(
+			renderer->glPolygonOffset(
 				rasterizerState->slopeScaleDepthBias,
 				realDepthBias
 			);
 		}
-		device->depthBias = realDepthBias;
-		device->slopeScaleDepthBias = rasterizerState->slopeScaleDepthBias;
+		renderer->depthBias = realDepthBias;
+		renderer->slopeScaleDepthBias = rasterizerState->slopeScaleDepthBias;
 	}
 
 	/* If you're reading this, you have a user with broken MSAA!
@@ -1916,10 +1916,10 @@ void OPENGL_ApplyRasterizerState(
 	 * tell them to install Linux. Yes, really.
 	 * -flibit
 	 */
-	if (rasterizerState->multiSampleAntiAlias != device->multiSampleEnable)
+	if (rasterizerState->multiSampleAntiAlias != renderer->multiSampleEnable)
 	{
-		device->multiSampleEnable = rasterizerState->multiSampleAntiAlias;
-		ToggleGLState(device, GL_MULTISAMPLE, device->multiSampleEnable);
+		renderer->multiSampleEnable = rasterizerState->multiSampleAntiAlias;
+		ToggleGLState(renderer, GL_MULTISAMPLE, renderer->multiSampleEnable);
 	}
 }
 
@@ -1929,29 +1929,29 @@ void OPENGL_VerifySampler(
 	FNA3D_Texture *texture,
 	FNA3D_SamplerState *sampler
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLTexture *tex = (OpenGLTexture*) texture;
 
 	if (texture == NULL)
 	{
-		if (device->textures[index] != &NullTexture)
+		if (renderer->textures[index] != &NullTexture)
 		{
 			if (index != 0)
 			{
-				device->glActiveTexture(GL_TEXTURE0 + index);
+				renderer->glActiveTexture(GL_TEXTURE0 + index);
 			}
-			device->glBindTexture(device->textures[index]->target, 0);
+			renderer->glBindTexture(renderer->textures[index]->target, 0);
 			if (index != 0)
 			{
 				/* Keep this state sane. -flibit */
-				device->glActiveTexture(GL_TEXTURE0);
+				renderer->glActiveTexture(GL_TEXTURE0);
 			}
-			device->textures[index] = &NullTexture;
+			renderer->textures[index] = &NullTexture;
 		}
 		return;
 	}
 
-	if (	tex == device->textures[index] &&
+	if (	tex == renderer->textures[index] &&
 		sampler->addressU == tex->wrapS &&
 		sampler->addressV == tex->wrapT &&
 		sampler->addressW == tex->wrapR &&
@@ -1967,26 +1967,26 @@ void OPENGL_VerifySampler(
 	/* Set the active texture slot */
 	if (index != 0)
 	{
-		device->glActiveTexture(GL_TEXTURE0 + index);
+		renderer->glActiveTexture(GL_TEXTURE0 + index);
 	}
 
 	/* Bind the correct texture */
-	if (tex != device->textures[index])
+	if (tex != renderer->textures[index])
 	{
-		if (tex->target != device->textures[index]->target)
+		if (tex->target != renderer->textures[index]->target)
 		{
 			/* If we're changing targets, unbind the old texture first! */
-			device->glBindTexture(device->textures[index]->target, 0);
+			renderer->glBindTexture(renderer->textures[index]->target, 0);
 		}
-		device->glBindTexture(tex->target, tex->handle);
-		device->textures[index] = tex;
+		renderer->glBindTexture(tex->target, tex->handle);
+		renderer->textures[index] = tex;
 	}
 
 	/* Apply the sampler states to the GL texture */
 	if (sampler->addressU != tex->wrapS)
 	{
 		tex->wrapS = sampler->addressU;
-		device->glTexParameteri(
+		renderer->glTexParameteri(
 			tex->target,
 			GL_TEXTURE_WRAP_S,
 			XNAToGL_Wrap[tex->wrapS]
@@ -1995,7 +1995,7 @@ void OPENGL_VerifySampler(
 	if (sampler->addressV != tex->wrapT)
 	{
 		tex->wrapT = sampler->addressV;
-		device->glTexParameteri(
+		renderer->glTexParameteri(
 			tex->target,
 			GL_TEXTURE_WRAP_T,
 			XNAToGL_Wrap[tex->wrapT]
@@ -2004,7 +2004,7 @@ void OPENGL_VerifySampler(
 	if (sampler->addressW != tex->wrapR)
 	{
 		tex->wrapR = sampler->addressW;
-		device->glTexParameteri(
+		renderer->glTexParameteri(
 			tex->target,
 			GL_TEXTURE_WRAP_R,
 			XNAToGL_Wrap[tex->wrapR]
@@ -2015,19 +2015,19 @@ void OPENGL_VerifySampler(
 	{
 		tex->filter = sampler->filter;
 		tex->anisotropy = (float) sampler->maxAnisotropy;
-		device->glTexParameteri(
+		renderer->glTexParameteri(
 			tex->target,
 			GL_TEXTURE_MAG_FILTER,
 			XNAToGL_MagFilter[tex->filter]
 		);
-		device->glTexParameteri(
+		renderer->glTexParameteri(
 			tex->target,
 			GL_TEXTURE_MIN_FILTER,
 			tex->hasMipmaps ?
 				XNAToGL_MinMipFilter[tex->filter] :
 				XNAToGL_MinFilter[tex->filter]
 		);
-		device->glTexParameterf(
+		renderer->glTexParameterf(
 			tex->target,
 			GL_TEXTURE_MAX_ANISOTROPY_EXT,
 			(tex->filter == FNA3D_TEXTUREFILTER_ANISOTROPIC) ?
@@ -2038,16 +2038,16 @@ void OPENGL_VerifySampler(
 	if (sampler->maxMipLevel != tex->maxMipmapLevel)
 	{
 		tex->maxMipmapLevel = sampler->maxMipLevel;
-		device->glTexParameteri(
+		renderer->glTexParameteri(
 			tex->target,
 			GL_TEXTURE_BASE_LEVEL,
 			tex->maxMipmapLevel
 		);
 	}
-	if (sampler->mipMapLevelOfDetailBias != tex->lodBias && !device->useES3)
+	if (sampler->mipMapLevelOfDetailBias != tex->lodBias && !renderer->useES3)
 	{
 		tex->lodBias = sampler->mipMapLevelOfDetailBias;
-		device->glTexParameterf(
+		renderer->glTexParameterf(
 			tex->target,
 			GL_TEXTURE_LOD_BIAS,
 			tex->lodBias
@@ -2057,37 +2057,37 @@ void OPENGL_VerifySampler(
 	if (index != 0)
 	{
 		/* Keep this state sane. -flibit */
-		device->glActiveTexture(GL_TEXTURE0);
+		renderer->glActiveTexture(GL_TEXTURE0);
 	}
 }
 
 /* Vertex State */
 
-static void OPENGL_INTERNAL_FlushGLVertexAttributes(OpenGLDevice *device)
+static void OPENGL_INTERNAL_FlushGLVertexAttributes(OpenGLRenderer *renderer)
 {
 	int32_t i, divisor;
-	for (i = 0; i < device->numVertexAttributes; i += 1)
+	for (i = 0; i < renderer->numVertexAttributes; i += 1)
 	{
-		if (device->attributeEnabled[i])
+		if (renderer->attributeEnabled[i])
 		{
-			device->attributeEnabled[i] = 0;
-			if (!device->previousAttributeEnabled[i])
+			renderer->attributeEnabled[i] = 0;
+			if (!renderer->previousAttributeEnabled[i])
 			{
-				device->glEnableVertexAttribArray(i);
-				device->previousAttributeEnabled[i] = 1;
+				renderer->glEnableVertexAttribArray(i);
+				renderer->previousAttributeEnabled[i] = 1;
 			}
 		}
-		else if (device->previousAttributeEnabled[i])
+		else if (renderer->previousAttributeEnabled[i])
 		{
-			device->glDisableVertexAttribArray(i);
-			device->previousAttributeEnabled[i] = 0;
+			renderer->glDisableVertexAttribArray(i);
+			renderer->previousAttributeEnabled[i] = 0;
 		}
 
-		divisor = device->attributeDivisor[i];
-		if (divisor != device->previousAttributeDivisor[i])
+		divisor = renderer->attributeDivisor[i];
+		if (divisor != renderer->previousAttributeDivisor[i])
 		{
-			device->glVertexAttribDivisor(i, divisor);
-			device->previousAttributeDivisor[i] = divisor;
+			renderer->glVertexAttribDivisor(i, divisor);
+			renderer->previousAttributeDivisor[i] = divisor;
 		}
 	}
 }
@@ -2107,19 +2107,19 @@ void OPENGL_ApplyVertexBufferBindings(
 	FNA3D_VertexDeclaration *vertexDeclaration;
 	OpenGLVertexAttribute *attr;
 	OpenGLBuffer *buffer;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 
-	if (device->supports_ARB_draw_elements_base_vertex)
+	if (renderer->supports_ARB_draw_elements_base_vertex)
 	{
 		baseVertex = 0;
 	}
 
 	if (	bindingsUpdated ||
-		baseVertex != device->ldBaseVertex ||
-		device->currentEffect != device->ldEffect ||
-		device->currentTechnique != device->ldTechnique ||
-		device->currentPass != device->ldPass ||
-		device->effectApplied	)
+		baseVertex != renderer->ldBaseVertex ||
+		renderer->currentEffect != renderer->ldEffect ||
+		renderer->currentTechnique != renderer->ldTechnique ||
+		renderer->currentPass != renderer->ldPass ||
+		renderer->effectApplied	)
 	{
 		/* There's this weird case where you can have overlapping
 		 * vertex usage/index combinations. It seems like the first
@@ -2128,11 +2128,11 @@ void OPENGL_ApplyVertexBufferBindings(
 		 * have to crash :/
 		 * -flibit
 		 */
-		SDL_memset(device->attrUse, '\0', sizeof(device->attrUse));
+		SDL_memset(renderer->attrUse, '\0', sizeof(renderer->attrUse));
 		for (i = 0; i < numBindings; i += 1)
 		{
 			buffer = (OpenGLBuffer*) bindings[i].vertexBuffer;
-			BindVertexBuffer(device, buffer->handle);
+			BindVertexBuffer(renderer, buffer->handle);
 			vertexDeclaration = &bindings[i].vertexDeclaration;
 			basePtr = (uint8_t*) (size_t) (
 				vertexDeclaration->vertexStride *
@@ -2143,12 +2143,12 @@ void OPENGL_ApplyVertexBufferBindings(
 				element = &vertexDeclaration->elements[j];
 				usage = element->vertexElementUsage;
 				index = element->usageIndex;
-				if (device->attrUse[usage][index])
+				if (renderer->attrUse[usage][index])
 				{
 					index = -1;
 					for (k = 0; k < 16; k += 1)
 					{
-						if (!device->attrUse[usage][k])
+						if (!renderer->attrUse[usage][k])
 						{
 							index = k;
 							break;
@@ -2162,7 +2162,7 @@ void OPENGL_ApplyVertexBufferBindings(
 						);
 					}
 				}
-				device->attrUse[usage][index] = 1;
+				renderer->attrUse[usage][index] = 1;
 				attribLoc = MOJOSHADER_glGetVertexAttribLocation(
 					XNAToGL_VertexAttribUsage[usage],
 					index
@@ -2172,8 +2172,8 @@ void OPENGL_ApplyVertexBufferBindings(
 					/* Stream not in use! */
 					continue;
 				}
-				device->attributeEnabled[attribLoc] = 1;
-				attr = &device->attributes[attribLoc];
+				renderer->attributeEnabled[attribLoc] = 1;
+				attr = &renderer->attributes[attribLoc];
 				ptr = basePtr + element->offset;
 				normalized = XNAToGL_VertexAttribNormalized(element);
 				if (	attr->currentBuffer != buffer->handle ||
@@ -2182,7 +2182,7 @@ void OPENGL_ApplyVertexBufferBindings(
 					attr->currentNormalized != normalized ||
 					attr->currentStride != vertexDeclaration->vertexStride	)
 				{
-					device->glVertexAttribPointer(
+					renderer->glVertexAttribPointer(
 						attribLoc,
 						XNAToGL_VertexAttribSize[element->vertexElementFormat],
 						XNAToGL_VertexAttribType[element->vertexElementFormat],
@@ -2196,28 +2196,28 @@ void OPENGL_ApplyVertexBufferBindings(
 					attr->currentNormalized = normalized;
 					attr->currentStride = vertexDeclaration->vertexStride;
 				}
-				if (device->supports_ARB_instanced_arrays)
+				if (renderer->supports_ARB_instanced_arrays)
 				{
-					device->attributeDivisor[attribLoc] = bindings[i].instanceFrequency;
+					renderer->attributeDivisor[attribLoc] = bindings[i].instanceFrequency;
 				}
 			}
 		}
-		OPENGL_INTERNAL_FlushGLVertexAttributes(device);
+		OPENGL_INTERNAL_FlushGLVertexAttributes(renderer);
 
-		device->ldBaseVertex = baseVertex;
-		device->ldEffect = device->currentEffect;
-		device->ldTechnique = device->currentTechnique;
-		device->ldPass = device->currentPass;
-		device->effectApplied = 0;
-		device->ldVertexDeclaration = NULL;
-		device->ldPointer = NULL;
+		renderer->ldBaseVertex = baseVertex;
+		renderer->ldEffect = renderer->currentEffect;
+		renderer->ldTechnique = renderer->currentTechnique;
+		renderer->ldPass = renderer->currentPass;
+		renderer->effectApplied = 0;
+		renderer->ldVertexDeclaration = NULL;
+		renderer->ldPointer = NULL;
 	}
 
 	MOJOSHADER_glProgramReady();
 	MOJOSHADER_glProgramViewportInfo(
-		device->viewport.w, device->viewport.h,
-		device->backbuffer->width, device->backbuffer->height,
-		device->renderTargetBound
+		renderer->viewport.w, renderer->viewport.h,
+		renderer->backbuffer->width, renderer->backbuffer->height,
+		renderer->renderTargetBound
 	);
 }
 
@@ -2233,17 +2233,17 @@ void OPENGL_ApplyVertexDeclaration(
 	uint8_t normalized;
 	uint8_t *finalPtr;
 	uint8_t *basePtr = (uint8_t*) ptr;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 
-	BindVertexBuffer(device, 0);
+	BindVertexBuffer(renderer, 0);
 	basePtr += (vertexDeclaration->vertexStride * vertexOffset);
 
-	if (	vertexDeclaration != device->ldVertexDeclaration ||
-		basePtr != device->ldPointer ||
-		device->currentEffect != device->ldEffect ||
-		device->currentTechnique != device->ldTechnique ||
-		device->currentPass != device->ldPass ||
-		device->effectApplied	)
+	if (	vertexDeclaration != renderer->ldVertexDeclaration ||
+		basePtr != renderer->ldPointer ||
+		renderer->currentEffect != renderer->ldEffect ||
+		renderer->currentTechnique != renderer->ldTechnique ||
+		renderer->currentPass != renderer->ldPass ||
+		renderer->effectApplied	)
 	{
 		/* There's this weird case where you can have overlapping
 		 * vertex usage/index combinations. It seems like the first
@@ -2252,18 +2252,18 @@ void OPENGL_ApplyVertexDeclaration(
 		 * have to crash :/
 		 * -flibit
 		 */
-		SDL_memset(device->attrUse, '\0', sizeof(device->attrUse));
+		SDL_memset(renderer->attrUse, '\0', sizeof(renderer->attrUse));
 		for (i = 0; i < vertexDeclaration->elementCount; i += 1)
 		{
 			element = &vertexDeclaration->elements[i];
 			usage = element->vertexElementUsage;
 			index = element->usageIndex;
-			if (device->attrUse[usage][index])
+			if (renderer->attrUse[usage][index])
 			{
 				index = -1;
 				for (j = 0; j < 16; j += 1)
 				{
-					if (!device->attrUse[usage][j])
+					if (!renderer->attrUse[usage][j])
 					{
 						index = j;
 						break;
@@ -2277,7 +2277,7 @@ void OPENGL_ApplyVertexDeclaration(
 					);
 				}
 			}
-			device->attrUse[usage][index] = 1;
+			renderer->attrUse[usage][index] = 1;
 			attribLoc = MOJOSHADER_glGetVertexAttribLocation(
 				XNAToGL_VertexAttribUsage[usage],
 				index
@@ -2287,8 +2287,8 @@ void OPENGL_ApplyVertexDeclaration(
 				/* Stream not used! */
 				continue;
 			}
-			device->attributeEnabled[attribLoc] = 1;
-			attr = &device->attributes[attribLoc];
+			renderer->attributeEnabled[attribLoc] = 1;
+			attr = &renderer->attributes[attribLoc];
 			finalPtr = basePtr + element->offset;
 			normalized = XNAToGL_VertexAttribNormalized(element);
 			if (	attr->currentBuffer != 0 ||
@@ -2297,7 +2297,7 @@ void OPENGL_ApplyVertexDeclaration(
 				attr->currentNormalized != normalized ||
 				attr->currentStride != vertexDeclaration->vertexStride	)
 			{
-				device->glVertexAttribPointer(
+				renderer->glVertexAttribPointer(
 					attribLoc,
 					XNAToGL_VertexAttribSize[element->vertexElementFormat],
 					XNAToGL_VertexAttribType[element->vertexElementFormat],
@@ -2311,24 +2311,24 @@ void OPENGL_ApplyVertexDeclaration(
 				attr->currentNormalized = normalized;
 				attr->currentStride = vertexDeclaration->vertexStride;
 			}
-			device->attributeDivisor[attribLoc] = 0;
+			renderer->attributeDivisor[attribLoc] = 0;
 		}
-		OPENGL_INTERNAL_FlushGLVertexAttributes(device);
+		OPENGL_INTERNAL_FlushGLVertexAttributes(renderer);
 
-		device->ldVertexDeclaration = vertexDeclaration;
-		device->ldPointer = ptr;
-		device->ldEffect = device->currentEffect;
-		device->ldTechnique = device->currentTechnique;
-		device->ldPass = device->currentPass;
-		device->effectApplied = 0;
-		device->ldBaseVertex = -1;
+		renderer->ldVertexDeclaration = vertexDeclaration;
+		renderer->ldPointer = ptr;
+		renderer->ldEffect = renderer->currentEffect;
+		renderer->ldTechnique = renderer->currentTechnique;
+		renderer->ldPass = renderer->currentPass;
+		renderer->effectApplied = 0;
+		renderer->ldBaseVertex = -1;
 	}
 
 	MOJOSHADER_glProgramReady();
 	MOJOSHADER_glProgramViewportInfo(
-		device->viewport.w, device->viewport.h,
-		device->backbuffer->width, device->backbuffer->height,
-		device->renderTargetBound
+		renderer->viewport.w, renderer->viewport.h,
+		renderer->backbuffer->width, renderer->backbuffer->height,
+		renderer->renderTargetBound
 	);
 }
 
@@ -2341,7 +2341,7 @@ void OPENGL_SetRenderTargets(
 	FNA3D_Renderbuffer *renderbuffer,
 	FNA3D_DepthFormat depthFormat
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLRenderbuffer *rb = (OpenGLRenderbuffer*) renderbuffer;
 	FNA3D_RenderTargetBinding rt;
 	int32_t i;
@@ -2351,18 +2351,18 @@ void OPENGL_SetRenderTargets(
 	if (renderTargets == NULL)
 	{
 		BindFramebuffer(
-			device,
-			device->backbuffer->type == BACKBUFFER_TYPE_OPENGL ?
-				device->backbuffer->opengl.handle :
-				device->realBackbufferFBO
+			renderer,
+			renderer->backbuffer->type == BACKBUFFER_TYPE_OPENGL ?
+				renderer->backbuffer->opengl.handle :
+				renderer->realBackbufferFBO
 		);
-		device->renderTargetBound = 0;
+		renderer->renderTargetBound = 0;
 		return;
 	}
 	else
 	{
-		BindFramebuffer(device, device->targetFramebuffer);
-		device->renderTargetBound = 1;
+		BindFramebuffer(renderer, renderer->targetFramebuffer);
+		renderer->renderTargetBound = 1;
 	}
 
 	for (i = 0; i < numRenderTargets; i += 1)
@@ -2370,19 +2370,19 @@ void OPENGL_SetRenderTargets(
 		rt = renderTargets[i];
 		if (rt.colorBuffer != NULL)
 		{
-			device->attachments[i] = ((OpenGLRenderbuffer*) rt.colorBuffer)->handle;
-			device->attachmentTypes[i] = GL_RENDERBUFFER;
+			renderer->attachments[i] = ((OpenGLRenderbuffer*) rt.colorBuffer)->handle;
+			renderer->attachmentTypes[i] = GL_RENDERBUFFER;
 		}
 		else
 		{
-			device->attachments[i] = ((OpenGLTexture*) rt.texture)->handle;
+			renderer->attachments[i] = ((OpenGLTexture*) rt.texture)->handle;
 			if (rt.type == RENDERTARGET_TYPE_2D)
 			{
-				device->attachmentTypes[i] = GL_TEXTURE_2D;
+				renderer->attachmentTypes[i] = GL_TEXTURE_2D;
 			}
 			else
 			{
-				device->attachmentTypes[i] = GL_TEXTURE_CUBE_MAP_POSITIVE_X + rt.cubeMapFace;
+				renderer->attachmentTypes[i] = GL_TEXTURE_CUBE_MAP_POSITIVE_X + rt.cubeMapFace;
 			}
 		}
 	}
@@ -2390,74 +2390,74 @@ void OPENGL_SetRenderTargets(
 	/* Update the color attachments, DrawBuffers state */
 	for (i = 0; i < numRenderTargets; i += 1)
 	{
-		if (device->attachments[i] != device->currentAttachments[i])
+		if (renderer->attachments[i] != renderer->currentAttachments[i])
 		{
-			if (device->currentAttachments[i] != 0)
+			if (renderer->currentAttachments[i] != 0)
 			{
-				if (	device->attachmentTypes[i] != GL_RENDERBUFFER &&
-					device->currentAttachmentTypes[i] == GL_RENDERBUFFER	)
+				if (	renderer->attachmentTypes[i] != GL_RENDERBUFFER &&
+					renderer->currentAttachmentTypes[i] == GL_RENDERBUFFER	)
 				{
-					device->glFramebufferRenderbuffer(
+					renderer->glFramebufferRenderbuffer(
 						GL_FRAMEBUFFER,
 						GL_COLOR_ATTACHMENT0 + i,
 						GL_RENDERBUFFER,
 						0
 					);
 				}
-				else if (	device->attachmentTypes[i] == GL_RENDERBUFFER &&
-						device->currentAttachmentTypes[i] != GL_RENDERBUFFER	)
+				else if (	renderer->attachmentTypes[i] == GL_RENDERBUFFER &&
+						renderer->currentAttachmentTypes[i] != GL_RENDERBUFFER	)
 				{
-					device->glFramebufferTexture2D(
+					renderer->glFramebufferTexture2D(
 						GL_FRAMEBUFFER,
 						GL_COLOR_ATTACHMENT0 + i,
-						device->currentAttachmentTypes[i],
+						renderer->currentAttachmentTypes[i],
 						0,
 						0
 					);
 				}
 			}
-			if (device->attachmentTypes[i] == GL_RENDERBUFFER)
+			if (renderer->attachmentTypes[i] == GL_RENDERBUFFER)
 			{
-				device->glFramebufferRenderbuffer(
+				renderer->glFramebufferRenderbuffer(
 					GL_FRAMEBUFFER,
 					GL_COLOR_ATTACHMENT0 + i,
 					GL_RENDERBUFFER,
-					device->attachments[i]
+					renderer->attachments[i]
 				);
 			}
 			else
 			{
-				device->glFramebufferTexture2D(
+				renderer->glFramebufferTexture2D(
 					GL_FRAMEBUFFER,
 					GL_COLOR_ATTACHMENT0 + i,
-					device->attachmentTypes[i],
-					device->attachments[i],
+					renderer->attachmentTypes[i],
+					renderer->attachments[i],
 					0
 				);
 			}
-			device->currentAttachments[i] = device->attachments[i];
-			device->currentAttachmentTypes[i] = device->attachmentTypes[i];
+			renderer->currentAttachments[i] = renderer->attachments[i];
+			renderer->currentAttachmentTypes[i] = renderer->attachmentTypes[i];
 		}
-		else if (device->attachmentTypes[i] != device->currentAttachmentTypes[i])
+		else if (renderer->attachmentTypes[i] != renderer->currentAttachmentTypes[i])
 		{
 			/* Texture cube face change! */
-			device->glFramebufferTexture2D(
+			renderer->glFramebufferTexture2D(
 				GL_FRAMEBUFFER,
 				GL_COLOR_ATTACHMENT0 + i,
-				device->attachmentTypes[i],
-				device->attachments[i],
+				renderer->attachmentTypes[i],
+				renderer->attachments[i],
 				0
 			);
-			device->currentAttachmentTypes[i] = device->attachmentTypes[i];
+			renderer->currentAttachmentTypes[i] = renderer->attachmentTypes[i];
 		}
 	}
-	while (i < device->numAttachments)
+	while (i < renderer->numAttachments)
 	{
-		if (device->currentAttachments[i] != 0)
+		if (renderer->currentAttachments[i] != 0)
 		{
-			if (device->currentAttachmentTypes[i] == GL_RENDERBUFFER)
+			if (renderer->currentAttachmentTypes[i] == GL_RENDERBUFFER)
 			{
-				device->glFramebufferRenderbuffer(
+				renderer->glFramebufferRenderbuffer(
 					GL_FRAMEBUFFER,
 					GL_COLOR_ATTACHMENT0 + i,
 					GL_RENDERBUFFER,
@@ -2466,23 +2466,23 @@ void OPENGL_SetRenderTargets(
 			}
 			else
 			{
-				device->glFramebufferTexture2D(
+				renderer->glFramebufferTexture2D(
 					GL_FRAMEBUFFER,
 					GL_COLOR_ATTACHMENT0 + i,
-					device->currentAttachmentTypes[i],
+					renderer->currentAttachmentTypes[i],
 					0,
 					0
 				);
 			}
-			device->currentAttachments[i] = 0;
-			device->currentAttachmentTypes[i] = GL_TEXTURE_2D;
+			renderer->currentAttachments[i] = 0;
+			renderer->currentAttachmentTypes[i] = GL_TEXTURE_2D;
 		}
 		i += 1;
 	}
-	if (numRenderTargets != device->currentDrawBuffers)
+	if (numRenderTargets != renderer->currentDrawBuffers)
 	{
-		device->glDrawBuffers(numRenderTargets, device->drawBuffersArray);
-		device->currentDrawBuffers = numRenderTargets;
+		renderer->glDrawBuffers(numRenderTargets, renderer->drawBuffersArray);
+		renderer->currentDrawBuffers = numRenderTargets;
 	}
 
 	/* Update the depth/stencil attachment */
@@ -2500,34 +2500,34 @@ void OPENGL_SetRenderTargets(
 	{
 		handle = rb->handle;
 	}
-	if (handle != device->currentRenderbuffer)
+	if (handle != renderer->currentRenderbuffer)
 	{
-		if (device->currentDepthStencilFormat == FNA3D_DEPTHFORMAT_D24S8)
+		if (renderer->currentDepthStencilFormat == FNA3D_DEPTHFORMAT_D24S8)
 		{
-			device->glFramebufferRenderbuffer(
+			renderer->glFramebufferRenderbuffer(
 				GL_FRAMEBUFFER,
 				GL_STENCIL_ATTACHMENT,
 				GL_RENDERBUFFER,
 				0
 			);
 		}
-		device->currentDepthStencilFormat = depthFormat;
-		device->glFramebufferRenderbuffer(
+		renderer->currentDepthStencilFormat = depthFormat;
+		renderer->glFramebufferRenderbuffer(
 			GL_FRAMEBUFFER,
 			GL_DEPTH_ATTACHMENT,
 			GL_RENDERBUFFER,
 			handle
 		);
-		if (device->currentDepthStencilFormat == FNA3D_DEPTHFORMAT_D24S8)
+		if (renderer->currentDepthStencilFormat == FNA3D_DEPTHFORMAT_D24S8)
 		{
-			device->glFramebufferRenderbuffer(
+			renderer->glFramebufferRenderbuffer(
 				GL_FRAMEBUFFER,
 				GL_STENCIL_ATTACHMENT,
 				GL_RENDERBUFFER,
 				handle
 			);
 		}
-		device->currentRenderbuffer = handle;
+		renderer->currentRenderbuffer = handle;
 	}
 }
 
@@ -2535,7 +2535,7 @@ void OPENGL_ResolveTarget(
 	FNA3D_Renderer *driverData,
 	FNA3D_RenderTargetBinding *target
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	int32_t width, height;
 	GLuint prevBuffer;
 	OpenGLTexture *prevTex;
@@ -2548,13 +2548,13 @@ void OPENGL_ResolveTarget(
 
 	if (target->multiSampleCount > 0)
 	{
-		prevBuffer = device->currentDrawFramebuffer;
+		prevBuffer = renderer->currentDrawFramebuffer;
 
 		/* Set up the texture framebuffer */
 		width = target->width;
 		height = target->height;
-		BindFramebuffer(device, device->resolveFramebufferDraw);
-		device->glFramebufferTexture2D(
+		BindFramebuffer(renderer, renderer->resolveFramebufferDraw);
+		renderer->glFramebufferTexture2D(
 			GL_FRAMEBUFFER,
 			GL_COLOR_ATTACHMENT0,
 			textureTarget,
@@ -2563,8 +2563,8 @@ void OPENGL_ResolveTarget(
 		);
 
 		/* Set up the renderbuffer framebuffer */
-		BindFramebuffer(device, device->resolveFramebufferRead);
-		device->glFramebufferRenderbuffer(
+		BindFramebuffer(renderer, renderer->resolveFramebufferRead);
+		renderer->glFramebufferRenderbuffer(
 			GL_FRAMEBUFFER,
 			GL_COLOR_ATTACHMENT0,
 			GL_RENDERBUFFER,
@@ -2572,48 +2572,48 @@ void OPENGL_ResolveTarget(
 		);
 
 		/* Blit! */
-		if (device->scissorTestEnable)
+		if (renderer->scissorTestEnable)
 		{
-			device->glDisable(GL_SCISSOR_TEST);
+			renderer->glDisable(GL_SCISSOR_TEST);
 		}
-		BindDrawFramebuffer(device, device->resolveFramebufferDraw);
-		device->glBlitFramebuffer(
+		BindDrawFramebuffer(renderer, renderer->resolveFramebufferDraw);
+		renderer->glBlitFramebuffer(
 			0, 0, width, height,
 			0, 0, width, height,
 			GL_COLOR_BUFFER_BIT,
 			GL_LINEAR
 		);
 		/* Invalidate the MSAA buffer */
-		if (device->supports_ARB_invalidate_subdata)
+		if (renderer->supports_ARB_invalidate_subdata)
 		{
-			device->glInvalidateFramebuffer(
+			renderer->glInvalidateFramebuffer(
 				GL_READ_FRAMEBUFFER,
-				device->numAttachments + 2,
-				device->drawBuffersArray
+				renderer->numAttachments + 2,
+				renderer->drawBuffersArray
 			);
 		}
-		if (device->scissorTestEnable)
+		if (renderer->scissorTestEnable)
 		{
-			device->glEnable(GL_SCISSOR_TEST);
+			renderer->glEnable(GL_SCISSOR_TEST);
 		}
 
-		BindFramebuffer(device, prevBuffer);
+		BindFramebuffer(renderer, prevBuffer);
 	}
 
 	/* If the target has mipmaps, regenerate them now */
 	if (target->levelCount > 1)
 	{
-		prevTex = device->textures[0];
-		BindTexture(device, rtTex);
-		device->glGenerateMipmap(textureTarget);
-		BindTexture(device, prevTex);
+		prevTex = renderer->textures[0];
+		BindTexture(renderer, rtTex);
+		renderer->glGenerateMipmap(textureTarget);
+		BindTexture(renderer, prevTex);
 	}
 }
 
 /* Backbuffer Functions */
 
 static void OPENGL_INTERNAL_CreateBackbuffer(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	FNA3D_PresentationParameters *parameters
 ) {
 	int32_t useFauxBackbuffer;
@@ -2630,10 +2630,10 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 
 	if (useFauxBackbuffer)
 	{
-		if (	device->backbuffer == NULL ||
-			device->backbuffer->type == BACKBUFFER_TYPE_NULL	)
+		if (	renderer->backbuffer == NULL ||
+			renderer->backbuffer->type == BACKBUFFER_TYPE_NULL	)
 		{
-			if (!device->supports_EXT_framebuffer_blit)
+			if (!renderer->supports_EXT_framebuffer_blit)
 			{
 				SDL_LogError(
 					SDL_LOG_CATEGORY_APPLICATION,
@@ -2642,157 +2642,157 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 				);
 				return;
 			}
-			if (device->backbuffer != NULL)
+			if (renderer->backbuffer != NULL)
 			{
-				SDL_free(device->backbuffer);
+				SDL_free(renderer->backbuffer);
 			}
-			device->backbuffer = (OpenGLBackbuffer*) SDL_malloc(
+			renderer->backbuffer = (OpenGLBackbuffer*) SDL_malloc(
 				sizeof(OpenGLBackbuffer)
 			);
-			device->backbuffer->type = BACKBUFFER_TYPE_OPENGL;
+			renderer->backbuffer->type = BACKBUFFER_TYPE_OPENGL;
 
-			device->backbuffer->width = parameters->backBufferWidth;
-			device->backbuffer->height = parameters->backBufferHeight;
-			device->backbuffer->depthFormat = parameters->depthStencilFormat;
-			device->backbuffer->multiSampleCount = parameters->multiSampleCount;
-			device->backbuffer->opengl.texture = 0;
+			renderer->backbuffer->width = parameters->backBufferWidth;
+			renderer->backbuffer->height = parameters->backBufferHeight;
+			renderer->backbuffer->depthFormat = parameters->depthStencilFormat;
+			renderer->backbuffer->multiSampleCount = parameters->multiSampleCount;
+			renderer->backbuffer->opengl.texture = 0;
 
 			/* Generate and bind the FBO. */
-			device->glGenFramebuffers(
+			renderer->glGenFramebuffers(
 				1,
-				&device->backbuffer->opengl.handle
+				&renderer->backbuffer->opengl.handle
 			);
 			BindFramebuffer(
-				device,
-				device->backbuffer->opengl.handle
+				renderer,
+				renderer->backbuffer->opengl.handle
 			);
 
 			/* Create and attach the color buffer */
-			device->glGenRenderbuffers(
+			renderer->glGenRenderbuffers(
 				1,
-				&device->backbuffer->opengl.colorAttachment
+				&renderer->backbuffer->opengl.colorAttachment
 			);
-			device->glBindRenderbuffer(
+			renderer->glBindRenderbuffer(
 				GL_RENDERBUFFER,
-				device->backbuffer->opengl.colorAttachment
+				renderer->backbuffer->opengl.colorAttachment
 			);
-			if (device->backbuffer->multiSampleCount > 0)
+			if (renderer->backbuffer->multiSampleCount > 0)
 			{
-				device->glRenderbufferStorageMultisample(
+				renderer->glRenderbufferStorageMultisample(
 					GL_RENDERBUFFER,
-					device->backbuffer->multiSampleCount,
+					renderer->backbuffer->multiSampleCount,
 					GL_RGBA8,
-					device->backbuffer->width,
-					device->backbuffer->height
+					renderer->backbuffer->width,
+					renderer->backbuffer->height
 				);
 			}
 			else
 			{
-				device->glRenderbufferStorage(
+				renderer->glRenderbufferStorage(
 					GL_RENDERBUFFER,
 					GL_RGBA8,
-					device->backbuffer->width,
-					device->backbuffer->height
+					renderer->backbuffer->width,
+					renderer->backbuffer->height
 				);
 			}
-			device->glFramebufferRenderbuffer(
+			renderer->glFramebufferRenderbuffer(
 				GL_FRAMEBUFFER,
 				GL_COLOR_ATTACHMENT0,
 				GL_RENDERBUFFER,
-				device->backbuffer->opengl.colorAttachment
+				renderer->backbuffer->opengl.colorAttachment
 			);
 
-			if (device->backbuffer->depthFormat == FNA3D_DEPTHFORMAT_NONE)
+			if (renderer->backbuffer->depthFormat == FNA3D_DEPTHFORMAT_NONE)
 			{
 				/* Don't bother creating a DS buffer */
-				device->backbuffer->opengl.depthStencilAttachment = 0;
+				renderer->backbuffer->opengl.depthStencilAttachment = 0;
 
 				/* Keep this state sane. */
-				device->glBindRenderbuffer(
+				renderer->glBindRenderbuffer(
 					GL_RENDERBUFFER,
-					device->realBackbufferRBO
+					renderer->realBackbufferRBO
 				);
 
 				return;
 			}
 
-			device->glGenRenderbuffers(
+			renderer->glGenRenderbuffers(
 				1,
-				&device->backbuffer->opengl.depthStencilAttachment
+				&renderer->backbuffer->opengl.depthStencilAttachment
 			);
-			device->glBindRenderbuffer(
+			renderer->glBindRenderbuffer(
 				GL_RENDERBUFFER,
-				device->backbuffer->opengl.depthStencilAttachment
+				renderer->backbuffer->opengl.depthStencilAttachment
 			);
-			if (device->backbuffer->multiSampleCount > 0)
+			if (renderer->backbuffer->multiSampleCount > 0)
 			{
-				device->glRenderbufferStorageMultisample(
+				renderer->glRenderbufferStorageMultisample(
 					GL_RENDERBUFFER,
-					device->backbuffer->multiSampleCount,
+					renderer->backbuffer->multiSampleCount,
 					XNAToGL_DepthStorage[
-						device->backbuffer->depthFormat
+						renderer->backbuffer->depthFormat
 					],
-					device->backbuffer->width,
-					device->backbuffer->height
+					renderer->backbuffer->width,
+					renderer->backbuffer->height
 				);
 			}
 			else
 			{
-				device->glRenderbufferStorage(
+				renderer->glRenderbufferStorage(
 					GL_RENDERBUFFER,
 					XNAToGL_DepthStorage[
-						device->backbuffer->depthFormat
+						renderer->backbuffer->depthFormat
 					],
-					device->backbuffer->width,
-					device->backbuffer->height
+					renderer->backbuffer->width,
+					renderer->backbuffer->height
 				);
 			}
-			device->glFramebufferRenderbuffer(
+			renderer->glFramebufferRenderbuffer(
 				GL_FRAMEBUFFER,
 				GL_DEPTH_ATTACHMENT,
 				GL_RENDERBUFFER,
-				device->backbuffer->opengl.depthStencilAttachment
+				renderer->backbuffer->opengl.depthStencilAttachment
 			);
-			if (device->backbuffer->depthFormat == FNA3D_DEPTHFORMAT_D24S8)
+			if (renderer->backbuffer->depthFormat == FNA3D_DEPTHFORMAT_D24S8)
 			{
-				device->glFramebufferRenderbuffer(
+				renderer->glFramebufferRenderbuffer(
 					GL_FRAMEBUFFER,
 					GL_STENCIL_ATTACHMENT,
 					GL_RENDERBUFFER,
-					device->backbuffer->opengl.depthStencilAttachment
+					renderer->backbuffer->opengl.depthStencilAttachment
 				);
 			}
 
 			/* Keep this state sane. */
-			device->glBindRenderbuffer(
+			renderer->glBindRenderbuffer(
 				GL_RENDERBUFFER,
-				device->realBackbufferRBO
+				renderer->realBackbufferRBO
 			);
 		}
 		else
 		{
-			device->backbuffer->width = parameters->backBufferWidth;
-			device->backbuffer->height = parameters->backBufferHeight;
-			device->backbuffer->multiSampleCount = parameters->multiSampleCount;
-			if (device->backbuffer->opengl.texture != 0)
+			renderer->backbuffer->width = parameters->backBufferWidth;
+			renderer->backbuffer->height = parameters->backBufferHeight;
+			renderer->backbuffer->multiSampleCount = parameters->multiSampleCount;
+			if (renderer->backbuffer->opengl.texture != 0)
 			{
-				device->glDeleteTextures(
+				renderer->glDeleteTextures(
 					1,
-					&device->backbuffer->opengl.texture
+					&renderer->backbuffer->opengl.texture
 				);
-				device->backbuffer->opengl.texture = 0;
+				renderer->backbuffer->opengl.texture = 0;
 			}
 
-			if (device->renderTargetBound)
+			if (renderer->renderTargetBound)
 			{
-				device->glBindFramebuffer(
+				renderer->glBindFramebuffer(
 					GL_FRAMEBUFFER,
-					device->backbuffer->opengl.handle
+					renderer->backbuffer->opengl.handle
 				);
 			}
 
 			/* Detach color attachment */
-			device->glFramebufferRenderbuffer(
+			renderer->glFramebufferRenderbuffer(
 				GL_FRAMEBUFFER,
 				GL_COLOR_ATTACHMENT0,
 				GL_RENDERBUFFER,
@@ -2800,17 +2800,17 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 			);
 
 			/* Detach depth/stencil attachment, if applicable */
-			if (device->backbuffer->opengl.depthStencilAttachment != 0)
+			if (renderer->backbuffer->opengl.depthStencilAttachment != 0)
 			{
-				device->glFramebufferRenderbuffer(
+				renderer->glFramebufferRenderbuffer(
 					GL_FRAMEBUFFER,
 					GL_DEPTH_ATTACHMENT,
 					GL_RENDERBUFFER,
 					0
 				);
-				if (device->backbuffer->depthFormat == FNA3D_DEPTHFORMAT_D24S8)
+				if (renderer->backbuffer->depthFormat == FNA3D_DEPTHFORMAT_D24S8)
 				{
-					device->glFramebufferRenderbuffer(
+					renderer->glFramebufferRenderbuffer(
 						GL_FRAMEBUFFER,
 						GL_STENCIL_ATTACHMENT,
 						GL_RENDERBUFFER,
@@ -2820,150 +2820,150 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 			}
 
 			/* Update our color attachment to the new resolution. */
-			device->glBindRenderbuffer(
+			renderer->glBindRenderbuffer(
 				GL_RENDERBUFFER,
-				device->backbuffer->opengl.colorAttachment
+				renderer->backbuffer->opengl.colorAttachment
 			);
-			if (device->backbuffer->multiSampleCount > 0)
+			if (renderer->backbuffer->multiSampleCount > 0)
 			{
-				device->glRenderbufferStorageMultisample(
+				renderer->glRenderbufferStorageMultisample(
 					GL_RENDERBUFFER,
-					device->backbuffer->multiSampleCount,
+					renderer->backbuffer->multiSampleCount,
 					GL_RGBA8,
-					device->backbuffer->width,
-					device->backbuffer->height
+					renderer->backbuffer->width,
+					renderer->backbuffer->height
 				);
 			}
 			else
 			{
-				device->glRenderbufferStorage(
+				renderer->glRenderbufferStorage(
 					GL_RENDERBUFFER,
 					GL_RGBA8,
-					device->backbuffer->width,
-					device->backbuffer->height
+					renderer->backbuffer->width,
+					renderer->backbuffer->height
 				);
 			}
-			device->glFramebufferRenderbuffer(
+			renderer->glFramebufferRenderbuffer(
 				GL_FRAMEBUFFER,
 				GL_COLOR_ATTACHMENT0,
 				GL_RENDERBUFFER,
-				device->backbuffer->opengl.colorAttachment
+				renderer->backbuffer->opengl.colorAttachment
 			);
 
 			/* Generate/Delete depth/stencil attachment, if needed */
 			if (parameters->depthStencilFormat == FNA3D_DEPTHFORMAT_NONE)
 			{
-				if (device->backbuffer->opengl.depthStencilAttachment != 0)
+				if (renderer->backbuffer->opengl.depthStencilAttachment != 0)
 				{
-					device->glDeleteRenderbuffers(
+					renderer->glDeleteRenderbuffers(
 						1,
-						&device->backbuffer->opengl.depthStencilAttachment
+						&renderer->backbuffer->opengl.depthStencilAttachment
 					);
-					device->backbuffer->opengl.depthStencilAttachment = 0;
+					renderer->backbuffer->opengl.depthStencilAttachment = 0;
 				}
 			}
-			else if (device->backbuffer->opengl.depthStencilAttachment == 0)
+			else if (renderer->backbuffer->opengl.depthStencilAttachment == 0)
 			{
-				device->glGenRenderbuffers(
+				renderer->glGenRenderbuffers(
 					1,
-					&device->backbuffer->opengl.depthStencilAttachment
+					&renderer->backbuffer->opengl.depthStencilAttachment
 				);
 			}
 
 			/* Update the depth/stencil buffer, if applicable */
-			device->backbuffer->depthFormat = parameters->depthStencilFormat;
-			if (device->backbuffer->opengl.depthStencilAttachment != 0)
+			renderer->backbuffer->depthFormat = parameters->depthStencilFormat;
+			if (renderer->backbuffer->opengl.depthStencilAttachment != 0)
 			{
-				device->glBindRenderbuffer(
+				renderer->glBindRenderbuffer(
 					GL_RENDERBUFFER,
-					device->backbuffer->opengl.depthStencilAttachment
+					renderer->backbuffer->opengl.depthStencilAttachment
 				);
-				if (device->backbuffer->multiSampleCount > 0)
+				if (renderer->backbuffer->multiSampleCount > 0)
 				{
-					device->glRenderbufferStorageMultisample(
+					renderer->glRenderbufferStorageMultisample(
 						GL_RENDERBUFFER,
-						device->backbuffer->multiSampleCount,
-						XNAToGL_DepthStorage[device->backbuffer->depthFormat],
-						device->backbuffer->width,
-						device->backbuffer->height
+						renderer->backbuffer->multiSampleCount,
+						XNAToGL_DepthStorage[renderer->backbuffer->depthFormat],
+						renderer->backbuffer->width,
+						renderer->backbuffer->height
 					);
 				}
 				else
 				{
-					device->glRenderbufferStorage(
+					renderer->glRenderbufferStorage(
 						GL_RENDERBUFFER,
-						XNAToGL_DepthStorage[device->backbuffer->depthFormat],
-						device->backbuffer->width,
-						device->backbuffer->height
+						XNAToGL_DepthStorage[renderer->backbuffer->depthFormat],
+						renderer->backbuffer->width,
+						renderer->backbuffer->height
 					);
 				}
-				device->glFramebufferRenderbuffer(
+				renderer->glFramebufferRenderbuffer(
 					GL_FRAMEBUFFER,
 					GL_DEPTH_ATTACHMENT,
 					GL_RENDERBUFFER,
-					device->backbuffer->opengl.depthStencilAttachment
+					renderer->backbuffer->opengl.depthStencilAttachment
 				);
-				if (device->backbuffer->depthFormat == FNA3D_DEPTHFORMAT_D24S8)
+				if (renderer->backbuffer->depthFormat == FNA3D_DEPTHFORMAT_D24S8)
 				{
-					device->glFramebufferRenderbuffer(
+					renderer->glFramebufferRenderbuffer(
 						GL_FRAMEBUFFER,
 						GL_STENCIL_ATTACHMENT,
 						GL_RENDERBUFFER,
-						device->backbuffer->opengl.depthStencilAttachment
+						renderer->backbuffer->opengl.depthStencilAttachment
 					);
 				}
 			}
 
-			if (device->renderTargetBound)
+			if (renderer->renderTargetBound)
 			{
-				device->glBindFramebuffer(
+				renderer->glBindFramebuffer(
 					GL_FRAMEBUFFER,
-					device->targetFramebuffer
+					renderer->targetFramebuffer
 				);
 			}
 
 			/* Keep this state sane. */
-			device->glBindRenderbuffer(
+			renderer->glBindRenderbuffer(
 				GL_RENDERBUFFER,
-				device->realBackbufferRBO
+				renderer->realBackbufferRBO
 			);
 		}
 	}
 	else
 	{
-		if (	device->backbuffer == NULL ||
-			device->backbuffer->type == BACKBUFFER_TYPE_OPENGL	)
+		if (	renderer->backbuffer == NULL ||
+			renderer->backbuffer->type == BACKBUFFER_TYPE_OPENGL	)
 		{
-			if (device->backbuffer != NULL)
+			if (renderer->backbuffer != NULL)
 			{
-				OPENGL_INTERNAL_DisposeBackbuffer(device);
-				SDL_free(device->backbuffer);
+				OPENGL_INTERNAL_DisposeBackbuffer(renderer);
+				SDL_free(renderer->backbuffer);
 			}
-			device->backbuffer = (OpenGLBackbuffer*) SDL_malloc(
+			renderer->backbuffer = (OpenGLBackbuffer*) SDL_malloc(
 				sizeof(OpenGLBackbuffer)
 			);
-			device->backbuffer->type = BACKBUFFER_TYPE_NULL;
+			renderer->backbuffer->type = BACKBUFFER_TYPE_NULL;
 		}
-		device->backbuffer->width = parameters->backBufferWidth;
-		device->backbuffer->height = parameters->backBufferHeight;
-		device->backbuffer->depthFormat = device->windowDepthFormat;
+		renderer->backbuffer->width = parameters->backBufferWidth;
+		renderer->backbuffer->height = parameters->backBufferHeight;
+		renderer->backbuffer->depthFormat = renderer->windowDepthFormat;
 	}
 }
 
-static void OPENGL_INTERNAL_DisposeBackbuffer(OpenGLDevice *device)
+static void OPENGL_INTERNAL_DisposeBackbuffer(OpenGLRenderer *renderer)
 {
-	#define GLBACKBUFFER device->backbuffer->opengl
+	#define GLBACKBUFFER renderer->backbuffer->opengl
 
-	BindFramebuffer(device, device->realBackbufferFBO);
-	device->glDeleteFramebuffers(1, &GLBACKBUFFER.handle);
-	device->glDeleteRenderbuffers(1, &GLBACKBUFFER.colorAttachment);
+	BindFramebuffer(renderer, renderer->realBackbufferFBO);
+	renderer->glDeleteFramebuffers(1, &GLBACKBUFFER.handle);
+	renderer->glDeleteRenderbuffers(1, &GLBACKBUFFER.colorAttachment);
 	if (GLBACKBUFFER.depthStencilAttachment != 0)
 	{
-		device->glDeleteRenderbuffers(1, &GLBACKBUFFER.depthStencilAttachment);
+		renderer->glDeleteRenderbuffers(1, &GLBACKBUFFER.depthStencilAttachment);
 	}
 	if (GLBACKBUFFER.texture != 0)
 	{
-		device->glDeleteTextures(1, &GLBACKBUFFER.texture);
+		renderer->glDeleteTextures(1, &GLBACKBUFFER.texture);
 	}
 	GLBACKBUFFER.handle = 0;
 
@@ -2983,21 +2983,21 @@ static uint8_t OPENGL_INTERNAL_ReadTargetIfApplicable(
 	int32_t subH
 ) {
 	GLuint prevReadBuffer, prevWriteBuffer;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLTexture *texture = (OpenGLTexture*) textureIn;
-	uint8_t texUnbound = (	device->currentDrawBuffers != 1 ||
-				device->currentAttachments[0] != texture->handle	);
-	if (texUnbound && !device->useES3)
+	uint8_t texUnbound = (	renderer->currentDrawBuffers != 1 ||
+				renderer->currentAttachments[0] != texture->handle	);
+	if (texUnbound && !renderer->useES3)
 	{
 		return 0;
 	}
 
-	prevReadBuffer = device->currentReadFramebuffer;
-	prevWriteBuffer = device->currentDrawFramebuffer;
+	prevReadBuffer = renderer->currentReadFramebuffer;
+	prevWriteBuffer = renderer->currentDrawFramebuffer;
 	if (texUnbound)
 	{
-		BindFramebuffer(device, device->resolveFramebufferRead);
-		device->glFramebufferTexture2D(
+		BindFramebuffer(renderer, renderer->resolveFramebufferRead);
+		renderer->glFramebufferTexture2D(
 			GL_FRAMEBUFFER,
 			GL_COLOR_ATTACHMENT0,
 			GL_TEXTURE_2D,
@@ -3007,13 +3007,13 @@ static uint8_t OPENGL_INTERNAL_ReadTargetIfApplicable(
 	}
 	else
 	{
-		BindReadFramebuffer(device, device->targetFramebuffer);
+		BindReadFramebuffer(renderer, renderer->targetFramebuffer);
 	}
 
 	/* glReadPixels should be faster than reading
 	 * back from the render target if we are already bound.
 	 */
-	device->glReadPixels(
+	renderer->glReadPixels(
 		subX,
 		subY,
 		subW,
@@ -3027,17 +3027,17 @@ static uint8_t OPENGL_INTERNAL_ReadTargetIfApplicable(
 	{
 		if (prevReadBuffer == prevWriteBuffer)
 		{
-			BindFramebuffer(device, prevReadBuffer);
+			BindFramebuffer(renderer, prevReadBuffer);
 		}
 		else
 		{
-			BindReadFramebuffer(device, prevReadBuffer);
-			BindDrawFramebuffer(device, prevWriteBuffer);
+			BindReadFramebuffer(renderer, prevReadBuffer);
+			BindDrawFramebuffer(renderer, prevWriteBuffer);
 		}
 	}
 	else
 	{
-		BindReadFramebuffer(device, prevReadBuffer);
+		BindReadFramebuffer(renderer, prevReadBuffer);
 	}
 	return 1;
 }
@@ -3046,8 +3046,8 @@ void OPENGL_ResetBackbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_PresentationParameters *presentationParameters
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	OPENGL_INTERNAL_CreateBackbuffer(device, presentationParameters);
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	OPENGL_INTERNAL_CreateBackbuffer(renderer, presentationParameters);
 }
 
 void OPENGL_ReadBackbuffer(
@@ -3065,7 +3065,7 @@ void OPENGL_ReadBackbuffer(
 	GLuint prevReadBuffer, prevDrawBuffer;
 	int32_t pitch, row;
 	uint8_t *temp;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	uint8_t *dataPtr = (uint8_t*) data;
 
 	/* FIXME: Right now we're expecting one of the following:
@@ -3088,69 +3088,69 @@ void OPENGL_ReadBackbuffer(
 		return;
 	}
 
-	prevReadBuffer = device->currentReadFramebuffer;
+	prevReadBuffer = renderer->currentReadFramebuffer;
 
-	if (device->backbuffer->multiSampleCount > 0)
+	if (renderer->backbuffer->multiSampleCount > 0)
 	{
 		/* We have to resolve the renderbuffer to a texture first. */
-		prevDrawBuffer = device->currentDrawFramebuffer;
+		prevDrawBuffer = renderer->currentDrawFramebuffer;
 
-		if (device->backbuffer->opengl.texture == 0)
+		if (renderer->backbuffer->opengl.texture == 0)
 		{
-			device->glGenTextures(
+			renderer->glGenTextures(
 				1,
-				&device->backbuffer->opengl.texture
+				&renderer->backbuffer->opengl.texture
 			);
-			device->glBindTexture(
+			renderer->glBindTexture(
 				GL_TEXTURE_2D,
-				device->backbuffer->opengl.texture
+				renderer->backbuffer->opengl.texture
 			);
-			device->glTexImage2D(
+			renderer->glTexImage2D(
 				GL_TEXTURE_2D,
 				0,
 				GL_RGBA,
-				device->backbuffer->width,
-				device->backbuffer->height,
+				renderer->backbuffer->width,
+				renderer->backbuffer->height,
 				0,
 				GL_RGBA,
 				GL_UNSIGNED_BYTE,
 				NULL
 			);
-			device->glBindTexture(
-				device->textures[0]->target,
-				device->textures[0]->handle
+			renderer->glBindTexture(
+				renderer->textures[0]->target,
+				renderer->textures[0]->handle
 			);
 		}
-		BindFramebuffer(device, device->resolveFramebufferDraw);
-		device->glFramebufferTexture2D(
+		BindFramebuffer(renderer, renderer->resolveFramebufferDraw);
+		renderer->glFramebufferTexture2D(
 			GL_FRAMEBUFFER,
 			GL_COLOR_ATTACHMENT0,
 			GL_TEXTURE_2D,
-			device->backbuffer->opengl.texture,
+			renderer->backbuffer->opengl.texture,
 			0
 		);
-		BindReadFramebuffer(device, device->backbuffer->opengl.handle);
-		device->glBlitFramebuffer(
-			0, 0, device->backbuffer->width, device->backbuffer->height,
-			0, 0, device->backbuffer->width, device->backbuffer->height,
+		BindReadFramebuffer(renderer, renderer->backbuffer->opengl.handle);
+		renderer->glBlitFramebuffer(
+			0, 0, renderer->backbuffer->width, renderer->backbuffer->height,
+			0, 0, renderer->backbuffer->width, renderer->backbuffer->height,
 			GL_COLOR_BUFFER_BIT,
 			GL_LINEAR
 		);
 		/* Don't invalidate the backbuffer here! */
-		BindDrawFramebuffer(device, prevDrawBuffer);
-		BindReadFramebuffer(device, device->resolveFramebufferDraw);
+		BindDrawFramebuffer(renderer, prevDrawBuffer);
+		BindReadFramebuffer(renderer, renderer->resolveFramebufferDraw);
 	}
 	else
 	{
 		BindReadFramebuffer(
-			device,
-			(device->backbuffer->type == BACKBUFFER_TYPE_OPENGL) ?
-				device->backbuffer->opengl.handle :
+			renderer,
+			(renderer->backbuffer->type == BACKBUFFER_TYPE_OPENGL) ?
+				renderer->backbuffer->opengl.handle :
 				0
 		);
 	}
 
-	device->glReadPixels(
+	renderer->glReadPixels(
 		x,
 		y,
 		w,
@@ -3160,7 +3160,7 @@ void OPENGL_ReadBackbuffer(
 		data
 	);
 
-	BindReadFramebuffer(device, prevReadBuffer);
+	BindReadFramebuffer(renderer, prevReadBuffer);
 
 	/* Now we get to do a software-based flip! Yes, really! -flibit */
 	pitch = w * 4;
@@ -3180,9 +3180,9 @@ void OPENGL_GetBackbufferSize(
 	int32_t *w,
 	int32_t *h
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	*w = device->backbuffer->width;
-	*h = device->backbuffer->height;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	*w = renderer->backbuffer->width;
+	*h = renderer->backbuffer->height;
 }
 
 FNA3D_SurfaceFormat OPENGL_GetBackbufferSurfaceFormat(FNA3D_Renderer *driverData)
@@ -3192,20 +3192,20 @@ FNA3D_SurfaceFormat OPENGL_GetBackbufferSurfaceFormat(FNA3D_Renderer *driverData
 
 FNA3D_DepthFormat OPENGL_GetBackbufferDepthFormat(FNA3D_Renderer *driverData)
 {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	return device->backbuffer->depthFormat;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	return renderer->backbuffer->depthFormat;
 }
 
 int32_t OPENGL_GetBackbufferMultiSampleCount(FNA3D_Renderer *driverData)
 {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	return device->backbuffer->multiSampleCount;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	return renderer->backbuffer->multiSampleCount;
 }
 
 /* Textures */
 
 static OpenGLTexture* OPENGL_INTERNAL_CreateTexture(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	GLenum target,
 	int32_t levelCount
 ) {
@@ -3213,7 +3213,7 @@ static OpenGLTexture* OPENGL_INTERNAL_CreateTexture(
 		sizeof(OpenGLTexture)
 	);
 
-	device->glGenTextures(1, &result->handle);
+	renderer->glGenTextures(1, &result->handle);
 	result->target = target;
 	result->hasMipmaps = (levelCount > 1);
 	result->wrapS = FNA3D_TEXTUREADDRESSMODE_WRAP;
@@ -3225,49 +3225,49 @@ static OpenGLTexture* OPENGL_INTERNAL_CreateTexture(
 	result->lodBias = 0.0f;
 	result->next = NULL;
 
-	BindTexture(device, result);
-	device->glTexParameteri(
+	BindTexture(renderer, result);
+	renderer->glTexParameteri(
 		result->target,
 		GL_TEXTURE_WRAP_S,
 		XNAToGL_Wrap[result->wrapS]
 	);
-	device->glTexParameteri(
+	renderer->glTexParameteri(
 		result->target,
 		GL_TEXTURE_WRAP_T,
 		XNAToGL_Wrap[result->wrapT]
 	);
-	device->glTexParameteri(
+	renderer->glTexParameteri(
 		result->target,
 		GL_TEXTURE_WRAP_R,
 		XNAToGL_Wrap[result->wrapR]
 	);
-	device->glTexParameteri(
+	renderer->glTexParameteri(
 		result->target,
 		GL_TEXTURE_MAG_FILTER,
 		XNAToGL_MagFilter[result->filter]
 	);
-	device->glTexParameteri(
+	renderer->glTexParameteri(
 		result->target,
 		GL_TEXTURE_MIN_FILTER,
 		result->hasMipmaps ?
 			XNAToGL_MinMipFilter[result->filter] :
 			XNAToGL_MinFilter[result->filter]
 	);
-	device->glTexParameterf(
+	renderer->glTexParameterf(
 		result->target,
 		GL_TEXTURE_MAX_ANISOTROPY_EXT,
 		(result->filter == FNA3D_TEXTUREFILTER_ANISOTROPIC) ?
 			SDL_max(result->anisotropy, 1.0f) :
 			1.0f
 	);
-	device->glTexParameteri(
+	renderer->glTexParameteri(
 		result->target,
 		GL_TEXTURE_BASE_LEVEL,
 		result->maxMipmapLevel
 	);
-	if (!device->useES3)
+	if (!renderer->useES3)
 	{
-		device->glTexParameterf(
+		renderer->glTexParameterf(
 			result->target,
 			GL_TEXTURE_LOD_BIAS,
 			result->lodBias
@@ -3334,13 +3334,13 @@ FNA3D_Texture* OPENGL_CreateTexture2D(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLTexture *result;
 	GLenum glFormat, glInternalFormat, glType;
 	int32_t levelWidth, levelHeight, i;
 	FNA3D_Command cmd;
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_CREATETEXTURE2D;
 		cmd.createTexture2D.format = format;
@@ -3349,14 +3349,14 @@ FNA3D_Texture* OPENGL_CreateTexture2D(
 		cmd.createTexture2D.levelCount = levelCount;
 		cmd.createTexture2D.isRenderTarget = isRenderTarget;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.createTexture2D.retval;
 	}
 
 	result = (OpenGLTexture*) OPENGL_INTERNAL_CreateTexture(
-		device,
+		renderer,
 		GL_TEXTURE_2D,
 		levelCount
 	);
@@ -3369,7 +3369,7 @@ FNA3D_Texture* OPENGL_CreateTexture2D(
 		{
 			levelWidth = SDL_max(width >> i, 1);
 			levelHeight = SDL_max(height >> i, 1);
-			device->glCompressedTexImage2D(
+			renderer->glCompressedTexImage2D(
 				GL_TEXTURE_2D,
 				i,
 				glInternalFormat,
@@ -3386,7 +3386,7 @@ FNA3D_Texture* OPENGL_CreateTexture2D(
 		glType = XNAToGL_TextureDataType[format];
 		for (i = 0; i < levelCount; i += 1)
 		{
-			device->glTexImage2D(
+			renderer->glTexImage2D(
 				GL_TEXTURE_2D,
 				i,
 				glInternalFormat,
@@ -3411,15 +3411,15 @@ FNA3D_Texture* OPENGL_CreateTexture3D(
 	int32_t depth,
 	int32_t levelCount
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLTexture *result;
 	GLenum glFormat, glInternalFormat, glType;
 	int32_t i;
 	FNA3D_Command cmd;
 
-	SDL_assert(device->supports_3DTexture);
+	SDL_assert(renderer->supports_3DTexture);
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_CREATETEXTURE3D;
 		cmd.createTexture3D.format = format;
@@ -3428,14 +3428,14 @@ FNA3D_Texture* OPENGL_CreateTexture3D(
 		cmd.createTexture3D.depth = depth;
 		cmd.createTexture3D.levelCount = levelCount;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.createTexture3D.retval;
 	}
 
 	result = OPENGL_INTERNAL_CreateTexture(
-		device,
+		renderer,
 		GL_TEXTURE_3D,
 		levelCount
 	);
@@ -3445,7 +3445,7 @@ FNA3D_Texture* OPENGL_CreateTexture3D(
 	glType = XNAToGL_TextureDataType[format];
 	for (i = 0; i < levelCount; i += 1)
 	{
-		device->glTexImage3D(
+		renderer->glTexImage3D(
 			GL_TEXTURE_3D,
 			i,
 			glInternalFormat,
@@ -3468,13 +3468,13 @@ FNA3D_Texture* OPENGL_CreateTextureCube(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLTexture *result;
 	GLenum glFormat, glInternalFormat;
 	int32_t levelSize, i, l;
 	FNA3D_Command cmd;
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_CREATETEXTURECUBE;
 		cmd.createTextureCube.format = format;
@@ -3482,14 +3482,14 @@ FNA3D_Texture* OPENGL_CreateTextureCube(
 		cmd.createTextureCube.levelCount = levelCount;
 		cmd.createTextureCube.isRenderTarget = isRenderTarget;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.createTextureCube.retval;
 	}
 
 	result = OPENGL_INTERNAL_CreateTexture(
-		device,
+		renderer,
 		GL_TEXTURE_CUBE_MAP,
 		levelCount
 	);
@@ -3503,7 +3503,7 @@ FNA3D_Texture* OPENGL_CreateTextureCube(
 			for (l = 0; l < levelCount; l += 1)
 			{
 				levelSize = SDL_max(size >> l, 1);
-				device->glCompressedTexImage2D(
+				renderer->glCompressedTexImage2D(
 					GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
 					l,
 					glInternalFormat,
@@ -3524,7 +3524,7 @@ FNA3D_Texture* OPENGL_CreateTextureCube(
 			for (l = 0; l < levelCount; l += 1)
 			{
 				levelSize = SDL_max(size >> l, 1);
-				device->glTexImage2D(
+				renderer->glTexImage2D(
 					GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
 					l,
 					glInternalFormat,
@@ -3543,27 +3543,27 @@ FNA3D_Texture* OPENGL_CreateTextureCube(
 }
 
 static void OPENGL_INTERNAL_DestroyTexture(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	OpenGLTexture *texture
 ) {
 	int32_t i;
-	for (i = 0; i < device->numAttachments; i += 1)
+	for (i = 0; i < renderer->numAttachments; i += 1)
 	{
-		if (texture->handle == device->currentAttachments[i])
+		if (texture->handle == renderer->currentAttachments[i])
 		{
 			/* Force an attachment update, this no longer exists! */
-			device->currentAttachments[i] = UINT32_MAX;
+			renderer->currentAttachments[i] = UINT32_MAX;
 		}
 	}
-	for (i = 0; i < device->numTextureSlots; i += 1)
+	for (i = 0; i < renderer->numTextureSlots; i += 1)
 	{
-		if (device->textures[i] == texture)
+		if (renderer->textures[i] == texture)
 		{
 			/* Remove this texture from the sampler cache */
-			device->textures[i] = &NullTexture;
+			renderer->textures[i] = &NullTexture;
 		}
 	}
-	device->glDeleteTextures(1, &texture->handle);
+	renderer->glDeleteTextures(1, &texture->handle);
 	SDL_free(texture);
 }
 
@@ -3571,19 +3571,19 @@ void OPENGL_AddDisposeTexture(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLTexture *glTexture = (OpenGLTexture*) texture;
 	OpenGLTexture *curr;
 
-	if (device->threadID == SDL_ThreadID())
+	if (renderer->threadID == SDL_ThreadID())
 	{
-		OPENGL_INTERNAL_DestroyTexture(device, glTexture);
+		OPENGL_INTERNAL_DestroyTexture(renderer, glTexture);
 	}
 	else
 	{
-		SDL_LockMutex(device->disposeTexturesLock);
-		LinkedList_Add(device->disposeTextures, glTexture, curr);
-		SDL_UnlockMutex(device->disposeTexturesLock);
+		SDL_LockMutex(renderer->disposeTexturesLock);
+		LinkedList_Add(renderer->disposeTextures, glTexture, curr);
+		SDL_UnlockMutex(renderer->disposeTexturesLock);
 	}
 }
 
@@ -3599,12 +3599,12 @@ void OPENGL_SetTextureData2D(
 	void* data,
 	int32_t dataLength
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	GLenum glFormat;
 	int32_t packSize;
 	FNA3D_Command cmd;
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_SETTEXTUREDATA2D;
 		cmd.setTextureData2D.texture = texture;
@@ -3617,13 +3617,13 @@ void OPENGL_SetTextureData2D(
 		cmd.setTextureData2D.data = data;
 		cmd.setTextureData2D.dataLength = dataLength;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return;
 	}
 
-	BindTexture(device, (OpenGLTexture*) texture);
+	BindTexture(renderer, (OpenGLTexture*) texture);
 
 	glFormat = XNAToGL_TextureFormat[format];
 	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
@@ -3634,7 +3634,7 @@ void OPENGL_SetTextureData2D(
 		 * compressed textures.
 		 * -flibit
 		 */
-		device->glCompressedTexSubImage2D(
+		renderer->glCompressedTexSubImage2D(
 			GL_TEXTURE_2D,
 			level,
 			x,
@@ -3652,13 +3652,13 @@ void OPENGL_SetTextureData2D(
 		packSize = OPENGL_INTERNAL_Texture_GetPixelStoreAlignment(format);
 		if (packSize != 4)
 		{
-			device->glPixelStorei(
+			renderer->glPixelStorei(
 				GL_UNPACK_ALIGNMENT,
 				packSize
 			);
 		}
 
-		device->glTexSubImage2D(
+		renderer->glTexSubImage2D(
 			GL_TEXTURE_2D,
 			level,
 			x,
@@ -3673,7 +3673,7 @@ void OPENGL_SetTextureData2D(
 		/* Keep this state sane -flibit */
 		if (packSize != 4)
 		{
-			device->glPixelStorei(
+			renderer->glPixelStorei(
 				GL_UNPACK_ALIGNMENT,
 				4
 			);
@@ -3695,12 +3695,12 @@ void OPENGL_SetTextureData3D(
 	void* data,
 	int32_t dataLength
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	FNA3D_Command cmd;
 
-	SDL_assert(device->supports_3DTexture);
+	SDL_assert(renderer->supports_3DTexture);
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_SETTEXTUREDATA3D;
 		cmd.setTextureData3D.texture = texture;
@@ -3715,15 +3715,15 @@ void OPENGL_SetTextureData3D(
 		cmd.setTextureData3D.data = data;
 		cmd.setTextureData3D.dataLength = dataLength;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return;
 	}
 
-	BindTexture(device, (OpenGLTexture*) texture);
+	BindTexture(renderer, (OpenGLTexture*) texture);
 
-	device->glTexSubImage3D(
+	renderer->glTexSubImage3D(
 		GL_TEXTURE_3D,
 		level,
 		left,
@@ -3751,11 +3751,11 @@ void OPENGL_SetTextureDataCube(
 	void* data,
 	int32_t dataLength
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	GLenum glFormat;
 	FNA3D_Command cmd;
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_SETTEXTUREDATACUBE;
 		cmd.setTextureDataCube.texture = texture;
@@ -3769,13 +3769,13 @@ void OPENGL_SetTextureDataCube(
 		cmd.setTextureDataCube.data = data;
 		cmd.setTextureDataCube.dataLength = dataLength;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return;
 	}
 
-	BindTexture(device, (OpenGLTexture*) texture);
+	BindTexture(renderer, (OpenGLTexture*) texture);
 
 	glFormat = XNAToGL_TextureFormat[format];
 	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
@@ -3786,7 +3786,7 @@ void OPENGL_SetTextureDataCube(
 		 * compressed textures.
 		 * -flibit
 		 */
-		device->glCompressedTexSubImage2D(
+		renderer->glCompressedTexSubImage2D(
 			GL_TEXTURE_CUBE_MAP_POSITIVE_X + cubeMapFace,
 			level,
 			x,
@@ -3800,7 +3800,7 @@ void OPENGL_SetTextureDataCube(
 	}
 	else
 	{
-		device->glTexSubImage2D(
+		renderer->glTexSubImage2D(
 			GL_TEXTURE_CUBE_MAP_POSITIVE_X + cubeMapFace,
 			level,
 			x,
@@ -3823,12 +3823,12 @@ void OPENGL_SetTextureDataYUV(
 	int32_t h,
 	void* ptr
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	uint8_t *dataPtr = (uint8_t*) ptr;
 
-	device->glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-	BindTexture(device, (OpenGLTexture*) y);
-	device->glTexSubImage2D(
+	renderer->glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	BindTexture(renderer, (OpenGLTexture*) y);
+	renderer->glTexSubImage2D(
 		GL_TEXTURE_2D,
 		0,
 		0,
@@ -3840,8 +3840,8 @@ void OPENGL_SetTextureDataYUV(
 		dataPtr
 	);
 	dataPtr += (w * h);
-	BindTexture(device, (OpenGLTexture*) u);
-	device->glTexSubImage2D(
+	BindTexture(renderer, (OpenGLTexture*) u);
+	renderer->glTexSubImage2D(
 		GL_TEXTURE_2D,
 		0,
 		0,
@@ -3853,8 +3853,8 @@ void OPENGL_SetTextureDataYUV(
 		dataPtr
 	);
 	dataPtr += (w/2 * h/2);
-	BindTexture(device, (OpenGLTexture*) v);
-	device->glTexSubImage2D(
+	BindTexture(renderer, (OpenGLTexture*) v);
+	renderer->glTexSubImage2D(
 		GL_TEXTURE_2D,
 		0,
 		0,
@@ -3865,7 +3865,7 @@ void OPENGL_SetTextureDataYUV(
 		GL_UNSIGNED_BYTE,
 		dataPtr
 	);
-	device->glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+	renderer->glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
 
 void OPENGL_GetTextureData2D(
@@ -3884,16 +3884,16 @@ void OPENGL_GetTextureData2D(
 	int32_t elementCount,
 	int32_t elementSizeInBytes
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	GLenum glFormat;
 	uint8_t *texData;
 	int32_t curPixel, row, col;
 	uint8_t *dataPtr = (uint8_t*) data;
 	FNA3D_Command cmd;
 
-	SDL_assert(device->supports_NonES3);
+	SDL_assert(renderer->supports_NonES3);
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_GETTEXTUREDATA2D;
 		cmd.getTextureData2D.texture = texture;
@@ -3910,7 +3910,7 @@ void OPENGL_GetTextureData2D(
 		cmd.getTextureData2D.elementCount = elementCount;
 		cmd.getTextureData2D.elementSizeInBytes = elementSizeInBytes;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return;
@@ -3931,7 +3931,7 @@ void OPENGL_GetTextureData2D(
 		return;
 	}
 
-	BindTexture(device, (OpenGLTexture*) texture);
+	BindTexture(renderer, (OpenGLTexture*) texture);
 	glFormat = XNAToGL_TextureFormat[format];
 	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
 	{
@@ -3944,7 +3944,7 @@ void OPENGL_GetTextureData2D(
 	else if (x == 0 && y == 0 && w == textureWidth && h == textureHeight)
 	{
 		/* Just throw the whole texture into the user array. */
-		device->glGetTexImage(
+		renderer->glGetTexImage(
 			GL_TEXTURE_2D,
 			level,
 			glFormat,
@@ -3961,7 +3961,7 @@ void OPENGL_GetTextureData2D(
 			elementSizeInBytes
 		);
 
-		device->glGetTexImage(
+		renderer->glGetTexImage(
 			GL_TEXTURE_2D,
 			level,
 			glFormat,
@@ -4015,8 +4015,8 @@ void OPENGL_GetTextureData3D(
 	int32_t elementCount,
 	int32_t elementSizeInBytes
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	SDL_assert(device->supports_NonES3);
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	SDL_assert(renderer->supports_NonES3);
 
 	SDL_LogError(
 		SDL_LOG_CATEGORY_APPLICATION,
@@ -4040,16 +4040,16 @@ void OPENGL_GetTextureDataCube(
 	int32_t elementCount,
 	int32_t elementSizeInBytes
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	GLenum glFormat;
 	uint8_t *texData;
 	int32_t curPixel, row, col;
 	uint8_t *dataPtr = (uint8_t*) data;
 	FNA3D_Command cmd;
 
-	SDL_assert(device->supports_NonES3);
+	SDL_assert(renderer->supports_NonES3);
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_GETTEXTUREDATACUBE;
 		cmd.getTextureDataCube.texture = texture;
@@ -4066,13 +4066,13 @@ void OPENGL_GetTextureDataCube(
 		cmd.getTextureDataCube.elementCount = elementCount;
 		cmd.getTextureDataCube.elementSizeInBytes = elementSizeInBytes;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return;
 	}
 
-	BindTexture(device, (OpenGLTexture*) texture);
+	BindTexture(renderer, (OpenGLTexture*) texture);
 	glFormat = XNAToGL_TextureFormat[format];
 	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
 	{
@@ -4085,7 +4085,7 @@ void OPENGL_GetTextureDataCube(
 	else if (x == 0 && y == 0 && w == textureSize && h == textureSize)
 	{
 		/* Just throw the whole texture into the user array. */
-		device->glGetTexImage(
+		renderer->glGetTexImage(
 			GL_TEXTURE_CUBE_MAP_POSITIVE_X + cubeMapFace,
 			level,
 			glFormat,
@@ -4102,7 +4102,7 @@ void OPENGL_GetTextureDataCube(
 			elementSizeInBytes
 		);
 
-		device->glGetTexImage(
+		renderer->glGetTexImage(
 			GL_TEXTURE_CUBE_MAP_POSITIVE_X + cubeMapFace,
 			level,
 			glFormat,
@@ -4149,11 +4149,11 @@ FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
 	int32_t multiSampleCount,
 	FNA3D_Texture *texture
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLRenderbuffer *renderbuffer;
 	FNA3D_Command cmd;
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_GENCOLORRENDERBUFFER;
 		cmd.genColorRenderbuffer.width = width;
@@ -4162,7 +4162,7 @@ FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
 		cmd.genColorRenderbuffer.multiSampleCount = multiSampleCount;
 		cmd.genColorRenderbuffer.texture = texture;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.genColorRenderbuffer.retval;
@@ -4173,11 +4173,11 @@ FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
 	);
 	renderbuffer->next = NULL;
 
-	device->glGenRenderbuffers(1, &renderbuffer->handle);
-	device->glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer->handle);
+	renderer->glGenRenderbuffers(1, &renderbuffer->handle);
+	renderer->glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer->handle);
 	if (multiSampleCount > 0)
 	{
-		device->glRenderbufferStorageMultisample(
+		renderer->glRenderbufferStorageMultisample(
 			GL_RENDERBUFFER,
 			multiSampleCount,
 			XNAToGL_TextureInternalFormat[format],
@@ -4187,14 +4187,14 @@ FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
 	}
 	else
 	{
-		device->glRenderbufferStorage(
+		renderer->glRenderbufferStorage(
 			GL_RENDERBUFFER,
 			XNAToGL_TextureInternalFormat[format],
 			width,
 			height
 		);
 	}
-	device->glBindRenderbuffer(GL_RENDERBUFFER, device->realBackbufferRBO);
+	renderer->glBindRenderbuffer(GL_RENDERBUFFER, renderer->realBackbufferRBO);
 
 	return (FNA3D_Renderbuffer*) renderbuffer;
 }
@@ -4206,11 +4206,11 @@ FNA3D_Renderbuffer* OPENGL_GenDepthStencilRenderbuffer(
 	FNA3D_DepthFormat format,
 	int32_t multiSampleCount
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLRenderbuffer *renderbuffer;
 	FNA3D_Command cmd;
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_GENDEPTHRENDERBUFFER;
 		cmd.genDepthStencilRenderbuffer.width = width;
@@ -4218,7 +4218,7 @@ FNA3D_Renderbuffer* OPENGL_GenDepthStencilRenderbuffer(
 		cmd.genDepthStencilRenderbuffer.format = format;
 		cmd.genDepthStencilRenderbuffer.multiSampleCount = multiSampleCount;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.genDepthStencilRenderbuffer.retval;
@@ -4229,11 +4229,11 @@ FNA3D_Renderbuffer* OPENGL_GenDepthStencilRenderbuffer(
 	);
 	renderbuffer->next = NULL;
 
-	device->glGenRenderbuffers(1, &renderbuffer->handle);
-	device->glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer->handle);
+	renderer->glGenRenderbuffers(1, &renderbuffer->handle);
+	renderer->glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer->handle);
 	if (multiSampleCount > 0)
 	{
-		device->glRenderbufferStorageMultisample(
+		renderer->glRenderbufferStorageMultisample(
 			GL_RENDERBUFFER,
 			multiSampleCount,
 			XNAToGL_DepthStorage[format],
@@ -4243,42 +4243,42 @@ FNA3D_Renderbuffer* OPENGL_GenDepthStencilRenderbuffer(
 	}
 	else
 	{
-		device->glRenderbufferStorage(
+		renderer->glRenderbufferStorage(
 			GL_RENDERBUFFER,
 			XNAToGL_DepthStorage[format],
 			width,
 			height
 		);
 	}
-	device->glBindRenderbuffer(GL_RENDERBUFFER, device->realBackbufferRBO);
+	renderer->glBindRenderbuffer(GL_RENDERBUFFER, renderer->realBackbufferRBO);
 
 	return (FNA3D_Renderbuffer*) renderbuffer;
 }
 
 static void OPENGL_INTERNAL_DestroyRenderbuffer(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	OpenGLRenderbuffer *renderbuffer
 ) {
 	/* Check color attachments */
 	int32_t i;
-	for (i = 0; i < device->numAttachments; i += 1)
+	for (i = 0; i < renderer->numAttachments; i += 1)
 	{
-		if (renderbuffer->handle == device->currentAttachments[i])
+		if (renderbuffer->handle == renderer->currentAttachments[i])
 		{
 			/* Force an attachment update, this no longer exists! */
-			device->currentAttachments[i] = ~0;
+			renderer->currentAttachments[i] = ~0;
 		}
 	}
 
 	/* Check depth/stencil attachment */
-	if (renderbuffer->handle == device->currentRenderbuffer)
+	if (renderbuffer->handle == renderer->currentRenderbuffer)
 	{
 		/* Force a renderbuffer update, this no longer exists! */
-		device->currentRenderbuffer = ~0;
+		renderer->currentRenderbuffer = ~0;
 	}
 
 	/* Finally. */
-	device->glDeleteRenderbuffers(1, &renderbuffer->handle);
+	renderer->glDeleteRenderbuffers(1, &renderbuffer->handle);
 	SDL_free(renderbuffer);
 }
 
@@ -4286,19 +4286,19 @@ void OPENGL_AddDisposeRenderbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Renderbuffer *renderbuffer
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLRenderbuffer *buffer = (OpenGLRenderbuffer*) renderbuffer;
 	OpenGLRenderbuffer *curr;
 
-	if (device->threadID == SDL_ThreadID())
+	if (renderer->threadID == SDL_ThreadID())
 	{
-		OPENGL_INTERNAL_DestroyRenderbuffer(device, buffer);
+		OPENGL_INTERNAL_DestroyRenderbuffer(renderer, buffer);
 	}
 	else
 	{
-		SDL_LockMutex(device->disposeRenderbuffersLock);
-		LinkedList_Add(device->disposeRenderbuffers, buffer, curr);
-		SDL_UnlockMutex(device->disposeRenderbuffersLock);
+		SDL_LockMutex(renderer->disposeRenderbuffersLock);
+		LinkedList_Add(renderer->disposeRenderbuffers, buffer, curr);
+		SDL_UnlockMutex(renderer->disposeRenderbuffersLock);
 	}
 }
 
@@ -4311,12 +4311,12 @@ FNA3D_Buffer* OPENGL_GenVertexBuffer(
 	int32_t vertexCount,
 	int32_t vertexStride
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLBuffer *result = NULL;
 	GLuint handle;
 	FNA3D_Command cmd;
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_GENVERTEXBUFFER;
 		cmd.genVertexBuffer.dynamic = dynamic;
@@ -4324,13 +4324,13 @@ FNA3D_Buffer* OPENGL_GenVertexBuffer(
 		cmd.genVertexBuffer.vertexCount = vertexCount;
 		cmd.genVertexBuffer.vertexStride = vertexStride;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.genVertexBuffer.retval;
 	}
 
-	device->glGenBuffers(1, &handle);
+	renderer->glGenBuffers(1, &handle);
 
 	result = (OpenGLBuffer*) SDL_malloc(sizeof(OpenGLBuffer));
 	result->handle = handle;
@@ -4338,8 +4338,8 @@ FNA3D_Buffer* OPENGL_GenVertexBuffer(
 	result->dynamic = (dynamic ? GL_STREAM_DRAW : GL_STATIC_DRAW);
 	result->next = NULL;
 
-	BindVertexBuffer(device, handle);
-	device->glBufferData(
+	BindVertexBuffer(renderer, handle);
+	renderer->glBufferData(
 		GL_ARRAY_BUFFER,
 		result->size,
 		NULL,
@@ -4350,25 +4350,25 @@ FNA3D_Buffer* OPENGL_GenVertexBuffer(
 }
 
 static void OPENGL_INTERNAL_DestroyVertexBuffer(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	OpenGLBuffer *buffer
 ) {
 	int32_t i;
 
-	if (buffer->handle == device->currentVertexBuffer)
+	if (buffer->handle == renderer->currentVertexBuffer)
 	{
-		device->glBindBuffer(GL_ARRAY_BUFFER, 0);
-		device->currentVertexBuffer = 0;
+		renderer->glBindBuffer(GL_ARRAY_BUFFER, 0);
+		renderer->currentVertexBuffer = 0;
 	}
-	for (i = 0; i < device->numVertexAttributes; i += 1)
+	for (i = 0; i < renderer->numVertexAttributes; i += 1)
 	{
-		if (buffer->handle == device->attributes[i].currentBuffer)
+		if (buffer->handle == renderer->attributes[i].currentBuffer)
 		{
 			/* Force the next vertex attrib update! */
-			device->attributes[i].currentBuffer = UINT32_MAX;
+			renderer->attributes[i].currentBuffer = UINT32_MAX;
 		}
 	}
-	device->glDeleteBuffers(1, &buffer->handle);
+	renderer->glDeleteBuffers(1, &buffer->handle);
 
 	SDL_free(buffer);
 }
@@ -4377,19 +4377,19 @@ void OPENGL_AddDisposeVertexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
 	OpenGLBuffer *curr;
 
-	if (device->threadID == SDL_ThreadID())
+	if (renderer->threadID == SDL_ThreadID())
 	{
-		OPENGL_INTERNAL_DestroyVertexBuffer(device, glBuffer);
+		OPENGL_INTERNAL_DestroyVertexBuffer(renderer, glBuffer);
 	}
 	else
 	{
-		SDL_LockMutex(device->disposeVertexBuffersLock);
-		LinkedList_Add(device->disposeVertexBuffers, glBuffer, curr);
-		SDL_UnlockMutex(device->disposeVertexBuffersLock);
+		SDL_LockMutex(renderer->disposeVertexBuffersLock);
+		LinkedList_Add(renderer->disposeVertexBuffers, glBuffer, curr);
+		SDL_UnlockMutex(renderer->disposeVertexBuffersLock);
 	}
 }
 
@@ -4401,11 +4401,11 @@ void OPENGL_SetVertexBufferData(
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
 	FNA3D_Command cmd;
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_SETVERTEXBUFFERDATA;
 		cmd.setVertexBufferData.buffer = buffer;
@@ -4414,17 +4414,17 @@ void OPENGL_SetVertexBufferData(
 		cmd.setVertexBufferData.dataLength = dataLength;
 		cmd.setVertexBufferData.options = options;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return;
 	}
 
-	BindVertexBuffer(device, glBuffer->handle);
+	BindVertexBuffer(renderer, glBuffer->handle);
 
 	if (options == FNA3D_SETDATAOPTIONS_DISCARD)
 	{
-		device->glBufferData(
+		renderer->glBufferData(
 			GL_ARRAY_BUFFER,
 			glBuffer->size,
 			NULL,
@@ -4432,7 +4432,7 @@ void OPENGL_SetVertexBufferData(
 		);
 	}
 
-	device->glBufferSubData(
+	renderer->glBufferSubData(
 		GL_ARRAY_BUFFER,
 		(GLintptr) offsetInBytes,
 		(GLsizeiptr) dataLength,
@@ -4450,16 +4450,16 @@ void OPENGL_GetVertexBufferData(
 	int32_t elementSizeInBytes,
 	int32_t vertexStride
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
 	uint8_t *dataBytes, *cpy, *src, *dst;
 	uint8_t useStagingBuffer;
 	int32_t i;
 	FNA3D_Command cmd;
 
-	SDL_assert(device->supports_NonES3);
+	SDL_assert(renderer->supports_NonES3);
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_GETVERTEXBUFFERDATA;
 		cmd.getVertexBufferData.buffer = buffer;
@@ -4470,7 +4470,7 @@ void OPENGL_GetVertexBufferData(
 		cmd.getVertexBufferData.elementSizeInBytes = elementSizeInBytes;
 		cmd.getVertexBufferData.vertexStride = vertexStride;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return;
@@ -4487,9 +4487,9 @@ void OPENGL_GetVertexBufferData(
 		cpy = dataBytes + (startIndex * elementSizeInBytes);
 	}
 
-	BindVertexBuffer(device, glBuffer->handle);
+	BindVertexBuffer(renderer, glBuffer->handle);
 
-	device->glGetBufferSubData(
+	renderer->glGetBufferSubData(
 		GL_ARRAY_BUFFER,
 		(GLintptr) offsetInBytes,
 		(GLsizeiptr) (elementCount * vertexStride),
@@ -4519,12 +4519,12 @@ FNA3D_Buffer* OPENGL_GenIndexBuffer(
 	int32_t indexCount,
 	FNA3D_IndexElementSize indexElementSize
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLBuffer *result = NULL;
 	GLuint handle;
 	FNA3D_Command cmd;
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_GENINDEXBUFFER;
 		cmd.genIndexBuffer.dynamic = dynamic;
@@ -4532,13 +4532,13 @@ FNA3D_Buffer* OPENGL_GenIndexBuffer(
 		cmd.genIndexBuffer.indexCount = indexCount;
 		cmd.genIndexBuffer.indexElementSize = indexElementSize;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.genIndexBuffer.retval;
 	}
 
-	device->glGenBuffers(1, &handle);
+	renderer->glGenBuffers(1, &handle);
 
 	result = (OpenGLBuffer*) SDL_malloc(sizeof(OpenGLBuffer));
 	result->handle = handle;
@@ -4548,8 +4548,8 @@ FNA3D_Buffer* OPENGL_GenIndexBuffer(
 	result->dynamic = (dynamic ? GL_STREAM_DRAW : GL_STATIC_DRAW);
 	result->next = NULL;
 
-	BindIndexBuffer(device, handle);
-	device->glBufferData(
+	BindIndexBuffer(renderer, handle);
+	renderer->glBufferData(
 		GL_ELEMENT_ARRAY_BUFFER,
 		result->size,
 		NULL,
@@ -4560,15 +4560,15 @@ FNA3D_Buffer* OPENGL_GenIndexBuffer(
 }
 
 static void OPENGL_INTERNAL_DestroyIndexBuffer(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	OpenGLBuffer *buffer
 ) {
-	if (buffer->handle == device->currentIndexBuffer)
+	if (buffer->handle == renderer->currentIndexBuffer)
 	{
-		device->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-		device->currentIndexBuffer = 0;
+		renderer->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+		renderer->currentIndexBuffer = 0;
 	}
-	device->glDeleteBuffers(1, &buffer->handle);
+	renderer->glDeleteBuffers(1, &buffer->handle);
 	SDL_free(buffer);
 }
 
@@ -4576,19 +4576,19 @@ void OPENGL_AddDisposeIndexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
 	OpenGLBuffer *curr;
 
-	if (device->threadID == SDL_ThreadID())
+	if (renderer->threadID == SDL_ThreadID())
 	{
-		OPENGL_INTERNAL_DestroyIndexBuffer(device, glBuffer);
+		OPENGL_INTERNAL_DestroyIndexBuffer(renderer, glBuffer);
 	}
 	else
 	{
-		SDL_LockMutex(device->disposeIndexBuffersLock);
-		LinkedList_Add(device->disposeIndexBuffers, glBuffer, curr);
-		SDL_UnlockMutex(device->disposeIndexBuffersLock);
+		SDL_LockMutex(renderer->disposeIndexBuffersLock);
+		LinkedList_Add(renderer->disposeIndexBuffers, glBuffer, curr);
+		SDL_UnlockMutex(renderer->disposeIndexBuffersLock);
 	}
 }
 
@@ -4600,11 +4600,11 @@ void OPENGL_SetIndexBufferData(
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
 	FNA3D_Command cmd;
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_SETINDEXBUFFERDATA;
 		cmd.setIndexBufferData.buffer = buffer;
@@ -4613,17 +4613,17 @@ void OPENGL_SetIndexBufferData(
 		cmd.setIndexBufferData.dataLength = dataLength;
 		cmd.setIndexBufferData.options = options;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return;
 	}
 
-	BindIndexBuffer(device, glBuffer->handle);
+	BindIndexBuffer(renderer, glBuffer->handle);
 
 	if (options == FNA3D_SETDATAOPTIONS_DISCARD)
 	{
-		device->glBufferData(
+		renderer->glBufferData(
 			GL_ELEMENT_ARRAY_BUFFER,
 			glBuffer->size,
 			NULL,
@@ -4631,7 +4631,7 @@ void OPENGL_SetIndexBufferData(
 		);
 	}
 
-	device->glBufferSubData(
+	renderer->glBufferSubData(
 		GL_ELEMENT_ARRAY_BUFFER,
 		(GLintptr) offsetInBytes,
 		(GLsizeiptr) dataLength,
@@ -4648,13 +4648,13 @@ void OPENGL_GetIndexBufferData(
 	int32_t elementCount,
 	int32_t elementSizeInBytes
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
 	FNA3D_Command cmd;
 
-	SDL_assert(device->supports_NonES3);
+	SDL_assert(renderer->supports_NonES3);
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_GETINDEXBUFFERDATA;
 		cmd.getIndexBufferData.buffer = buffer;
@@ -4664,15 +4664,15 @@ void OPENGL_GetIndexBufferData(
 		cmd.getIndexBufferData.elementCount = elementCount;
 		cmd.getIndexBufferData.elementSizeInBytes = elementSizeInBytes;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return;
 	}
 
-	BindIndexBuffer(device, glBuffer->handle);
+	BindIndexBuffer(renderer, glBuffer->handle);
 
-	device->glGetBufferSubData(
+	renderer->glGetBufferSubData(
 		GL_ELEMENT_ARRAY_BUFFER,
 		(GLintptr) offsetInBytes,
 		(GLsizeiptr) (elementCount * elementSizeInBytes),
@@ -4687,27 +4687,27 @@ FNA3D_Effect* OPENGL_CreateEffect(
 	uint8_t *effectCode,
 	uint32_t effectCodeLength
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	MOJOSHADER_effect *effect;
 	MOJOSHADER_glEffect *glEffect;
 	OpenGLEffect *result;
 	int32_t i;
 	FNA3D_Command cmd;
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_CREATEEFFECT;
 		cmd.createEffect.effectCode = effectCode;
 		cmd.createEffect.effectCodeLength = effectCodeLength;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.createEffect.retval;
 	}
 
 	effect = MOJOSHADER_parseEffect(
-		device->shaderProfile,
+		renderer->shaderProfile,
 		effectCode,
 		effectCodeLength,
 		NULL,
@@ -4751,19 +4751,19 @@ FNA3D_Effect* OPENGL_CloneEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLEffect *cloneSource = (OpenGLEffect*) effect;
 	MOJOSHADER_effect *effectData;
 	MOJOSHADER_glEffect *glEffect;
 	OpenGLEffect *result;
 	FNA3D_Command cmd;
 
-	if (device->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_CLONEEFFECT;
 		cmd.cloneEffect.cloneSource = effect;
 		cmd.semaphore = SDL_CreateSemaphore(0);
-		ForceToMainThread(device, &cmd);
+		ForceToMainThread(renderer, &cmd);
 		SDL_SemWait(cmd.semaphore);
 		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.cloneEffect.retval;
@@ -4789,17 +4789,17 @@ FNA3D_Effect* OPENGL_CloneEffect(
 }
 
 static void OPENGL_INTERNAL_DestroyEffect(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	OpenGLEffect *effect
 ) {
 	MOJOSHADER_glEffect *glEffect = effect->glEffect;
-	if (glEffect == device->currentEffect)
+	if (glEffect == renderer->currentEffect)
 	{
-		MOJOSHADER_glEffectEndPass(device->currentEffect);
-		MOJOSHADER_glEffectEnd(device->currentEffect);
-		device->currentEffect = NULL;
-		device->currentTechnique = NULL;
-		device->currentPass = 0;
+		MOJOSHADER_glEffectEndPass(renderer->currentEffect);
+		MOJOSHADER_glEffectEnd(renderer->currentEffect);
+		renderer->currentEffect = NULL;
+		renderer->currentTechnique = NULL;
+		renderer->currentPass = 0;
 	}
 	MOJOSHADER_glDeleteEffect(glEffect);
 	MOJOSHADER_freeEffect(effect->effect);
@@ -4810,19 +4810,19 @@ void OPENGL_AddDisposeEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLEffect *fnaEffect = (OpenGLEffect*) effect;
 	OpenGLEffect *curr;
 
-	if (device->threadID == SDL_ThreadID())
+	if (renderer->threadID == SDL_ThreadID())
 	{
-		OPENGL_INTERNAL_DestroyEffect(device, fnaEffect);
+		OPENGL_INTERNAL_DestroyEffect(renderer, fnaEffect);
 	}
 	else
 	{
-		SDL_LockMutex(device->disposeEffectsLock);
-		LinkedList_Add(device->disposeEffects, fnaEffect, curr);
-		SDL_UnlockMutex(device->disposeEffectsLock);
+		SDL_LockMutex(renderer->disposeEffectsLock);
+		LinkedList_Add(renderer->disposeEffects, fnaEffect, curr);
+		SDL_UnlockMutex(renderer->disposeEffectsLock);
 	}
 }
 
@@ -4833,32 +4833,32 @@ void OPENGL_ApplyEffect(
 	uint32_t pass,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLEffect *fnaEffect = (OpenGLEffect*) effect;
 	MOJOSHADER_glEffect *glEffectData = fnaEffect->glEffect;
 	uint32_t whatever;
 
-	device->effectApplied = 1;
-	if (glEffectData == device->currentEffect)
+	renderer->effectApplied = 1;
+	if (glEffectData == renderer->currentEffect)
 	{
-		if (	technique == device->currentTechnique &&
-			pass == device->currentPass		)
+		if (	technique == renderer->currentTechnique &&
+			pass == renderer->currentPass		)
 		{
 			MOJOSHADER_glEffectCommitChanges(
-				device->currentEffect
+				renderer->currentEffect
 			);
 			return;
 		}
-		MOJOSHADER_glEffectEndPass(device->currentEffect);
-		MOJOSHADER_glEffectBeginPass(device->currentEffect, pass);
-		device->currentTechnique = technique;
-		device->currentPass = pass;
+		MOJOSHADER_glEffectEndPass(renderer->currentEffect);
+		MOJOSHADER_glEffectBeginPass(renderer->currentEffect, pass);
+		renderer->currentTechnique = technique;
+		renderer->currentPass = pass;
 		return;
 	}
-	else if (device->currentEffect != NULL)
+	else if (renderer->currentEffect != NULL)
 	{
-		MOJOSHADER_glEffectEndPass(device->currentEffect);
-		MOJOSHADER_glEffectEnd(device->currentEffect);
+		MOJOSHADER_glEffectEndPass(renderer->currentEffect);
+		MOJOSHADER_glEffectEnd(renderer->currentEffect);
 	}
 	MOJOSHADER_glEffectBegin(
 		glEffectData,
@@ -4867,9 +4867,9 @@ void OPENGL_ApplyEffect(
 		stateChanges
 	);
 	MOJOSHADER_glEffectBeginPass(glEffectData, pass);
-	device->currentEffect = glEffectData;
-	device->currentTechnique = technique;
-	device->currentPass = pass;
+	renderer->currentEffect = glEffectData;
+	renderer->currentTechnique = technique;
+	renderer->currentPass = pass;
 }
 
 void OPENGL_BeginPassRestore(
@@ -4877,7 +4877,7 @@ void OPENGL_BeginPassRestore(
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	MOJOSHADER_glEffect *glEffectData = ((OpenGLEffect*) effect)->glEffect;
 	uint32_t whatever;
 
@@ -4888,19 +4888,19 @@ void OPENGL_BeginPassRestore(
 		stateChanges
 	);
 	MOJOSHADER_glEffectBeginPass(glEffectData, 0);
-	device->effectApplied = 1;
+	renderer->effectApplied = 1;
 }
 
 void OPENGL_EndPassRestore(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	MOJOSHADER_glEffect *glEffectData = ((OpenGLEffect*) effect)->glEffect;
 
 	MOJOSHADER_glEffectEndPass(glEffectData);
 	MOJOSHADER_glEffectEnd(glEffectData);
-	device->effectApplied = 1;
+	renderer->effectApplied = 1;
 }
 
 /* Queries */
@@ -4908,21 +4908,21 @@ void OPENGL_EndPassRestore(
 FNA3D_Query* OPENGL_CreateQuery(FNA3D_Renderer *driverData)
 {
 	OpenGLQuery *result;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	SDL_assert(device->supports_ARB_occlusion_query);
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	SDL_assert(renderer->supports_ARB_occlusion_query);
 
 	result = (OpenGLQuery*) SDL_malloc(sizeof(OpenGLQuery));
-	device->glGenQueries(1, &result->handle);
+	renderer->glGenQueries(1, &result->handle);
 	result->next = NULL;
 
 	return (FNA3D_Query*) result;
 }
 
 static void OPENGL_INTERNAL_DestroyQuery(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	OpenGLQuery *query
 ) {
-	device->glDeleteQueries(
+	renderer->glDeleteQueries(
 		1,
 		&query->handle
 	);
@@ -4931,32 +4931,32 @@ static void OPENGL_INTERNAL_DestroyQuery(
 
 void OPENGL_AddDisposeQuery(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLQuery *glQuery = (OpenGLQuery*) query;
 	OpenGLQuery *curr;
 
-	SDL_assert(device->supports_ARB_occlusion_query);
+	SDL_assert(renderer->supports_ARB_occlusion_query);
 
-	if (device->threadID == SDL_ThreadID())
+	if (renderer->threadID == SDL_ThreadID())
 	{
-		OPENGL_INTERNAL_DestroyQuery(device, glQuery);
+		OPENGL_INTERNAL_DestroyQuery(renderer, glQuery);
 	}
 	else
 	{
-		SDL_LockMutex(device->disposeQueriesLock);
-		LinkedList_Add(device->disposeQueries, glQuery, curr);
-		SDL_UnlockMutex(device->disposeQueriesLock);
+		SDL_LockMutex(renderer->disposeQueriesLock);
+		LinkedList_Add(renderer->disposeQueries, glQuery, curr);
+		SDL_UnlockMutex(renderer->disposeQueriesLock);
 	}
 }
 
 void OPENGL_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLQuery *glQuery = (OpenGLQuery*) query;
 
-	SDL_assert(device->supports_ARB_occlusion_query);
+	SDL_assert(renderer->supports_ARB_occlusion_query);
 
-	device->glBeginQuery(
+	renderer->glBeginQuery(
 		GL_SAMPLES_PASSED,
 		glQuery->handle
 	);
@@ -4964,12 +4964,12 @@ void OPENGL_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 
 void OPENGL_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 
-	SDL_assert(device->supports_ARB_occlusion_query);
+	SDL_assert(renderer->supports_ARB_occlusion_query);
 
 	/* May need to check active queries...? */
-	device->glEndQuery(
+	renderer->glEndQuery(
 		GL_SAMPLES_PASSED
 	);
 }
@@ -4977,12 +4977,12 @@ void OPENGL_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
 uint8_t OPENGL_QueryComplete(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
 	GLuint result;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLQuery *glQuery = (OpenGLQuery*) query;
 
-	SDL_assert(device->supports_ARB_occlusion_query);
+	SDL_assert(renderer->supports_ARB_occlusion_query);
 
-	device->glGetQueryObjectuiv(
+	renderer->glGetQueryObjectuiv(
 		glQuery->handle,
 		GL_QUERY_RESULT_AVAILABLE,
 		&result
@@ -4995,12 +4995,12 @@ int32_t OPENGL_QueryPixelCount(
 	FNA3D_Query *query
 ) {
 	GLuint result;
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLQuery *glQuery = (OpenGLQuery*) query;
 
-	SDL_assert(device->supports_ARB_occlusion_query);
+	SDL_assert(renderer->supports_ARB_occlusion_query);
 
-	device->glGetQueryObjectuiv(
+	renderer->glGetQueryObjectuiv(
 		glQuery->handle,
 		GL_QUERY_RESULT,
 		&result
@@ -5012,21 +5012,21 @@ int32_t OPENGL_QueryPixelCount(
 
 uint8_t OPENGL_SupportsDXT1(FNA3D_Renderer *driverData)
 {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	return device->supports_dxt1;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	return renderer->supports_dxt1;
 }
 
 uint8_t OPENGL_SupportsS3TC(FNA3D_Renderer *driverData)
 {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	return device->supports_s3tc;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	return renderer->supports_s3tc;
 }
 
 uint8_t OPENGL_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
 {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	return (	device->supports_ARB_draw_instanced &&
-			device->supports_ARB_instanced_arrays	);
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	return (	renderer->supports_ARB_draw_instanced &&
+			renderer->supports_ARB_instanced_arrays	);
 }
 
 uint8_t OPENGL_SupportsNoOverwrite(FNA3D_Renderer *driverData)
@@ -5036,24 +5036,24 @@ uint8_t OPENGL_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 
 int32_t OPENGL_GetMaxTextureSlots(FNA3D_Renderer *driverData)
 {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	return device->numTextureSlots;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	return renderer->numTextureSlots;
 }
 
 int32_t OPENGL_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
 {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	return device->maxMultiSampleCount;
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	return renderer->maxMultiSampleCount;
 }
 
 /* Debugging */
 
 void OPENGL_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	if (device->supports_GREMEDY_string_marker)
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	if (renderer->supports_GREMEDY_string_marker)
 	{
-		device->glStringMarkerGREMEDY(SDL_strlen(text), text);
+		renderer->glStringMarkerGREMEDY(SDL_strlen(text), text);
 	}
 }
 
@@ -5120,50 +5120,50 @@ MOJOSHADER_effect* OPENGL_GetEffectData(FNA3D_Effect *effect)
 /* Load GL Entry Points */
 
 static void LoadEntryPoints(
-	OpenGLDevice *device,
+	OpenGLRenderer *renderer,
 	const char *driverInfo,
 	uint8_t debugMode
 ) {
 	const char *baseErrorString = (
-		device->useES3 ?
+		renderer->useES3 ?
 			"OpenGL ES 3.0 support is required!" :
 			"OpenGL 2.1 support is required!"
 	);
 
-	device->supports_BaseGL = 1;
-	device->supports_CoreGL = 1;
-	device->supports_3DTexture = 1;
-	device->supports_DoublePrecisionDepth = 1;
-	device->supports_OES_single_precision = 1;
-	device->supports_ARB_occlusion_query = 1;
-	device->supports_NonES3 = 1;
-	device->supports_NonES3NonCore = 1;
-	device->supports_ARB_framebuffer_object = 1;
-	device->supports_EXT_framebuffer_blit = 1;
-	device->supports_EXT_framebuffer_multisample = 1;
-	device->supports_ARB_invalidate_subdata = 1;
-	device->supports_ARB_draw_instanced = 1;
-	device->supports_ARB_instanced_arrays = 1;
-	device->supports_ARB_draw_elements_base_vertex = 1;
-	device->supports_EXT_draw_buffers2 = 1;
-	device->supports_ARB_texture_multisample = 1;
-	device->supports_KHR_debug = 1;
-	device->supports_GREMEDY_string_marker = 1;
+	renderer->supports_BaseGL = 1;
+	renderer->supports_CoreGL = 1;
+	renderer->supports_3DTexture = 1;
+	renderer->supports_DoublePrecisionDepth = 1;
+	renderer->supports_OES_single_precision = 1;
+	renderer->supports_ARB_occlusion_query = 1;
+	renderer->supports_NonES3 = 1;
+	renderer->supports_NonES3NonCore = 1;
+	renderer->supports_ARB_framebuffer_object = 1;
+	renderer->supports_EXT_framebuffer_blit = 1;
+	renderer->supports_EXT_framebuffer_multisample = 1;
+	renderer->supports_ARB_invalidate_subdata = 1;
+	renderer->supports_ARB_draw_instanced = 1;
+	renderer->supports_ARB_instanced_arrays = 1;
+	renderer->supports_ARB_draw_elements_base_vertex = 1;
+	renderer->supports_EXT_draw_buffers2 = 1;
+	renderer->supports_ARB_texture_multisample = 1;
+	renderer->supports_KHR_debug = 1;
+	renderer->supports_GREMEDY_string_marker = 1;
 
 	#define GL_PROC(ext, ret, func, parms) \
-		device->func = (glfntype_##func) SDL_GL_GetProcAddress(#func); \
-		if (device->func == NULL) \
+		renderer->func = (glfntype_##func) SDL_GL_GetProcAddress(#func); \
+		if (renderer->func == NULL) \
 		{ \
-			device->supports_##ext = 0; \
+			renderer->supports_##ext = 0; \
 		}
 	#define GL_PROC_EXT(ext, fallback, ret, func, parms) \
-		device->func = (glfntype_##func) SDL_GL_GetProcAddress(#func); \
-		if (device->func == NULL) \
+		renderer->func = (glfntype_##func) SDL_GL_GetProcAddress(#func); \
+		if (renderer->func == NULL) \
 		{ \
-			device->func = (glfntype_##func) SDL_GL_GetProcAddress(#func #fallback); \
-			if (device->func == NULL) \
+			renderer->func = (glfntype_##func) SDL_GL_GetProcAddress(#func #fallback); \
+			if (renderer->func == NULL) \
 			{ \
-				device->supports_##ext = 0; \
+				renderer->supports_##ext = 0; \
 			} \
 		}
 #pragma GCC diagnostic push
@@ -5174,7 +5174,7 @@ static void LoadEntryPoints(
 	#undef GL_PROC_EXT
 
 	/* Weeding out the GeForce FX cards... */
-	if (!device->supports_BaseGL)
+	if (!renderer->supports_BaseGL)
 	{
 		SDL_LogError(
 			SDL_LOG_CATEGORY_APPLICATION,
@@ -5186,8 +5186,8 @@ static void LoadEntryPoints(
 	}
 
 	/* No depth precision whatsoever? Something's busted. */
-	if (	!device->supports_DoublePrecisionDepth &&
-		!device->supports_OES_single_precision	)
+	if (	!renderer->supports_DoublePrecisionDepth &&
+		!renderer->supports_OES_single_precision	)
 	{
 		SDL_LogError(
 			SDL_LOG_CATEGORY_APPLICATION,
@@ -5199,7 +5199,7 @@ static void LoadEntryPoints(
 	}
 
 	/* If you asked for core profile, you better have it! */
-	if (device->useCoreProfile && !device->supports_CoreGL)
+	if (renderer->useCoreProfile && !renderer->supports_CoreGL)
 	{
 		SDL_LogError(
 			SDL_LOG_CATEGORY_APPLICATION,
@@ -5210,40 +5210,40 @@ static void LoadEntryPoints(
 	}
 
 	/* Some stuff is okay for ES3, not for desktop. */
-	if (device->useES3)
+	if (renderer->useES3)
 	{
-		if (!device->supports_3DTexture)
+		if (!renderer->supports_3DTexture)
 		{
 			SDL_LogWarn(
 				SDL_LOG_CATEGORY_APPLICATION,
 				"3D textures unsupported, beware..."
 			);
 		}
-		if (!device->supports_ARB_occlusion_query)
+		if (!renderer->supports_ARB_occlusion_query)
 		{
 			SDL_LogWarn(
 				SDL_LOG_CATEGORY_APPLICATION,
 				"Occlusion queries unsupported, beware..."
 			);
 		}
-		if (!device->supports_ARB_invalidate_subdata)
+		if (!renderer->supports_ARB_invalidate_subdata)
 		{
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
-			device->glInvalidateFramebuffer =
+			renderer->glInvalidateFramebuffer =
 				(glfntype_glInvalidateFramebuffer) SDL_GL_GetProcAddress(
 					"glDiscardFramebufferEXT"
 			);
 #pragma GCC diagnostic pop
-			device->supports_ARB_invalidate_subdata =
-				device->glInvalidateFramebuffer != NULL;
+			renderer->supports_ARB_invalidate_subdata =
+				renderer->glInvalidateFramebuffer != NULL;
 		}
 	}
 	else
 	{
-		if (	!device->supports_3DTexture ||
-			!device->supports_ARB_occlusion_query ||
-			!device->supports_NonES3	)
+		if (	!renderer->supports_3DTexture ||
+			!renderer->supports_ARB_occlusion_query ||
+			!renderer->supports_NonES3	)
 		{
 			SDL_LogError(
 				SDL_LOG_CATEGORY_APPLICATION,
@@ -5256,9 +5256,9 @@ static void LoadEntryPoints(
 	}
 
 	/* AKA: The shitty TexEnvi check */
-	if (	!device->useES3 &&
-		!device->useCoreProfile &&
-		!device->supports_NonES3NonCore	)
+	if (	!renderer->useES3 &&
+		!renderer->useCoreProfile &&
+		!renderer->supports_NonES3NonCore	)
 	{
 		SDL_LogError(
 			SDL_LOG_CATEGORY_APPLICATION,
@@ -5270,26 +5270,26 @@ static void LoadEntryPoints(
 	}
 
 	/* ColorMask is an absolute mess */
-	if (!device->supports_EXT_draw_buffers2)
+	if (!renderer->supports_EXT_draw_buffers2)
 	{
 		#define LOAD_COLORMASK(suffix) \
-		device->glColorMaski = (glfntype_glColorMaski) \
+		renderer->glColorMaski = (glfntype_glColorMaski) \
 			SDL_GL_GetProcAddress("glColorMask" #suffix);
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
 		LOAD_COLORMASK(IndexedEXT)
-		if (device->glColorMaski == NULL) LOAD_COLORMASK(iOES)
-		if (device->glColorMaski == NULL) LOAD_COLORMASK(iEXT)
+		if (renderer->glColorMaski == NULL) LOAD_COLORMASK(iOES)
+		if (renderer->glColorMaski == NULL) LOAD_COLORMASK(iEXT)
 #pragma GCC diagnostic pop
-		if (device->glColorMaski != NULL)
+		if (renderer->glColorMaski != NULL)
 		{
-			device->supports_EXT_draw_buffers2 = 1;
+			renderer->supports_EXT_draw_buffers2 = 1;
 		}
 		#undef LOAD_COLORMASK
 	}
 
 	/* Possibly bogus if a game never uses render targets? */
-	if (!device->supports_ARB_framebuffer_object)
+	if (!renderer->supports_ARB_framebuffer_object)
 	{
 		SDL_LogError(
 			SDL_LOG_CATEGORY_APPLICATION,
@@ -5305,9 +5305,9 @@ static void LoadEntryPoints(
 		return;
 	}
 
-	if (device->supports_KHR_debug)
+	if (renderer->supports_KHR_debug)
 	{
-		device->glDebugMessageControl(
+		renderer->glDebugMessageControl(
 			GL_DONT_CARE,
 			GL_DONT_CARE,
 			GL_DONT_CARE,
@@ -5315,7 +5315,7 @@ static void LoadEntryPoints(
 			NULL,
 			GL_TRUE
 		);
-		device->glDebugMessageControl(
+		renderer->glDebugMessageControl(
 			GL_DONT_CARE,
 			GL_DEBUG_TYPE_OTHER,
 			GL_DEBUG_SEVERITY_LOW,
@@ -5323,7 +5323,7 @@ static void LoadEntryPoints(
 			NULL,
 			GL_FALSE
 		);
-		device->glDebugMessageControl(
+		renderer->glDebugMessageControl(
 			GL_DONT_CARE,
 			GL_DEBUG_TYPE_OTHER,
 			GL_DEBUG_SEVERITY_NOTIFICATION,
@@ -5331,7 +5331,7 @@ static void LoadEntryPoints(
 			NULL,
 			GL_FALSE
 		);
-		device->glDebugMessageCallback(DebugCall, NULL);
+		renderer->glDebugMessageCallback(DebugCall, NULL);
 	}
 	else
 	{
@@ -5341,7 +5341,7 @@ static void LoadEntryPoints(
 		);
 	}
 
-	if (!device->supports_GREMEDY_string_marker)
+	if (!renderer->supports_GREMEDY_string_marker)
 	{
 		SDL_LogWarn(
 			SDL_LOG_CATEGORY_APPLICATION,
@@ -5495,24 +5495,24 @@ FNA3D_Device* OPENGL_CreateDevice(
 	int32_t flags;
 	int32_t depthSize, stencilSize;
 	SDL_SysWMinfo wmInfo;
-	const char *renderer, *version, *vendor;
+	const char *rendererStr, *versionStr, *vendorStr;
 	char driverInfo[256];
 	int32_t i;
 	int32_t numExtensions, numSamplers, numAttributes, numAttachments;
-	OpenGLDevice *device;
+	OpenGLRenderer *renderer;
 	FNA3D_Device *result;
 
 	/* Create the FNA3D_Device */
 	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
 	ASSIGN_DRIVER(OPENGL)
 
-	/* Init the OpenGLDevice */
-	device = (OpenGLDevice*) SDL_malloc(sizeof(OpenGLDevice));
-	SDL_memset(device, '\0', sizeof(OpenGLDevice));
+	/* Init the OpenGLRenderer */
+	renderer = (OpenGLRenderer*) SDL_malloc(sizeof(OpenGLRenderer));
+	SDL_memset(renderer, '\0', sizeof(OpenGLRenderer));
 
-	/* The FNA3D_Device and OpenGLDevice need to reference each other */
-	device->parentDevice = result;
-	result->driverData = (FNA3D_Renderer*) device;
+	/* The FNA3D_Device and OpenGLRenderer need to reference each other */
+	renderer->parentDevice = result;
+	result->driverData = (FNA3D_Renderer*) renderer;
 
 	/* Debug context support */
 	if (debugMode)
@@ -5524,14 +5524,14 @@ FNA3D_Device* OPENGL_CreateDevice(
 	}
 
 	/* Create OpenGL context */
-	device->context = SDL_GL_CreateContext(
+	renderer->context = SDL_GL_CreateContext(
 		(SDL_Window*) presentationParameters->deviceWindowHandle
 	);
 
 	/* Check for a possible ES/Core context */
 	SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &flags);
-	device->useES3 = (flags & SDL_GL_CONTEXT_PROFILE_ES) != 0;
-	device->useCoreProfile = (flags & SDL_GL_CONTEXT_PROFILE_CORE) != 0;
+	renderer->useES3 = (flags & SDL_GL_CONTEXT_PROFILE_ES) != 0;
+	renderer->useCoreProfile = (flags & SDL_GL_CONTEXT_PROFILE_CORE) != 0;
 
 	/* Check for a possible debug context */
 	SDL_GL_GetAttribute(SDL_GL_CONTEXT_FLAGS, &flags);
@@ -5542,19 +5542,19 @@ FNA3D_Device* OPENGL_CreateDevice(
 	SDL_GL_GetAttribute(SDL_GL_STENCIL_SIZE, &stencilSize);
 	if (depthSize == 0 && stencilSize == 0)
 	{
-		device->windowDepthFormat = FNA3D_DEPTHFORMAT_NONE;
+		renderer->windowDepthFormat = FNA3D_DEPTHFORMAT_NONE;
 	}
 	else if (depthSize == 16 && stencilSize == 0)
 	{
-		device->windowDepthFormat = FNA3D_DEPTHFORMAT_D16;
+		renderer->windowDepthFormat = FNA3D_DEPTHFORMAT_D16;
 	}
 	else if (depthSize == 24 && stencilSize == 0)
 	{
-		device->windowDepthFormat = FNA3D_DEPTHFORMAT_D24;
+		renderer->windowDepthFormat = FNA3D_DEPTHFORMAT_D24;
 	}
 	else if (depthSize == 24 && stencilSize == 8)
 	{
-		device->windowDepthFormat = FNA3D_DEPTHFORMAT_D24S8;
+		renderer->windowDepthFormat = FNA3D_DEPTHFORMAT_D24S8;
 	}
 	else
 	{
@@ -5570,27 +5570,27 @@ FNA3D_Device* OPENGL_CreateDevice(
 #ifdef SDL_VIDEO_UIKIT
 	if (wmInfo.subsystem == SDL_SYSWM_UIKIT)
 	{
-		device->realBackbufferFBO = wmInfo.info.uikit.framebuffer;
-		device->realBackbufferRBO = wmInfo.info.uikit.colorbuffer;
+		renderer->realBackbufferFBO = wmInfo.info.uikit.framebuffer;
+		renderer->realBackbufferRBO = wmInfo.info.uikit.colorbuffer;
 	}
 #endif /* SDL_VIDEO_UIKIT */
 
 	/* Print GL information */
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
-	device->glGetString = (glfntype_glGetString) SDL_GL_GetProcAddress("glGetString");
+	renderer->glGetString = (glfntype_glGetString) SDL_GL_GetProcAddress("glGetString");
 #pragma GCC diagnostic pop
-	if (!device->glGetString)
+	if (!renderer->glGetString)
 	{
 		SDL_assert(0 && "GRAPHICS DRIVER IS EXTREMELY BROKEN!");
 	}
-	renderer =	(const char*) device->glGetString(GL_RENDERER);
-	version =	(const char*) device->glGetString(GL_VERSION);
-	vendor =	(const char*) device->glGetString(GL_VENDOR);
+	rendererStr =	(const char*) renderer->glGetString(GL_RENDERER);
+	versionStr =	(const char*) renderer->glGetString(GL_VERSION);
+	vendorStr =	(const char*) renderer->glGetString(GL_VENDOR);
 	SDL_snprintf(
 		driverInfo, sizeof(driverInfo),
-		"OpenGL Device: %s\nOpenGL Driver: %s\nOpenGL Vendor: %s",
-		renderer, version, vendor
+		"OpenGL renderer: %s\nOpenGL Driver: %s\nOpenGL Vendor: %s",
+		rendererStr, versionStr, vendorStr
 	);
 	SDL_LogInfo(
 		SDL_LOG_CATEGORY_APPLICATION,
@@ -5599,19 +5599,19 @@ FNA3D_Device* OPENGL_CreateDevice(
 	);
 
 	/* Initialize entry points */
-	LoadEntryPoints(device, driverInfo, debugMode);
+	LoadEntryPoints(renderer, driverInfo, debugMode);
 
 	/* FIXME: REMOVE ME ASAP! TERRIBLE HACK FOR ANGLE! */
-	if (SDL_strstr(renderer, "Direct3D11") != NULL)
+	if (SDL_strstr(rendererStr, "Direct3D11") != NULL)
 	{
-		device->supports_ARB_draw_elements_base_vertex = 0;
+		renderer->supports_ARB_draw_elements_base_vertex = 0;
 	}
 
 	/* Initialize shader context */
-	device->shaderProfile = SDL_GetHint("FNA_GRAPHICS_MOJOSHADER_PROFILE");
-	if (device->shaderProfile == NULL || device->shaderProfile[0] == '\0')
+	renderer->shaderProfile = SDL_GetHint("FNA_GRAPHICS_MOJOSHADER_PROFILE");
+	if (renderer->shaderProfile == NULL || renderer->shaderProfile[0] == '\0')
 	{
-		device->shaderProfile = MOJOSHADER_glBestProfile(
+		renderer->shaderProfile = MOJOSHADER_glBestProfile(
 			GLGetProcAddress,
 			NULL,
 			NULL,
@@ -5620,42 +5620,42 @@ FNA3D_Device* OPENGL_CreateDevice(
 		);
 
 		/* SPIR-V is very new and not really necessary. */
-		if (	(SDL_strcmp(device->shaderProfile, "glspirv") == 0) &&
-			!device->useCoreProfile	)
+		if (	(SDL_strcmp(renderer->shaderProfile, "glspirv") == 0) &&
+			!renderer->useCoreProfile	)
 		{
-			device->shaderProfile = "glsl120";
+			renderer->shaderProfile = "glsl120";
 		}
 	}
-	device->shaderContext = MOJOSHADER_glCreateContext(
-		device->shaderProfile,
+	renderer->shaderContext = MOJOSHADER_glCreateContext(
+		renderer->shaderProfile,
 		GLGetProcAddress,
 		NULL,
 		NULL,
 		NULL,
 		NULL
 	);
-	MOJOSHADER_glMakeContextCurrent(device->shaderContext);
+	MOJOSHADER_glMakeContextCurrent(renderer->shaderContext);
 
 	/* Some users might want pixely upscaling... */
-	device->backbufferScaleMode = SDL_GetHintBoolean(
+	renderer->backbufferScaleMode = SDL_GetHintBoolean(
 		"FNA_GRAPHICS_BACKBUFFER_SCALE_NEAREST", 0
 	) ? GL_NEAREST : GL_LINEAR;
 
 	/* Load the extension list, initialize extension-dependent components */
-	device->supports_s3tc = 0;
-	device->supports_dxt1 = 0;
-	if (device->useCoreProfile)
+	renderer->supports_s3tc = 0;
+	renderer->supports_dxt1 = 0;
+	if (renderer->useCoreProfile)
 	{
-		device->glGetIntegerv(GL_NUM_EXTENSIONS, &numExtensions);
+		renderer->glGetIntegerv(GL_NUM_EXTENSIONS, &numExtensions);
 		for (i = 0; i < numExtensions; i += 1)
 		{
 			checkExtensions(
-				(const char*) device->glGetStringi(GL_EXTENSIONS, i),
-				&device->supports_s3tc,
-				&device->supports_dxt1
+				(const char*) renderer->glGetStringi(GL_EXTENSIONS, i),
+				&renderer->supports_s3tc,
+				&renderer->supports_dxt1
 			);
 
-			if (device->supports_s3tc && device->supports_dxt1)
+			if (renderer->supports_s3tc && renderer->supports_dxt1)
 			{
 				/* No need to look further. */
 				break;
@@ -5665,123 +5665,123 @@ FNA3D_Device* OPENGL_CreateDevice(
 	else
 	{
 		checkExtensions(
-			(const char*) device->glGetString(GL_EXTENSIONS),
-			&device->supports_s3tc,
-			&device->supports_dxt1
+			(const char*) renderer->glGetString(GL_EXTENSIONS),
+			&renderer->supports_s3tc,
+			&renderer->supports_dxt1
 		);
 	}
 
 	/* Check the max multisample count, override parameters if necessary */
-	if (device->supports_EXT_framebuffer_multisample)
+	if (renderer->supports_EXT_framebuffer_multisample)
 	{
-		device->glGetIntegerv(
+		renderer->glGetIntegerv(
 			GL_MAX_SAMPLES,
-			&device->maxMultiSampleCount
+			&renderer->maxMultiSampleCount
 		);
 	}
 	presentationParameters->multiSampleCount = SDL_min(
 		presentationParameters->multiSampleCount,
-		device->maxMultiSampleCount
+		renderer->maxMultiSampleCount
 	);
 
 	/* Initialize the faux backbuffer */
-	OPENGL_INTERNAL_CreateBackbuffer(device, presentationParameters);
+	OPENGL_INTERNAL_CreateBackbuffer(renderer, presentationParameters);
 
 	/* Initialize texture collection array */
-	device->glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &numSamplers);
+	renderer->glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &numSamplers);
 	numSamplers = SDL_min(numSamplers, MAX_TEXTURE_SAMPLERS);
 	for (i = 0; i < numSamplers; i += 1)
 	{
-		device->textures[i] = &NullTexture;
+		renderer->textures[i] = &NullTexture;
 	}
-	device->numTextureSlots = numSamplers;
+	renderer->numTextureSlots = numSamplers;
 
 	/* Initialize vertex attribute state arrays */
-	device->ldBaseVertex = -1;
-	device->glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &numAttributes);
+	renderer->ldBaseVertex = -1;
+	renderer->glGetIntegerv(GL_MAX_VERTEX_ATTRIBS, &numAttributes);
 	numAttributes = SDL_min(numAttributes, MAX_VERTEX_ATTRIBUTES);
 	for (i = 0; i < numAttributes; i += 1)
 	{
-		device->attributes[i].currentBuffer = 0;
-		device->attributes[i].currentPointer = NULL;
-		device->attributes[i].currentFormat = FNA3D_VERTEXELEMENTFORMAT_SINGLE;
-		device->attributes[i].currentNormalized = 0;
-		device->attributes[i].currentStride = 0;
+		renderer->attributes[i].currentBuffer = 0;
+		renderer->attributes[i].currentPointer = NULL;
+		renderer->attributes[i].currentFormat = FNA3D_VERTEXELEMENTFORMAT_SINGLE;
+		renderer->attributes[i].currentNormalized = 0;
+		renderer->attributes[i].currentStride = 0;
 
-		device->attributeEnabled[i] = 0;
-		device->previousAttributeEnabled[i] = 0;
-		device->attributeDivisor[i] = 0;
-		device->previousAttributeDivisor[i] = 0;
+		renderer->attributeEnabled[i] = 0;
+		renderer->previousAttributeEnabled[i] = 0;
+		renderer->attributeDivisor[i] = 0;
+		renderer->previousAttributeDivisor[i] = 0;
 	}
-	device->numVertexAttributes = numAttributes;
+	renderer->numVertexAttributes = numAttributes;
 
 	/* Initialize render target FBO and state arrays */
-	device->glGetIntegerv(GL_MAX_DRAW_BUFFERS, &numAttachments);
+	renderer->glGetIntegerv(GL_MAX_DRAW_BUFFERS, &numAttachments);
 	numAttachments = SDL_min(numAttachments, MAX_RENDERTARGET_BINDINGS);
 	for (i = 0; i < numAttachments; i += 1)
 	{
-		device->attachments[i] = 0;
-		device->attachmentTypes[i] = 0;
-		device->currentAttachments[i] = 0;
-		device->currentAttachmentTypes[i] = GL_TEXTURE_2D;
-		device->drawBuffersArray[i] = GL_COLOR_ATTACHMENT0 + i;
+		renderer->attachments[i] = 0;
+		renderer->attachmentTypes[i] = 0;
+		renderer->currentAttachments[i] = 0;
+		renderer->currentAttachmentTypes[i] = GL_TEXTURE_2D;
+		renderer->drawBuffersArray[i] = GL_COLOR_ATTACHMENT0 + i;
 	}
-	device->numAttachments = numAttachments;
+	renderer->numAttachments = numAttachments;
 
-	device->drawBuffersArray[numAttachments] = GL_DEPTH_ATTACHMENT;
-	device->drawBuffersArray[numAttachments + 1] = GL_STENCIL_ATTACHMENT;
-	device->glGenFramebuffers(1, &device->targetFramebuffer);
-	device->glGenFramebuffers(1, &device->resolveFramebufferRead);
-	device->glGenFramebuffers(1, &device->resolveFramebufferDraw);
+	renderer->drawBuffersArray[numAttachments] = GL_DEPTH_ATTACHMENT;
+	renderer->drawBuffersArray[numAttachments + 1] = GL_STENCIL_ATTACHMENT;
+	renderer->glGenFramebuffers(1, &renderer->targetFramebuffer);
+	renderer->glGenFramebuffers(1, &renderer->resolveFramebufferRead);
+	renderer->glGenFramebuffers(1, &renderer->resolveFramebufferDraw);
 
-	if (device->useCoreProfile)
+	if (renderer->useCoreProfile)
 	{
 		/* Generate and bind a VAO, to shut Core up */
-		device->glGenVertexArrays(1, &device->vao);
-		device->glBindVertexArray(device->vao);
+		renderer->glGenVertexArrays(1, &renderer->vao);
+		renderer->glBindVertexArray(renderer->vao);
 	}
-	else if (!device->useES3)
+	else if (!renderer->useES3)
 	{
 		/* Compatibility contexts require that point sprites be enabled
 		 * explicitly. However, Apple's drivers have a blatant spec
 		 * violation that disallows a simple glEnable. So, here we are.
 		 * -flibit
 		 */
-		device->togglePointSprite = 0;
+		renderer->togglePointSprite = 0;
 		if (SDL_strcmp(SDL_GetPlatform(), "Mac OS X") == 0)
 		{
-			device->togglePointSprite = 1;
+			renderer->togglePointSprite = 1;
 		}
 		else
 		{
-			device->glEnable(GL_POINT_SPRITE);
+			renderer->glEnable(GL_POINT_SPRITE);
 		}
-		device->glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, 1);
+		renderer->glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, 1);
 	}
 
-	/* Initialize device members not covered by SDL_memset('\0') */
-	device->dstBlend = FNA3D_BLEND_ZERO; /* ZERO is really 1. -caleb */
-	device->dstBlendAlpha = FNA3D_BLEND_ZERO; /* ZERO is really 1. -caleb */
-	device->colorWriteEnable = FNA3D_COLORWRITECHANNELS_ALL;
-	device->colorWriteEnable1 = FNA3D_COLORWRITECHANNELS_ALL;
-	device->colorWriteEnable2 = FNA3D_COLORWRITECHANNELS_ALL;
-	device->colorWriteEnable3 = FNA3D_COLORWRITECHANNELS_ALL;
-	device->multiSampleMask = -1; /* AKA 0xFFFFFFFF, ugh -flibit */
-	device->stencilWriteMask = -1; /* AKA 0xFFFFFFFF, ugh -flibit */
-	device->stencilMask = -1; /* AKA 0xFFFFFFFF, ugh -flibit */
-	device->multiSampleEnable = 1;
-	device->depthRangeMax = 1.0f;
-	device->currentClearDepth = 1.0f;
+	/* Initialize renderer members not covered by SDL_memset('\0') */
+	renderer->dstBlend = FNA3D_BLEND_ZERO; /* ZERO is really 1. -caleb */
+	renderer->dstBlendAlpha = FNA3D_BLEND_ZERO; /* ZERO is really 1. -caleb */
+	renderer->colorWriteEnable = FNA3D_COLORWRITECHANNELS_ALL;
+	renderer->colorWriteEnable1 = FNA3D_COLORWRITECHANNELS_ALL;
+	renderer->colorWriteEnable2 = FNA3D_COLORWRITECHANNELS_ALL;
+	renderer->colorWriteEnable3 = FNA3D_COLORWRITECHANNELS_ALL;
+	renderer->multiSampleMask = -1; /* AKA 0xFFFFFFFF, ugh -flibit */
+	renderer->stencilWriteMask = -1; /* AKA 0xFFFFFFFF, ugh -flibit */
+	renderer->stencilMask = -1; /* AKA 0xFFFFFFFF, ugh -flibit */
+	renderer->multiSampleEnable = 1;
+	renderer->depthRangeMax = 1.0f;
+	renderer->currentClearDepth = 1.0f;
 
 	/* The creation thread will be the "main" thread */
-	device->threadID = SDL_ThreadID();
-	device->commandsLock = SDL_CreateMutex();
-	device->disposeTexturesLock = SDL_CreateMutex();
-	device->disposeRenderbuffersLock = SDL_CreateMutex();
-	device->disposeVertexBuffersLock = SDL_CreateMutex();
-	device->disposeIndexBuffersLock = SDL_CreateMutex();
-	device->disposeEffectsLock = SDL_CreateMutex();
-	device->disposeQueriesLock = SDL_CreateMutex();
+	renderer->threadID = SDL_ThreadID();
+	renderer->commandsLock = SDL_CreateMutex();
+	renderer->disposeTexturesLock = SDL_CreateMutex();
+	renderer->disposeRenderbuffersLock = SDL_CreateMutex();
+	renderer->disposeVertexBuffersLock = SDL_CreateMutex();
+	renderer->disposeIndexBuffersLock = SDL_CreateMutex();
+	renderer->disposeEffectsLock = SDL_CreateMutex();
+	renderer->disposeQueriesLock = SDL_CreateMutex();
 
 	/* Return the FNA3D_Device */
 	return result;
