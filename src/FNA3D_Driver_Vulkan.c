@@ -1004,22 +1004,18 @@ FNA3D_Device* VULKAN_CreateDevice(
 
 	VkInstanceCreateInfo createInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 
+	char const* layerNames[] = { "VK_LAYER_LUNARG_standard_validation" };
+	createInfo.pApplicationInfo = &appInfo;
+	createInfo.enabledExtensionCount = extensionCount;
+	createInfo.ppEnabledExtensionNames = extensionNames;
+	createInfo.ppEnabledLayerNames = layerNames;
+
 	if (debugMode)
 	{
-		char const* layerNames[] = { "VK_LAYER_LUNARG_standard_validation" };
-		createInfo.pApplicationInfo = &appInfo;
-		createInfo.enabledExtensionCount = extensionCount;
-		createInfo.ppEnabledExtensionNames = extensionNames;
-		createInfo.ppEnabledLayerNames = layerNames;
 		createInfo.enabledLayerCount = sizeof(layerNames)/sizeof(layerNames[0]);
 	}
 	else
 	{
-		char const* layerNames[] = { };
-		createInfo.pApplicationInfo = &appInfo;
-		createInfo.enabledExtensionCount = extensionCount;
-		createInfo.ppEnabledExtensionNames = extensionNames;
-		createInfo.ppEnabledLayerNames = layerNames;
 		createInfo.enabledLayerCount = 0;
 	}
 
