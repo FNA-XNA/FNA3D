@@ -65,9 +65,10 @@ static OpenGLTexture NullTexture =
 	FNA3D_TEXTUREADDRESSMODE_WRAP,
 	FNA3D_TEXTUREADDRESSMODE_WRAP,
 	FNA3D_TEXTUREFILTER_LINEAR,
+	0.0f,
 	0,
-	0,
-	0
+	0.0f,
+	NULL
 };
 
 struct OpenGLBuffer /* Cast from FNA3D_Buffer* */
