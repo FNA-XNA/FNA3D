@@ -3241,6 +3241,7 @@ static OpenGLTexture* OPENGL_INTERNAL_CreateTexture(
 	result->anisotropy = 4.0f;
 	result->maxMipmapLevel = 0;
 	result->lodBias = 0.0f;
+	result->next = NULL;
 
 	BindTexture(device, result);
 	device->glTexParameteri(
@@ -4197,6 +4198,7 @@ FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
 	renderbuffer = (OpenGLRenderbuffer*) SDL_malloc(
 		sizeof(OpenGLRenderbuffer)
 	);
+	renderbuffer->next = NULL;
 
 	device->glGenRenderbuffers(1, &renderbuffer->handle);
 	device->glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer->handle);
@@ -4253,6 +4255,7 @@ FNA3D_Renderbuffer* OPENGL_GenDepthStencilRenderbuffer(
 	renderbuffer = (OpenGLRenderbuffer*) SDL_malloc(
 		sizeof(OpenGLRenderbuffer)
 	);
+	renderbuffer->next = NULL;
 
 	device->glGenRenderbuffers(1, &renderbuffer->handle);
 	device->glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer->handle);
@@ -4362,6 +4365,7 @@ FNA3D_Buffer* OPENGL_GenVertexBuffer(
 	result->handle = handle;
 	result->size = (intptr_t) (vertexStride * vertexCount);
 	result->dynamic = (dynamic ? GL_STREAM_DRAW : GL_STATIC_DRAW);
+	result->next = NULL;
 
 	BindVertexBuffer(device, handle);
 	device->glBufferData(
@@ -4574,6 +4578,7 @@ FNA3D_Buffer* OPENGL_GenIndexBuffer(
 		indexCount * XNAToGL_IndexSize[indexElementSize]
 	);
 	result->dynamic = (dynamic ? GL_STREAM_DRAW : GL_STATIC_DRAW);
+	result->next = NULL;
 
 	BindIndexBuffer(device, handle);
 	device->glBufferData(
@@ -4772,6 +4777,7 @@ FNA3D_Effect* OPENGL_CreateEffect(
 	result = (OpenGLEffect*) SDL_malloc(sizeof(OpenGLEffect));
 	result->effect = effect;
 	result->glEffect = glEffect;
+	result->next = NULL;
 
 	return (FNA3D_Effect*) result;
 }
@@ -4813,6 +4819,7 @@ FNA3D_Effect* OPENGL_CloneEffect(
 	result = (OpenGLEffect*) SDL_malloc(sizeof(OpenGLEffect));
 	result->effect = effectData;
 	result->glEffect = glEffect;
+	result->next = NULL;
 
 	return (FNA3D_Effect*) result;
 }
@@ -4942,6 +4949,7 @@ FNA3D_Query* OPENGL_CreateQuery(FNA3D_Renderer *driverData)
 
 	result = (OpenGLQuery*) SDL_malloc(sizeof(OpenGLQuery));
 	device->glGenQueries(1, &result->handle);
+	result->next = NULL;
 
 	return (FNA3D_Query*) result;
 }
