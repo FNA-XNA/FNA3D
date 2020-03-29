@@ -771,7 +771,6 @@ static void OPENGL_INTERNAL_DestroyQuery(
 void OPENGL_DestroyDevice(FNA3D_Device *device)
 {
 	OpenGLDevice *glDevice = (OpenGLDevice*) device->driverData;
-	FNA3D_Command *curr, *next;
 
 	if (glDevice->useCoreProfile)
 	{
@@ -3358,7 +3357,6 @@ FNA3D_Texture* OPENGL_CreateTexture2D(
 	GLenum glFormat, glInternalFormat, glType;
 	int32_t levelWidth, levelHeight, i;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	if (device->threadID != SDL_ThreadID())
 	{
@@ -3436,7 +3434,6 @@ FNA3D_Texture* OPENGL_CreateTexture3D(
 	GLenum glFormat, glInternalFormat, glType;
 	int32_t i;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	SDL_assert(device->supports_3DTexture);
 
@@ -3494,7 +3491,6 @@ FNA3D_Texture* OPENGL_CreateTextureCube(
 	GLenum glFormat, glInternalFormat;
 	int32_t levelSize, i, l;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	if (device->threadID != SDL_ThreadID())
 	{
@@ -3625,7 +3621,6 @@ void OPENGL_SetTextureData2D(
 	GLenum glFormat;
 	int32_t packSize;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	if (device->threadID != SDL_ThreadID())
 	{
@@ -3720,7 +3715,6 @@ void OPENGL_SetTextureData3D(
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	SDL_assert(device->supports_3DTexture);
 
@@ -3778,7 +3772,6 @@ void OPENGL_SetTextureDataCube(
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	GLenum glFormat;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	if (device->threadID != SDL_ThreadID())
 	{
@@ -3915,7 +3908,6 @@ void OPENGL_GetTextureData2D(
 	int32_t curPixel, row, col;
 	uint8_t *dataPtr = (uint8_t*) data;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	SDL_assert(device->supports_NonES3);
 
@@ -4072,7 +4064,6 @@ void OPENGL_GetTextureDataCube(
 	int32_t curPixel, row, col;
 	uint8_t *dataPtr = (uint8_t*) data;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	SDL_assert(device->supports_NonES3);
 
@@ -4179,7 +4170,6 @@ FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	OpenGLRenderbuffer *renderbuffer;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	if (device->threadID != SDL_ThreadID())
 	{
@@ -4237,7 +4227,6 @@ FNA3D_Renderbuffer* OPENGL_GenDepthStencilRenderbuffer(
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	OpenGLRenderbuffer *renderbuffer;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	if (device->threadID != SDL_ThreadID())
 	{
@@ -4344,7 +4333,6 @@ FNA3D_Buffer* OPENGL_GenVertexBuffer(
 	OpenGLBuffer *result = NULL;
 	GLuint handle;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	if (device->threadID != SDL_ThreadID())
 	{
@@ -4434,7 +4422,6 @@ void OPENGL_SetVertexBufferData(
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	if (device->threadID != SDL_ThreadID())
 	{
@@ -4487,7 +4474,6 @@ void OPENGL_GetVertexBufferData(
 	uint8_t useStagingBuffer;
 	int32_t i;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	SDL_assert(device->supports_NonES3);
 
@@ -4555,7 +4541,6 @@ FNA3D_Buffer* OPENGL_GenIndexBuffer(
 	OpenGLBuffer *result = NULL;
 	GLuint handle;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	if (device->threadID != SDL_ThreadID())
 	{
@@ -4636,7 +4621,6 @@ void OPENGL_SetIndexBufferData(
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	if (device->threadID != SDL_ThreadID())
 	{
@@ -4685,7 +4669,6 @@ void OPENGL_GetIndexBufferData(
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	SDL_assert(device->supports_NonES3);
 
@@ -4728,7 +4711,6 @@ FNA3D_Effect* OPENGL_CreateEffect(
 	OpenGLEffect *result;
 	int32_t i;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	if (device->threadID != SDL_ThreadID())
 	{
@@ -4793,7 +4775,6 @@ FNA3D_Effect* OPENGL_CloneEffect(
 	MOJOSHADER_glEffect *glEffect;
 	OpenGLEffect *result;
 	FNA3D_Command cmd;
-	SDL_sem *sem;
 
 	if (device->threadID != SDL_ThreadID())
 	{
