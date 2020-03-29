@@ -30,6 +30,26 @@
 #include "FNA3D.h"
 #include "mojoshader.h"
 
+/* Internal Helper Macros */
+
+#define LinkedList_Add(start, toAdd, curr) \
+	toAdd->next = NULL; \
+	if (start == NULL) \
+	{ \
+		start = toAdd; \
+	} \
+	else \
+	{ \
+		curr = start; \
+		while (curr->next != NULL) \
+		{ \
+			curr = curr->next; \
+		} \
+		curr->next = toAdd; \
+	}
+
+/* FNA3D_Device Definition */
+
 typedef struct FNA3D_Renderer FNA3D_Renderer;
 
 struct FNA3D_Device

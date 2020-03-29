@@ -612,24 +612,6 @@ static int32_t XNAToGL_PrimitiveVerts(
 	return 0;
 }
 
-/* Linked Lists */
-
-#define LinkedList_Add(start, toAdd, curr) \
-	toAdd->next = NULL; \
-	if (start == NULL) \
-	{ \
-		start = toAdd; \
-	} \
-	else \
-	{ \
-		curr = start; \
-		while (curr->next != NULL) \
-		{ \
-			curr = curr->next; \
-		} \
-		curr->next = toAdd; \
-	}
-
 /* Inline Functions */
 
 /* Windows/Visual Studio cruft */
