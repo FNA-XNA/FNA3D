@@ -973,7 +973,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 	) {
 		SDL_LogError(
 			SDL_LOG_CATEGORY_APPLICATION,
-			"SDL_Vulkan_GetInstanceExtensions(): %s\n",
+			"SDL_Vulkan_GetInstanceExtensions(): getExtensionCount: %s\n",
 			SDL_GetError()
 		);
 		return NULL;
@@ -987,7 +987,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 	}
 
 	if (
-		SDL_Vulkan_GetInstanceExtensions(
+		!SDL_Vulkan_GetInstanceExtensions(
 			presentationParameters->deviceWindowHandle,
 			&extensionCount,
 			extensionNames
@@ -996,7 +996,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 		SDL_free((void*)extensionNames);
         SDL_LogError(
 			SDL_LOG_CATEGORY_APPLICATION,
-			"SDL_Vulkan_GetInstanceExtensions(): %s\n",
+			"SDL_Vulkan_GetInstanceExtensions(): getExtensions %s\n",
 			SDL_GetError()
 		);
 		return NULL;
