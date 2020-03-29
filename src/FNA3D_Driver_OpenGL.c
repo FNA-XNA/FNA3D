@@ -35,7 +35,13 @@
 
 /* Internal Structures */
 
-typedef struct OpenGLTexture /* Cast from FNA3D_Texture* */
+typedef struct OpenGLTexture OpenGLTexture;
+typedef struct OpenGLRenderbuffer OpenGLRenderbuffer;
+typedef struct OpenGLBuffer OpenGLBuffer;
+typedef struct OpenGLEffect OpenGLEffect;
+typedef struct OpenGLQuery OpenGLQuery;
+
+struct OpenGLTexture /* Cast from FNA3D_Texture* */
 {
 	uint32_t handle;
 	GLenum target;
@@ -47,7 +53,8 @@ typedef struct OpenGLTexture /* Cast from FNA3D_Texture* */
 	float anisotropy;
 	int32_t maxMipmapLevel;
 	float lodBias;
-} OpenGLTexture;
+	OpenGLTexture *next; /* linked list */
+};
 
 static OpenGLTexture NullTexture =
 {
@@ -63,28 +70,32 @@ static OpenGLTexture NullTexture =
 	0
 };
 
-typedef struct OpenGLBuffer /* Cast from FNA3D_Buffer* */
+struct OpenGLBuffer /* Cast from FNA3D_Buffer* */
 {
 	GLuint handle;
 	intptr_t size;
 	GLenum dynamic;
-} OpenGLBuffer;
+	OpenGLBuffer *next; /* linked list */
+};
 
-typedef struct OpenGLRenderbuffer /* Cast from FNA3D_Renderbuffer* */
+struct OpenGLRenderbuffer /* Cast from FNA3D_Renderbuffer* */
 {
 	GLuint handle;
-} OpenGLRenderbuffer;
+	OpenGLRenderbuffer *next; /* linked list */
+};
 
-typedef struct OpenGLEffect /* Cast from FNA3D_Effect* */
+struct OpenGLEffect /* Cast from FNA3D_Effect* */
 {
 	MOJOSHADER_effect *effect;
 	MOJOSHADER_glEffect *glEffect;
-} OpenGLEffect;
+	OpenGLEffect *next; /* linked list */
+};
 
-typedef struct OpenGLQuery /* Cast from FNA3D_Query* */
+struct OpenGLQuery /* Cast from FNA3D_Query* */
 {
 	GLuint handle;
-} OpenGLQuery;
+	OpenGLQuery *next; /* linked list */
+};
 
 typedef struct OpenGLBackbuffer
 {
@@ -114,8 +125,6 @@ typedef struct OpenGLVertexAttribute
 	uint8_t currentNormalized;
 	uint32_t currentStride;
 } OpenGLVertexAttribute;
-
-typedef struct LinkedList LinkedList;
 
 typedef struct OpenGLDevice /* Cast from FNA3D_Renderer* */
 {
@@ -268,8 +277,20 @@ typedef struct OpenGLDevice /* Cast from FNA3D_Renderer* */
 
 	/* Threading */
 	SDL_threadID threadID;
-	SDL_mutex *commandLock;
 	FNA3D_Command *commands;
+	SDL_mutex *commandsLock;
+	OpenGLTexture *disposeTextures;
+	SDL_mutex *disposeTexturesLock;
+	OpenGLRenderbuffer *disposeRenderbuffers;
+	SDL_mutex *disposeRenderbuffersLock;
+	OpenGLBuffer *disposeVertexBuffers;
+	SDL_mutex *disposeVertexBuffersLock;
+	OpenGLBuffer *disposeIndexBuffers;
+	SDL_mutex *disposeIndexBuffersLock;
+	OpenGLEffect *disposeEffects;
+	SDL_mutex *disposeEffectsLock;
+	OpenGLQuery *disposeQueries;
+	SDL_mutex *disposeQueriesLock;
 
 	/* GL entry points */
 	glfntype_glGetString glGetString; /* Loaded early! */
@@ -594,49 +615,19 @@ static int32_t XNAToGL_PrimitiveVerts(
 
 #define LinkedList_Add(start, toAdd, curr) \
 	toAdd->next = NULL; \
-	if (*start == NULL) \
+	if (start == NULL) \
 	{ \
-		*start = toAdd; \
+		start = toAdd; \
 	} \
 	else \
 	{ \
-		curr = *start; \
-		while ((curr = curr->next) != NULL) ; \
+		curr = start; \
+		while (curr->next != NULL) \
+		{ \
+			curr = curr->next; \
+		} \
 		curr->next = toAdd; \
 	}
-
-#define LinkedList_Clear(start, curr, _next) \
-	curr = *start; \
-	while (curr != NULL) \
-	{ \
-		_next = curr->next; \
-		curr->next = NULL; \
-		curr = _next; \
-	} \
-	*start = NULL;
-
-/* Command Processing */
-
-static void RunActions(OpenGLDevice *device)
-{
-	FNA3D_Command *command, *curr, *next;
-
-	SDL_LockMutex(device->commandLock);
-
-	command = device->commands;
-	while (command != NULL)
-	{
-		FNA3D_ExecuteCommand(
-			device->parentDevice,
-			command
-		);
-		SDL_SemPost(command->semaphore);
-		command = command->next;
-	}
-	LinkedList_Clear(&device->commands, curr, next);
-
-	SDL_UnlockMutex(device->commandLock);
-}
 
 /* Inline Functions */
 
@@ -735,9 +726,9 @@ static inline void ForceToMainThread(
 	FNA3D_Command *command
 ) {
 	FNA3D_Command *curr;
-	SDL_LockMutex(device->commandLock);
-	LinkedList_Add(&device->commands, command, curr);
-	SDL_UnlockMutex(device->commandLock);
+	SDL_LockMutex(device->commandsLock);
+	LinkedList_Add(device->commands, command, curr);
+	SDL_UnlockMutex(device->commandsLock);
 }
 
 /* Forward Declarations for Internal Functions */
@@ -747,6 +738,30 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 	FNA3D_PresentationParameters *parameters
 );
 static void OPENGL_INTERNAL_DisposeBackbuffer(OpenGLDevice *device);
+static void OPENGL_INTERNAL_DestroyTexture(
+	OpenGLDevice *device,
+	OpenGLTexture *texture
+);
+static void OPENGL_INTERNAL_DestroyRenderbuffer(
+	OpenGLDevice *device,
+	OpenGLRenderbuffer *renderbuffer
+);
+static void OPENGL_INTERNAL_DestroyVertexBuffer(
+	OpenGLDevice *device,
+	OpenGLBuffer *buffer
+);
+static void OPENGL_INTERNAL_DestroyIndexBuffer(
+	OpenGLDevice *device,
+	OpenGLBuffer *buffer
+);
+static void OPENGL_INTERNAL_DestroyEffect(
+	OpenGLDevice *device,
+	OpenGLEffect *effect
+);
+static void OPENGL_INTERNAL_DestroyQuery(
+	OpenGLDevice *device,
+	OpenGLQuery *query
+);
 
 /* Device Implementation */
 
@@ -780,8 +795,13 @@ void OPENGL_DestroyDevice(FNA3D_Device *device)
 	MOJOSHADER_glMakeContextCurrent(NULL);
 	MOJOSHADER_glDestroyContext(glDevice->shaderContext);
 
-	LinkedList_Clear(&glDevice->commands, curr, next);
-	SDL_DestroyMutex(glDevice->commandLock);
+	SDL_DestroyMutex(glDevice->commandsLock);
+	SDL_DestroyMutex(glDevice->disposeTexturesLock);
+	SDL_DestroyMutex(glDevice->disposeRenderbuffersLock);
+	SDL_DestroyMutex(glDevice->disposeVertexBuffersLock);
+	SDL_DestroyMutex(glDevice->disposeIndexBuffersLock);
+	SDL_DestroyMutex(glDevice->disposeEffectsLock);
+	SDL_DestroyMutex(glDevice->disposeQueriesLock);
 
 	SDL_GL_DeleteContext(glDevice->context);
 
@@ -794,6 +814,56 @@ void OPENGL_DestroyDevice(FNA3D_Device *device)
 void OPENGL_BeginFrame(FNA3D_Renderer *driverData)
 {
 	/* No-op */
+}
+
+static void ExecuteCommands(OpenGLDevice *device)
+{
+	FNA3D_Command *cmd;
+
+	SDL_LockMutex(device->commandsLock);
+	cmd = device->commands;
+	while (cmd != NULL)
+	{
+		FNA3D_ExecuteCommand(
+			device->parentDevice,
+			cmd
+		);
+		SDL_SemPost(cmd->semaphore);
+		cmd = cmd->next;
+	}
+	device->commands = NULL; /* No heap memory to free! -caleb */
+	SDL_UnlockMutex(device->commandsLock);
+}
+
+static void DisposeResources(OpenGLDevice *device)
+{
+	OpenGLTexture *tex, *texNext;
+	OpenGLEffect *eff, *effNext;
+	OpenGLBuffer *buf, *bufNext;
+	OpenGLRenderbuffer *ren, *renNext;
+	OpenGLQuery *qry, *qryNext;
+
+	/* All heap allocations are freed by func! -caleb */
+	#define DISPOSE(prefix, list, func) \
+		SDL_LockMutex(list##Lock); \
+		prefix = list; \
+		while (prefix != NULL) \
+		{ \
+			prefix##Next = prefix->next; \
+			OPENGL_INTERNAL_##func(device, prefix); \
+			prefix = prefix##Next; \
+		} \
+		list = NULL; \
+		SDL_UnlockMutex(list##Lock);
+
+	DISPOSE(tex, device->disposeTextures, DestroyTexture)
+	DISPOSE(ren, device->disposeRenderbuffers, DestroyRenderbuffer)
+	DISPOSE(buf, device->disposeVertexBuffers, DestroyVertexBuffer)
+	DISPOSE(buf, device->disposeIndexBuffers, DestroyIndexBuffer)
+	DISPOSE(eff, device->disposeEffects, DestroyEffect)
+	DISPOSE(qry, device->disposeQueries, DestroyQuery)
+
+	#undef DISPOSE
 }
 
 void OPENGL_SwapBuffers(
@@ -942,39 +1012,11 @@ void OPENGL_SwapBuffers(
 		SDL_GL_SwapWindow((SDL_Window*) overrideWindowHandle);
 	}
 
-	RunActions(device);
+	/* Run any threaded commands */
+	ExecuteCommands(device);
 
-/* FIXME: Oh shit -flibit
-	IGLTexture gcTexture;
-	while (GCTextures.TryDequeue(out gcTexture))
-	{
-		DeleteTexture(gcTexture);
-	}
-	IGLRenderbuffer gcDepthBuffer;
-	while (GCDepthBuffers.TryDequeue(out gcDepthBuffer))
-	{
-		DeleteRenderbuffer(gcDepthBuffer);
-	}
-	IGLBuffer gcBuffer;
-	while (GCVertexBuffers.TryDequeue(out gcBuffer))
-	{
-		DeleteVertexBuffer(gcBuffer);
-	}
-	while (GCIndexBuffers.TryDequeue(out gcBuffer))
-	{
-		DeleteIndexBuffer(gcBuffer);
-	}
-	IGLEffect gcEffect;
-	while (GCEffects.TryDequeue(out gcEffect))
-	{
-		DeleteEffect(gcEffect);
-	}
-	IGLQuery gcQuery;
-	while (GCQueries.TryDequeue(out gcQuery))
-	{
-		DeleteQuery(gcQuery);
-	}
-*/
+	/* Destroy any disposed resources */
+	DisposeResources(device);
 }
 
 void OPENGL_SetPresentationInterval(
@@ -3520,18 +3562,14 @@ FNA3D_Texture* OPENGL_CreateTextureCube(
 	return (FNA3D_Texture*) result;
 }
 
-void OPENGL_AddDisposeTexture(
-	FNA3D_Renderer *driverData,
-	FNA3D_Texture *texture
+static void OPENGL_INTERNAL_DestroyTexture(
+	OpenGLDevice *device,
+	OpenGLTexture *texture
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	OpenGLTexture *glTexture = (OpenGLTexture*) texture;
-	GLuint handle = glTexture->handle;
-
 	int32_t i;
 	for (i = 0; i < device->numAttachments; i += 1)
 	{
-		if (handle == device->currentAttachments[i])
+		if (texture->handle == device->currentAttachments[i])
 		{
 			/* Force an attachment update, this no longer exists! */
 			device->currentAttachments[i] = UINT32_MAX;
@@ -3539,15 +3577,34 @@ void OPENGL_AddDisposeTexture(
 	}
 	for (i = 0; i < device->numTextureSlots; i += 1)
 	{
-		if (device->textures[i] == glTexture)
+		if (device->textures[i] == texture)
 		{
 			/* Remove this texture from the sampler cache */
 			device->textures[i] = &NullTexture;
 		}
 	}
-	device->glDeleteTextures(1, &handle);
+	device->glDeleteTextures(1, &texture->handle);
+	SDL_free(texture);
+}
 
-	SDL_free(glTexture);
+void OPENGL_AddDisposeTexture(
+	FNA3D_Renderer *driverData,
+	FNA3D_Texture *texture
+) {
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLTexture *glTexture = (OpenGLTexture*) texture;
+	OpenGLTexture *curr;
+
+	if (device->threadID == SDL_ThreadID())
+	{
+		OPENGL_INTERNAL_DestroyTexture(device, glTexture);
+	}
+	else
+	{
+		SDL_LockMutex(device->disposeTexturesLock);
+		LinkedList_Add(device->disposeTextures, glTexture, curr);
+		SDL_UnlockMutex(device->disposeTexturesLock);
+	}
 }
 
 void OPENGL_SetTextureData2D(
@@ -4223,18 +4280,15 @@ FNA3D_Renderbuffer* OPENGL_GenDepthStencilRenderbuffer(
 	return (FNA3D_Renderbuffer*) renderbuffer;
 }
 
-void OPENGL_AddDisposeRenderbuffer(
-	FNA3D_Renderer *driverData,
-	FNA3D_Renderbuffer *renderbuffer
+static void OPENGL_INTERNAL_DestroyRenderbuffer(
+	OpenGLDevice *device,
+	OpenGLRenderbuffer *renderbuffer
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	OpenGLRenderbuffer *buffer = (OpenGLRenderbuffer*) renderbuffer;
-	int32_t i;
-
 	/* Check color attachments */
+	int32_t i;
 	for (i = 0; i < device->numAttachments; i += 1)
 	{
-		if (buffer->handle == device->currentAttachments[i])
+		if (renderbuffer->handle == device->currentAttachments[i])
 		{
 			/* Force an attachment update, this no longer exists! */
 			device->currentAttachments[i] = ~0;
@@ -4242,15 +4296,35 @@ void OPENGL_AddDisposeRenderbuffer(
 	}
 
 	/* Check depth/stencil attachment */
-	if (buffer->handle == device->currentRenderbuffer)
+	if (renderbuffer->handle == device->currentRenderbuffer)
 	{
 		/* Force a renderbuffer update, this no longer exists! */
 		device->currentRenderbuffer = ~0;
 	}
 
 	/* Finally. */
-	device->glDeleteRenderbuffers(1, &buffer->handle);
-	SDL_free(buffer);
+	device->glDeleteRenderbuffers(1, &renderbuffer->handle);
+	SDL_free(renderbuffer);
+}
+
+void OPENGL_AddDisposeRenderbuffer(
+	FNA3D_Renderer *driverData,
+	FNA3D_Renderbuffer *renderbuffer
+) {
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLRenderbuffer *buffer = (OpenGLRenderbuffer*) renderbuffer;
+	OpenGLRenderbuffer *curr;
+
+	if (device->threadID == SDL_ThreadID())
+	{
+		OPENGL_INTERNAL_DestroyRenderbuffer(device, buffer);
+	}
+	else
+	{
+		SDL_LockMutex(device->disposeRenderbuffersLock);
+		LinkedList_Add(device->disposeRenderbuffers, buffer, curr);
+		SDL_UnlockMutex(device->disposeRenderbuffersLock);
+	}
 }
 
 /* Vertex Buffers */
@@ -4300,31 +4374,48 @@ FNA3D_Buffer* OPENGL_GenVertexBuffer(
 	return (FNA3D_Buffer*) result;
 }
 
-void OPENGL_AddDisposeVertexBuffer(
-	FNA3D_Renderer *driverData,
-	FNA3D_Buffer *buffer
+static void OPENGL_INTERNAL_DestroyVertexBuffer(
+	OpenGLDevice *device,
+	OpenGLBuffer *buffer
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
-	GLuint handle = glBuffer->handle;
 	int32_t i;
 
-	if (handle == device->currentVertexBuffer)
+	if (buffer->handle == device->currentVertexBuffer)
 	{
 		device->glBindBuffer(GL_ARRAY_BUFFER, 0);
 		device->currentVertexBuffer = 0;
 	}
 	for (i = 0; i < device->numVertexAttributes; i += 1)
 	{
-		if (handle == device->attributes[i].currentBuffer)
+		if (buffer->handle == device->attributes[i].currentBuffer)
 		{
 			/* Force the next vertex attrib update! */
 			device->attributes[i].currentBuffer = UINT32_MAX;
 		}
 	}
-	device->glDeleteBuffers(1, &handle);
+	device->glDeleteBuffers(1, &buffer->handle);
 
-	SDL_free(glBuffer);
+	SDL_free(buffer);
+}
+
+void OPENGL_AddDisposeVertexBuffer(
+	FNA3D_Renderer *driverData,
+	FNA3D_Buffer *buffer
+) {
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
+	OpenGLBuffer *curr;
+
+	if (device->threadID == SDL_ThreadID())
+	{
+		OPENGL_INTERNAL_DestroyVertexBuffer(device, glBuffer);
+	}
+	else
+	{
+		SDL_LockMutex(device->disposeVertexBuffersLock);
+		LinkedList_Add(device->disposeVertexBuffers, glBuffer, curr);
+		SDL_UnlockMutex(device->disposeVertexBuffersLock);
+	}
 }
 
 void OPENGL_SetVertexBufferData(
@@ -4495,22 +4586,37 @@ FNA3D_Buffer* OPENGL_GenIndexBuffer(
 	return (FNA3D_Buffer*) result;
 }
 
+static void OPENGL_INTERNAL_DestroyIndexBuffer(
+	OpenGLDevice *device,
+	OpenGLBuffer *buffer
+) {
+	if (buffer->handle == device->currentIndexBuffer)
+	{
+		device->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
+		device->currentIndexBuffer = 0;
+	}
+	device->glDeleteBuffers(1, &buffer->handle);
+	SDL_free(buffer);
+}
+
 void OPENGL_AddDisposeIndexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
-	GLuint handle = glBuffer->handle;
+	OpenGLBuffer *curr;
 
-	if (handle == device->currentIndexBuffer)
+	if (device->threadID == SDL_ThreadID())
 	{
-		device->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
-		device->currentIndexBuffer = 0;
+		OPENGL_INTERNAL_DestroyIndexBuffer(device, glBuffer);
 	}
-	device->glDeleteBuffers(1, &handle);
-
-	SDL_free(glBuffer);
+	else
+	{
+		SDL_LockMutex(device->disposeIndexBuffersLock);
+		LinkedList_Add(device->disposeIndexBuffers, glBuffer, curr);
+		SDL_UnlockMutex(device->disposeIndexBuffersLock);
+	}
 }
 
 void OPENGL_SetIndexBufferData(
@@ -4711,14 +4817,11 @@ FNA3D_Effect* OPENGL_CloneEffect(
 	return (FNA3D_Effect*) result;
 }
 
-void OPENGL_AddDisposeEffect(
-	FNA3D_Renderer *driverData,
-	FNA3D_Effect *effect
+static void OPENGL_INTERNAL_DestroyEffect(
+	OpenGLDevice *device,
+	OpenGLEffect *effect
 ) {
-	OpenGLDevice *device = (OpenGLDevice*) driverData;
-	OpenGLEffect *fnaEffect = (OpenGLEffect*) effect;
-	MOJOSHADER_glEffect *glEffect = fnaEffect->glEffect;
-
+	MOJOSHADER_glEffect *glEffect = effect->glEffect;
 	if (glEffect == device->currentEffect)
 	{
 		MOJOSHADER_glEffectEndPass(device->currentEffect);
@@ -4728,9 +4831,28 @@ void OPENGL_AddDisposeEffect(
 		device->currentPass = 0;
 	}
 	MOJOSHADER_glDeleteEffect(glEffect);
-	MOJOSHADER_freeEffect(fnaEffect->effect);
+	MOJOSHADER_freeEffect(effect->effect);
+	SDL_free(effect);
+}
 
-	SDL_free(fnaEffect);
+void OPENGL_AddDisposeEffect(
+	FNA3D_Renderer *driverData,
+	FNA3D_Effect *effect
+) {
+	OpenGLDevice *device = (OpenGLDevice*) driverData;
+	OpenGLEffect *fnaEffect = (OpenGLEffect*) effect;
+	OpenGLEffect *curr;
+
+	if (device->threadID == SDL_ThreadID())
+	{
+		OPENGL_INTERNAL_DestroyEffect(device, fnaEffect);
+	}
+	else
+	{
+		SDL_LockMutex(device->disposeEffectsLock);
+		LinkedList_Add(device->disposeEffects, fnaEffect, curr);
+		SDL_UnlockMutex(device->disposeEffectsLock);
+	}
 }
 
 void OPENGL_ApplyEffect(
@@ -4824,19 +4946,35 @@ FNA3D_Query* OPENGL_CreateQuery(FNA3D_Renderer *driverData)
 	return (FNA3D_Query*) result;
 }
 
+static void OPENGL_INTERNAL_DestroyQuery(
+	OpenGLDevice *device,
+	OpenGLQuery *query
+) {
+	device->glDeleteQueries(
+		1,
+		&query->handle
+	);
+	SDL_free(query);
+}
+
 void OPENGL_AddDisposeQuery(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
 	OpenGLDevice *device = (OpenGLDevice*) driverData;
 	OpenGLQuery *glQuery = (OpenGLQuery*) query;
+	OpenGLQuery *curr;
 
 	SDL_assert(device->supports_ARB_occlusion_query);
 
-	device->glDeleteQueries(
-		1,
-		&glQuery->handle
-	);
-
-	SDL_free(glQuery);
+	if (device->threadID == SDL_ThreadID())
+	{
+		OPENGL_INTERNAL_DestroyQuery(device, glQuery);
+	}
+	else
+	{
+		SDL_LockMutex(device->disposeQueriesLock);
+		LinkedList_Add(device->disposeQueries, glQuery, curr);
+		SDL_UnlockMutex(device->disposeQueriesLock);
+	}
 }
 
 void OPENGL_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
@@ -5665,8 +5803,13 @@ FNA3D_Device* OPENGL_CreateDevice(
 
 	/* The creation thread will be the "main" thread */
 	device->threadID = SDL_ThreadID();
-	device->commandLock = SDL_CreateMutex();
-	device->commands = NULL;
+	device->commandsLock = SDL_CreateMutex();
+	device->disposeTexturesLock = SDL_CreateMutex();
+	device->disposeRenderbuffersLock = SDL_CreateMutex();
+	device->disposeVertexBuffersLock = SDL_CreateMutex();
+	device->disposeIndexBuffersLock = SDL_CreateMutex();
+	device->disposeEffectsLock = SDL_CreateMutex();
+	device->disposeQueriesLock = SDL_CreateMutex();
 
 	/* Return the FNA3D_Device */
 	return result;
