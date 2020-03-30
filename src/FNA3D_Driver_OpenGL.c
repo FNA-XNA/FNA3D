@@ -591,7 +591,7 @@ static int32_t XNAToGL_Primitive[] =
 	GL_POINTS		/* PrimitiveType.PointListEXT */
 };
 
-static int32_t XNAToGL_PrimitiveVerts(
+static inline int32_t XNAToGL_PrimitiveVerts(
 	FNA3D_PrimitiveType primitiveType,
 	int32_t primitiveCount
 ) {
