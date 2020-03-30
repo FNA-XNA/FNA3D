@@ -709,9 +709,14 @@ static inline void ForceToMainThread(
 	FNA3D_Command *command
 ) {
 	FNA3D_Command *curr;
+	command->semaphore = SDL_CreateSemaphore(0);
+
 	SDL_LockMutex(renderer->commandsLock);
 	LinkedList_Add(renderer->commands, command, curr);
 	SDL_UnlockMutex(renderer->commandsLock);
+
+	SDL_SemWait(command->semaphore);
+	SDL_DestroySemaphore(command->semaphore);
 }
 
 /* Forward Declarations for Internal Functions */
@@ -3349,10 +3354,7 @@ FNA3D_Texture* OPENGL_CreateTexture2D(
 		cmd.createTexture2D.height = height;
 		cmd.createTexture2D.levelCount = levelCount;
 		cmd.createTexture2D.isRenderTarget = isRenderTarget;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.createTexture2D.retval;
 	}
 
@@ -3428,10 +3430,7 @@ FNA3D_Texture* OPENGL_CreateTexture3D(
 		cmd.createTexture3D.height = height;
 		cmd.createTexture3D.depth = depth;
 		cmd.createTexture3D.levelCount = levelCount;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.createTexture3D.retval;
 	}
 
@@ -3482,10 +3481,7 @@ FNA3D_Texture* OPENGL_CreateTextureCube(
 		cmd.createTextureCube.size = size;
 		cmd.createTextureCube.levelCount = levelCount;
 		cmd.createTextureCube.isRenderTarget = isRenderTarget;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.createTextureCube.retval;
 	}
 
@@ -3617,10 +3613,7 @@ void OPENGL_SetTextureData2D(
 		cmd.setTextureData2D.level = level;
 		cmd.setTextureData2D.data = data;
 		cmd.setTextureData2D.dataLength = dataLength;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return;
 	}
 
@@ -3715,10 +3708,7 @@ void OPENGL_SetTextureData3D(
 		cmd.setTextureData3D.back = back;
 		cmd.setTextureData3D.data = data;
 		cmd.setTextureData3D.dataLength = dataLength;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return;
 	}
 
@@ -3769,10 +3759,7 @@ void OPENGL_SetTextureDataCube(
 		cmd.setTextureDataCube.level = level;
 		cmd.setTextureDataCube.data = data;
 		cmd.setTextureDataCube.dataLength = dataLength;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return;
 	}
 
@@ -3910,10 +3897,7 @@ void OPENGL_GetTextureData2D(
 		cmd.getTextureData2D.startIndex = startIndex;
 		cmd.getTextureData2D.elementCount = elementCount;
 		cmd.getTextureData2D.elementSizeInBytes = elementSizeInBytes;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return;
 	}
 
@@ -4066,10 +4050,7 @@ void OPENGL_GetTextureDataCube(
 		cmd.getTextureDataCube.startIndex = startIndex;
 		cmd.getTextureDataCube.elementCount = elementCount;
 		cmd.getTextureDataCube.elementSizeInBytes = elementSizeInBytes;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return;
 	}
 
@@ -4162,10 +4143,7 @@ FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
 		cmd.genColorRenderbuffer.format = format;
 		cmd.genColorRenderbuffer.multiSampleCount = multiSampleCount;
 		cmd.genColorRenderbuffer.texture = texture;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.genColorRenderbuffer.retval;
 	}
 
@@ -4218,10 +4196,7 @@ FNA3D_Renderbuffer* OPENGL_GenDepthStencilRenderbuffer(
 		cmd.genDepthStencilRenderbuffer.height = height;
 		cmd.genDepthStencilRenderbuffer.format = format;
 		cmd.genDepthStencilRenderbuffer.multiSampleCount = multiSampleCount;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.genDepthStencilRenderbuffer.retval;
 	}
 
@@ -4324,10 +4299,7 @@ FNA3D_Buffer* OPENGL_GenVertexBuffer(
 		cmd.genVertexBuffer.usage = usage;
 		cmd.genVertexBuffer.vertexCount = vertexCount;
 		cmd.genVertexBuffer.vertexStride = vertexStride;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.genVertexBuffer.retval;
 	}
 
@@ -4414,10 +4386,7 @@ void OPENGL_SetVertexBufferData(
 		cmd.setVertexBufferData.data = data;
 		cmd.setVertexBufferData.dataLength = dataLength;
 		cmd.setVertexBufferData.options = options;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return;
 	}
 
@@ -4470,10 +4439,7 @@ void OPENGL_GetVertexBufferData(
 		cmd.getVertexBufferData.elementCount = elementCount;
 		cmd.getVertexBufferData.elementSizeInBytes = elementSizeInBytes;
 		cmd.getVertexBufferData.vertexStride = vertexStride;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return;
 	}
 
@@ -4532,10 +4498,7 @@ FNA3D_Buffer* OPENGL_GenIndexBuffer(
 		cmd.genIndexBuffer.usage = usage;
 		cmd.genIndexBuffer.indexCount = indexCount;
 		cmd.genIndexBuffer.indexElementSize = indexElementSize;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.genIndexBuffer.retval;
 	}
 
@@ -4613,10 +4576,7 @@ void OPENGL_SetIndexBufferData(
 		cmd.setIndexBufferData.data = data;
 		cmd.setIndexBufferData.dataLength = dataLength;
 		cmd.setIndexBufferData.options = options;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return;
 	}
 
@@ -4664,10 +4624,7 @@ void OPENGL_GetIndexBufferData(
 		cmd.getIndexBufferData.startIndex = startIndex;
 		cmd.getIndexBufferData.elementCount = elementCount;
 		cmd.getIndexBufferData.elementSizeInBytes = elementSizeInBytes;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return;
 	}
 
@@ -4700,10 +4657,7 @@ FNA3D_Effect* OPENGL_CreateEffect(
 		cmd.type = FNA3D_COMMAND_CREATEEFFECT;
 		cmd.createEffect.effectCode = effectCode;
 		cmd.createEffect.effectCodeLength = effectCodeLength;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.createEffect.retval;
 	}
 
@@ -4763,10 +4717,7 @@ FNA3D_Effect* OPENGL_CloneEffect(
 	{
 		cmd.type = FNA3D_COMMAND_CLONEEFFECT;
 		cmd.cloneEffect.cloneSource = effect;
-		cmd.semaphore = SDL_CreateSemaphore(0);
 		ForceToMainThread(renderer, &cmd);
-		SDL_SemWait(cmd.semaphore);
-		SDL_DestroySemaphore(cmd.semaphore);
 		return cmd.cloneEffect.retval;
 	}
 
