@@ -918,8 +918,6 @@ FNA3DAPI int32_t FNA3D_GetMaxMultiSampleCount(FNA3D_Device *device);
 
 FNA3DAPI void FNA3D_SetStringMarker(FNA3D_Device *device, const char *text);
 
-/* TODO: Debug callback function...? */
-
 /* Buffer Objects */
 
 FNA3DAPI intptr_t FNA3D_GetBufferSize(

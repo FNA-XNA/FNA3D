@@ -1403,8 +1403,6 @@ void FNA3D_SetStringMarker(FNA3D_Device *device, const char *text)
 	device->SetStringMarker(device->driverData, text);
 }
 
-/* TODO: Debug callback function...? */
-
 /* Buffer Objects */
 
 intptr_t FNA3D_GetBufferSize(

@@ -512,8 +512,6 @@ struct FNA3D_Device
 
 	void (*SetStringMarker)(FNA3D_Renderer *driverData, const char *text);
 
-	/* TODO: Debug callback function...? */
-
 	/* Buffer Objects */
 
 	intptr_t (*GetBufferSize)(FNA3D_Buffer *buffer);
