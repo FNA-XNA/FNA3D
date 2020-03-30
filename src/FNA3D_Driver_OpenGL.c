@@ -1031,16 +1031,15 @@ void OPENGL_SetPresentationInterval(
 		{
 			if (SDL_GL_SetSwapInterval(-1) != -1)
 			{
-				SDL_LogInfo(
-					SDL_LOG_CATEGORY_APPLICATION,
+				FNA3D_LogInfo(
 					"Using EXT_swap_control_tear VSync!"
 				);
 			}
 			else
 			{
-				SDL_LogInfo(
-					SDL_LOG_CATEGORY_APPLICATION,
-					"EXT_swap_control_tear unsupported. Fall back to standard VSync."
+				FNA3D_LogInfo(
+					"EXT_swap_control_tear unsupported."
+					" Fall back to standard VSync."
 				);
 				SDL_ClearError();
 				SDL_GL_SetSwapInterval(1);
@@ -2162,8 +2161,7 @@ void OPENGL_ApplyVertexBufferBindings(
 					}
 					if (index < 0)
 					{
-						SDL_LogError(
-							SDL_LOG_CATEGORY_APPLICATION,
+						FNA3D_LogError(
 							"Vertex usage collision!"
 						);
 					}
@@ -2277,8 +2275,7 @@ void OPENGL_ApplyVertexDeclaration(
 				}
 				if (index < 0)
 				{
-					SDL_LogError(
-						SDL_LOG_CATEGORY_APPLICATION,
+					FNA3D_LogError(
 						"Vertex usage collision!"
 					);
 				}
@@ -2641,8 +2638,7 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 		{
 			if (!renderer->supports_EXT_framebuffer_blit)
 			{
-				SDL_LogError(
-					SDL_LOG_CATEGORY_APPLICATION,
+				FNA3D_LogError(
 					"Your hardware does not support the faux-backbuffer!"
 					"\n\nKeep the window/backbuffer resolution the same."
 				);
@@ -3087,8 +3083,7 @@ void OPENGL_ReadBackbuffer(
 
 	if (startIndex > 0 || elementCount != (dataLen / elementSizeInBytes))
 	{
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
+		FNA3D_LogError(
 			"ReadBackbuffer startIndex/elementCount combination unimplemented!"
 		);
 		return;
@@ -3314,8 +3309,7 @@ static int32_t OPENGL_INTERNAL_Texture_GetFormatSize(FNA3D_SurfaceFormat format)
 		case FNA3D_SURFACEFORMAT_VECTOR4:
 			return 16;
 		default:
-			SDL_LogError(
-				SDL_LOG_CATEGORY_APPLICATION,
+			FNA3D_LogError(
 				"Unrecognized SurfaceFormat!"
 			);
 			return 0;
@@ -3920,8 +3914,7 @@ void OPENGL_GetTextureData2D(
 	glFormat = XNAToGL_TextureFormat[format];
 	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
 	{
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
+		FNA3D_LogError(
 			"GetData with compressed textures unsupported!"
 		);
 		return;
@@ -4003,8 +3996,7 @@ void OPENGL_GetTextureData3D(
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	SDL_assert(renderer->supports_NonES3);
 
-	SDL_LogError(
-		SDL_LOG_CATEGORY_APPLICATION,
+	FNA3D_LogError(
 		"GetTextureData3D is unsupported!"
 	);
 }
@@ -4058,8 +4050,7 @@ void OPENGL_GetTextureDataCube(
 	glFormat = XNAToGL_TextureFormat[format];
 	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
 	{
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
+		FNA3D_LogError(
 			"GetData with compressed textures unsupported!"
 		);
 		return;
@@ -4676,8 +4667,7 @@ FNA3D_Effect* OPENGL_CreateEffect(
 
 	for (i = 0; i < effect->error_count; i += 1)
 	{
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
+		FNA3D_LogError(
 			"MOJOSHADER_parseEffect Error: %s",
 			effect->errors[i].error
 		);
@@ -4686,8 +4676,7 @@ FNA3D_Effect* OPENGL_CreateEffect(
 	glEffect = MOJOSHADER_glCompileEffect(effect);
 	if (glEffect == NULL)
 	{
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
+		FNA3D_LogError(
 			"%s", MOJOSHADER_glGetError()
 		);
 		SDL_assert(0);
@@ -4724,8 +4713,7 @@ FNA3D_Effect* OPENGL_CloneEffect(
 	glEffect = MOJOSHADER_glCompileEffect(effectData);
 	if (glEffect == NULL)
 	{
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
+		FNA3D_LogError(
 			"%s", MOJOSHADER_glGetError()
 		);
 		SDL_assert(0);
@@ -5040,17 +5028,25 @@ static void GLAPIENTRY DebugCall(
 	const GLchar *message,
 	const void *userParam
 ) {
-	SDL_LogWarn(
-		SDL_LOG_CATEGORY_APPLICATION,
-		"%s\n\tSource: %s\n\tType: %s\n\tSeverity: %s",
-		message,
-		debugSourceStr[source - GL_DEBUG_SOURCE_API],
-		debugTypeStr[type - GL_DEBUG_TYPE_ERROR],
-		debugSeverityStr[severity - GL_DEBUG_SEVERITY_HIGH]
-	);
 	if (type == GL_DEBUG_TYPE_ERROR)
 	{
-		SDL_assert(0 && "ARB_debug_output error, check your logs!");
+		FNA3D_LogError(
+			"%s\n\tSource: %s\n\tType: %s\n\tSeverity: %s",
+			message,
+			debugSourceStr[source - GL_DEBUG_SOURCE_API],
+			debugTypeStr[type - GL_DEBUG_TYPE_ERROR],
+			debugSeverityStr[severity - GL_DEBUG_SEVERITY_HIGH]
+		);
+	}
+	else
+	{
+		FNA3D_LogWarn(
+			"%s\n\tSource: %s\n\tType: %s\n\tSeverity: %s",
+			message,
+			debugSourceStr[source - GL_DEBUG_SOURCE_API],
+			debugTypeStr[type - GL_DEBUG_TYPE_ERROR],
+			debugSeverityStr[severity - GL_DEBUG_SEVERITY_HIGH]
+		);
 	}
 }
 
@@ -5127,8 +5123,7 @@ static void LoadEntryPoints(
 	/* Weeding out the GeForce FX cards... */
 	if (!renderer->supports_BaseGL)
 	{
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
+		FNA3D_LogError(
 			"%s\n%s",
 			baseErrorString,
 			driverInfo
@@ -5140,8 +5135,7 @@ static void LoadEntryPoints(
 	if (	!renderer->supports_DoublePrecisionDepth &&
 		!renderer->supports_OES_single_precision	)
 	{
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
+		FNA3D_LogError(
 			"%s\n%s",
 			baseErrorString,
 			driverInfo
@@ -5152,8 +5146,7 @@ static void LoadEntryPoints(
 	/* If you asked for core profile, you better have it! */
 	if (renderer->useCoreProfile && !renderer->supports_CoreGL)
 	{
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
+		FNA3D_LogError(
 			"OpenGL 3.2 Core support is required!\n%s",
 			driverInfo
 		);
@@ -5165,15 +5158,13 @@ static void LoadEntryPoints(
 	{
 		if (!renderer->supports_3DTexture)
 		{
-			SDL_LogWarn(
-				SDL_LOG_CATEGORY_APPLICATION,
+			FNA3D_LogWarn(
 				"3D textures unsupported, beware..."
 			);
 		}
 		if (!renderer->supports_ARB_occlusion_query)
 		{
-			SDL_LogWarn(
-				SDL_LOG_CATEGORY_APPLICATION,
+			FNA3D_LogWarn(
 				"Occlusion queries unsupported, beware..."
 			);
 		}
@@ -5196,8 +5187,7 @@ static void LoadEntryPoints(
 			!renderer->supports_ARB_occlusion_query ||
 			!renderer->supports_NonES3	)
 		{
-			SDL_LogError(
-				SDL_LOG_CATEGORY_APPLICATION,
+			FNA3D_LogError(
 				"%s\n%s",
 				baseErrorString,
 				driverInfo
@@ -5211,8 +5201,7 @@ static void LoadEntryPoints(
 		!renderer->useCoreProfile &&
 		!renderer->supports_NonES3NonCore	)
 	{
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
+		FNA3D_LogError(
 			"%s\n%s",
 			baseErrorString,
 			driverInfo
@@ -5242,8 +5231,7 @@ static void LoadEntryPoints(
 	/* Possibly bogus if a game never uses render targets? */
 	if (!renderer->supports_ARB_framebuffer_object)
 	{
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
+		FNA3D_LogError(
 			"OpenGL framebuffer support is required!\n%s",
 			driverInfo
 		);
@@ -5286,16 +5274,14 @@ static void LoadEntryPoints(
 	}
 	else
 	{
-		SDL_LogWarn(
-			SDL_LOG_CATEGORY_APPLICATION,
+		FNA3D_LogWarn(
 			"ARB_debug_output/KHR_debug not supported!"
 		);
 	}
 
 	if (!renderer->supports_GREMEDY_string_marker)
 	{
-		SDL_LogWarn(
-			SDL_LOG_CATEGORY_APPLICATION,
+		FNA3D_LogWarn(
 			"GREMEDY_string_marker not supported!"
 		);
 	}
@@ -5543,8 +5529,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 		"OpenGL renderer: %s\nOpenGL Driver: %s\nOpenGL Vendor: %s",
 		rendererStr, versionStr, vendorStr
 	);
-	SDL_LogInfo(
-		SDL_LOG_CATEGORY_APPLICATION,
+	FNA3D_LogInfo(
 		"FNA3D Driver: OpenGL\n%s",
 		driverInfo
 	);

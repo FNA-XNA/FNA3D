@@ -435,6 +435,16 @@ typedef struct FNA3D_RenderTargetBinding
 
 /* Functions */
 
+/* Logging */
+
+typedef void (FNA3DCALL * FNA3D_LogFunc)(const char *msg);
+
+FNA3DAPI void FNA3D_HookLogFunctions(
+	FNA3D_LogFunc info,
+	FNA3D_LogFunc warn,
+	FNA3D_LogFunc error
+);
+
 /* Init/Quit */
 
 /* This should be called before window creation!

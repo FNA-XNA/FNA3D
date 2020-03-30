@@ -25,9 +25,8 @@
  */
 
 #include "FNA3D.h"
+#include "FNA3D_Driver.h"
 #include "FNA3D_CommandStream.h"
-
-#include <SDL.h>
 
 void FNA3D_ExecuteCommand(
 	FNA3D_Device *device,
@@ -257,12 +256,11 @@ void FNA3D_ExecuteCommand(
 			);
 			break;
 		default:
-			SDL_LogError(
-				SDL_LOG_CATEGORY_APPLICATION,
+			FNA3D_LogError(
 				"Cannot execute unknown command (value = %d)",
 				cmd->type
 			);
-			SDL_assert(0);
+			break;
 	}
 }
 

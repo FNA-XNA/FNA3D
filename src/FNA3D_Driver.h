@@ -48,6 +48,12 @@
 		curr->next = toAdd; \
 	}
 
+/* Logging */
+
+extern void FNA3D_LogInfo(const char *fmt, ...);
+extern void FNA3D_LogWarn(const char *fmt, ...);
+extern void FNA3D_LogError(const char *fmt, ...);
+
 /* FNA3D_Device Definition */
 
 typedef struct FNA3D_Renderer FNA3D_Renderer;
