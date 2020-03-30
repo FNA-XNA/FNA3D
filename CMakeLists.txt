@@ -60,6 +60,11 @@ add_definitions(
 	-DSUPPORT_PROFILE_BYTECODE=0
 	-DSUPPORT_PROFILE_D3D=0
 )
+if(APPLE)
+	add_definitions(-DSUPPORT_PROFILE_METAL=1)
+else()
+	add_definitions(-DSUPPORT_PROFILE_METAL=0)
+endif()
 
 # Source lists
 add_library(FNA3D
