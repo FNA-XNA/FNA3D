@@ -800,7 +800,7 @@ void OPENGL_BeginFrame(FNA3D_Renderer *driverData)
 
 static void ExecuteCommands(OpenGLRenderer *renderer)
 {
-	FNA3D_Command *cmd;
+	FNA3D_Command *cmd, *next;
 
 	SDL_LockMutex(renderer->commandsLock);
 	cmd = renderer->commands;
@@ -810,8 +810,9 @@ static void ExecuteCommands(OpenGLRenderer *renderer)
 			renderer->parentDevice,
 			cmd
 		);
+		next = cmd->next;
 		SDL_SemPost(cmd->semaphore);
-		cmd = cmd->next;
+		cmd = next;
 	}
 	renderer->commands = NULL; /* No heap memory to free! -caleb */
 	SDL_UnlockMutex(renderer->commandsLock);
