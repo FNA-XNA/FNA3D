@@ -62,6 +62,7 @@ static void FNA3D_Default_LogInfo(const char *msg)
 {
 	SDL_LogInfo(
 		SDL_LOG_CATEGORY_APPLICATION,
+		"%s",
 		msg
 	);
 }
@@ -70,6 +71,7 @@ static void FNA3D_Default_LogWarn(const char *msg)
 {
 	SDL_LogWarn(
 		SDL_LOG_CATEGORY_APPLICATION,
+		"%s",
 		msg
 	);
 }
@@ -78,6 +80,7 @@ static void FNA3D_Default_LogError(const char *msg)
 {
 	SDL_LogError(
 		SDL_LOG_CATEGORY_APPLICATION,
+		"%s",
 		msg
 	);
 }
