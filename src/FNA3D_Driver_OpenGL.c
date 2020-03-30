@@ -4674,7 +4674,6 @@ FNA3D_Effect* OPENGL_CreateEffect(
 		NULL
 	);
 
-	/* FIXME: Needs a debug check! */
 	for (i = 0; i < effect->error_count; i += 1)
 	{
 		SDL_LogError(
