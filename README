@@ -26,7 +26,12 @@ runtime, it does statically link MojoShader which does reference libc.
 
 Building FNA3D
 ---------------
-For *nix platforms, just type `make` in the root directory!
+For *nix platforms, use CMake:
+
+    $ mkdir build/
+    $ cd build/
+    $ cmake ../
+    $ make
 
 For Windows, see the 'visualc/' directory.
 
