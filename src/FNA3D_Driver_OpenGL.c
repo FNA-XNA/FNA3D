@@ -750,12 +750,17 @@ static void OPENGL_INTERNAL_DestroyQuery(
 	OpenGLRenderer *renderer,
 	OpenGLQuery *query
 );
+static void OPENGL_GetBackbufferSize(
+	FNA3D_Renderer *driverData,
+	int32_t *w,
+	int32_t *h
+);
 
 /* Renderer Implementation */
 
 /* Quit */
 
-void OPENGL_DestroyDevice(FNA3D_Device *device)
+static void OPENGL_DestroyDevice(FNA3D_Device *device)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) device->driverData;
 
@@ -798,12 +803,12 @@ void OPENGL_DestroyDevice(FNA3D_Device *device)
 
 /* Begin/End Frame */
 
-void OPENGL_BeginFrame(FNA3D_Renderer *driverData)
+static void OPENGL_BeginFrame(FNA3D_Renderer *driverData)
 {
 	/* No-op */
 }
 
-static void ExecuteCommands(OpenGLRenderer *renderer)
+static inline void ExecuteCommands(OpenGLRenderer *renderer)
 {
 	FNA3D_Command *cmd, *next;
 
@@ -823,7 +828,7 @@ static void ExecuteCommands(OpenGLRenderer *renderer)
 	SDL_UnlockMutex(renderer->commandsLock);
 }
 
-static void DisposeResources(OpenGLRenderer *renderer)
+static inline void DisposeResources(OpenGLRenderer *renderer)
 {
 	OpenGLTexture *tex, *texNext;
 	OpenGLEffect *eff, *effNext;
@@ -854,7 +859,7 @@ static void DisposeResources(OpenGLRenderer *renderer)
 	#undef DISPOSE
 }
 
-void OPENGL_SwapBuffers(
+static void OPENGL_SwapBuffers(
 	FNA3D_Renderer *driverData,
 	FNA3D_Rect *sourceRectangle,
 	FNA3D_Rect *destinationRectangle,
@@ -1007,7 +1012,7 @@ void OPENGL_SwapBuffers(
 	DisposeResources(renderer);
 }
 
-void OPENGL_SetPresentationInterval(
+static void OPENGL_SetPresentationInterval(
 	FNA3D_Renderer *driverData,
 	FNA3D_PresentInterval presentInterval
 ) {
@@ -1062,17 +1067,7 @@ void OPENGL_SetPresentationInterval(
 
 /* Drawing */
 
-static uint8_t colorEquals(FNA3D_Vec4 c1, FNA3D_Vec4 c2)
-{
-	return (
-		c1.x == c2.x &&
-		c1.y == c2.y &&
-		c1.z == c2.z &&
-		c1.w == c2.w
-	);
-}
-
-void OPENGL_Clear(
+static void OPENGL_Clear(
 	FNA3D_Renderer *driverData,
 	FNA3D_ClearOptions options,
 	FNA3D_Vec4 *color,
@@ -1098,7 +1093,10 @@ void OPENGL_Clear(
 	if (clearTarget)
 	{
 		clearMask |= GL_COLOR_BUFFER_BIT;
-		if (!colorEquals(*color, renderer->currentClearColor))
+		if (	color->x != renderer->currentClearColor.x ||
+			color->y != renderer->currentClearColor.y ||
+			color->z != renderer->currentClearColor.z ||
+			color->w != renderer->currentClearColor.w	)
 		{
 			renderer->glClearColor(
 				color->x,
@@ -1180,7 +1178,7 @@ void OPENGL_Clear(
 	}
 }
 
-void OPENGL_DrawIndexedPrimitives(
+static void OPENGL_DrawIndexedPrimitives(
 	FNA3D_Renderer *driverData,
 	FNA3D_PrimitiveType primitiveType,
 	int32_t baseVertex,
@@ -1235,7 +1233,7 @@ void OPENGL_DrawIndexedPrimitives(
 	}
 }
 
-void OPENGL_DrawInstancedPrimitives(
+static void OPENGL_DrawInstancedPrimitives(
 	FNA3D_Renderer *driverData,
 	FNA3D_PrimitiveType primitiveType,
 	int32_t baseVertex,
@@ -1293,7 +1291,7 @@ void OPENGL_DrawInstancedPrimitives(
 	}
 }
 
-void OPENGL_DrawPrimitives(
+static void OPENGL_DrawPrimitives(
 	FNA3D_Renderer *driverData,
 	FNA3D_PrimitiveType primitiveType,
 	int32_t vertexStart,
@@ -1322,7 +1320,7 @@ void OPENGL_DrawPrimitives(
 	}
 }
 
-void OPENGL_DrawUserIndexedPrimitives(
+static void OPENGL_DrawUserIndexedPrimitives(
 	FNA3D_Renderer *driverData,
 	FNA3D_PrimitiveType primitiveType,
 	void* vertexData,
@@ -1365,7 +1363,7 @@ void OPENGL_DrawUserIndexedPrimitives(
 	}
 }
 
-void OPENGL_DrawUserPrimitives(
+static void OPENGL_DrawUserPrimitives(
 	FNA3D_Renderer *driverData,
 	FNA3D_PrimitiveType primitiveType,
 	void* vertexData,
@@ -1397,9 +1395,7 @@ void OPENGL_DrawUserPrimitives(
 
 /* Mutable Render States */
 
-void OPENGL_GetBackbufferSize(FNA3D_Renderer*, int*, int*);
-
-void OPENGL_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewport)
+static void OPENGL_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewport)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	int32_t bbw, bbh;
@@ -1448,7 +1444,7 @@ void OPENGL_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewport)
 	}
 }
 
-void OPENGL_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor)
+static void OPENGL_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	int32_t bbw, bbh;
@@ -1475,7 +1471,7 @@ void OPENGL_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor)
 	}
 }
 
-void OPENGL_GetBlendFactor(
+static void OPENGL_GetBlendFactor(
 	FNA3D_Renderer *driverData,
 	FNA3D_Color *blendFactor
 ) {
@@ -1483,7 +1479,7 @@ void OPENGL_GetBlendFactor(
 	SDL_memcpy(blendFactor, &renderer->blendColor, sizeof(FNA3D_Color));
 }
 
-void OPENGL_SetBlendFactor(
+static void OPENGL_SetBlendFactor(
 	FNA3D_Renderer *driverData,
 	FNA3D_Color *blendFactor
 ) {
@@ -1506,14 +1502,14 @@ void OPENGL_SetBlendFactor(
 	}
 }
 
-int32_t OPENGL_GetMultiSampleMask(FNA3D_Renderer *driverData)
+static int32_t OPENGL_GetMultiSampleMask(FNA3D_Renderer *driverData)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	SDL_assert(renderer->supports_ARB_texture_multisample);
 	return renderer->multiSampleMask;
 }
 
-void OPENGL_SetMultiSampleMask(FNA3D_Renderer *driverData, int32_t mask)
+static void OPENGL_SetMultiSampleMask(FNA3D_Renderer *driverData, int32_t mask)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	SDL_assert(renderer->supports_ARB_texture_multisample);
@@ -1536,13 +1532,13 @@ void OPENGL_SetMultiSampleMask(FNA3D_Renderer *driverData, int32_t mask)
 	}
 }
 
-int32_t OPENGL_GetReferenceStencil(FNA3D_Renderer *driverData)
+static int32_t OPENGL_GetReferenceStencil(FNA3D_Renderer *driverData)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	return renderer->stencilRef;
 }
 
-void OPENGL_SetReferenceStencil(FNA3D_Renderer *driverData, int32_t ref)
+static void OPENGL_SetReferenceStencil(FNA3D_Renderer *driverData, int32_t ref)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	if (ref != renderer->stencilRef)
@@ -1576,7 +1572,7 @@ void OPENGL_SetReferenceStencil(FNA3D_Renderer *driverData, int32_t ref)
 
 /* Immutable Render States */
 
-void OPENGL_SetBlendState(
+static void OPENGL_SetBlendState(
 	FNA3D_Renderer *driverData,
 	FNA3D_BlendState *blendState
 ) {
@@ -1712,7 +1708,7 @@ void OPENGL_SetBlendState(
 	}
 }
 
-void OPENGL_SetDepthStencilState(
+static void OPENGL_SetDepthStencilState(
 	FNA3D_Renderer *driverData,
 	FNA3D_DepthStencilState *depthStencilState
 ) {
@@ -1821,7 +1817,7 @@ void OPENGL_SetDepthStencilState(
 	}
 }
 
-void OPENGL_ApplyRasterizerState(
+static void OPENGL_ApplyRasterizerState(
 	FNA3D_Renderer *driverData,
 	FNA3D_RasterizerState *rasterizerState
 ) {
@@ -1928,7 +1924,7 @@ void OPENGL_ApplyRasterizerState(
 	}
 }
 
-void OPENGL_VerifySampler(
+static void OPENGL_VerifySampler(
 	FNA3D_Renderer *driverData,
 	int32_t index,
 	FNA3D_Texture *texture,
@@ -2068,7 +2064,7 @@ void OPENGL_VerifySampler(
 
 /* Vertex State */
 
-static void OPENGL_INTERNAL_FlushGLVertexAttributes(OpenGLRenderer *renderer)
+static inline void OPENGL_INTERNAL_FlushGLVertexAttributes(OpenGLRenderer *renderer)
 {
 	int32_t i, divisor;
 	for (i = 0; i < renderer->numVertexAttributes; i += 1)
@@ -2097,7 +2093,7 @@ static void OPENGL_INTERNAL_FlushGLVertexAttributes(OpenGLRenderer *renderer)
 	}
 }
 
-void OPENGL_ApplyVertexBufferBindings(
+static void OPENGL_ApplyVertexBufferBindings(
 	FNA3D_Renderer *driverData,
 	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings,
@@ -2225,7 +2221,7 @@ void OPENGL_ApplyVertexBufferBindings(
 	);
 }
 
-void OPENGL_ApplyVertexDeclaration(
+static void OPENGL_ApplyVertexDeclaration(
 	FNA3D_Renderer *driverData,
 	FNA3D_VertexDeclaration *vertexDeclaration,
 	void* ptr,
@@ -2337,7 +2333,7 @@ void OPENGL_ApplyVertexDeclaration(
 
 /* Render Targets */
 
-void OPENGL_SetRenderTargets(
+static void OPENGL_SetRenderTargets(
 	FNA3D_Renderer *driverData,
 	FNA3D_RenderTargetBinding *renderTargets,
 	int32_t numRenderTargets,
@@ -2534,7 +2530,7 @@ void OPENGL_SetRenderTargets(
 	}
 }
 
-void OPENGL_ResolveTarget(
+static void OPENGL_ResolveTarget(
 	FNA3D_Renderer *driverData,
 	FNA3D_RenderTargetBinding *target
 ) {
@@ -3044,7 +3040,7 @@ static uint8_t OPENGL_INTERNAL_ReadTargetIfApplicable(
 	return 1;
 }
 
-void OPENGL_ResetBackbuffer(
+static void OPENGL_ResetBackbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_PresentationParameters *presentationParameters
 ) {
@@ -3052,7 +3048,7 @@ void OPENGL_ResetBackbuffer(
 	OPENGL_INTERNAL_CreateBackbuffer(renderer, presentationParameters);
 }
 
-void OPENGL_ReadBackbuffer(
+static void OPENGL_ReadBackbuffer(
 	FNA3D_Renderer *driverData,
 	void* data,
 	int32_t dataLen,
@@ -3176,7 +3172,7 @@ void OPENGL_ReadBackbuffer(
 	SDL_free(temp);
 }
 
-void OPENGL_GetBackbufferSize(
+static void OPENGL_GetBackbufferSize(
 	FNA3D_Renderer *driverData,
 	int32_t *w,
 	int32_t *h
@@ -3186,18 +3182,20 @@ void OPENGL_GetBackbufferSize(
 	*h = renderer->backbuffer->height;
 }
 
-FNA3D_SurfaceFormat OPENGL_GetBackbufferSurfaceFormat(FNA3D_Renderer *driverData)
-{
+static FNA3D_SurfaceFormat OPENGL_GetBackbufferSurfaceFormat(
+	FNA3D_Renderer *driverData
+) {
 	return FNA3D_SURFACEFORMAT_COLOR;
 }
 
-FNA3D_DepthFormat OPENGL_GetBackbufferDepthFormat(FNA3D_Renderer *driverData)
-{
+static FNA3D_DepthFormat OPENGL_GetBackbufferDepthFormat(
+	FNA3D_Renderer *driverData
+) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	return renderer->backbuffer->depthFormat;
 }
 
-int32_t OPENGL_GetBackbufferMultiSampleCount(FNA3D_Renderer *driverData)
+static int32_t OPENGL_GetBackbufferMultiSampleCount(FNA3D_Renderer *driverData)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	return renderer->backbuffer->multiSampleCount;
@@ -3205,7 +3203,7 @@ int32_t OPENGL_GetBackbufferMultiSampleCount(FNA3D_Renderer *driverData)
 
 /* Textures */
 
-static OpenGLTexture* OPENGL_INTERNAL_CreateTexture(
+static inline OpenGLTexture* OPENGL_INTERNAL_CreateTexture(
 	OpenGLRenderer *renderer,
 	GLenum target,
 	int32_t levelCount
@@ -3277,8 +3275,9 @@ static OpenGLTexture* OPENGL_INTERNAL_CreateTexture(
 	return result;
 }
 
-static int32_t OPENGL_INTERNAL_Texture_GetFormatSize(FNA3D_SurfaceFormat format)
-{
+static inline int32_t OPENGL_INTERNAL_Texture_GetFormatSize(
+	FNA3D_SurfaceFormat format
+) {
 	switch (format)
 	{
 		case FNA3D_SURFACEFORMAT_DXT1:
@@ -3316,8 +3315,9 @@ static int32_t OPENGL_INTERNAL_Texture_GetFormatSize(FNA3D_SurfaceFormat format)
 	}
 }
 
-static int32_t OPENGL_INTERNAL_Texture_GetPixelStoreAlignment(FNA3D_SurfaceFormat format)
-{
+static inline int32_t OPENGL_INTERNAL_Texture_GetPixelStoreAlignment(
+	FNA3D_SurfaceFormat format
+) {
 	/* https://github.com/FNA-XNA/FNA/pull/238
 	 * https://www.khronos.org/registry/OpenGL/specs/gl/glspec21.pdf
 	 * OpenGL 2.1 Specification, section 3.6.1, table 3.1 specifies that
@@ -3326,7 +3326,7 @@ static int32_t OPENGL_INTERNAL_Texture_GetPixelStoreAlignment(FNA3D_SurfaceForma
 	return SDL_min(8, OPENGL_INTERNAL_Texture_GetFormatSize(format));
 }
 
-FNA3D_Texture* OPENGL_CreateTexture2D(
+static FNA3D_Texture* OPENGL_CreateTexture2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_SurfaceFormat format,
 	int32_t width,
@@ -3400,7 +3400,7 @@ FNA3D_Texture* OPENGL_CreateTexture2D(
 	return (FNA3D_Texture*) result;
 }
 
-FNA3D_Texture* OPENGL_CreateTexture3D(
+static FNA3D_Texture* OPENGL_CreateTexture3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_SurfaceFormat format,
 	int32_t width,
@@ -3455,7 +3455,7 @@ FNA3D_Texture* OPENGL_CreateTexture3D(
 	return (FNA3D_Texture*) result;
 }
 
-FNA3D_Texture* OPENGL_CreateTextureCube(
+static FNA3D_Texture* OPENGL_CreateTextureCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_SurfaceFormat format,
 	int32_t size,
@@ -3558,7 +3558,7 @@ static void OPENGL_INTERNAL_DestroyTexture(
 	SDL_free(texture);
 }
 
-void OPENGL_AddDisposeTexture(
+static void OPENGL_AddDisposeTexture(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture
 ) {
@@ -3578,7 +3578,7 @@ void OPENGL_AddDisposeTexture(
 	}
 }
 
-void OPENGL_SetTextureData2D(
+static void OPENGL_SetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
@@ -3669,7 +3669,7 @@ void OPENGL_SetTextureData2D(
 	}
 }
 
-void OPENGL_SetTextureData3D(
+static void OPENGL_SetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
@@ -3723,7 +3723,7 @@ void OPENGL_SetTextureData3D(
 	);
 }
 
-void OPENGL_SetTextureDataCube(
+static void OPENGL_SetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
@@ -3796,7 +3796,7 @@ void OPENGL_SetTextureDataCube(
 	}
 }
 
-void OPENGL_SetTextureDataYUV(
+static void OPENGL_SetTextureDataYUV(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *y,
 	FNA3D_Texture *u,
@@ -3850,7 +3850,7 @@ void OPENGL_SetTextureDataYUV(
 	renderer->glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
 
-void OPENGL_GetTextureData2D(
+static void OPENGL_GetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
@@ -3977,7 +3977,7 @@ void OPENGL_GetTextureData2D(
 
 }
 
-void OPENGL_GetTextureData3D(
+static void OPENGL_GetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
@@ -4001,7 +4001,7 @@ void OPENGL_GetTextureData3D(
 	);
 }
 
-void OPENGL_GetTextureDataCube(
+static void OPENGL_GetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
@@ -4114,7 +4114,7 @@ void OPENGL_GetTextureDataCube(
 
 /* Renderbuffers */
 
-FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
+static FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
 	FNA3D_Renderer *driverData,
 	int32_t width,
 	int32_t height,
@@ -4169,7 +4169,7 @@ FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
 	return (FNA3D_Renderbuffer*) renderbuffer;
 }
 
-FNA3D_Renderbuffer* OPENGL_GenDepthStencilRenderbuffer(
+static FNA3D_Renderbuffer* OPENGL_GenDepthStencilRenderbuffer(
 	FNA3D_Renderer *driverData,
 	int32_t width,
 	int32_t height,
@@ -4249,7 +4249,7 @@ static void OPENGL_INTERNAL_DestroyRenderbuffer(
 	SDL_free(renderbuffer);
 }
 
-void OPENGL_AddDisposeRenderbuffer(
+static void OPENGL_AddDisposeRenderbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Renderbuffer *renderbuffer
 ) {
@@ -4271,7 +4271,7 @@ void OPENGL_AddDisposeRenderbuffer(
 
 /* Vertex Buffers */
 
-FNA3D_Buffer* OPENGL_GenVertexBuffer(
+static FNA3D_Buffer* OPENGL_GenVertexBuffer(
 	FNA3D_Renderer *driverData,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
@@ -4337,7 +4337,7 @@ static void OPENGL_INTERNAL_DestroyVertexBuffer(
 	SDL_free(buffer);
 }
 
-void OPENGL_AddDisposeVertexBuffer(
+static void OPENGL_AddDisposeVertexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
@@ -4357,7 +4357,7 @@ void OPENGL_AddDisposeVertexBuffer(
 	}
 }
 
-void OPENGL_SetVertexBufferData(
+static void OPENGL_SetVertexBufferData(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
@@ -4401,7 +4401,7 @@ void OPENGL_SetVertexBufferData(
 	);
 }
 
-void OPENGL_GetVertexBufferData(
+static void OPENGL_GetVertexBufferData(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
@@ -4470,7 +4470,7 @@ void OPENGL_GetVertexBufferData(
 
 /* Index Buffers */
 
-FNA3D_Buffer* OPENGL_GenIndexBuffer(
+static FNA3D_Buffer* OPENGL_GenIndexBuffer(
 	FNA3D_Renderer *driverData,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
@@ -4527,7 +4527,7 @@ static void OPENGL_INTERNAL_DestroyIndexBuffer(
 	SDL_free(buffer);
 }
 
-void OPENGL_AddDisposeIndexBuffer(
+static void OPENGL_AddDisposeIndexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
@@ -4547,7 +4547,7 @@ void OPENGL_AddDisposeIndexBuffer(
 	}
 }
 
-void OPENGL_SetIndexBufferData(
+static void OPENGL_SetIndexBufferData(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
@@ -4591,7 +4591,7 @@ void OPENGL_SetIndexBufferData(
 	);
 }
 
-void OPENGL_GetIndexBufferData(
+static void OPENGL_GetIndexBufferData(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
@@ -4631,7 +4631,7 @@ void OPENGL_GetIndexBufferData(
 
 /* Effects */
 
-FNA3D_Effect* OPENGL_CreateEffect(
+static FNA3D_Effect* OPENGL_CreateEffect(
 	FNA3D_Renderer *driverData,
 	uint8_t *effectCode,
 	uint32_t effectCodeLength
@@ -4690,7 +4690,7 @@ FNA3D_Effect* OPENGL_CreateEffect(
 	return (FNA3D_Effect*) result;
 }
 
-FNA3D_Effect* OPENGL_CloneEffect(
+static FNA3D_Effect* OPENGL_CloneEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
@@ -4745,7 +4745,7 @@ static void OPENGL_INTERNAL_DestroyEffect(
 	SDL_free(effect);
 }
 
-void OPENGL_AddDisposeEffect(
+static void OPENGL_AddDisposeEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
@@ -4765,7 +4765,7 @@ void OPENGL_AddDisposeEffect(
 	}
 }
 
-void OPENGL_ApplyEffect(
+static void OPENGL_ApplyEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectTechnique *technique,
@@ -4811,7 +4811,7 @@ void OPENGL_ApplyEffect(
 	renderer->currentPass = pass;
 }
 
-void OPENGL_BeginPassRestore(
+static void OPENGL_BeginPassRestore(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectStateChanges *stateChanges
@@ -4830,7 +4830,7 @@ void OPENGL_BeginPassRestore(
 	renderer->effectApplied = 1;
 }
 
-void OPENGL_EndPassRestore(
+static void OPENGL_EndPassRestore(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
@@ -4844,7 +4844,7 @@ void OPENGL_EndPassRestore(
 
 /* Queries */
 
-FNA3D_Query* OPENGL_CreateQuery(FNA3D_Renderer *driverData)
+static FNA3D_Query* OPENGL_CreateQuery(FNA3D_Renderer *driverData)
 {
 	OpenGLQuery *result;
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
@@ -4868,8 +4868,10 @@ static void OPENGL_INTERNAL_DestroyQuery(
 	SDL_free(query);
 }
 
-void OPENGL_AddDisposeQuery(FNA3D_Renderer *driverData, FNA3D_Query *query)
-{
+static void OPENGL_AddDisposeQuery(
+	FNA3D_Renderer *driverData,
+	FNA3D_Query *query
+) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLQuery *glQuery = (OpenGLQuery*) query;
 	OpenGLQuery *curr;
@@ -4888,7 +4890,7 @@ void OPENGL_AddDisposeQuery(FNA3D_Renderer *driverData, FNA3D_Query *query)
 	}
 }
 
-void OPENGL_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
+static void OPENGL_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLQuery *glQuery = (OpenGLQuery*) query;
@@ -4901,7 +4903,7 @@ void OPENGL_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 	);
 }
 
-void OPENGL_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
+static void OPENGL_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 
@@ -4913,8 +4915,10 @@ void OPENGL_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
 	);
 }
 
-uint8_t OPENGL_QueryComplete(FNA3D_Renderer *driverData, FNA3D_Query *query)
-{
+static uint8_t OPENGL_QueryComplete(
+	FNA3D_Renderer *driverData,
+	FNA3D_Query *query
+) {
 	GLuint result;
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLQuery *glQuery = (OpenGLQuery*) query;
@@ -4929,7 +4933,7 @@ uint8_t OPENGL_QueryComplete(FNA3D_Renderer *driverData, FNA3D_Query *query)
 	return result != 0;
 }
 
-int32_t OPENGL_QueryPixelCount(
+static int32_t OPENGL_QueryPixelCount(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
 ) {
@@ -4949,37 +4953,37 @@ int32_t OPENGL_QueryPixelCount(
 
 /* Feature Queries */
 
-uint8_t OPENGL_SupportsDXT1(FNA3D_Renderer *driverData)
+static uint8_t OPENGL_SupportsDXT1(FNA3D_Renderer *driverData)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	return renderer->supports_dxt1;
 }
 
-uint8_t OPENGL_SupportsS3TC(FNA3D_Renderer *driverData)
+static uint8_t OPENGL_SupportsS3TC(FNA3D_Renderer *driverData)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	return renderer->supports_s3tc;
 }
 
-uint8_t OPENGL_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
+static uint8_t OPENGL_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	return (	renderer->supports_ARB_draw_instanced &&
 			renderer->supports_ARB_instanced_arrays	);
 }
 
-uint8_t OPENGL_SupportsNoOverwrite(FNA3D_Renderer *driverData)
+static uint8_t OPENGL_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 {
 	return 0;
 }
 
-int32_t OPENGL_GetMaxTextureSlots(FNA3D_Renderer *driverData)
+static int32_t OPENGL_GetMaxTextureSlots(FNA3D_Renderer *driverData)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	return renderer->numTextureSlots;
 }
 
-int32_t OPENGL_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
+static int32_t OPENGL_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	return renderer->maxMultiSampleCount;
@@ -4987,7 +4991,7 @@ int32_t OPENGL_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
 
 /* Debugging */
 
-void OPENGL_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
+static void OPENGL_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	if (renderer->supports_GREMEDY_string_marker)
@@ -5052,21 +5056,21 @@ static void GLAPIENTRY DebugCall(
 
 /* Buffer Objects */
 
-intptr_t OPENGL_GetBufferSize(FNA3D_Buffer *buffer)
+static intptr_t OPENGL_GetBufferSize(FNA3D_Buffer *buffer)
 {
 	return ((OpenGLBuffer*) buffer)->size;
 }
 
 /* Effect Objects */
 
-MOJOSHADER_effect* OPENGL_GetEffectData(FNA3D_Effect *effect)
+static MOJOSHADER_effect* OPENGL_GetEffectData(FNA3D_Effect *effect)
 {
 	return ((OpenGLEffect*) effect)->effect;
 }
 
 /* Load GL Entry Points */
 
-static void LoadEntryPoints(
+static inline void LoadEntryPoints(
 	OpenGLRenderer *renderer,
 	const char *driverInfo,
 	uint8_t debugMode
@@ -5292,7 +5296,7 @@ static void* MOJOSHADERCALL GLGetProcAddress(const char *ep, void* d)
 	return SDL_GL_GetProcAddress(ep);
 }
 
-static void checkExtensions(
+static inline void CheckExtensions(
 	const char *ext,
 	uint8_t *supportsS3tc,
 	uint8_t *supportsDxt1
@@ -5316,7 +5320,7 @@ static void checkExtensions(
 
 /* Driver */
 
-uint8_t OPENGL_PrepareWindowAttributes(uint32_t *flags)
+static uint8_t OPENGL_PrepareWindowAttributes(uint32_t *flags)
 {
 	uint8_t forceES3, forceCore, forceCompat;
 	const char *osVersion;
@@ -5585,7 +5589,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 		renderer->glGetIntegerv(GL_NUM_EXTENSIONS, &numExtensions);
 		for (i = 0; i < numExtensions; i += 1)
 		{
-			checkExtensions(
+			CheckExtensions(
 				(const char*) renderer->glGetStringi(GL_EXTENSIONS, i),
 				&renderer->supports_s3tc,
 				&renderer->supports_dxt1
@@ -5600,7 +5604,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	}
 	else
 	{
-		checkExtensions(
+		CheckExtensions(
 			(const char*) renderer->glGetString(GL_EXTENSIONS),
 			&renderer->supports_s3tc,
 			&renderer->supports_dxt1
