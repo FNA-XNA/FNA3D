@@ -1130,16 +1130,28 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
+	/* Setting up Queue Info */
+	int queueInfoCount = 1;
+	VkDeviceQueueCreateInfo queueCreateInfos[2];
 	float queuePriority = 1.0f;
+
 	VkDeviceQueueCreateInfo queueCreateInfoGraphics = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
 	queueCreateInfoGraphics.queueFamilyIndex = queueFamilyIndices.graphicsFamily;
 	queueCreateInfoGraphics.queueCount = 1;
 	queueCreateInfoGraphics.pQueuePriorities = &queuePriority;
 
-	VkDeviceQueueCreateInfo queueCreateInfoPresent = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
-	queueCreateInfoPresent.queueFamilyIndex = queueFamilyIndices.presentFamily;
-	queueCreateInfoPresent.queueCount = 1;
-	queueCreateInfoPresent.pQueuePriorities = &queuePriority;
+	queueCreateInfos[0] = queueCreateInfoGraphics;
+
+	if (queueFamilyIndices.presentFamily != queueFamilyIndices.graphicsFamily)
+	{
+		VkDeviceQueueCreateInfo queueCreateInfoPresent = { VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO };
+		queueCreateInfoPresent.queueFamilyIndex = queueFamilyIndices.presentFamily;
+		queueCreateInfoPresent.queueCount = 1;
+		queueCreateInfoPresent.pQueuePriorities = &queuePriority;
+
+		queueCreateInfos[1] = queueCreateInfoPresent;
+		queueInfoCount++;
+	}
 
 	/* specifying used device features */
 	/* empty for now because i don't know what we need yet... --cosmonaut */
@@ -1147,10 +1159,8 @@ FNA3D_Device* VULKAN_CreateDevice(
 
 	/* creating the logical device */
 
-	VkDeviceQueueCreateInfo queueCreateInfos[2] = { queueCreateInfoGraphics, queueCreateInfoPresent };
-
 	VkDeviceCreateInfo deviceCreateInfo = { VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO };
-	deviceCreateInfo.queueCreateInfoCount = 2;
+	deviceCreateInfo.queueCreateInfoCount = queueInfoCount;
 	deviceCreateInfo.pQueueCreateInfos = queueCreateInfos;
 	deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
 	deviceCreateInfo.enabledExtensionCount = 0;
