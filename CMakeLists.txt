@@ -125,6 +125,8 @@ target_include_directories(mojoshader PUBLIC
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/MojoShader>
 )
 
+target_compile_options(FNA3D PUBLIC -Wall)
+
 # MinGW builds should statically link libgcc
 if(MINGW)
 	target_link_libraries(FNA3D PRIVATE -static-libgcc)
