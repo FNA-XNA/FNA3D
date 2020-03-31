@@ -22,4 +22,5 @@ compile_commands.json
 initvk.test
 Makefile
 
+build/
 FNA3DMinimal/
