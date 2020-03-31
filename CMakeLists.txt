@@ -40,6 +40,7 @@ endif()
 # Defines
 add_definitions(
 	-DFNA3D_DRIVER_OPENGL
+	-DFNA3D_DRIVER_VULKAN
 )
 add_definitions(
 	-DMOJOSHADER_NO_VERSION_INCLUDE
@@ -92,12 +93,17 @@ add_library(FNA3D
 	src/FNA3D_Driver_OpenGL.h
 	src/FNA3D_Driver_OpenGL_glfuncs.h
 	src/FNA3D_Driver_Metal.h
+	src/FNA3D_Driver_Vulkan.h
+	src/FNA3D_Driver_Vulkan_device_funcs.h
+	src/FNA3D_Driver_Vulkan_global_funcs.h
+	src/FNA3D_Driver_Vulkan_instance_funcs.h
 	src/FNA3D_PipelineCache.h
 	# Source Files
 	src/FNA3D.c
 	src/FNA3D_Driver_D3D11.c
 	src/FNA3D_Driver_OpenGL.c
 	src/FNA3D_Driver_Metal.c
+	src/FNA3D_Driver_Vulkan.c
 	src/FNA3D_Image.c
 	src/FNA3D_PipelineCache.c
 )
