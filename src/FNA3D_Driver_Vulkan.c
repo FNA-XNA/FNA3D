@@ -925,7 +925,7 @@ static void LoadDeviceFunctions(
 	#undef VULKAN_DEVICE_FUNCTION
 }
 
-uint8_t CheckValidationLayerSupport(
+static uint8_t CheckValidationLayerSupport(
 	const char** validationLayers,
 	uint32_t length
 ) {
