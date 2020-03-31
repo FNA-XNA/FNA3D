@@ -907,8 +907,6 @@ static uint8_t LoadGlobalFunctions(void)
 	return 1;
 }
 
-#undef VULKAN_FUNCTIONS
-
 static void LoadInstanceFunctions(
 	FNAVulkanRenderer *renderer
 ) {
@@ -925,6 +923,38 @@ static void LoadDeviceFunctions(
 		renderer->func = (vkfntype_##func) renderer->vkGetDeviceProcAddr(renderer->logicalDevice, #func);
 	#include "FNA3D_Driver_Vulkan_device_funcs.h"
 	#undef VULKAN_DEVICE_FUNCTION
+}
+
+uint8_t CheckValidationLayerSupport(
+	const char** validationLayers,
+	uint32_t length
+) {
+	uint32_t layerCount;
+	vkEnumerateInstanceLayerProperties(&layerCount, NULL);
+
+	VkLayerProperties availableLayers[layerCount];
+	vkEnumerateInstanceLayerProperties(&layerCount, availableLayers);
+
+	for (uint32_t i = 0; i < length; i++)
+	{
+		uint8_t layerFound = 0;
+
+		for (uint32_t j = 0; j < layerCount; j++)
+		{
+			if (SDL_strcmp(validationLayers[i], availableLayers[j].layerName) == 0)
+			{
+				layerFound = 1;
+				break;
+			}
+		}
+
+		if (!layerFound)
+		{
+			return 0;
+		}
+	}
+
+	return 1;
 }
 
 FNA3D_Device* VULKAN_CreateDevice(
@@ -1016,6 +1046,16 @@ FNA3D_Device* VULKAN_CreateDevice(
 	if (debugMode)
 	{
 		createInfo.enabledLayerCount = sizeof(layerNames)/sizeof(layerNames[0]);
+		if (!CheckValidationLayerSupport(layerNames, createInfo.enabledLayerCount))
+		{
+			SDL_LogWarn(
+				SDL_LOG_CATEGORY_APPLICATION,
+				"%s",
+				"Validation layers not found, continuing without validation"
+			);
+
+			createInfo.enabledLayerCount = 0;
+		}
 	}
 	else
 	{
