@@ -70,6 +70,7 @@ endif()
 add_library(FNA3D
 	# Public Headers
 	include/FNA3D.h
+	include/FNA3D_Image.h
 	# Internal Headers
 	src/FNA3D_CommandStream.h
 	src/FNA3D_Driver.h
@@ -79,6 +80,7 @@ add_library(FNA3D
 	src/FNA3D.c
 	src/FNA3D_CommandStream.c
 	src/FNA3D_Driver_OpenGL.c
+	src/FNA3D_Image.c
 )
 add_library(mojoshader STATIC
 	MojoShader/mojoshader.c

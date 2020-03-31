@@ -1,0 +1,345 @@
+/* FNA3D - 3D Graphics Library for FNA
+ *
+ * Copyright (c) 2020 Ethan Lee
+ *
+ * This software is provided 'as-is', without any express or implied warranty.
+ * In no event will the authors be held liable for any damages arising from
+ * the use of this software.
+ *
+ * Permission is granted to anyone to use this software for any purpose,
+ * including commercial applications, and to alter it and redistribute it
+ * freely, subject to the following restrictions:
+ *
+ * 1. The origin of this software must not be misrepresented; you must not
+ * claim that you wrote the original software. If you use this software in a
+ * product, an acknowledgment in the product documentation would be
+ * appreciated but is not required.
+ *
+ * 2. Altered source versions must be plainly marked as such, and must not be
+ * misrepresented as being the original software.
+ *
+ * 3. This notice may not be removed or altered from any source distribution.
+ *
+ * Ethan "flibitijibibo" Lee <flibitijibibo@flibitijibibo.com>
+ *
+ */
+
+#include "FNA3D_Image.h"
+
+#include <SDL.h>
+
+#define ceilf SDL_ceilf
+#define floorf SDL_floorf
+#define ldexp SDL_scalbn
+#define memcmp SDL_memcmp
+#define memcpy SDL_memcpy
+#define memmove SDL_memmove
+#define memset SDL_memset
+#define pow SDL_pow
+#define strcmp SDL_strcmp
+#define strlen  SDL_strlen
+#define strncmp SDL_strncmp
+#define strtol SDL_strtol
+
+#define __STDC_WANT_SECURE_LIB__
+#define sprintf_s SDL_snprintf
+
+/* These are per the spec... */
+#define STBI_ONLY_GIF
+#define STBI_ONLY_PNG
+#define STBI_ONLY_JPEG
+/* ... and this is for me -flibit */
+#define STBI_ONLY_BMP
+
+#define STBI_NO_STDIO
+#define STB_IMAGE_STATIC
+#define STBI_ASSERT SDL_assert
+#define STBI_MALLOC SDL_malloc
+#define STBI_REALLOC SDL_realloc
+#define STBI_FREE SDL_free
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
+#define MINIZ_NO_STDIO
+#define MINIZ_NO_TIME
+#define MINIZ_SDL_MALLOC
+#define MZ_ASSERT(x) SDL_assert(x)
+#include "miniz.h"
+
+/* Thanks Dan Gibson! */
+static unsigned char* dgibson_stbi_zlib_compress(
+	unsigned char *data,
+	int data_len,
+	int *out_len,
+	int quality
+) {
+	mz_ulong buflen = mz_compressBound(data_len);
+	unsigned char *buf = SDL_malloc(buflen);
+
+	if (	buf == NULL ||
+		mz_compress2(buf, &buflen, data, data_len, quality) != 0	)
+	{
+		SDL_free(buf);
+		return NULL;
+	}
+	*out_len = buflen;
+	return buf;
+}
+
+#define STBI_WRITE_NO_STDIO
+#define STB_IMAGE_WRITE_STATIC
+#define STBIW_ASSERT SDL_assert
+#define STBIW_MALLOC SDL_malloc
+#define STBIW_REALLOC SDL_realloc
+#define STBIW_FREE SDL_free
+#define STBIW_ZLIB_COMPRESS  dgibson_stbi_zlib_compress
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
+/* Image Read API */
+
+uint8_t* FNA3D_Image_Load(
+	FNA3D_Image_ReadFunc readFunc,
+	FNA3D_Image_SkipFunc skipFunc,
+	FNA3D_Image_EOFFunc eofFunc,
+	void* context,
+	int32_t *w,
+	int32_t *h,
+	int32_t *len,
+	int32_t forceW,
+	int32_t forceH,
+	uint8_t zoom
+) {
+	uint8_t *result;
+	int32_t format;
+	float scale;
+	SDL_Rect crop;
+	uint8_t scaleWidth;
+	int32_t resultWidth, resultHeight;
+	SDL_Surface *surface, *newSurface;
+	stbi_io_callbacks cb;
+
+	cb.read = readFunc;
+	cb.skip = skipFunc;
+	cb.eof = eofFunc;
+	result = stbi_load_from_callbacks(
+		&cb,
+		context,
+		w,
+		h,
+		&format,
+		STBI_rgb_alpha
+	);
+
+	if (forceW != -1 && forceH != -1)
+	{
+		surface = SDL_CreateRGBSurfaceFrom(
+			result,
+			*w,
+			*h,
+			8 * 4,
+			(*w) * 4,
+			0x000000FF,
+			0x0000FF00,
+			0x00FF0000,
+			0xFF000000
+		);
+
+		if (zoom)
+		{
+			scaleWidth = surface->w < surface->h;
+		}
+		else
+		{
+			scaleWidth = surface->w > surface->h;
+		}
+
+		if (scaleWidth)
+		{
+			scale = forceW / (float) surface->w;
+		}
+		else
+		{
+			scale = forceH / (float) surface->h;
+		}
+
+		if (zoom)
+		{
+			resultWidth = forceW;
+			resultHeight = forceH;
+			if (scaleWidth)
+			{
+				crop.x = 0;
+				crop.y = (int) (surface->h / 2 - (forceH / scale) / 2);
+				crop.w = surface->w;
+				crop.h = (int) (forceH / scale);
+			}
+			else
+			{
+				crop.x = (int) (surface->w / 2 - (forceW / scale) / 2);
+				crop.y = 0;
+				crop.w = (int) (forceW / scale);
+				crop.h = surface->h;
+			}
+		}
+		else
+		{
+			resultWidth = (int) (surface->w * scale);
+			resultHeight = (int) (surface->h * scale);
+		}
+
+		// Alloc surface, blit!
+		newSurface = SDL_CreateRGBSurface(
+			0,
+			resultWidth,
+			resultHeight,
+			32,
+			0x000000FF,
+			0x0000FF00,
+			0x00FF0000,
+			0xFF000000
+		);
+		SDL_SetSurfaceBlendMode(surface, SDL_BLENDMODE_NONE);
+		if (zoom)
+		{
+			SDL_BlitScaled(
+				surface,
+				&crop,
+				newSurface,
+				NULL
+			);
+		}
+		else
+		{
+			SDL_BlitScaled(
+				surface,
+				NULL,
+				newSurface,
+				NULL
+			);
+		}
+		SDL_FreeSurface(surface);
+		SDL_free(result);
+
+		/* We're going to cheat and let the client take the memory! */
+		result = (uint8_t*) newSurface->pixels;
+		newSurface->flags |= SDL_PREALLOC;
+		SDL_FreeSurface(newSurface);
+	}
+
+	return result;
+}
+
+void FNA3D_Image_Free(uint8_t *mem)
+{
+	SDL_free(mem);
+}
+
+/* Image Write API */
+
+void FNA3D_Image_SavePNG(
+	FNA3D_Image_WriteFunc writeFunc,
+	void* context,
+	int32_t srcW,
+	int32_t srcH,
+	int32_t dstW,
+	int32_t dstH,
+	uint8_t *data
+) {
+	/* Only blit to scale, the format is already correct */
+	SDL_Surface *scaledSurface;
+	SDL_Surface *surface = SDL_CreateRGBSurfaceFrom(
+		data,
+		srcW,
+		srcH,
+		8 * 4,
+		srcW * 4,
+		0x000000FF,
+		0x0000FF00,
+		0x00FF0000,
+		0xFF000000
+	);
+	if ((srcW != dstW) || (srcH != dstH))
+	{
+		scaledSurface = SDL_CreateRGBSurface(
+			0,
+			dstW,
+			dstH,
+			32,
+			0x000000FF,
+			0x0000FF00,
+			0x00FF0000,
+			0xFF000000
+		);
+		SDL_SetSurfaceBlendMode(surface, SDL_BLENDMODE_NONE);
+		SDL_BlitScaled(surface, NULL, scaledSurface, NULL);
+		SDL_FreeSurface(surface);
+		surface = scaledSurface;
+	}
+
+	/* Write the image data, finally. */
+	stbi_write_png_to_func(
+		writeFunc,
+		context,
+		dstW,
+		dstH,
+		4,
+		surface->pixels,
+		surface->pitch
+	);
+
+	/* Clean up. We out. */
+	SDL_FreeSurface(surface);
+}
+
+void FNA3D_Image_SaveJPG(
+	FNA3D_Image_WriteFunc writeFunc,
+	void* context,
+	int32_t srcW,
+	int32_t srcH,
+	int32_t dstW,
+	int32_t dstH,
+	uint8_t *data,
+	int32_t quality
+) {
+	/* Get an RGB24 surface at the specified width/height */
+	SDL_Surface *surface = SDL_CreateRGBSurfaceFrom(
+		data,
+		srcW,
+		srcH,
+		8 * 4,
+		srcW * 4,
+		0x000000FF,
+		0x0000FF00,
+		0x00FF0000,
+		0xFF000000
+	);
+	SDL_Surface *convertSurface = SDL_CreateRGBSurface(
+		0,
+		dstW,
+		dstH,
+		24,
+		0x000000FF,
+		0x0000FF00,
+		0x00FF0000,
+		0x00000000
+	);
+	SDL_SetSurfaceBlendMode(surface, SDL_BLENDMODE_NONE);
+	SDL_BlitScaled(surface, NULL, convertSurface, NULL);
+	SDL_FreeSurface(surface);
+	surface = convertSurface;
+
+	/* Write the image, finally. */
+	stbi_write_jpg_to_func(
+		writeFunc,
+		context,
+		dstW,
+		dstH,
+		3,
+		surface->pixels,
+		quality
+	);
+
+	/* Clean up. We out. */
+	SDL_FreeSurface(surface);
+}
