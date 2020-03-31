@@ -935,7 +935,6 @@ FNA3D_Device* VULKAN_CreateDevice(
 	VkSurfaceKHR surface;
 	uint32_t physicalDeviceCount;
 	VkPhysicalDevice physicalDevice;
-	VkPhysicalDevice physicalDevices[physicalDeviceCount];
 	VkDevice logicalDevice;
 	VkQueue graphicsQueue;
 	VkQueue presentQueue;
@@ -1076,6 +1075,8 @@ FNA3D_Device* VULKAN_CreateDevice(
 		);
 		return NULL;
 	}
+
+	VkPhysicalDevice physicalDevices[physicalDeviceCount];
 
 	vulkanResult = renderer->vkEnumeratePhysicalDevices(instance, &physicalDeviceCount, physicalDevices);
 	if (vulkanResult != VK_SUCCESS)
