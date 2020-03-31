@@ -21,3 +21,5 @@ CMakeCache.txt
 compile_commands.json
 initvk.test
 Makefile
+
+FNA3DMinimal/
