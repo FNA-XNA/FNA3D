@@ -111,13 +111,14 @@ uint8_t* FNA3D_Image_Load(
 	uint8_t zoom
 ) {
 	uint8_t *result;
+	uint8_t *pixels;
 	int32_t format;
 	float scale;
 	SDL_Rect crop;
 	uint8_t scaleWidth;
-	int32_t resultWidth, resultHeight;
 	SDL_Surface *surface, *newSurface;
 	stbi_io_callbacks cb;
+	int32_t i;
 
 	cb.read = readFunc;
 	cb.skip = skipFunc;
@@ -165,8 +166,8 @@ uint8_t* FNA3D_Image_Load(
 
 		if (zoom)
 		{
-			resultWidth = forceW;
-			resultHeight = forceH;
+			*w = forceW;
+			*h = forceH;
 			if (scaleWidth)
 			{
 				crop.x = 0;
@@ -184,15 +185,15 @@ uint8_t* FNA3D_Image_Load(
 		}
 		else
 		{
-			resultWidth = (int) (surface->w * scale);
-			resultHeight = (int) (surface->h * scale);
+			*w = (int) (surface->w * scale);
+			*h = (int) (surface->h * scale);
 		}
 
 		// Alloc surface, blit!
 		newSurface = SDL_CreateRGBSurface(
 			0,
-			resultWidth,
-			resultHeight,
+			*w,
+			*h,
 			32,
 			0x000000FF,
 			0x0000FF00,
@@ -225,6 +226,23 @@ uint8_t* FNA3D_Image_Load(
 		result = (uint8_t*) newSurface->pixels;
 		newSurface->flags |= SDL_PREALLOC;
 		SDL_FreeSurface(newSurface);
+	}
+
+	/* Ensure that the alpha pixels are... well, actual alpha.
+	 * You think this looks stupid, but be assured: Your paint program is
+	 * almost certainly even stupider.
+	 * -flibit
+	 */
+	pixels = result;
+	*len = (*w) * (*h) * 4;
+	for (i = 0; i < *len; i += 4, pixels += 4)
+	{
+		if (pixels[3] == 0)
+		{
+			pixels[0] = 0;
+			pixels[1] = 0;
+			pixels[2] = 0;
+		}
 	}
 
 	return result;
