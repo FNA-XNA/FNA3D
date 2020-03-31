@@ -909,14 +909,18 @@ static uint8_t LoadGlobalFunctions(void)
 
 #undef VULKAN_FUNCTIONS
 
-static void LoadEntryPoints(
+static void LoadInstanceFunctions(
 	FNAVulkanRenderer *renderer
 ) {
 	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		renderer->func = (vkfntype_##func) vkGetInstanceProcAddr(renderer->instance, #func);
 	#include "FNA3D_Driver_Vulkan_instance_funcs.h"
 	#undef VULKAN_INSTANCE_FUNCTION
+}
 
+static void LoadDeviceFunctions(
+	FNAVulkanRenderer *renderer
+) {
 	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
 		renderer->func = (vkfntype_##func) renderer->vkGetDeviceProcAddr(renderer->logicalDevice, #func);
 	#include "FNA3D_Driver_Vulkan_device_funcs.h"
@@ -1003,7 +1007,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 
 	VkInstanceCreateInfo createInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 
-	char const* layerNames[] = { "VK_LAYER_LUNARG_standard_validation" };
+	char const* layerNames[] = { "VK_LAYER_KHRONOS_validation" };
 	createInfo.pApplicationInfo = &appInfo;
 	createInfo.enabledExtensionCount = extensionCount;
 	createInfo.ppEnabledExtensionNames = extensionNames;
@@ -1031,10 +1035,6 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
-	/* assign the instance and load function entry points */
-	renderer->instance = instance;
-	LoadEntryPoints(renderer);
-
 	/* create surface */
 
 	if (
@@ -1052,6 +1052,11 @@ FNA3D_Device* VULKAN_CreateDevice(
 
 		return NULL;
 	}
+
+	/* assign the instance and load function entry points */
+
+	renderer->instance = instance;
+	LoadInstanceFunctions(renderer);
 
 	/* determine a suitable physical device */
 
@@ -1161,6 +1166,11 @@ FNA3D_Device* VULKAN_CreateDevice(
 
 		return NULL;
 	}
+
+	/* assign logical device to the renderer and load entry points */
+
+	renderer->logicalDevice = logicalDevice;
+	LoadDeviceFunctions(renderer);
 
 	renderer->vkGetDeviceQueue(logicalDevice, queueFamilyIndices.graphicsFamily, 0, &graphicsQueue);
 	renderer->vkGetDeviceQueue(logicalDevice, queueFamilyIndices.presentFamily, 0, &presentQueue);
