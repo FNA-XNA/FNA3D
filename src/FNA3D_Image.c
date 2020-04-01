@@ -62,12 +62,14 @@
 #define __STDC_WANT_SECURE_LIB__
 #define sprintf_s SDL_snprintf
 
-/* These are per the spec... */
+/* These are per the Texture2D.FromStream spec */
 #define STBI_ONLY_GIF
 #define STBI_ONLY_PNG
 #define STBI_ONLY_JPEG
-/* ... and this is for me -flibit */
-#define STBI_ONLY_BMP
+
+/* These are per the Texture2D.SaveAs* spec */
+#define STBIW_ONLY_PNG
+#define STBIW_ONLY_JPEG
 
 #define STBI_NO_STDIO
 #define STB_IMAGE_STATIC
