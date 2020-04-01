@@ -114,6 +114,9 @@ set_target_properties(FNA3D PROPERTIES OUTPUT_NAME "FNA3D"
 	SOVERSION ${LIB_MAJOR_VERSION}
 )
 
+# Internal Dependencies
+target_link_libraries(FNA3D PRIVATE mojoshader ${LOBJC})
+
 # SDL2 Dependency
 if (DEFINED SDL2_INCLUDE_DIRS AND DEFINED SDL2_LIBRARIES)
 	message(STATUS "using pre-defined SDL2 variables SDL2_INCLUDE_DIRS and SDL2_LIBRARIES")
@@ -138,6 +141,3 @@ else()
 		target_link_libraries(FNA3D PUBLIC ${SDL2_LIBRARIES})
 	endif()
 endif()
-
-# Other Dependencies
-target_link_libraries(FNA3D PRIVATE mojoshader ${LOBJC})
