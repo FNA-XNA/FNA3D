@@ -34,9 +34,18 @@
 #pragma GCC diagnostic ignored "-Wmisleading-indentation"
 #endif
 
+#define __STDC_WANT_SECURE_LIB__
+#define sprintf_s SDL_snprintf
+
 #define ceilf SDL_ceilf
 #define floorf SDL_floorf
 #define ldexp SDL_scalbn
+#define pow SDL_pow
+#define strcmp SDL_strcmp
+#define strlen  SDL_strlen
+#define strncmp SDL_strncmp
+#define strtol SDL_strtol
+
 #ifdef memcmp
 #undef memcmp
 #endif
@@ -53,14 +62,6 @@
 #undef memset
 #endif
 #define memset SDL_memset
-#define pow SDL_pow
-#define strcmp SDL_strcmp
-#define strlen  SDL_strlen
-#define strncmp SDL_strncmp
-#define strtol SDL_strtol
-
-#define __STDC_WANT_SECURE_LIB__
-#define sprintf_s SDL_snprintf
 
 /* These are per the Texture2D.FromStream spec */
 #define STBI_ONLY_GIF
@@ -86,7 +87,7 @@
 #define MZ_ASSERT(x) SDL_assert(x)
 #include "miniz.h"
 
-/* Thanks Dan Gibson! */
+/* Thanks Daniel Gibson! */
 static unsigned char* dgibson_stbi_zlib_compress(
 	unsigned char *data,
 	int data_len,
@@ -112,7 +113,7 @@ static unsigned char* dgibson_stbi_zlib_compress(
 #define STBIW_MALLOC SDL_malloc
 #define STBIW_REALLOC SDL_realloc
 #define STBIW_FREE SDL_free
-#define STBIW_ZLIB_COMPRESS  dgibson_stbi_zlib_compress
+#define STBIW_ZLIB_COMPRESS dgibson_stbi_zlib_compress
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
 
