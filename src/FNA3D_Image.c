@@ -286,21 +286,24 @@ void FNA3D_Image_SavePNG(
 	int32_t dstH,
 	uint8_t *data
 ) {
+	SDL_Surface *surface, *scaledSurface;
+	uint8_t *pixels;
+	uint8_t scale = (srcW != dstW) || (srcH != dstH);
+
 	/* Only blit to scale, the format is already correct */
-	SDL_Surface *scaledSurface;
-	SDL_Surface *surface = SDL_CreateRGBSurfaceFrom(
-		data,
-		srcW,
-		srcH,
-		8 * 4,
-		srcW * 4,
-		0x000000FF,
-		0x0000FF00,
-		0x00FF0000,
-		0xFF000000
-	);
-	if ((srcW != dstW) || (srcH != dstH))
+	if (scale)
 	{
+		surface = SDL_CreateRGBSurfaceFrom(
+			data,
+			srcW,
+			srcH,
+			8 * 4,
+			srcW * 4,
+			0x000000FF,
+			0x0000FF00,
+			0x00FF0000,
+			0xFF000000
+		);
 		scaledSurface = SDL_CreateRGBSurface(
 			0,
 			dstW,
@@ -314,7 +317,11 @@ void FNA3D_Image_SavePNG(
 		SDL_SetSurfaceBlendMode(surface, SDL_BLENDMODE_NONE);
 		SDL_BlitScaled(surface, NULL, scaledSurface, NULL);
 		SDL_FreeSurface(surface);
-		surface = scaledSurface;
+		pixels = (uint8_t*) scaledSurface->pixels;
+	}
+	else
+	{
+		pixels = data;
 	}
 
 	/* Write the image data, finally. */
@@ -324,12 +331,15 @@ void FNA3D_Image_SavePNG(
 		dstW,
 		dstH,
 		4,
-		surface->pixels,
-		surface->pitch
+		pixels,
+		dstW * 4
 	);
 
 	/* Clean up. We out. */
-	SDL_FreeSurface(surface);
+	if (scale)
+	{
+		SDL_FreeSurface(scaledSurface);
+	}
 }
 
 void FNA3D_Image_SaveJPG(
