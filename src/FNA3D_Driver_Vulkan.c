@@ -43,11 +43,17 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
 
 /* Internal Structures */
 
+typedef struct SurfaceFormatMapping {
+	VkFormat formatColor;
+	VkComponentMapping swizzle;
+} SurfaceFormatMapping;
+
 typedef struct FNAVulkanRenderer
 {
 	FNA3D_Device *parentDevice;
 	VkInstance instance;
 	VkDevice logicalDevice;
+	SurfaceFormatMapping surfaceFormatMapping;
 
 	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
@@ -72,11 +78,6 @@ typedef struct SwapChainSupportDetails {
 	VkPresentModeKHR *presentModes;
 	uint32_t presentModesLength;
 } SwapChainSupportDetails;
-
-typedef struct SurfaceFormatMapping {
-	VkFormat formatColor;
-	VkComponentMapping swizzle;
-} SurfaceFormatMapping;
 
 /* translations arrays go here */
 
@@ -1069,16 +1070,15 @@ static uint8_t CheckDeviceExtensionSupport(
 	return 1;
 }
 
-static SwapChainSupportDetails QuerySwapChainSupport(
+static uint8_t QuerySwapChainSupport(
 	FNAVulkanRenderer *renderer,
 	VkPhysicalDevice physicalDevice,
-	VkSurfaceKHR surface
-)
-{
-	SwapChainSupportDetails details;
+	VkSurfaceKHR surface,
+	SwapChainSupportDetails *outputDetails
+) {
 	VkResult result;
 
-	result = renderer->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &details.capabilities);
+	result = renderer->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &outputDetails->capabilities);
 	if (result != VK_SUCCESS)
 	{
 		SDL_LogError(
@@ -1087,9 +1087,7 @@ static SwapChainSupportDetails QuerySwapChainSupport(
 			VkErrorMessages(result)
 		);
 
-		details.formatsLength = 0;
-		details.presentModesLength = 0;
-		return details;
+		return 0;
 	}
 
 	uint32_t formatCount;
@@ -1097,18 +1095,16 @@ static SwapChainSupportDetails QuerySwapChainSupport(
 
 	if (formatCount != 0)
 	{
-		details.formats = SDL_malloc(sizeof(VkSurfaceFormatKHR) * formatCount);
-		details.formatsLength = formatCount;
+		outputDetails->formats = SDL_malloc(sizeof(VkSurfaceFormatKHR) * formatCount);
+		outputDetails->formatsLength = formatCount;
 
-		if (!details.formats)
+		if (!outputDetails->formats)
 		{
 			SDL_OutOfMemory();
-			details.formatsLength = 0;
-			details.presentModesLength = 0;
-			return details;
+			return 0;
 		}
 
-		result = renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, details.formats);
+		result = renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, outputDetails->formats);
 		if (result != VK_SUCCESS)
 		{
 			SDL_LogError(
@@ -1116,6 +1112,8 @@ static SwapChainSupportDetails QuerySwapChainSupport(
 				"vkGetPhysicalDeviceSurfaceFormatsKHR: %s\n",
 				VkErrorMessages(result)
 			);
+
+			return 0;
 		}
 	}
 
@@ -1124,18 +1122,16 @@ static SwapChainSupportDetails QuerySwapChainSupport(
 
 	if (presentModeCount != 0)
 	{
-		details.presentModes = SDL_malloc(sizeof(VkPresentModeKHR) * presentModeCount);
-		details.presentModesLength = presentModeCount;
+		outputDetails->presentModes = SDL_malloc(sizeof(VkPresentModeKHR) * presentModeCount);
+		outputDetails->presentModesLength = presentModeCount;
 
-		if (!details.presentModes)
+		if (!outputDetails->presentModes)
 		{
 			SDL_OutOfMemory();
-			details.formatsLength = 0;
-			details.presentModesLength = 0;
-			return details;
+			return 0;
 		}
 
-		result = renderer->vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, details.presentModes);
+		result = renderer->vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, outputDetails->presentModes);
 		if (result != VK_SUCCESS)
 		{
 			SDL_LogError(
@@ -1143,10 +1139,12 @@ static SwapChainSupportDetails QuerySwapChainSupport(
 				"vkGetPhysicalDeviceSurfacePresentModesKHR: %s\n",
 				VkErrorMessages(result)
 			);
+
+			return 0;
 		}
 	}
 
-	return details;
+	return 1;
 }
 
 /* we want a physical device that is dedicated and supports our features */
@@ -1182,8 +1180,13 @@ static uint8_t IsDeviceIdeal(
 		return 0;
 	}
 
-	SwapChainSupportDetails swapChainSupportDetails = QuerySwapChainSupport(renderer, physicalDevice, surface);
-	if (swapChainSupportDetails.formatsLength == 0 && swapChainSupportDetails.presentModesLength == 0)
+	SwapChainSupportDetails swapChainSupportDetails;
+	if (!QuerySwapChainSupport(renderer, physicalDevice, surface, &swapChainSupportDetails))
+	{
+		return 0;
+	}
+
+	if (swapChainSupportDetails.formatsLength == 0 || swapChainSupportDetails.presentModesLength == 0)
 	{
 		return 0;
 	}
@@ -1232,8 +1235,13 @@ static uint8_t IsDeviceSuitable(
 		return 0;
 	}
 
-	SwapChainSupportDetails swapChainSupportDetails = QuerySwapChainSupport(renderer, physicalDevice, surface);
-	if (swapChainSupportDetails.formatsLength == 0 && swapChainSupportDetails.presentModesLength == 0)
+	SwapChainSupportDetails swapChainSupportDetails;
+	if (!QuerySwapChainSupport(renderer, physicalDevice, surface, &swapChainSupportDetails))
+	{
+		return 0;
+	}
+
+	if (swapChainSupportDetails.formatsLength == 0 || swapChainSupportDetails.presentModesLength == 0)
 	{
 		return 0;
 	}
@@ -1286,23 +1294,36 @@ static uint8_t CheckValidationLayerSupport(
 	return 1;
 }
 
-static VkSurfaceFormatKHR ChooseSwapSurfaceFormat(
-	FNA3D_SurfaceFormat desiredSurfaceFormat,
+static uint8_t ChooseSwapSurfaceFormat(
+	VkFormat desiredFormat,
 	VkSurfaceFormatKHR *availableFormats,
-	uint32_t availableFormatsLength
+	uint32_t availableFormatsLength,
+	VkSurfaceFormatKHR *outputFormat
 ) {
-	VkSurfaceFormatKHR surfaceFormat;
+	for (uint32_t i = 0; i < availableFormatsLength; i++)
+	{
+		if (	availableFormats[i].format == desiredFormat &&
+				availableFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR	)
+		{
+			*outputFormat = availableFormats[i];
+			return 1;
+		}
+	}
 
-	surfaceFormat.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-	surfaceFormat.format = XNAToVK_SurfaceFormat[desiredSurfaceFormat].formatColor;
+	SDL_LogError(
+		SDL_LOG_CATEGORY_APPLICATION,
+		"%s\n",
+		"Desired surface format is unavailable."
+	);
 
-	return surfaceFormat;
+	return 0;
 }
 
-static VkPresentModeKHR ChooseSwapPresentMode(
+static uint8_t ChooseSwapPresentMode(
 	FNA3D_PresentInterval desiredPresentInterval,
 	VkPresentModeKHR *availablePresentModes,
-	uint32_t availablePresentModesLength
+	uint32_t availablePresentModesLength,
+	VkPresentModeKHR *outputPresentMode
 ) {
 	if (	desiredPresentInterval == FNA3D_PRESENTINTERVAL_DEFAULT ||
 			desiredPresentInterval == FNA3D_PRESENTINTERVAL_ONE	)
@@ -1311,7 +1332,8 @@ static VkPresentModeKHR ChooseSwapPresentMode(
 		{
 			if (availablePresentModes[i] == VK_PRESENT_MODE_FIFO_RELAXED_KHR)
 			{
-				return VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+				*outputPresentMode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+				return 1;
 			}
 		}
 	}
@@ -1329,7 +1351,8 @@ static VkPresentModeKHR ChooseSwapPresentMode(
 		{
 			if (availablePresentModes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR)
 			{
-				return VK_PRESENT_MODE_IMMEDIATE_KHR;
+				*outputPresentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
+				return 1;
 			}
 		}
 	}
@@ -1340,7 +1363,8 @@ static VkPresentModeKHR ChooseSwapPresentMode(
 		"Could not find desired presentation interval, falling back to VK_PRESENT_MODE_FIFO_KHR"
 	);
 
-	return VK_PRESENT_MODE_FIFO_KHR;
+	*outputPresentMode = VK_PRESENT_MODE_FIFO_KHR;
+	return 1;
 }
 
 static VkExtent2D ChooseSwapExtent(
@@ -1665,23 +1689,48 @@ FNA3D_Device* VULKAN_CreateDevice(
 
 	/* create swap chain */
 
-	SwapChainSupportDetails swapChainSupportDetails = QuerySwapChainSupport(
-		renderer,
-		physicalDevice,
-		surface
-	);
+	SwapChainSupportDetails swapChainSupportDetails;
+	if (
+		!QuerySwapChainSupport(
+			renderer,
+			physicalDevice,
+			surface,
+			&swapChainSupportDetails
+		)
+	) {
+		return NULL;
+	}
 
-	VkSurfaceFormatKHR surfaceFormat = ChooseSwapSurfaceFormat(
-		presentationParameters->backBufferFormat,
-		swapChainSupportDetails.formats,
-		swapChainSupportDetails.formatsLength
-	);
+	SurfaceFormatMapping surfaceFormatMapping = XNAToVK_SurfaceFormat[
+		presentationParameters->backBufferFormat
+	];
 
-	VkPresentModeKHR presentMode = ChooseSwapPresentMode(
-		presentationParameters->presentationInterval,
-		swapChainSupportDetails.presentModes,
-		swapChainSupportDetails.presentModesLength
-	);
+	VkSurfaceFormatKHR surfaceFormat;
+
+	if (
+		!ChooseSwapSurfaceFormat(
+			surfaceFormatMapping.formatColor,
+			swapChainSupportDetails.formats,
+			swapChainSupportDetails.formatsLength,
+			&surfaceFormat
+		)
+	) {
+		return NULL;
+	}
+
+	renderer->surfaceFormatMapping = surfaceFormatMapping;
+
+	VkPresentModeKHR presentMode;
+	if (
+		!ChooseSwapPresentMode(
+			presentationParameters->presentationInterval,
+			swapChainSupportDetails.presentModes,
+			swapChainSupportDetails.presentModesLength,
+			&presentMode
+		)
+	) {
+		return NULL;
+	}
 
 	VkExtent2D extent = ChooseSwapExtent(
 		swapChainSupportDetails.capabilities,
