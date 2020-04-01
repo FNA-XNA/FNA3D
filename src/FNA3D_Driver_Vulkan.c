@@ -73,7 +73,148 @@ typedef struct SwapChainSupportDetails {
 	uint32_t presentModesLength;
 } SwapChainSupportDetails;
 
+typedef struct SurfaceFormatMapping {
+	VkFormat formatColor;
+	VkComponentMapping swizzle;
+} SurfaceFormatMapping;
+
 /* translations arrays go here */
+
+static SurfaceFormatMapping XNAToVK_SurfaceFormat[] =
+{
+	/* SurfaceFormat.Color */
+	{
+		VK_FORMAT_B8G8R8A8_UNORM
+	},
+	/* SurfaceFormat.Bgr565 */
+	{
+		VK_FORMAT_R5G6B5_UNORM_PACK16
+	},
+	/* SurfaceFormat.Bgra5551 */
+	{
+		VK_FORMAT_A1R5G5B5_UNORM_PACK16
+	},
+	/* SurfaceFormat.Bgra4444 */
+	{
+		VK_FORMAT_B4G4R4A4_UNORM_PACK16,
+		{
+			VK_COMPONENT_SWIZZLE_G,
+			VK_COMPONENT_SWIZZLE_R,
+			VK_COMPONENT_SWIZZLE_A,
+			VK_COMPONENT_SWIZZLE_B
+		}
+	},
+	/* SurfaceFormat.Dxt1 */
+	{
+		VK_FORMAT_BC1_RGBA_UNORM_BLOCK
+	},
+	/* SurfaceFormat.Dxt3 */
+	{
+		VK_FORMAT_BC2_UNORM_BLOCK
+	},
+	/* SurfaceFormat.Dxt5 */
+	{
+		VK_FORMAT_BC3_UNORM_BLOCK
+	},
+	/* SurfaceFormat.NormalizedByte2 */
+	{
+		VK_FORMAT_R8G8_SNORM,
+		{
+			VK_COMPONENT_SWIZZLE_R,
+			VK_COMPONENT_SWIZZLE_G,
+			VK_COMPONENT_SWIZZLE_ONE,
+			VK_COMPONENT_SWIZZLE_ONE
+		}
+	},
+	/* SurfaceFormat.NormalizedByte4 */
+	{
+		VK_FORMAT_R8G8B8A8_SNORM
+	},
+	/* SurfaceFormat.Rgba1010102 */
+	{
+		VK_FORMAT_A2R10G10B10_UNORM_PACK32
+	},
+	/* SurfaceFormat.Rg32 */
+	{
+		VK_FORMAT_R16G16_UNORM,
+		{
+			VK_COMPONENT_SWIZZLE_R,
+			VK_COMPONENT_SWIZZLE_G,
+			VK_COMPONENT_SWIZZLE_ONE,
+			VK_COMPONENT_SWIZZLE_ONE
+		}
+	},
+	/* SurfaceFormat.Rgba64 */
+	{
+		VK_FORMAT_R16G16B16A16_UNORM
+	},
+	/* SurfaceFormat.Alpha8 */
+	{
+		VK_FORMAT_R8_UNORM,
+		{
+			VK_COMPONENT_SWIZZLE_ZERO,
+			VK_COMPONENT_SWIZZLE_ZERO,
+			VK_COMPONENT_SWIZZLE_ZERO,
+			VK_COMPONENT_SWIZZLE_R
+		}
+	},
+	/* SurfaceFormat.Single */
+	{
+		VK_FORMAT_R32_SFLOAT,
+		{
+			VK_COMPONENT_SWIZZLE_R,
+			VK_COMPONENT_SWIZZLE_ONE,
+			VK_COMPONENT_SWIZZLE_ONE,
+			VK_COMPONENT_SWIZZLE_ONE
+		}
+	},
+	/* SurfaceFormat.Vector2 */
+	{
+		VK_FORMAT_R32G32_SFLOAT,
+		{
+			VK_COMPONENT_SWIZZLE_R,
+			VK_COMPONENT_SWIZZLE_G,
+			VK_COMPONENT_SWIZZLE_ONE,
+			VK_COMPONENT_SWIZZLE_ONE
+		}
+	},
+	/* SurfaceFormat.Vector4 */
+	{
+		VK_FORMAT_R32G32B32A32_SFLOAT
+	},
+	/* SurfaceFormat.HalfSingle */
+	{
+		VK_FORMAT_R16_SFLOAT,
+		{
+			VK_COMPONENT_SWIZZLE_R,
+			VK_COMPONENT_SWIZZLE_ONE,
+			VK_COMPONENT_SWIZZLE_ONE,
+			VK_COMPONENT_SWIZZLE_ONE
+		}
+	},
+	/* SurfaceFormat.HalfVector2 */
+	{
+		VK_FORMAT_R16G16_SFLOAT,
+		{
+			VK_COMPONENT_SWIZZLE_R,
+			VK_COMPONENT_SWIZZLE_G,
+			VK_COMPONENT_SWIZZLE_ONE,
+			VK_COMPONENT_SWIZZLE_ONE
+		}
+	},
+	/* SurfaceFormat.HalfVector4 */
+	{
+		VK_FORMAT_R16G16B16A16_SFLOAT
+	},
+	/* SurfaceFormat.HdrBlendable */
+	{
+		VK_FORMAT_R16G16B16A16_SFLOAT
+	},
+	/* SurfaceFormat.ColorBgraEXT */
+	{
+		VK_FORMAT_R8G8B8A8_UNORM
+	}
+};
 
 static const char* VkErrorMessages(VkResult code)
 {
@@ -1150,15 +1291,12 @@ static VkSurfaceFormatKHR ChooseSwapSurfaceFormat(
 	VkSurfaceFormatKHR *availableFormats,
 	uint32_t availableFormatsLength
 ) {
-	/* TODO: format mapping */
+	VkSurfaceFormatKHR surfaceFormat;
 
-	SDL_LogInfo(
-		SDL_LOG_CATEGORY_APPLICATION,
-		"%s\n",
-		"Could not find desired swap surface format, falling back to first available"
-	);
+	surfaceFormat.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+	surfaceFormat.format = XNAToVK_SurfaceFormat[desiredSurfaceFormat].formatColor;
 
-	return availableFormats[0];
+	return surfaceFormat;
 }
 
 static VkPresentModeKHR ChooseSwapPresentMode(
