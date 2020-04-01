@@ -42,6 +42,7 @@ add_definitions(
 )
 add_definitions(
 	-DMOJOSHADER_NO_VERSION_INCLUDE
+	-DMOJOSHADER_USE_SDL_STDLIB
 	-DMOJOSHADER_EFFECT_SUPPORT
 	-DMOJOSHADER_DEPTH_CLIPPING
 	-DMOJOSHADER_FLIP_RENDERTARGET
@@ -117,6 +118,7 @@ set_target_properties(FNA3D PROPERTIES OUTPUT_NAME "FNA3D"
 if (DEFINED SDL2_INCLUDE_DIRS AND DEFINED SDL2_LIBRARIES)
 	message(STATUS "using pre-defined SDL2 variables SDL2_INCLUDE_DIRS and SDL2_LIBRARIES")
 	target_include_directories(FNA3D PUBLIC "$<BUILD_INTERFACE:${SDL2_INCLUDE_DIRS}>")
+	target_include_directories(mojoshader PUBLIC "$<BUILD_INTERFACE:${SDL2_INCLUDE_DIRS}>")
 	target_link_libraries(FNA3D PUBLIC ${SDL2_LIBRARIES})
 	if(INSTALL_MINGW_DEPENDENCIES)
 		install_shared_libs(${SDL2_LIBRARIES} DESTINATION bin NO_INSTALL_SYMLINKS)
@@ -139,6 +141,7 @@ else()
 	else()
 		message(STATUS "no TARGET SDL2::SDL2, or SDL2, using variables")
 		target_include_directories(FNA3D PUBLIC "$<BUILD_INTERFACE:${SDL2_INCLUDE_DIRS}>")
+		target_include_directories(mojoshader PUBLIC "$<BUILD_INTERFACE:${SDL2_INCLUDE_DIRS}>")
 		target_link_libraries(FNA3D PUBLIC ${SDL2_LIBRARIES})
 		if(INSTALL_MINGW_DEPENDENCIES)
 			install_shared_libs(${SDL2_LIBRARIES} DESTINATION bin NO_INSTALL_SYMLINKS)

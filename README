@@ -21,8 +21,7 @@ API and can be used entirely by itself without dragging in other dependencies.
 
 Dependencies
 ------------
-FNA3D depends on SDL2 and the C runtime. While FNA3D never explicitly uses the C
-runtime, it does statically link MojoShader which does reference libc.
+FNA3D depends solely on SDL2. FNA3D never explicitly uses the C runtime.
 
 Building FNA3D
 ---------------
