@@ -27,8 +27,8 @@
 #ifndef FNA3D_DRIVER_H
 #define FNA3D_DRIVER_H
 
-#include "FNA3D.h"
 #include "mojoshader.h"
+#include "FNA3D.h"
 
 /* Internal Helper Macros */
 

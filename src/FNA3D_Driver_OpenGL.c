@@ -490,6 +490,7 @@ static int32_t XNAToGL_MinFilter[] =
 	GL_NEAREST	/* TextureFilter.MinPointMagLinearMipPoint */
 };
 
+#if 0 /* Unused */
 static int32_t XNAToGL_DepthStencilAttachment[] =
 {
 	GL_ZERO,			/* NOPE */
@@ -497,6 +498,7 @@ static int32_t XNAToGL_DepthStencilAttachment[] =
 	GL_DEPTH_ATTACHMENT,		/* DepthFormat.Depth24 */
 	GL_DEPTH_STENCIL_ATTACHMENT	/* DepthFormat.Depth24Stencil8 */
 };
+#endif
 
 static int32_t XNAToGL_DepthStorage[] =
 {

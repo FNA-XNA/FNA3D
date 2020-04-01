@@ -30,6 +30,15 @@
 #include "FNA3D.h"
 #include <SDL.h>
 
+/* -Wpedantic nameless union/struct silencing */
+#ifndef FNA3DNAMELESS
+#ifdef __GNUC__
+#define FNA3DNAMELESS __extension__
+#else
+#define FNA3DNAMELESS
+#endif /* __GNUC__ */
+#endif /* FNA3DNAMELESS */
+
 typedef struct FNA3D_Command FNA3D_Command;
 struct FNA3D_Command
 {
@@ -53,7 +62,7 @@ struct FNA3D_Command
 	#define FNA3D_COMMAND_GENCOLORRENDERBUFFER 17
 	#define FNA3D_COMMAND_GENDEPTHRENDERBUFFER 18
 	uint8_t type;
-	union
+	FNA3DNAMELESS union
 	{
 		struct
 		{

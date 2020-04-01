@@ -6,15 +6,6 @@ project(FNA3D)
 # Options
 option(BUILD_SHARED_LIBS "Build shared library" ON)
 
-# C99 Requirement
-if(${CMAKE_VERSION} VERSION_LESS "3.1.3")
-	message(WARNING "Your CMake version is too old, set -std=c99 yourself!")
-else()
-	# TODO: Fix C99 compliance in MojoShader!
-	# set(CMAKE_C_STANDARD 99)
-	# set(CMAKE_C_EXTENSIONS OFF)
-endif()
-
 # Version
 SET(LIB_MAJOR_VERSION "0")
 SET(LIB_MINOR_VERSION "20")
@@ -93,6 +84,11 @@ add_library(mojoshader STATIC
 	MojoShader/profiles/mojoshader_profile_metal.c
 	MojoShader/profiles/mojoshader_profile_spirv.c
 )
+
+# Build flags
+if(NOT MSVC)
+	set_property(TARGET FNA3D PROPERTY COMPILE_FLAGS "-std=c99 -Wall -pedantic")
+endif()
 if(BUILD_SHARED_LIBS)
 	set_property(TARGET mojoshader PROPERTY POSITION_INDEPENDENT_CODE ON)
 endif()

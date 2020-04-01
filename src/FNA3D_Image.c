@@ -28,6 +28,10 @@
 
 #include <SDL.h>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wmisleading-indentation"
+#pragma GCC diagnostic ignored "-Wunused-function"
+
 #define ceilf SDL_ceilf
 #define floorf SDL_floorf
 #define ldexp SDL_scalbn
@@ -95,6 +99,8 @@ static unsigned char* dgibson_stbi_zlib_compress(
 #define STBIW_ZLIB_COMPRESS  dgibson_stbi_zlib_compress
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #include "stb_image_write.h"
+
+#pragma GCC diagnostic pop
 
 /* Image Read API */
 
