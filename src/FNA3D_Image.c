@@ -29,15 +29,29 @@
 #include <SDL.h>
 
 #pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wmisleading-indentation"
 #pragma GCC diagnostic ignored "-Wunused-function"
+#ifndef __clang__
+#pragma GCC diagnostic ignored "-Wmisleading-indentation"
+#endif
 
 #define ceilf SDL_ceilf
 #define floorf SDL_floorf
 #define ldexp SDL_scalbn
+#ifdef memcmp
+#undef memcmp
+#endif
 #define memcmp SDL_memcmp
+#ifdef memcpy
+#undef memcpy
+#endif
 #define memcpy SDL_memcpy
+#ifdef memmove
+#undef memmove
+#endif
 #define memmove SDL_memmove
+#ifdef memset
+#undef memset
+#endif
 #define memset SDL_memset
 #define pow SDL_pow
 #define strcmp SDL_strcmp
