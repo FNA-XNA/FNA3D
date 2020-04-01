@@ -122,6 +122,7 @@ CREDITS:
    Jon Olick              -    original jo_jpeg.cpp code
    Daniel Gibson          -    integrate JPEG, allow external zlib
    Aarni Koskela          -    allow choosing PNG filter
+   Ethan Lee              -    STBIW_NO/ONLY_* to suppress building encoders
 
    bugfixes:
       github:Chribba
