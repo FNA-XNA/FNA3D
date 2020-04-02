@@ -34,7 +34,9 @@
 #pragma GCC diagnostic ignored "-Wmisleading-indentation"
 #endif
 
-#define __STDC_WANT_SECURE_LIB__
+#ifndef __STDC_WANT_SECURE_LIB__
+#define __STDC_WANT_SECURE_LIB__ 1
+#endif
 #define sprintf_s SDL_snprintf
 
 #define ceilf SDL_ceilf
