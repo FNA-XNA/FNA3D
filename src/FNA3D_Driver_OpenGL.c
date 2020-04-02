@@ -1401,25 +1401,26 @@ static void OPENGL_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewp
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	int32_t bbw, bbh;
+	FNA3D_Viewport vp = *viewport;
 
 	/* Flip viewport when target is not bound */
 	if (!renderer->renderTargetBound)
 	{
 		OPENGL_GetBackbufferSize(driverData, &bbw, &bbh);
-		viewport->y = bbh - viewport->y - viewport->h;
+		vp.y = bbh - viewport->y - viewport->h;
 	}
 
-	if (	viewport->x != renderer->viewport.x ||
-		viewport->y != renderer->viewport.y ||
-		viewport->w != renderer->viewport.w ||
-		viewport->h != renderer->viewport.h	)
+	if (	vp.x != renderer->viewport.x ||
+		vp.y != renderer->viewport.y ||
+		vp.w != renderer->viewport.w ||
+		vp.h != renderer->viewport.h	)
 	{
-		renderer->viewport = *viewport;
+		renderer->viewport = vp;
 		renderer->glViewport(
-			viewport->x,
-			viewport->y,
-			viewport->w,
-			viewport->h
+			vp.x,
+			vp.y,
+			vp.w,
+			vp.h
 		);
 	}
 
@@ -1450,25 +1451,26 @@ static void OPENGL_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scisso
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	int32_t bbw, bbh;
+	FNA3D_Rect sr = *scissor;
 
 	/* Flip rectangle when target is not bound */
 	if (!renderer->renderTargetBound)
 	{
 		OPENGL_GetBackbufferSize(driverData, &bbw, &bbh);
-		scissor->y = bbh - scissor->y - scissor->h;
+		sr.y = bbh - scissor->y - scissor->h;
 	}
 
-	if (	scissor->x != renderer->scissorRect.x ||
-		scissor->y != renderer->scissorRect.y ||
-		scissor->w != renderer->scissorRect.w ||
-		scissor->h != renderer->scissorRect.h	)
+	if (	sr.x != renderer->scissorRect.x ||
+		sr.y != renderer->scissorRect.y ||
+		sr.w != renderer->scissorRect.w ||
+		sr.h != renderer->scissorRect.h	)
 	{
-		renderer->scissorRect = *scissor;
+		renderer->scissorRect = sr;
 		renderer->glScissor(
-			scissor->x,
-			scissor->y,
-			scissor->w,
-			scissor->h
+			sr.x,
+			sr.y,
+			sr.w,
+			sr.h
 		);
 	}
 }
@@ -2344,7 +2346,7 @@ static void OPENGL_SetRenderTargets(
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLRenderbuffer *rb = (OpenGLRenderbuffer*) renderbuffer;
-	FNA3D_RenderTargetBinding rt;
+	FNA3D_RenderTargetBinding *rt;
 	int32_t i;
 	GLuint handle;
 
@@ -2368,22 +2370,22 @@ static void OPENGL_SetRenderTargets(
 
 	for (i = 0; i < numRenderTargets; i += 1)
 	{
-		rt = renderTargets[i];
-		if (rt.colorBuffer != NULL)
+		rt = &renderTargets[i];
+		if (rt->colorBuffer != NULL)
 		{
-			renderer->attachments[i] = ((OpenGLRenderbuffer*) rt.colorBuffer)->handle;
+			renderer->attachments[i] = ((OpenGLRenderbuffer*) rt->colorBuffer)->handle;
 			renderer->attachmentTypes[i] = GL_RENDERBUFFER;
 		}
 		else
 		{
-			renderer->attachments[i] = ((OpenGLTexture*) rt.texture)->handle;
-			if (rt.type == RENDERTARGET_TYPE_2D)
+			renderer->attachments[i] = ((OpenGLTexture*) rt->texture)->handle;
+			if (rt->type == RENDERTARGET_TYPE_2D)
 			{
 				renderer->attachmentTypes[i] = GL_TEXTURE_2D;
 			}
 			else
 			{
-				renderer->attachmentTypes[i] = GL_TEXTURE_CUBE_MAP_POSITIVE_X + rt.cubeMapFace;
+				renderer->attachmentTypes[i] = GL_TEXTURE_CUBE_MAP_POSITIVE_X + rt->cubeMapFace;
 			}
 		}
 	}
@@ -3836,7 +3838,7 @@ static void OPENGL_SetTextureDataYUV(
 		GL_UNSIGNED_BYTE,
 		dataPtr
 	);
-	dataPtr += (w/2 * h/2);
+	dataPtr += (w / 2) * (h / 2);
 	BindTexture(renderer, (OpenGLTexture*) v);
 	renderer->glTexSubImage2D(
 		GL_TEXTURE_2D,
@@ -4235,7 +4237,7 @@ static void OPENGL_INTERNAL_DestroyRenderbuffer(
 		if (renderbuffer->handle == renderer->currentAttachments[i])
 		{
 			/* Force an attachment update, this no longer exists! */
-			renderer->currentAttachments[i] = ~0;
+			renderer->currentAttachments[i] = UINT32_MAX;
 		}
 	}
 
@@ -4243,7 +4245,7 @@ static void OPENGL_INTERNAL_DestroyRenderbuffer(
 	if (renderbuffer->handle == renderer->currentRenderbuffer)
 	{
 		/* Force a renderbuffer update, this no longer exists! */
-		renderer->currentRenderbuffer = ~0;
+		renderer->currentRenderbuffer = UINT32_MAX;
 	}
 
 	/* Finally. */
@@ -4440,7 +4442,7 @@ static void OPENGL_GetVertexBufferData(
 	useStagingBuffer = elementSizeInBytes < vertexStride;
 	if (useStagingBuffer)
 	{
-		cpy = SDL_malloc(elementCount * vertexStride);
+		cpy = (uint8_t*) SDL_malloc(elementCount * vertexStride);
 	}
 	else
 	{
@@ -4681,7 +4683,6 @@ static FNA3D_Effect* OPENGL_CreateEffect(
 		FNA3D_LogError(
 			"%s", MOJOSHADER_glGetError()
 		);
-		SDL_assert(0);
 	}
 
 	result = (OpenGLEffect*) SDL_malloc(sizeof(OpenGLEffect));
