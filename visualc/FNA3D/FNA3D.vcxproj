@@ -48,7 +48,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>FNA3D_DRIVER_OPENGL;MOJOSHADER_NO_VERSION_INCLUDE;MOJOSHADER_EFFECT_SUPPORT;MOJOSHADER_DEPTH_CLIPPING;MOJOSHADER_FLIP_RENDERTARGET;MOJOSHADER_XNA4_VERTEX_TEXTURES;SUPPORT_PROFILE_ARB1=0;SUPPORT_PROFILE_ARB1_NV=0;SUPPORT_PROFILE_BYTECODE=0;SUPPORT_PROFILE_D3D=0;SUPPORT_PROFILE_METAL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>FNA3D_DRIVER_OPENGL;MOJOSHADER_NO_VERSION_INCLUDE;MOJOSHADER_USE_SDL_STDLIB;MOJOSHADER_EFFECT_SUPPORT;MOJOSHADER_DEPTH_CLIPPING;MOJOSHADER_FLIP_RENDERTARGET;MOJOSHADER_XNA4_VERTEX_TEXTURES;SUPPORT_PROFILE_ARB1=0;SUPPORT_PROFILE_ARB1_NV=0;SUPPORT_PROFILE_BYTECODE=0;SUPPORT_PROFILE_D3D=0;SUPPORT_PROFILE_METAL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -107,11 +107,13 @@
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="..\..\src\FNA3D.c" />
+    <ClCompile Include="..\..\src\FNA3D_Image.c" />
     <ClCompile Include="..\..\src\FNA3D_CommandStream.c" />
     <ClCompile Include="..\..\src\FNA3D_Driver_OpenGL.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\include\FNA3D.h" />
+    <ClInclude Include="..\..\include\FNA3D_Image.h" />
     <ClInclude Include="..\..\src\FNA3D_CommandStream.h" />
     <ClInclude Include="..\..\src\FNA3D_Driver.h" />
     <ClInclude Include="..\..\src\FNA3D_Driver_OpenGL.h" />
