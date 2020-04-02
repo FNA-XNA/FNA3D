@@ -48,6 +48,11 @@
 		curr->next = toAdd; \
 	}
 
+/* Windows/Visual Studio cruft */
+#ifdef _WIN32
+#define inline __inline
+#endif
+
 /* Logging */
 
 extern void FNA3D_LogInfo(const char *fmt, ...);
