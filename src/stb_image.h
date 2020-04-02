@@ -336,7 +336,9 @@ enum
    STBI_rgb_alpha  = 4
 };
 
+#ifdef FNA3D_CHANGE
 #include <stdlib.h>
+#endif
 typedef unsigned char stbi_uc;
 typedef unsigned short stbi_us;
 
@@ -535,6 +537,7 @@ STBIDEF int   stbi_zlib_decode_noheader_buffer(char *obuffer, int olen, const ch
 #endif
 
 
+#ifdef FNA3D_CHANGE
 #include <stdarg.h>
 #include <stddef.h> // ptrdiff_t on osx
 #include <stdlib.h>
@@ -543,6 +546,9 @@ STBIDEF int   stbi_zlib_decode_noheader_buffer(char *obuffer, int olen, const ch
 
 #if !defined(STBI_NO_LINEAR) || !defined(STBI_NO_HDR)
 #include <math.h>  // ldexp, pow
+#endif
+#else
+#include <limits.h>
 #endif
 
 #ifndef STBI_NO_STDIO

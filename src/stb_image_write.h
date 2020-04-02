@@ -151,7 +151,9 @@ LICENSE
 #ifndef INCLUDE_STB_IMAGE_WRITE_H
 #define INCLUDE_STB_IMAGE_WRITE_H
 
+#ifdef FNA3D_CHANGE
 #include <stdlib.h>
+#endif
 
 #if defined(STBIW_ONLY_PNG) || defined(STBIW_ONLY_BMP) || defined(STBIW_ONLY_TGA) \
   || defined(STBIW_ONLY_HDR) || defined(STBIW_ONLY_JPEG)
@@ -254,10 +256,12 @@ STBIWDEF void stbi_flip_vertically_on_write(int flip_boolean);
 #include <stdio.h>
 #endif // STBI_WRITE_NO_STDIO
 
+#ifdef FNA3D_CHANGE
 #include <stdarg.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#endif
 
 #if defined(STBIW_MALLOC) && defined(STBIW_FREE) && (defined(STBIW_REALLOC) || defined(STBIW_REALLOC_SIZED))
 // ok
