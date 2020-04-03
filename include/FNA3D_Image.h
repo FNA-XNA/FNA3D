@@ -103,3 +103,5 @@ FNA3DAPI void FNA3D_Image_SaveJPG(
 #endif /* __cplusplus */
 
 #endif /* FNA3D_IMAGE_H */
+
+/* vim: set noexpandtab shiftwidth=8 tabstop=8: */

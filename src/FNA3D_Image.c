@@ -396,3 +396,5 @@ void FNA3D_Image_SaveJPG(
 	/* Clean up. We out. */
 	SDL_FreeSurface(surface);
 }
+
+/* vim: set noexpandtab shiftwidth=8 tabstop=8: */
