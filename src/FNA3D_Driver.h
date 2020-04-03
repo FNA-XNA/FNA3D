@@ -120,6 +120,13 @@ static inline int32_t PrimitiveVerts(
 	return 0;
 }
 
+/* XNA GraphicsDevice Limits */
+
+#define MAX_TEXTURE_SAMPLERS		16
+#define MAX_VERTEX_ATTRIBUTES		16
+#define MAX_BOUND_VERTEX_BUFFERS	16
+#define MAX_RENDERTARGET_BINDINGS	4
+
 /* FNA3D_Device Definition */
 
 typedef struct FNA3D_Renderer FNA3D_Renderer;
