@@ -30,7 +30,18 @@
 #include "mojoshader.h"
 #include "FNA3D.h"
 
-/* Internal Helper Macros */
+/* Windows/Visual Studio cruft */
+#ifdef _WIN32
+#define inline __inline
+#endif
+
+/* Logging */
+
+extern void FNA3D_LogInfo(const char *fmt, ...);
+extern void FNA3D_LogWarn(const char *fmt, ...);
+extern void FNA3D_LogError(const char *fmt, ...);
+
+/* Internal Helper Utilities */
 
 #define LinkedList_Add(start, toAdd, curr) \
 	toAdd->next = NULL; \
@@ -48,16 +59,66 @@
 		curr->next = toAdd; \
 	}
 
-/* Windows/Visual Studio cruft */
-#ifdef _WIN32
-#define inline __inline
-#endif
+static inline int32_t Texture_GetFormatSize(
+	FNA3D_SurfaceFormat format
+) {
+	switch (format)
+	{
+		case FNA3D_SURFACEFORMAT_DXT1:
+			return 8;
+		case FNA3D_SURFACEFORMAT_DXT3:
+		case FNA3D_SURFACEFORMAT_DXT5:
+			return 16;
+		case FNA3D_SURFACEFORMAT_ALPHA8:
+			return 1;
+		case FNA3D_SURFACEFORMAT_BGR565:
+		case FNA3D_SURFACEFORMAT_BGRA4444:
+		case FNA3D_SURFACEFORMAT_BGRA5551:
+		case FNA3D_SURFACEFORMAT_HALFSINGLE:
+		case FNA3D_SURFACEFORMAT_NORMALIZEDBYTE2:
+			return 2;
+		case FNA3D_SURFACEFORMAT_COLOR:
+		case FNA3D_SURFACEFORMAT_SINGLE:
+		case FNA3D_SURFACEFORMAT_RG32:
+		case FNA3D_SURFACEFORMAT_HALFVECTOR2:
+		case FNA3D_SURFACEFORMAT_NORMALIZEDBYTE4:
+		case FNA3D_SURFACEFORMAT_RGBA1010102:
+		case FNA3D_SURFACEFORMAT_COLORBGRA_EXT:
+			return 4;
+		case FNA3D_SURFACEFORMAT_HALFVECTOR4:
+		case FNA3D_SURFACEFORMAT_RGBA64:
+		case FNA3D_SURFACEFORMAT_VECTOR2:
+			return 8;
+		case FNA3D_SURFACEFORMAT_VECTOR4:
+			return 16;
+		default:
+			FNA3D_LogError(
+				"Unrecognized SurfaceFormat!"
+			);
+			return 0;
+	}
+}
 
-/* Logging */
-
-extern void FNA3D_LogInfo(const char *fmt, ...);
-extern void FNA3D_LogWarn(const char *fmt, ...);
-extern void FNA3D_LogError(const char *fmt, ...);
+static inline int32_t PrimitiveVerts(
+	FNA3D_PrimitiveType primitiveType,
+	int32_t primitiveCount
+) {
+	switch (primitiveType)
+	{
+		case FNA3D_PRIMITIVETYPE_TRIANGLELIST:
+			return primitiveCount * 3;
+		case FNA3D_PRIMITIVETYPE_TRIANGLESTRIP:
+			return primitiveCount + 2;
+		case FNA3D_PRIMITIVETYPE_LINELIST:
+			return primitiveCount * 2;
+		case FNA3D_PRIMITIVETYPE_LINESTRIP:
+			return primitiveCount + 1;
+		case FNA3D_PRIMITIVETYPE_POINTLIST_EXT:
+			return primitiveCount;
+	}
+	FNA3D_LogError("Unrecognized primitive type!");
+	return 0;
+}
 
 /* FNA3D_Device Definition */
 
