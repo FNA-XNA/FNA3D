@@ -732,3 +732,5 @@ FNA3D_Driver ModernGLDriver = {
 };
 
 #endif /* FNA3D_DRIVER_MODERNGL */
+
+/* vim: set noexpandtab shiftwidth=8 tabstop=8: */
