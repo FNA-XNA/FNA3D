@@ -1796,7 +1796,7 @@ static void MODERNGL_VerifySampler(
 		tex->hasMipmaps != renderer->samplersMipped[index]	)
 	{
 		renderer->samplersFilter[index] = sampler->filter;
-		renderer->samplersAnisotropy[index] = sampler->maxAnisotropy;
+		renderer->samplersAnisotropy[index] = (float) sampler->maxAnisotropy;
 		renderer->samplersMipped[index] = tex->hasMipmaps;
 		renderer->glSamplerParameteri(
 			slot,
