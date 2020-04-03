@@ -55,7 +55,10 @@ add_definitions(
 if(APPLE)
 	add_definitions(-DSUPPORT_PROFILE_METAL=1)
 else()
-	add_definitions(-DSUPPORT_PROFILE_METAL=0)
+	add_definitions(
+		-DFNA3D_DRIVER_MODERNGL
+		-DSUPPORT_PROFILE_METAL=0
+	)
 endif()
 
 # Source lists
@@ -72,6 +75,7 @@ add_library(FNA3D
 	src/FNA3D.c
 	src/FNA3D_CommandStream.c
 	src/FNA3D_Driver_OpenGL.c
+	src/FNA3D_Driver_ModernGL.c
 	src/FNA3D_Image.c
 )
 add_library(mojoshader STATIC
