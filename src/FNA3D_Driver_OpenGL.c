@@ -595,11 +595,6 @@ static int32_t XNAToGL_Primitive[] =
 
 /* Inline Functions */
 
-/* Windows/Visual Studio cruft */
-#if defined(_WIN32) && !defined(__cplusplus) /* C++ should have `inline` */
-	#define inline __inline
-#endif
-
 static inline void BindReadFramebuffer(OpenGLRenderer *renderer, GLuint handle)
 {
 	if (handle != renderer->currentReadFramebuffer)
@@ -2518,7 +2513,6 @@ static void OPENGL_ResolveTarget(
 	FNA3D_RenderTargetBinding *target
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
-	int32_t width, height;
 	GLuint prevBuffer;
 	OpenGLTexture *prevTex;
 	OpenGLTexture *rtTex = (OpenGLTexture*) target->texture;
@@ -2533,8 +2527,6 @@ static void OPENGL_ResolveTarget(
 		prevBuffer = renderer->currentDrawFramebuffer;
 
 		/* Set up the texture framebuffer */
-		width = target->width;
-		height = target->height;
 		BindFramebuffer(renderer, renderer->resolveFramebufferDraw);
 		renderer->glFramebufferTexture2D(
 			GL_FRAMEBUFFER,
@@ -2560,8 +2552,8 @@ static void OPENGL_ResolveTarget(
 		}
 		BindDrawFramebuffer(renderer, renderer->resolveFramebufferDraw);
 		renderer->glBlitFramebuffer(
-			0, 0, width, height,
-			0, 0, width, height,
+			0, 0, target->width, target->height,
+			0, 0, target->width, target->height,
 			GL_COLOR_BUFFER_BIT,
 			GL_LINEAR
 		);
@@ -3917,7 +3909,6 @@ static void OPENGL_GetTextureData2D(
 		}
 		SDL_free(texData);
 	}
-
 }
 
 static void OPENGL_GetTextureData3D(
