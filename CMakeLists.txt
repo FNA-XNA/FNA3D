@@ -71,6 +71,8 @@ add_library(FNA3D
 	src/FNA3D_Driver.h
 	src/FNA3D_Driver_OpenGL.h
 	src/FNA3D_Driver_OpenGL_glfuncs.h
+	src/FNA3D_Driver_ModernGL.h
+	src/FNA3D_Driver_ModernGL_glfuncs.h
 	# Source Files
 	src/FNA3D.c
 	src/FNA3D_CommandStream.c
