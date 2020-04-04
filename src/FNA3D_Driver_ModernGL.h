@@ -24,8 +24,8 @@
  *
  */
 
-#ifndef FNA3D_DRIVER_OPENGL_H
-#define FNA3D_DRIVER_OPENGL_H
+#ifndef FNA3D_DRIVER_MODERNGL_H
+#define FNA3D_DRIVER_MODERNGL_H
 
 #include <stdint.h>
 
@@ -309,6 +309,6 @@ typedef void (GLAPIENTRY *DEBUGPROC)(
 #undef GL_PROC
 #undef GL_PROC_EXT
 
-#endif /* FNA3D_DRIVER_OPENGL_H */
+#endif /* FNA3D_DRIVER_MODERNGL_H */
 
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */
