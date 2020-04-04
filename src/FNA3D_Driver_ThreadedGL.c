@@ -434,6 +434,8 @@ static inline void ForceToRenderThread(
 	LinkedList_Add(renderer->commands, command, curr);
 	SDL_UnlockMutex(renderer->commandsLock);
 
+	SDL_SemPost(renderer->commandEvent);
+
 	SDL_SemWait(command->semaphore);
 	SDL_DestroySemaphore(command->semaphore);
 }
