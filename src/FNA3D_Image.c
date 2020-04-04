@@ -214,7 +214,7 @@ uint8_t* FNA3D_Image_Load(
 			*h = (int) (surface->h * scale);
 		}
 
-		// Alloc surface, blit!
+		/* Alloc surface, blit! */
 		newSurface = SDL_CreateRGBSurface(
 			0,
 			*w,
