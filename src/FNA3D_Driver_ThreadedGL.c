@@ -135,9 +135,178 @@ struct GLThreadCommand
 			FNA3D_PresentationParameters *presentationParameters;
 			uint8_t debugMode;
 		} createDevice;
-
-		/* TODO: Command Hell Part 1 */
-
+		/* Nothing to store for BeginFrame */
+		struct
+		{
+			FNA3D_Rect *sourceRectangle;
+			FNA3D_Rect *destinationRectangle;
+			void* overrideWindowHandle;
+		} swapBuffers;
+		struct
+		{
+			FNA3D_PresentInterval presentInterval;
+		} setPresentationInterval;
+		struct
+		{
+			FNA3D_ClearOptions options;
+			FNA3D_Vec4 *color;
+			float depth;
+			int32_t stencil;
+		} clear;
+		struct
+		{
+			FNA3D_PrimitiveType primitiveType;
+			int32_t baseVertex;
+			int32_t minVertexIndex;
+			int32_t numVertices;
+			int32_t startIndex;
+			int32_t primitiveCount;
+			FNA3D_Buffer *indices;
+			FNA3D_IndexElementSize indexElementSize;
+		} drawIndexedPrimitives;
+		struct
+		{
+			FNA3D_PrimitiveType primitiveType;
+			int32_t baseVertex;
+			int32_t minVertexIndex;
+			int32_t numVertices;
+			int32_t startIndex;
+			int32_t primitiveCount;
+			int32_t instanceCount;
+			FNA3D_Buffer *indices;
+			FNA3D_IndexElementSize indexElementSize;
+		} drawInstancedPrimitives;
+		struct
+		{
+			FNA3D_PrimitiveType primitiveType;
+			int32_t vertexStart;
+			int32_t primitiveCount;
+		} drawPrimitives;
+		struct
+		{
+			FNA3D_PrimitiveType primitiveType;
+			void* vertexData;
+			int32_t vertexOffset;
+			int32_t numVertices;
+			void* indexData;
+			int32_t indexOffset;
+			FNA3D_IndexElementSize indexElementSize;
+			int32_t primitiveCount;
+		} drawUserIndexedPrimitives;
+		struct
+		{
+			FNA3D_PrimitiveType primitiveType;
+			void* vertexData;
+			int32_t vertexOffset;
+			int32_t primitiveCount;
+		} drawUserPrimitives;
+		struct
+		{
+			FNA3D_Viewport *viewport;
+		} setViewport;
+		struct
+		{
+			FNA3D_Rect *scissor;
+		} setScissorRect;
+		struct
+		{
+			FNA3D_Color *blendFactor;
+		} getBlendFactor;
+		struct
+		{
+			FNA3D_Color *blendFactor;
+		} setBlendFactor;
+		struct
+		{
+			int32_t retval;
+		} getMultiSampleMask;
+		struct
+		{
+			int32_t mask;
+		} setMultiSampleMask;
+		struct
+		{
+			int32_t retval;
+		} getReferenceStencil;
+		struct
+		{
+			int32_t ref;
+		} setReferenceStencil;
+		struct
+		{
+			FNA3D_BlendState *blendState;
+		} setBlendState;
+		struct
+		{
+			FNA3D_DepthStencilState *depthStencilState;
+		} setDepthStencilState;
+		struct
+		{
+			FNA3D_RasterizerState *rasterizerState;
+		} applyRasterizerState;
+		struct
+		{
+			int32_t index;
+			FNA3D_Texture *texture;
+			FNA3D_SamplerState *sampler;
+		} verifySampler;
+		struct
+		{
+			FNA3D_VertexBufferBinding *bindings;
+			int32_t numBindings;
+			uint8_t bindingsUpdated;
+			int32_t baseVertex;
+		} applyVertexBufferBindings;
+		struct
+		{
+			FNA3D_VertexDeclaration *vertexDeclaration;
+			void* ptr;
+			int32_t vertexOffset;
+		} applyVertexDeclaration;
+		struct
+		{
+			FNA3D_RenderTargetBinding *renderTargets;
+			int32_t numRenderTargets;
+			FNA3D_Renderbuffer *renderbuffer;
+			FNA3D_DepthFormat depthFormat;
+		} setRenderTargets;
+		struct
+		{
+			FNA3D_RenderTargetBinding *target;
+		} resolveTarget;
+		struct
+		{
+			FNA3D_PresentationParameters *presentationParameters;
+		} resetBackbuffer;
+		struct
+		{
+			void* data;
+			int32_t dataLen;
+			int32_t startIndex;
+			int32_t elementCount;
+			int32_t elementSizeInBytes;
+			int32_t x;
+			int32_t y;
+			int32_t w;
+			int32_t h;
+		} readBackbuffer;
+		struct
+		{
+			int32_t *w;
+			int32_t *h;
+		} getBackbufferSize;
+		struct
+		{
+			FNA3D_SurfaceFormat retval;
+		} getBackbufferSurfaceFormat;
+		struct
+		{
+			FNA3D_DepthFormat retval;
+		} getBackbufferDepthFormat;
+		struct
+		{
+			int32_t retval;
+		} getBackbufferMultiSampleCount;
 		struct
 		{
 			FNA3D_SurfaceFormat format;
@@ -164,7 +333,10 @@ struct GLThreadCommand
 			uint8_t isRenderTarget;
 			FNA3D_Texture *retval;
 		} createTextureCube;
-		/* TODO: AddDisposeTexture */
+		struct
+		{
+			FNA3D_Texture *texture;
+		} addDisposeTexture;
 		struct
 		{
 			FNA3D_Texture *texture;
@@ -269,7 +441,10 @@ struct GLThreadCommand
 			int32_t multiSampleCount;
 			FNA3D_Renderbuffer *retval;
 		} genDepthStencilRenderbuffer;
-		/* TODO: AddDisposeRenderbuffer */
+		struct
+		{
+			FNA3D_Renderbuffer *renderbuffer;
+		} addDisposeRenderbuffer;
 		struct
 		{
 			uint8_t dynamic;
@@ -278,7 +453,10 @@ struct GLThreadCommand
 			int32_t vertexStride;
 			FNA3D_Buffer *retval;
 		} genVertexBuffer;
-		/* TODO: AddDisposeVertexBuffer */
+		struct
+		{
+			FNA3D_Buffer *buffer;
+		} addDisposeVertexBuffer;
 		struct
 		{
 			FNA3D_Buffer *buffer;
@@ -305,7 +483,10 @@ struct GLThreadCommand
 			FNA3D_IndexElementSize indexElementSize;
 			FNA3D_Buffer *retval;
 		} genIndexBuffer;
-		/* TODO: AddDisposeIndexBuffer */
+		struct
+		{
+			FNA3D_Buffer *buffer;
+		} addDisposeIndexBuffer;
 		struct
 		{
 			FNA3D_Buffer *buffer;
@@ -334,9 +515,76 @@ struct GLThreadCommand
 			FNA3D_Effect *cloneSource;
 			FNA3D_Effect *retval;
 		} cloneEffect;
-
-		/* TODO Command Hell Part 2 */
-
+		struct
+		{
+			FNA3D_Effect *effect;
+		} addDisposeEffect;
+		struct
+		{
+			FNA3D_Effect *effect;
+			MOJOSHADER_effectTechnique *technique;
+			uint32_t pass;
+			MOJOSHADER_effectStateChanges *stateChanges;
+		} applyEffect;
+		struct
+		{
+			FNA3D_Effect *effect;
+			MOJOSHADER_effectStateChanges *stateChanges;
+		} beginPassRestore;
+		struct
+		{
+			FNA3D_Effect *effect;
+		} endPassRestore;
+		struct
+		{
+			FNA3D_Query* retval;
+		} createQuery;
+		struct
+		{
+			FNA3D_Query *query;
+		} addDisposeQuery;
+		struct
+		{
+			FNA3D_Query *query;
+		} queryBegin;
+		struct
+		{
+			FNA3D_Query *query;
+		} queryEnd;
+		struct
+		{
+			FNA3D_Query *query;
+			uint8_t retval;
+		} queryComplete;
+		struct
+		{
+			FNA3D_Query *query;
+			int32_t retval;
+		} queryPixelCount;
+		struct
+		{
+			uint8_t retval;
+		} supportsDXT1;
+		struct
+		{
+			uint8_t retval;
+		} supportsS3TC;
+		struct
+		{
+			uint8_t retval;
+		} supportsHardwareInstancing;
+		struct
+		{
+			uint8_t retval;
+		} supportsNoOverwrite;
+		struct
+		{
+			int32_t retval;
+		} getMaxTextureSlots;
+		struct
+		{
+			int32_t retval;
+		} getMaxMultiSampleCount;
 		struct
 		{
 			FNA3D_Buffer *buffer;
@@ -396,7 +644,7 @@ static int GLRenderThread(void* data)
 					cmd->createDevice.debugMode
 				);
 				break;
-			/* TODO: Command Hell Part 3 */
+			/* TODO: Command Hell */
 			case COMMAND_GETBUFFERSIZE:
 				cmd->getBufferSize.retval = renderer->actualDevice->GetBufferSize(
 					cmd->getBufferSize.buffer
