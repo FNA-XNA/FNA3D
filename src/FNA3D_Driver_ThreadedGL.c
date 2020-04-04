@@ -587,6 +587,10 @@ struct GLThreadCommand
 		} getMaxMultiSampleCount;
 		struct
 		{
+			const char *text;
+		} setStringMarker;
+		struct
+		{
 			FNA3D_Buffer *buffer;
 			intptr_t retval;
 		} getBufferSize;
