@@ -378,6 +378,15 @@ struct GLThreadCommand
 		} setTextureDataCube;
 		struct
 		{
+			FNA3D_Texture *y;
+			FNA3D_Texture *u;
+			FNA3D_Texture *v;
+			int32_t w;
+			int32_t h;
+			void* ptr;
+		} setTextureDataYUV;
+		struct
+		{
 			FNA3D_Texture *texture;
 			FNA3D_SurfaceFormat format;
 			int32_t textureWidth;
@@ -648,7 +657,592 @@ static int GLRenderThread(void* data)
 					cmd->createDevice.debugMode
 				);
 				break;
-			/* TODO: Command Hell */
+			case COMMAND_BEGINFRAME:
+				renderer->actualDevice->BeginFrame(
+					renderer->actualDevice->driverData
+				);
+				break;
+			case COMMAND_SWAPBUFFERS:
+				renderer->actualDevice->SwapBuffers(
+					renderer->actualDevice->driverData,
+					cmd->swapBuffers.sourceRectangle,
+					cmd->swapBuffers.destinationRectangle,
+					cmd->swapBuffers.overrideWindowHandle
+				);
+				break;
+			case COMMAND_SETPRESENTATIONINTERVAL:
+				renderer->actualDevice->SetPresentationInterval(
+					renderer->actualDevice->driverData,
+					cmd->setPresentationInterval.presentInterval
+				);
+				break;
+			case COMMAND_CLEAR:
+				renderer->actualDevice->Clear(
+					renderer->actualDevice->driverData,
+					cmd->clear.options,
+					cmd->clear.color,
+					cmd->clear.depth,
+					cmd->clear.stencil
+				);
+				break;
+			case COMMAND_DRAWINDEXEDPRIMITIVES:
+				renderer->actualDevice->DrawIndexedPrimitives(
+					renderer->actualDevice->driverData,
+					cmd->drawIndexedPrimitives.primitiveType,
+					cmd->drawIndexedPrimitives.baseVertex,
+					cmd->drawIndexedPrimitives.minVertexIndex,
+					cmd->drawIndexedPrimitives.numVertices,
+					cmd->drawIndexedPrimitives.startIndex,
+					cmd->drawIndexedPrimitives.primitiveCount,
+					cmd->drawIndexedPrimitives.indices,
+					cmd->drawIndexedPrimitives.indexElementSize
+				);
+				break;
+			case COMMAND_DRAWINSTANCEDPRIMITIVES:
+				renderer->actualDevice->DrawInstancedPrimitives(
+					renderer->actualDevice->driverData,
+					cmd->drawInstancedPrimitives.primitiveType,
+					cmd->drawInstancedPrimitives.baseVertex,
+					cmd->drawInstancedPrimitives.minVertexIndex,
+					cmd->drawInstancedPrimitives.numVertices,
+					cmd->drawInstancedPrimitives.startIndex,
+					cmd->drawInstancedPrimitives.primitiveCount,
+					cmd->drawInstancedPrimitives.instanceCount,
+					cmd->drawInstancedPrimitives.indices,
+					cmd->drawInstancedPrimitives.indexElementSize
+				);
+				break;
+			case COMMAND_DRAWPRIMITIVES:
+				renderer->actualDevice->DrawPrimitives(
+					renderer->actualDevice->driverData,
+					cmd->drawPrimitives.primitiveType,
+					cmd->drawPrimitives.vertexStart,
+					cmd->drawPrimitives.primitiveCount
+				);
+				break;
+			case COMMAND_DRAWUSERINDEXEDPRIMITIVES:
+				renderer->actualDevice->DrawUserIndexedPrimitives(
+					renderer->actualDevice->driverData,
+					cmd->drawUserIndexedPrimitives.primitiveType,
+					cmd->drawUserIndexedPrimitives.vertexData,
+					cmd->drawUserIndexedPrimitives.vertexOffset,
+					cmd->drawUserIndexedPrimitives.numVertices,
+					cmd->drawUserIndexedPrimitives.indexData,
+					cmd->drawUserIndexedPrimitives.indexOffset,
+					cmd->drawUserIndexedPrimitives.indexElementSize,
+					cmd->drawUserIndexedPrimitives.primitiveCount
+				);
+				break;
+			case COMMAND_DRAWUSERPRIMITIVES:
+				renderer->actualDevice->DrawUserPrimitives(
+					renderer->actualDevice->driverData,
+					cmd->drawUserPrimitives.primitiveType,
+					cmd->drawUserPrimitives.vertexData,
+					cmd->drawUserPrimitives.vertexOffset,
+					cmd->drawUserPrimitives.primitiveCount
+				);
+				break;
+			case COMMAND_SETVIEWPORT:
+				renderer->actualDevice->SetViewport(
+					renderer->actualDevice->driverData,
+					cmd->setViewport.viewport
+				);
+				break;
+			case COMMAND_SETSCISSORRECT:
+				renderer->actualDevice->SetScissorRect(
+					renderer->actualDevice->driverData,
+					cmd->setScissorRect.scissor
+				);
+				break;
+			case COMMAND_GETBLENDFACTOR:
+				renderer->actualDevice->GetBlendFactor(
+					renderer->actualDevice->driverData,
+					cmd->getBlendFactor.blendFactor
+				);
+				break;
+			case COMMAND_SETBLENDFACTOR:
+				renderer->actualDevice->SetBlendFactor(
+					renderer->actualDevice->driverData,
+					cmd->setBlendFactor.blendFactor
+				);
+				break;
+			case COMMAND_GETMULTISAMPLEMASK:
+				cmd->getMultiSampleMask.retval = renderer->actualDevice->GetMultiSampleMask(
+					renderer->actualDevice->driverData
+				);
+				break;
+			case COMMAND_SETMULTISAMPLEMASK:
+				renderer->actualDevice->SetMultiSampleMask(
+					renderer->actualDevice->driverData,
+					cmd->setMultiSampleMask.mask
+				);
+				break;
+			case COMMAND_GETREFERENCESTENCIL:
+				cmd->getReferenceStencil.retval = renderer->actualDevice->GetReferenceStencil(
+					renderer->actualDevice->driverData
+				);
+				break;
+			case COMMAND_SETREFERENCESTENCIL:
+				renderer->actualDevice->SetReferenceStencil(
+					renderer->actualDevice->driverData,
+					cmd->setReferenceStencil.ref
+				);
+				break;
+			case COMMAND_SETBLENDSTATE:
+				renderer->actualDevice->SetBlendState(
+					renderer->actualDevice->driverData,
+					cmd->setBlendState.blendState
+				);
+				break;
+			case COMMAND_SETDEPTHSTENCILSTATE:
+				renderer->actualDevice->SetDepthStencilState(
+					renderer->actualDevice->driverData,
+					cmd->setDepthStencilState.depthStencilState
+				);
+				break;
+			case COMMAND_APPLYRASTERIZERSTATE:
+				renderer->actualDevice->ApplyRasterizerState(
+					renderer->actualDevice->driverData,
+					cmd->applyRasterizerState.rasterizerState
+				);
+				break;
+			case COMMAND_VERIFYSAMPLER:
+				renderer->actualDevice->VerifySampler(
+					renderer->actualDevice->driverData,
+					cmd->verifySampler.index,
+					cmd->verifySampler.texture,
+					cmd->verifySampler.sampler
+				);
+				break;
+			case COMMAND_APPLYVERTEXBUFFERBINDINGS:
+				renderer->actualDevice->ApplyVertexBufferBindings(
+					renderer->actualDevice->driverData,
+					cmd->applyVertexBufferBindings.bindings,
+					cmd->applyVertexBufferBindings.numBindings,
+					cmd->applyVertexBufferBindings.bindingsUpdated,
+					cmd->applyVertexBufferBindings.baseVertex
+				);
+				break;
+			case COMMAND_APPLYVERTEXDECLARATION:
+				renderer->actualDevice->ApplyVertexDeclaration(
+					renderer->actualDevice->driverData,
+					cmd->applyVertexDeclaration.vertexDeclaration,
+					cmd->applyVertexDeclaration.ptr,
+					cmd->applyVertexDeclaration.vertexOffset
+				);
+				break;
+			case COMMAND_SETRENDERTARGETS:
+				renderer->actualDevice->SetRenderTargets(
+					renderer->actualDevice->driverData,
+					cmd->setRenderTargets.renderTargets,
+					cmd->setRenderTargets.numRenderTargets,
+					cmd->setRenderTargets.renderbuffer,
+					cmd->setRenderTargets.depthFormat
+				);
+				break;
+			case COMMAND_RESOLVETARGET:
+				renderer->actualDevice->ResolveTarget(
+					renderer->actualDevice->driverData,
+					cmd->resolveTarget.target
+				);
+				break;
+			case COMMAND_RESETBACKBUFFER:
+				renderer->actualDevice->ResetBackbuffer(
+					renderer->actualDevice->driverData,
+					cmd->resetBackbuffer.presentationParameters
+				);
+				break;
+			case COMMAND_READBACKBUFFER:
+				renderer->actualDevice->ReadBackbuffer(
+					renderer->actualDevice->driverData,
+					cmd->readBackbuffer.data,
+					cmd->readBackbuffer.dataLen,
+					cmd->readBackbuffer.startIndex,
+					cmd->readBackbuffer.elementCount,
+					cmd->readBackbuffer.elementSizeInBytes,
+					cmd->readBackbuffer.x,
+					cmd->readBackbuffer.y,
+					cmd->readBackbuffer.w,
+					cmd->readBackbuffer.h
+				);
+				break;
+			case COMMAND_GETBACKBUFFERSIZE:
+				renderer->actualDevice->GetBackbufferSize(
+					renderer->actualDevice->driverData,
+					cmd->getBackbufferSize.w,
+					cmd->getBackbufferSize.h
+				);
+				break;
+			case COMMAND_GETBACKBUFFERSURFACEFORMAT:
+				cmd->getBackbufferSurfaceFormat.retval = renderer->actualDevice->GetBackbufferSurfaceFormat(
+					renderer->actualDevice->driverData
+				);
+				break;
+			case COMMAND_GETBACKBUFFERDEPTHFORMAT:
+				cmd->getBackbufferDepthFormat.retval = renderer->actualDevice->GetBackbufferDepthFormat(
+					renderer->actualDevice->driverData
+				);
+				break;
+			case COMMAND_GETBACKBUFFERMULTISAMPLECOUNT:
+				cmd->getBackbufferMultiSampleCount.retval = renderer->actualDevice->GetBackbufferMultiSampleCount(
+					renderer->actualDevice->driverData
+				);
+				break;
+			case COMMAND_CREATETEXTURE2D:
+				cmd->createTexture2D.retval = renderer->actualDevice->CreateTexture2D(
+					renderer->actualDevice->driverData,
+					cmd->createTexture2D.format,
+					cmd->createTexture2D.width,
+					cmd->createTexture2D.height,
+					cmd->createTexture2D.levelCount,
+					cmd->createTexture2D.isRenderTarget
+				);
+				break;
+			case COMMAND_CREATETEXTURE3D:
+				cmd->createTexture3D.retval = renderer->actualDevice->CreateTexture3D(
+					renderer->actualDevice->driverData,
+					cmd->createTexture3D.format,
+					cmd->createTexture3D.width,
+					cmd->createTexture3D.height,
+					cmd->createTexture3D.depth,
+					cmd->createTexture3D.levelCount
+				);
+				break;
+			case COMMAND_CREATETEXTURECUBE:
+				cmd->createTextureCube.retval = renderer->actualDevice->CreateTextureCube(
+					renderer->actualDevice->driverData,
+					cmd->createTextureCube.format,
+					cmd->createTextureCube.size,
+					cmd->createTextureCube.levelCount,
+					cmd->createTextureCube.isRenderTarget
+				);
+				break;
+			case COMMAND_ADDDISPOSETEXTURE:
+				renderer->actualDevice->AddDisposeTexture(
+					renderer->actualDevice->driverData,
+					cmd->addDisposeTexture.texture
+				);
+				break;
+			case COMMAND_SETTEXTUREDATA2D:
+				renderer->actualDevice->SetTextureData2D(
+					renderer->actualDevice->driverData,
+					cmd->setTextureData2D.texture,
+					cmd->setTextureData2D.format,
+					cmd->setTextureData2D.x,
+					cmd->setTextureData2D.y,
+					cmd->setTextureData2D.w,
+					cmd->setTextureData2D.h,
+					cmd->setTextureData2D.level,
+					cmd->setTextureData2D.data,
+					cmd->setTextureData2D.dataLength
+				);
+				break;
+			case COMMAND_SETTEXTUREDATA3D:
+				renderer->actualDevice->SetTextureData3D(
+					renderer->actualDevice->driverData,
+					cmd->setTextureData3D.texture,
+					cmd->setTextureData3D.format,
+					cmd->setTextureData3D.level,
+					cmd->setTextureData3D.left,
+					cmd->setTextureData3D.top,
+					cmd->setTextureData3D.right,
+					cmd->setTextureData3D.bottom,
+					cmd->setTextureData3D.front,
+					cmd->setTextureData3D.back,
+					cmd->setTextureData3D.data,
+					cmd->setTextureData3D.dataLength
+				);
+				break;
+			case COMMAND_SETTEXTUREDATACUBE:
+				renderer->actualDevice->SetTextureDataCube(
+					renderer->actualDevice->driverData,
+					cmd->setTextureDataCube.texture,
+					cmd->setTextureDataCube.format,
+					cmd->setTextureDataCube.x,
+					cmd->setTextureDataCube.y,
+					cmd->setTextureDataCube.w,
+					cmd->setTextureDataCube.h,
+					cmd->setTextureDataCube.cubeMapFace,
+					cmd->setTextureDataCube.level,
+					cmd->setTextureDataCube.data,
+					cmd->setTextureDataCube.dataLength
+				);
+				break;
+			case COMMAND_SETTEXTUREDATAYUV:
+				renderer->actualDevice->SetTextureDataYUV(
+					renderer->actualDevice->driverData,
+					cmd->setTextureDataYUV.y,
+					cmd->setTextureDataYUV.u,
+					cmd->setTextureDataYUV.v,
+					cmd->setTextureDataYUV.w,
+					cmd->setTextureDataYUV.h,
+					cmd->setTextureDataYUV.ptr
+				);
+				break;
+			case COMMAND_GETTEXTUREDATA2D:
+				renderer->actualDevice->GetTextureData2D(
+					renderer->actualDevice->driverData,
+					cmd->getTextureData2D.texture,
+					cmd->getTextureData2D.format,
+					cmd->getTextureData2D.textureWidth,
+					cmd->getTextureData2D.textureHeight,
+					cmd->getTextureData2D.level,
+					cmd->getTextureData2D.x,
+					cmd->getTextureData2D.y,
+					cmd->getTextureData2D.w,
+					cmd->getTextureData2D.h,
+					cmd->getTextureData2D.data,
+					cmd->getTextureData2D.startIndex,
+					cmd->getTextureData2D.elementCount,
+					cmd->getTextureData2D.elementSizeInBytes
+				);
+				break;
+			case COMMAND_GETTEXTUREDATA3D:
+				renderer->actualDevice->GetTextureData3D(
+					renderer->actualDevice->driverData,
+					cmd->getTextureData3D.texture,
+					cmd->getTextureData3D.format,
+					cmd->getTextureData3D.left,
+					cmd->getTextureData3D.top,
+					cmd->getTextureData3D.front,
+					cmd->getTextureData3D.right,
+					cmd->getTextureData3D.bottom,
+					cmd->getTextureData3D.back,
+					cmd->getTextureData3D.level,
+					cmd->getTextureData3D.data,
+					cmd->getTextureData3D.startIndex,
+					cmd->getTextureData3D.elementCount,
+					cmd->getTextureData3D.elementSizeInBytes
+				);
+				break;
+			case COMMAND_GETTEXTUREDATACUBE:
+				renderer->actualDevice->GetTextureDataCube(
+					renderer->actualDevice->driverData,
+					cmd->getTextureDataCube.texture,
+					cmd->getTextureDataCube.format,
+					cmd->getTextureDataCube.textureSize,
+					cmd->getTextureDataCube.cubeMapFace,
+					cmd->getTextureDataCube.level,
+					cmd->getTextureDataCube.x,
+					cmd->getTextureDataCube.y,
+					cmd->getTextureDataCube.w,
+					cmd->getTextureDataCube.h,
+					cmd->getTextureDataCube.data,
+					cmd->getTextureDataCube.startIndex,
+					cmd->getTextureDataCube.elementCount,
+					cmd->getTextureDataCube.elementSizeInBytes
+				);
+				break;
+			case COMMAND_GENCOLORRENDERBUFFER:
+				cmd->genColorRenderbuffer.retval = renderer->actualDevice->GenColorRenderbuffer(
+					renderer->actualDevice->driverData,
+					cmd->genColorRenderbuffer.width,
+					cmd->genColorRenderbuffer.height,
+					cmd->genColorRenderbuffer.format,
+					cmd->genColorRenderbuffer.multiSampleCount,
+					cmd->genColorRenderbuffer.texture
+				);
+				break;
+			case COMMAND_GENDEPTHSTENCILRENDERBUFFER:
+				cmd->genDepthStencilRenderbuffer.retval = renderer->actualDevice->GenDepthStencilRenderbuffer(
+					renderer->actualDevice->driverData,
+					cmd->genDepthStencilRenderbuffer.width,
+					cmd->genDepthStencilRenderbuffer.height,
+					cmd->genDepthStencilRenderbuffer.format,
+					cmd->genDepthStencilRenderbuffer.multiSampleCount
+				);
+				break;
+			case COMMAND_ADDDISPOSERENDERBUFFER:
+				renderer->actualDevice->AddDisposeRenderbuffer(
+					renderer->actualDevice->driverData,
+					cmd->addDisposeRenderbuffer.renderbuffer
+				);
+				break;
+			case COMMAND_GENVERTEXBUFFER:
+				cmd->genVertexBuffer.retval = renderer->actualDevice->GenVertexBuffer(
+					renderer->actualDevice->driverData,
+					cmd->genVertexBuffer.dynamic,
+					cmd->genVertexBuffer.usage,
+					cmd->genVertexBuffer.vertexCount,
+					cmd->genVertexBuffer.vertexStride
+				);
+				break;
+			case COMMAND_ADDDISPOSEVERTEXBUFFER:
+				renderer->actualDevice->AddDisposeVertexBuffer(
+					renderer->actualDevice->driverData,
+					cmd->addDisposeVertexBuffer.buffer
+				);
+				break;
+			case COMMAND_SETVERTEXBUFFERDATA:
+				renderer->actualDevice->SetVertexBufferData(
+					renderer->actualDevice->driverData,
+					cmd->setVertexBufferData.buffer,
+					cmd->setVertexBufferData.offsetInBytes,
+					cmd->setVertexBufferData.data,
+					cmd->setVertexBufferData.dataLength,
+					cmd->setVertexBufferData.options
+				);
+				break;
+			case COMMAND_GETVERTEXBUFFERDATA:
+				renderer->actualDevice->GetVertexBufferData(
+					renderer->actualDevice->driverData,
+					cmd->getVertexBufferData.buffer,
+					cmd->getVertexBufferData.offsetInBytes,
+					cmd->getVertexBufferData.data,
+					cmd->getVertexBufferData.startIndex,
+					cmd->getVertexBufferData.elementCount,
+					cmd->getVertexBufferData.elementSizeInBytes,
+					cmd->getVertexBufferData.vertexStride
+				);
+				break;
+			case COMMAND_GENINDEXBUFFER:
+				cmd->genIndexBuffer.retval = renderer->actualDevice->GenIndexBuffer(
+					renderer->actualDevice->driverData,
+					cmd->genIndexBuffer.dynamic,
+					cmd->genIndexBuffer.usage,
+					cmd->genIndexBuffer.indexCount,
+					cmd->genIndexBuffer.indexElementSize
+				);
+				break;
+			case COMMAND_ADDDISPOSEINDEXBUFFER:
+				renderer->actualDevice->AddDisposeIndexBuffer(
+					renderer->actualDevice->driverData,
+					cmd->addDisposeIndexBuffer.buffer
+				);
+				break;
+			case COMMAND_SETINDEXBUFFERDATA:
+				renderer->actualDevice->SetIndexBufferData(
+					renderer->actualDevice->driverData,
+					cmd->setIndexBufferData.buffer,
+					cmd->setIndexBufferData.offsetInBytes,
+					cmd->setIndexBufferData.data,
+					cmd->setIndexBufferData.dataLength,
+					cmd->setIndexBufferData.options
+				);
+				break;
+			case COMMAND_GETINDEXBUFFERDATA:
+				renderer->actualDevice->GetIndexBufferData(
+					renderer->actualDevice->driverData,
+					cmd->getIndexBufferData.buffer,
+					cmd->getIndexBufferData.offsetInBytes,
+					cmd->getIndexBufferData.data,
+					cmd->getIndexBufferData.startIndex,
+					cmd->getIndexBufferData.elementCount,
+					cmd->getIndexBufferData.elementSizeInBytes
+				);
+				break;
+			case COMMAND_CREATEEFFECT:
+				cmd->createEffect.retval = renderer->actualDevice->CreateEffect(
+					renderer->actualDevice->driverData,
+					cmd->createEffect.effectCode,
+					cmd->createEffect.effectCodeLength
+				);
+				break;
+			case COMMAND_CLONEEFFECT:
+				cmd->cloneEffect.retval = renderer->actualDevice->CloneEffect(
+					renderer->actualDevice->driverData,
+					cmd->cloneEffect.cloneSource
+				);
+				break;
+			case COMMAND_ADDDISPOSEEFFECT:
+				renderer->actualDevice->AddDisposeEffect(
+					renderer->actualDevice->driverData,
+					cmd->addDisposeEffect.effect
+				);
+				break;
+			case COMMAND_APPLYEFFECT:
+				renderer->actualDevice->ApplyEffect(
+					renderer->actualDevice->driverData,
+					cmd->applyEffect.effect,
+					cmd->applyEffect.technique,
+					cmd->applyEffect.pass,
+					cmd->applyEffect.stateChanges
+				);
+				break;
+			case COMMAND_BEGINPASSRESTORE:
+				renderer->actualDevice->BeginPassRestore(
+					renderer->actualDevice->driverData,
+					cmd->beginPassRestore.effect,
+					cmd->beginPassRestore.stateChanges
+				);
+				break;
+			case COMMAND_ENDPASSRESTORE:
+				renderer->actualDevice->EndPassRestore(
+					renderer->actualDevice->driverData,
+					cmd->endPassRestore.effect
+				);
+				break;
+			case COMMAND_CREATEQUERY:
+				cmd->createQuery.retval = renderer->actualDevice->CreateQuery(
+					renderer->actualDevice->driverData
+				);
+				break;
+			case COMMAND_ADDDISPOSEQUERY:
+				renderer->actualDevice->AddDisposeQuery(
+					renderer->actualDevice->driverData,
+					cmd->addDisposeQuery.query
+				);
+				break;
+			case COMMAND_QUERYBEGIN:
+				renderer->actualDevice->QueryBegin(
+					renderer->actualDevice->driverData,
+					cmd->queryBegin.query
+				);
+				break;
+			case COMMAND_QUERYEND:
+				renderer->actualDevice->QueryEnd(
+					renderer->actualDevice->driverData,
+					cmd->queryEnd.query
+				);
+				break;
+			case COMMAND_QUERYCOMPLETE:
+				cmd->queryComplete.retval = renderer->actualDevice->QueryComplete(
+					renderer->actualDevice->driverData,
+					cmd->queryComplete.query
+				);
+				break;
+			case COMMAND_QUERYPIXELCOUNT:
+				cmd->queryPixelCount.retval = renderer->actualDevice->QueryPixelCount(
+					renderer->actualDevice->driverData,
+					cmd->queryPixelCount.query
+				);
+				break;
+			case COMMAND_SUPPORTSDXT1:
+				cmd->supportsDXT1.retval = renderer->actualDevice->SupportsDXT1(
+					renderer->actualDevice->driverData
+				);
+				break;
+			case COMMAND_SUPPORTSS3TC:
+				cmd->supportsS3TC.retval = renderer->actualDevice->SupportsS3TC(
+					renderer->actualDevice->driverData
+				);
+				break;
+			case COMMAND_SUPPORTSHARDWAREINSTANCING:
+				cmd->supportsHardwareInstancing.retval = renderer->actualDevice->SupportsHardwareInstancing(
+					renderer->actualDevice->driverData
+				);
+				break;
+			case COMMAND_SUPPORTSNOOVERWRITE:
+				cmd->supportsNoOverwrite.retval = renderer->actualDevice->SupportsNoOverwrite(
+					renderer->actualDevice->driverData
+				);
+				break;
+			case COMMAND_GETMAXTEXTURESLOTS:
+				cmd->getMaxTextureSlots.retval = renderer->actualDevice->GetMaxTextureSlots(
+					renderer->actualDevice->driverData
+				);
+				break;
+			case COMMAND_GETMAXMULTISAMPLECOUNT:
+				cmd->getMaxMultiSampleCount.retval = renderer->actualDevice->GetMaxMultiSampleCount(
+					renderer->actualDevice->driverData
+				);
+				break;
+			case COMMAND_SETSTRINGMARKER:
+				renderer->actualDevice->SetStringMarker(
+					renderer->actualDevice->driverData,
+					cmd->setStringMarker.text
+				);
+				break;
 			case COMMAND_GETBUFFERSIZE:
 				cmd->getBufferSize.retval = renderer->actualDevice->GetBufferSize(
 					cmd->getBufferSize.buffer
