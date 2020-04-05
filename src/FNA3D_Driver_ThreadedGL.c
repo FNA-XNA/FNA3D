@@ -2397,38 +2397,74 @@ static int32_t THREADEDGL_QueryPixelCount(
 
 static uint8_t THREADEDGL_SupportsDXT1(FNA3D_Renderer *driverData)
 {
-	return 0;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_SUPPORTSDXT1;
+	ForceToRenderThread(renderer, &cmd);
+	return cmd.supportsDXT1.retval;
 }
 
 static uint8_t THREADEDGL_SupportsS3TC(FNA3D_Renderer *driverData)
 {
-	return 0;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_SUPPORTSS3TC;
+	ForceToRenderThread(renderer, &cmd);
+	return cmd.supportsS3TC.retval;
 }
 
 static uint8_t THREADEDGL_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
 {
-	return 0;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_SUPPORTSHARDWAREINSTANCING;
+	ForceToRenderThread(renderer, &cmd);
+	return cmd.supportsHardwareInstancing.retval;
 }
 
 static uint8_t THREADEDGL_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 {
-	return 0;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_SUPPORTSNOOVERWRITE;
+	ForceToRenderThread(renderer, &cmd);
+	return cmd.supportsNoOverwrite.retval;
 }
 
 static int32_t THREADEDGL_GetMaxTextureSlots(FNA3D_Renderer *driverData)
 {
-	return 0;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_GETMAXTEXTURESLOTS;
+	ForceToRenderThread(renderer, &cmd);
+	return cmd.getMaxTextureSlots.retval;
 }
 
 static int32_t THREADEDGL_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
 {
-	return 0;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_GETMAXMULTISAMPLECOUNT;
+	ForceToRenderThread(renderer, &cmd);
+	return cmd.getMaxMultiSampleCount.retval;
 }
 
 /* Debugging */
 
 static void THREADEDGL_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_SETSTRINGMARKER;
+	cmd.setStringMarker.text = text;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 /* Buffer Objects */
