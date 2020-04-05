@@ -28,7 +28,6 @@
 #define FNA3D_PIPELINECACHE_H
 
 #include "FNA3D.h"
-#include "stb_ds.h"
 
 typedef struct StateHash
 {

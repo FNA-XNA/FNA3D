@@ -44,7 +44,7 @@
 #define ldexp SDL_scalbn
 #define pow SDL_pow
 #define strcmp SDL_strcmp
-#define strlen  SDL_strlen
+#define strlen SDL_strlen
 #define strncmp SDL_strncmp
 #define strtol SDL_strtol
 

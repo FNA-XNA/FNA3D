@@ -98,7 +98,7 @@ add_library(mojoshader STATIC
 
 # Build flags
 if(NOT MSVC)
-	set_property(TARGET FNA3D PROPERTY COMPILE_FLAGS "-std=c99 -Wall -pedantic")
+	set_property(TARGET FNA3D PROPERTY COMPILE_FLAGS "-std=c99 -Wall -Wno-strict-aliasing -pedantic")
 endif()
 if(BUILD_SHARED_LIBS)
 	set_property(TARGET mojoshader PROPERTY POSITION_INDEPENDENT_CODE ON)

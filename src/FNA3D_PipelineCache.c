@@ -31,9 +31,27 @@
 
 /* STB_DS Implementation */
 
-#define STB_DS_IMPLEMENTATION
+#define strcmp SDL_strcmp
+#define strlen SDL_strlen
+#ifdef memcmp
+#undef memcmp
+#endif
+#define memcmp SDL_memcmp
+#ifdef memcpy
+#undef memcpy
+#endif
+#define memcpy SDL_memcpy
+#ifdef memmove
+#undef memmove
+#endif
+#define memmove SDL_memmove
+#ifdef memset
+#undef memset
+#endif
+#define memset SDL_memset
 #define STBDS_REALLOC(c,p,s) SDL_realloc(p,s)
-#define STBDS_FREE(c,p)  SDL_free(p)
+#define STBDS_FREE(c,p) SDL_free(p)
+#define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
 
 /* State Hashing */
