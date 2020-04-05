@@ -577,15 +577,6 @@ static inline void BindReadFramebuffer(ModernGLRenderer *renderer, GLuint handle
 	}
 }
 
-static inline void BindDrawFramebuffer(ModernGLRenderer *renderer, GLuint handle)
-{
-	if (handle != renderer->currentDrawFramebuffer)
-	{
-		renderer->glBindFramebuffer(GL_DRAW_FRAMEBUFFER, handle);
-		renderer->currentDrawFramebuffer = handle;
-	}
-}
-
 static inline void BindFramebuffer(ModernGLRenderer *renderer, GLuint handle)
 {
 	if (	renderer->currentReadFramebuffer != handle &&
@@ -1736,7 +1727,7 @@ static void MODERNGL_VerifySampler(
 	FNA3D_SamplerState *sampler
 ) {
 	GLuint slot;
-	ModernGLRenderer *renderer = (ModernGLRenderer*) renderer;
+	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
 	ModernGLTexture *tex = (ModernGLTexture*) texture;
 
 	if (texture == NULL)
