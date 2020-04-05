@@ -49,6 +49,7 @@
 #undef memset
 #endif
 #define memset SDL_memset
+#define STBDS_ASSERT(x) SDL_assert(x)
 #define STBDS_REALLOC(c,p,s) SDL_realloc(p,s)
 #define STBDS_FREE(c,p) SDL_free(p)
 #define STB_DS_IMPLEMENTATION

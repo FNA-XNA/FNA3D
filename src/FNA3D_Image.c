@@ -39,6 +39,7 @@
 #endif
 #define sprintf_s SDL_snprintf
 
+#define abs SDL_abs
 #define ceilf SDL_ceilf
 #define floorf SDL_floorf
 #define ldexp SDL_scalbn

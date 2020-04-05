@@ -380,7 +380,7 @@ CREDITS
 #define INCLUDE_STB_DS_H
 
 #include <stddef.h>
-#if FNA3D_CHANGE
+#ifdef FNA3D_CHANGE
 #include <string.h>
 #endif
 
@@ -706,7 +706,7 @@ template<class T> static T * stbds_shmode_func_wrapper(T *, size_t elemsize, int
 //
 
 #ifdef STB_DS_IMPLEMENTATION
-#if FNA3D_CHANGE
+#ifdef FNA3D_CHANGE
 #include <assert.h>
 #include <string.h>
 #endif
@@ -1603,12 +1603,16 @@ typedef struct { int key[2],b,c,d; } stbds_struct2;
 static char buffer[256];
 char *strkey(int n)
 {
+#ifndef FNA3D_CHANGE
+   SDL_snprintf(buffer, sizeof(buffer), "test_%d", n);
+#else
 #if defined(_WIN32) && defined(__STDC_WANT_SECURE_LIB__)
    sprintf_s(buffer, sizeof(buffer), "test_%d", n);
 #else
    sprintf(buffer, "test_%d", n);
 #endif
    return buffer;
+#endif
 }
 
 void stbds_unit_tests(void)
