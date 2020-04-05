@@ -2149,13 +2149,37 @@ static FNA3D_Buffer* THREADEDGL_GenVertexBuffer(
 	int32_t vertexCount,
 	int32_t vertexStride
 ) {
-	return NULL;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+	ThreadedGLBuffer *result = (ThreadedGLBuffer*) SDL_malloc(
+		sizeof(ThreadedGLBuffer)
+	);
+	result->parent = renderer;
+
+	cmd.type = COMMAND_GENVERTEXBUFFER;
+	cmd.genVertexBuffer.dynamic = dynamic;
+	cmd.genVertexBuffer.usage = usage;
+	cmd.genVertexBuffer.vertexCount = vertexCount;
+	cmd.genVertexBuffer.vertexStride = vertexStride;
+	ForceToRenderThread(renderer, &cmd);
+	result->actualBuffer = cmd.genVertexBuffer.retval;
+
+	return (FNA3D_Buffer*) result;
 }
 
 static void THREADEDGL_AddDisposeVertexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+	ThreadedGLBuffer *glBuffer = (ThreadedGLBuffer*) buffer;
+
+	cmd.type = COMMAND_ADDDISPOSEVERTEXBUFFER;
+	cmd.addDisposeVertexBuffer.buffer = glBuffer->actualBuffer;
+	ForceToRenderThread(renderer, &cmd);
+
+	SDL_free(glBuffer);
 }
 
 static void THREADEDGL_SetVertexBufferData(
@@ -2166,6 +2190,17 @@ static void THREADEDGL_SetVertexBufferData(
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+	ThreadedGLBuffer *glBuffer = (ThreadedGLBuffer*) buffer;
+
+	cmd.type = COMMAND_SETVERTEXBUFFERDATA;
+	cmd.setVertexBufferData.buffer = glBuffer->actualBuffer;
+	cmd.setVertexBufferData.offsetInBytes = offsetInBytes;
+	cmd.setVertexBufferData.data = data;
+	cmd.setVertexBufferData.dataLength = dataLength;
+	cmd.setVertexBufferData.options = options;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_GetVertexBufferData(
@@ -2178,6 +2213,19 @@ static void THREADEDGL_GetVertexBufferData(
 	int32_t elementSizeInBytes,
 	int32_t vertexStride
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+	ThreadedGLBuffer *glBuffer = (ThreadedGLBuffer*) buffer;
+
+	cmd.type = COMMAND_GETVERTEXBUFFERDATA;
+	cmd.getVertexBufferData.buffer = glBuffer->actualBuffer;
+	cmd.getVertexBufferData.offsetInBytes = offsetInBytes;
+	cmd.getVertexBufferData.data = data;
+	cmd.getVertexBufferData.startIndex = startIndex;
+	cmd.getVertexBufferData.elementCount = elementCount;
+	cmd.getVertexBufferData.elementSizeInBytes = elementSizeInBytes;
+	cmd.getVertexBufferData.vertexStride = vertexStride;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 /* Index Buffers */
@@ -2189,13 +2237,37 @@ static FNA3D_Buffer* THREADEDGL_GenIndexBuffer(
 	int32_t indexCount,
 	FNA3D_IndexElementSize indexElementSize
 ) {
-	return NULL;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+	ThreadedGLBuffer *result = (ThreadedGLBuffer*) SDL_malloc(
+		sizeof(ThreadedGLBuffer)
+	);
+	result->parent = renderer;
+
+	cmd.type = COMMAND_GENINDEXBUFFER;
+	cmd.genIndexBuffer.dynamic = dynamic;
+	cmd.genIndexBuffer.usage = usage;
+	cmd.genIndexBuffer.indexCount = indexCount;
+	cmd.genIndexBuffer.indexElementSize = indexElementSize;
+	ForceToRenderThread(renderer, &cmd);
+	result->actualBuffer = cmd.genIndexBuffer.retval;
+
+	return (FNA3D_Buffer*) result;
 }
 
 static void THREADEDGL_AddDisposeIndexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+	ThreadedGLBuffer *glBuffer = (ThreadedGLBuffer*) buffer;
+
+	cmd.type = COMMAND_ADDDISPOSEINDEXBUFFER;
+	cmd.addDisposeIndexBuffer.buffer = glBuffer->actualBuffer;
+	ForceToRenderThread(renderer, &cmd);
+
+	SDL_free(glBuffer);
 }
 
 static void THREADEDGL_SetIndexBufferData(
@@ -2206,6 +2278,16 @@ static void THREADEDGL_SetIndexBufferData(
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+	ThreadedGLBuffer *glBuffer = (ThreadedGLBuffer*) buffer;
+
+	cmd.type = COMMAND_GETINDEXBUFFERDATA;
+	cmd.setIndexBufferData.buffer = glBuffer->actualBuffer;
+	cmd.setIndexBufferData.offsetInBytes = offsetInBytes;
+	cmd.setIndexBufferData.data = data;
+	cmd.setIndexBufferData.dataLength = dataLength;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_GetIndexBufferData(
@@ -2217,6 +2299,18 @@ static void THREADEDGL_GetIndexBufferData(
 	int32_t elementCount,
 	int32_t elementSizeInBytes
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+	ThreadedGLBuffer *glBuffer = (ThreadedGLBuffer*) buffer;
+
+	cmd.type = COMMAND_GETINDEXBUFFERDATA;
+	cmd.getIndexBufferData.buffer = glBuffer->actualBuffer;
+	cmd.getIndexBufferData.offsetInBytes = offsetInBytes;
+	cmd.getIndexBufferData.data = data;
+	cmd.getIndexBufferData.startIndex = startIndex;
+	cmd.getIndexBufferData.elementCount = elementCount;
+	cmd.getIndexBufferData.elementSizeInBytes = elementSizeInBytes;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 /* Effects */
