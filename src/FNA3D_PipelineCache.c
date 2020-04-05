@@ -184,7 +184,7 @@ uint64_t GetVertexDeclarationHash(
 }
 
 uint64_t GetVertexBufferBindingHash(
-	FNA3D_VertexBufferBinding **bindings,
+	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings,
 	void* vertexShader
 ) {
@@ -192,12 +192,11 @@ uint64_t GetVertexBufferBindingHash(
 	int32_t i;
 	for (i = 0; i < numBindings; i += 1)
 	{
-		FNA3D_VertexBufferBinding *b = bindings[i];
 		result = result * HASH_FACTOR + (
-			(uint64_t) b->instanceFrequency
+			(uint64_t) bindings[i].instanceFrequency
 		);
 		result = result * HASH_FACTOR + GetVertexDeclarationHash(
-			b->vertexDeclaration,
+			bindings[i].vertexDeclaration,
 			vertexShader
 		);
 	}
