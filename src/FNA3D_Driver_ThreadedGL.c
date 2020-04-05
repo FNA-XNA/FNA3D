@@ -1490,40 +1490,86 @@ static void THREADEDGL_DrawUserPrimitives(
 
 static void THREADEDGL_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewport)
 {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_SETVIEWPORT;
+	cmd.setViewport.viewport = viewport;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor)
 {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_SETSCISSORRECT;
+	cmd.setScissorRect.scissor = scissor;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_GetBlendFactor(
 	FNA3D_Renderer *driverData,
 	FNA3D_Color *blendFactor
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_GETBLENDFACTOR;
+	cmd.getBlendFactor.blendFactor = blendFactor;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_SetBlendFactor(
 	FNA3D_Renderer *driverData,
 	FNA3D_Color *blendFactor
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_SETBLENDFACTOR;
+	cmd.setBlendFactor.blendFactor = blendFactor;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static int32_t THREADEDGL_GetMultiSampleMask(FNA3D_Renderer *driverData)
 {
-	return 0;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_GETMULTISAMPLEMASK;
+	ForceToRenderThread(renderer, &cmd);
+	return cmd.getMultiSampleMask.retval;
 }
 
 static void THREADEDGL_SetMultiSampleMask(FNA3D_Renderer *driverData, int32_t mask)
 {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_SETMULTISAMPLEMASK;
+	cmd.setMultiSampleMask.mask = mask;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static int32_t THREADEDGL_GetReferenceStencil(FNA3D_Renderer *driverData)
 {
-	return 0;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_GETREFERENCESTENCIL;
+	ForceToRenderThread(renderer, &cmd);
+	return cmd.getReferenceStencil.retval;
 }
 
 static void THREADEDGL_SetReferenceStencil(FNA3D_Renderer *driverData, int32_t ref)
 {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_SETREFERENCESTENCIL;
+	cmd.setReferenceStencil.ref = ref;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 /* Immutable Render States */
@@ -1532,18 +1578,36 @@ static void THREADEDGL_SetBlendState(
 	FNA3D_Renderer *driverData,
 	FNA3D_BlendState *blendState
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_SETBLENDSTATE;
+	cmd.setBlendState.blendState = blendState;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_SetDepthStencilState(
 	FNA3D_Renderer *driverData,
 	FNA3D_DepthStencilState *depthStencilState
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_SETDEPTHSTENCILSTATE;
+	cmd.setDepthStencilState.depthStencilState = depthStencilState;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_ApplyRasterizerState(
 	FNA3D_Renderer *driverData,
 	FNA3D_RasterizerState *rasterizerState
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_APPLYRASTERIZERSTATE;
+	cmd.applyRasterizerState.rasterizerState = rasterizerState;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_VerifySampler(
@@ -1552,6 +1616,14 @@ static void THREADEDGL_VerifySampler(
 	FNA3D_Texture *texture,
 	FNA3D_SamplerState *sampler
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_VERIFYSAMPLER;
+	cmd.verifySampler.index = index;
+	cmd.verifySampler.texture = texture;
+	cmd.verifySampler.sampler = sampler;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 /* Vertex State */
@@ -1563,6 +1635,23 @@ static void THREADEDGL_ApplyVertexBufferBindings(
 	uint8_t bindingsUpdated,
 	int32_t baseVertex
 ) {
+	int32_t i;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	/* FIXME: Can we thrash the bindings memory like this? -flibit */
+	for (i = 0; i < numBindings; i += 1)
+	{
+		bindings[i].vertexBuffer =
+			((ThreadedGLBuffer*) bindings[i].vertexBuffer)->actualBuffer;
+	}
+
+	cmd.type = COMMAND_APPLYVERTEXBUFFERBINDINGS;
+	cmd.applyVertexBufferBindings.bindings = bindings;
+	cmd.applyVertexBufferBindings.numBindings = numBindings;
+	cmd.applyVertexBufferBindings.bindingsUpdated = bindingsUpdated;
+	cmd.applyVertexBufferBindings.baseVertex = baseVertex;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_ApplyVertexDeclaration(
@@ -1571,6 +1660,14 @@ static void THREADEDGL_ApplyVertexDeclaration(
 	void* ptr,
 	int32_t vertexOffset
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_APPLYVERTEXDECLARATION;
+	cmd.applyVertexDeclaration.vertexDeclaration = vertexDeclaration;
+	cmd.applyVertexDeclaration.ptr = ptr;
+	cmd.applyVertexDeclaration.vertexOffset = vertexOffset;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 /* Render Targets */
@@ -1582,12 +1679,27 @@ static void THREADEDGL_SetRenderTargets(
 	FNA3D_Renderbuffer *renderbuffer,
 	FNA3D_DepthFormat depthFormat
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_SETRENDERTARGETS;
+	cmd.setRenderTargets.renderTargets = renderTargets;
+	cmd.setRenderTargets.numRenderTargets = numRenderTargets;
+	cmd.setRenderTargets.renderbuffer = renderbuffer;
+	cmd.setRenderTargets.depthFormat = depthFormat;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_ResolveTarget(
 	FNA3D_Renderer *driverData,
 	FNA3D_RenderTargetBinding *target
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_RESOLVETARGET;
+	cmd.resolveTarget.target = target;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 /* Backbuffer Functions */
