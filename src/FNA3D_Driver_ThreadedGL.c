@@ -1708,6 +1708,12 @@ static void THREADEDGL_ResetBackbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_PresentationParameters *presentationParameters
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_RESETBACKBUFFER;
+	cmd.resetBackbuffer.presentationParameters = presentationParameters;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_ReadBackbuffer(
@@ -1722,6 +1728,20 @@ static void THREADEDGL_ReadBackbuffer(
 	int32_t w,
 	int32_t h
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_READBACKBUFFER;
+	cmd.readBackbuffer.data = data;
+	cmd.readBackbuffer.dataLen = dataLen;
+	cmd.readBackbuffer.startIndex = startIndex;
+	cmd.readBackbuffer.elementCount = elementCount;
+	cmd.readBackbuffer.elementSizeInBytes = elementSizeInBytes;
+	cmd.readBackbuffer.x = x;
+	cmd.readBackbuffer.y = y;
+	cmd.readBackbuffer.w = w;
+	cmd.readBackbuffer.h = h;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_GetBackbufferSize(
@@ -1729,24 +1749,46 @@ static void THREADEDGL_GetBackbufferSize(
 	int32_t *w,
 	int32_t *h
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_GETBACKBUFFERSIZE;
+	cmd.getBackbufferSize.w = w;
+	cmd.getBackbufferSize.h = h;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static FNA3D_SurfaceFormat THREADEDGL_GetBackbufferSurfaceFormat(
 	FNA3D_Renderer *driverData
 ) {
-	return FNA3D_SURFACEFORMAT_COLOR;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_GETBACKBUFFERSURFACEFORMAT;
+	ForceToRenderThread(renderer, &cmd);
+	return cmd.getBackbufferSurfaceFormat.retval;
 }
 
 static FNA3D_DepthFormat THREADEDGL_GetBackbufferDepthFormat(
 	FNA3D_Renderer *driverData
 ) {
-	return FNA3D_DEPTHFORMAT_NONE;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_GETBACKBUFFERDEPTHFORMAT;
+	ForceToRenderThread(renderer, &cmd);
+	return cmd.getBackbufferDepthFormat.retval;
 }
 
 static int32_t THREADEDGL_GetBackbufferMultiSampleCount(
 	FNA3D_Renderer *driverData
 ) {
-	return 0;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_GETBACKBUFFERMULTISAMPLECOUNT;
+	ForceToRenderThread(renderer, &cmd);
+	return cmd.getBackbufferMultiSampleCount.retval;
 }
 
 /* Textures */
