@@ -2346,6 +2346,7 @@ static FNA3D_Effect* THREADEDGL_CloneEffect(
 	ThreadedGLEffect *result  = (ThreadedGLEffect*) SDL_malloc(
 		sizeof(ThreadedGLEffect)
 	);
+	result->parent = renderer;
 
 	cmd.type = COMMAND_CLONEEFFECT;
 	cmd.cloneEffect.cloneSource = glEffect->actualEffect;
