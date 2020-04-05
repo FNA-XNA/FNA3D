@@ -2096,7 +2096,17 @@ static FNA3D_Renderbuffer* THREADEDGL_GenColorRenderbuffer(
 	int32_t multiSampleCount,
 	FNA3D_Texture *texture
 ) {
-	return NULL;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_GENCOLORRENDERBUFFER;
+	cmd.genColorRenderbuffer.width = width;
+	cmd.genColorRenderbuffer.height = height;
+	cmd.genColorRenderbuffer.format = format;
+	cmd.genColorRenderbuffer.multiSampleCount = multiSampleCount;
+	cmd.genColorRenderbuffer.texture = texture;
+	ForceToRenderThread(renderer, &cmd);
+	return cmd.genColorRenderbuffer.retval;
 }
 
 static FNA3D_Renderbuffer* THREADEDGL_GenDepthStencilRenderbuffer(
@@ -2106,13 +2116,28 @@ static FNA3D_Renderbuffer* THREADEDGL_GenDepthStencilRenderbuffer(
 	FNA3D_DepthFormat format,
 	int32_t multiSampleCount
 ) {
-	return NULL;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_GENDEPTHSTENCILRENDERBUFFER;
+	cmd.genDepthStencilRenderbuffer.width = width;
+	cmd.genDepthStencilRenderbuffer.height = height;
+	cmd.genDepthStencilRenderbuffer.format = format;
+	cmd.genDepthStencilRenderbuffer.multiSampleCount = multiSampleCount;
+	ForceToRenderThread(renderer, &cmd);
+	return cmd.genDepthStencilRenderbuffer.retval;
 }
 
 static void THREADEDGL_AddDisposeRenderbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Renderbuffer *renderbuffer
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_ADDDISPOSERENDERBUFFER;
+	cmd.addDisposeRenderbuffer.renderbuffer = renderbuffer;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 /* Vertex Buffers */
