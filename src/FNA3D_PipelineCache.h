@@ -56,7 +56,7 @@ uint64_t GetVertexDeclarationHash(
 	FNA3D_VertexDeclaration declaration,
 	void* vertexShader
 );
-uint64_t GetVertexBufferBindingHash(
+uint64_t GetVertexBufferBindingsHash(
 	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings,
 	void* vertexShader
