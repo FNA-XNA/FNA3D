@@ -2327,35 +2327,70 @@ static void THREADEDGL_EndPassRestore(
 
 static FNA3D_Query* THREADEDGL_CreateQuery(FNA3D_Renderer *driverData)
 {
-	return NULL;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_CREATEQUERY;
+	ForceToRenderThread(renderer, &cmd);
+	return cmd.createQuery.retval;
 }
 
 static void THREADEDGL_AddDisposeQuery(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_ADDDISPOSEQUERY;
+	cmd.addDisposeQuery.query = query;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_QUERYBEGIN;
+	cmd.queryBegin.query = query;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_QUERYEND;
+	cmd.queryEnd.query = query;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static uint8_t THREADEDGL_QueryComplete(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
 ) {
-	return 1;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_QUERYCOMPLETE;
+	cmd.queryComplete.query = query;
+	ForceToRenderThread(renderer, &cmd);
+	return cmd.queryComplete.retval;
 }
 
 static int32_t THREADEDGL_QueryPixelCount(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
 ) {
-	return 0;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_QUERYPIXELCOUNT;
+	cmd.queryPixelCount.query = query;
+	ForceToRenderThread(renderer, &cmd);
+	return cmd.queryPixelCount.retval;
 }
 
 /* Feature Queries */
