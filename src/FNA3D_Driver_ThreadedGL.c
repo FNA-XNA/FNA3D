@@ -1315,6 +1315,11 @@ static void THREADEDGL_DestroyDevice(FNA3D_Device *device)
 
 static void THREADEDGL_BeginFrame(FNA3D_Renderer *driverData)
 {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_BEGINFRAME;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_SwapBuffers(
@@ -1323,12 +1328,26 @@ static void THREADEDGL_SwapBuffers(
 	FNA3D_Rect *destinationRectangle,
 	void* overrideWindowHandle
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_SWAPBUFFERS;
+	cmd.swapBuffers.sourceRectangle = sourceRectangle;
+	cmd.swapBuffers.destinationRectangle = destinationRectangle;
+	cmd.swapBuffers.overrideWindowHandle = overrideWindowHandle;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_SetPresentationInterval(
 	FNA3D_Renderer *driverData,
 	FNA3D_PresentInterval presentInterval
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_SETPRESENTATIONINTERVAL;
+	cmd.setPresentationInterval.presentInterval = presentInterval;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 /* Drawing */
@@ -1340,6 +1359,15 @@ static void THREADEDGL_Clear(
 	float depth,
 	int32_t stencil
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_CLEAR;
+	cmd.clear.options = options;
+	cmd.clear.color = color;
+	cmd.clear.depth = depth;
+	cmd.clear.stencil = stencil;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_DrawIndexedPrimitives(
@@ -1353,6 +1381,20 @@ static void THREADEDGL_DrawIndexedPrimitives(
 	FNA3D_Buffer *indices,
 	FNA3D_IndexElementSize indexElementSize
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+	ThreadedGLBuffer *buffer = (ThreadedGLBuffer*) indices;
+
+	cmd.type = COMMAND_DRAWINDEXEDPRIMITIVES;
+	cmd.drawIndexedPrimitives.primitiveType = primitiveType;
+	cmd.drawIndexedPrimitives.baseVertex = baseVertex;
+	cmd.drawIndexedPrimitives.minVertexIndex = minVertexIndex;
+	cmd.drawIndexedPrimitives.numVertices = numVertices;
+	cmd.drawIndexedPrimitives.startIndex = startIndex;
+	cmd.drawIndexedPrimitives.primitiveCount = primitiveCount;
+	cmd.drawIndexedPrimitives.indices = buffer->actualBuffer;
+	cmd.drawIndexedPrimitives.indexElementSize = indexElementSize;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_DrawInstancedPrimitives(
@@ -1367,6 +1409,21 @@ static void THREADEDGL_DrawInstancedPrimitives(
 	FNA3D_Buffer *indices,
 	FNA3D_IndexElementSize indexElementSize
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+	ThreadedGLBuffer *buffer = (ThreadedGLBuffer*) indices;
+
+	cmd.type = COMMAND_DRAWINSTANCEDPRIMITIVES;
+	cmd.drawInstancedPrimitives.primitiveType = primitiveType;
+	cmd.drawInstancedPrimitives.baseVertex = baseVertex;
+	cmd.drawInstancedPrimitives.minVertexIndex = minVertexIndex;
+	cmd.drawInstancedPrimitives.numVertices = numVertices;
+	cmd.drawInstancedPrimitives.startIndex = startIndex;
+	cmd.drawInstancedPrimitives.primitiveCount = primitiveCount;
+	cmd.drawInstancedPrimitives.instanceCount = instanceCount;
+	cmd.drawInstancedPrimitives.indices = buffer->actualBuffer;
+	cmd.drawInstancedPrimitives.indexElementSize = indexElementSize;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_DrawPrimitives(
@@ -1375,6 +1432,14 @@ static void THREADEDGL_DrawPrimitives(
 	int32_t vertexStart,
 	int32_t primitiveCount
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_DRAWPRIMITIVES;
+	cmd.drawPrimitives.primitiveType = primitiveType;
+	cmd.drawPrimitives.vertexStart = vertexStart;
+	cmd.drawPrimitives.primitiveCount = primitiveCount;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_DrawUserIndexedPrimitives(
@@ -1388,6 +1453,19 @@ static void THREADEDGL_DrawUserIndexedPrimitives(
 	FNA3D_IndexElementSize indexElementSize,
 	int32_t primitiveCount
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_DRAWUSERINDEXEDPRIMITIVES;
+	cmd.drawUserIndexedPrimitives.primitiveType = primitiveType;
+	cmd.drawUserIndexedPrimitives.vertexData = vertexData;
+	cmd.drawUserIndexedPrimitives.vertexOffset = vertexOffset;
+	cmd.drawUserIndexedPrimitives.numVertices = numVertices;
+	cmd.drawUserIndexedPrimitives.indexData = indexData;
+	cmd.drawUserIndexedPrimitives.indexOffset = indexOffset;
+	cmd.drawUserIndexedPrimitives.indexElementSize = indexElementSize;
+	cmd.drawUserIndexedPrimitives.primitiveCount = primitiveCount;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_DrawUserPrimitives(
@@ -1397,6 +1475,15 @@ static void THREADEDGL_DrawUserPrimitives(
 	int32_t vertexOffset,
 	int32_t primitiveCount
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_DRAWUSERPRIMITIVES;
+	cmd.drawUserPrimitives.primitiveType = primitiveType;
+	cmd.drawUserPrimitives.vertexData = vertexData;
+	cmd.drawUserPrimitives.vertexOffset = vertexOffset;
+	cmd.drawUserPrimitives.primitiveCount = primitiveCount;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 /* Mutable Render States */
