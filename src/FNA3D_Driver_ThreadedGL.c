@@ -623,17 +623,29 @@ typedef struct ThreadedGLRenderer /* Cast FNA3D_Renderer* to this! */
 	uint8_t run;
 } ThreadedGLRenderer;
 
+/* Do NOT make ThreadedGLTexture!
+ * Just pass actualDevice's results directly.
+ */
+
 typedef struct ThreadedGLBuffer /* Cast FNA3D_Buffer* to this! */
 {
 	ThreadedGLRenderer *parent;
 	FNA3D_Buffer *actualBuffer;
 } ThreadedGLBuffer;
 
+/* Do NOT make ThreadedGLRenderbuffer!
+ * Just pass actualDevice's results directly.
+ */
+
 typedef struct ThreadedGLEffect /* Cast FNA3D_Effect* to this! */
 {
 	ThreadedGLRenderer *parent;
 	FNA3D_Effect *actualEffect;
 } ThreadedGLEffect;
+
+/* Do NOT make ThreadedGLQuery!
+ * Just pass actualDevice's results directly.
+ */
 
 /* The Graphics Thread */
 
@@ -1803,20 +1815,54 @@ static FNA3D_Effect* THREADEDGL_CreateEffect(
 	uint8_t *effectCode,
 	uint32_t effectCodeLength
 ) {
-	return NULL;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+	ThreadedGLEffect *result = (ThreadedGLEffect*) SDL_malloc(
+		sizeof(ThreadedGLEffect)
+	);
+	result->parent = renderer;
+
+	cmd.type = COMMAND_CREATEEFFECT;
+	cmd.createEffect.effectCode = effectCode;
+	cmd.createEffect.effectCodeLength = effectCodeLength;
+	ForceToRenderThread(renderer, &cmd);
+	result->actualEffect = cmd.createEffect.retval;
+
+	return (FNA3D_Effect*) result;
 }
 
 static FNA3D_Effect* THREADEDGL_CloneEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
-	return NULL;
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+	ThreadedGLEffect *glEffect = (ThreadedGLEffect*) effect;
+	ThreadedGLEffect *result  = (ThreadedGLEffect*) SDL_malloc(
+		sizeof(ThreadedGLEffect)
+	);
+
+	cmd.type = COMMAND_CLONEEFFECT;
+	cmd.cloneEffect.cloneSource = glEffect->actualEffect;
+	ForceToRenderThread(renderer, &cmd);
+	result->actualEffect = cmd.cloneEffect.retval;
+
+	return (FNA3D_Effect*) result;
 }
 
 static void THREADEDGL_AddDisposeEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+	ThreadedGLEffect *glEffect = (ThreadedGLEffect*) effect;
+
+	cmd.type = COMMAND_ADDDISPOSEEFFECT;
+	cmd.addDisposeEffect.effect = glEffect->actualEffect;
+	ForceToRenderThread(renderer, &cmd);
+
+	SDL_free(glEffect);
 }
 
 static void THREADEDGL_ApplyEffect(
@@ -1826,6 +1872,16 @@ static void THREADEDGL_ApplyEffect(
 	uint32_t pass,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+	ThreadedGLEffect *glEffect = (ThreadedGLEffect*) effect;
+
+	cmd.type = COMMAND_APPLYEFFECT;
+	cmd.applyEffect.effect = glEffect->actualEffect;
+	cmd.applyEffect.technique = technique;
+	cmd.applyEffect.pass = pass;
+	cmd.applyEffect.stateChanges = stateChanges;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_BeginPassRestore(
@@ -1833,12 +1889,27 @@ static void THREADEDGL_BeginPassRestore(
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+	ThreadedGLEffect *glEffect = (ThreadedGLEffect*) effect;
+
+	cmd.type = COMMAND_BEGINPASSRESTORE;
+	cmd.beginPassRestore.effect = glEffect->actualEffect;
+	cmd.beginPassRestore.stateChanges = stateChanges;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_EndPassRestore(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+	ThreadedGLEffect *glEffect = (ThreadedGLEffect*) effect;
+
+	cmd.type = COMMAND_ENDPASSRESTORE;
+	cmd.endPassRestore.effect = glEffect->actualEffect;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 /* Queries */
