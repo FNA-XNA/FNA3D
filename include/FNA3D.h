@@ -417,17 +417,14 @@ typedef struct FNA3D_RenderTargetBinding
 	uint8_t type;
 
 	/* Texture */
-	FNA3D_SurfaceFormat format;
 	int32_t levelCount;
 	FNA3D_Texture *texture;
 
 	/* IRenderTarget */
 	int32_t width;
 	int32_t height;
-	FNA3D_RenderTargetUsage renderTargetUsage;
-	FNA3D_Renderbuffer *colorBuffer;
-	FNA3D_DepthFormat depthStencilFormat;
 	int32_t multiSampleCount;
+	FNA3D_Renderbuffer *colorBuffer;
 
 	/* RenderTargetBinding */
 	FNA3D_CubeMapFace cubeMapFace;
