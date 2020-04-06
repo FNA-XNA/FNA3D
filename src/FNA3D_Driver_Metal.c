@@ -2187,7 +2187,7 @@ static void METAL_SetRenderTargets(
 	FNA3D_Renderer *driverData,
 	FNA3D_RenderTargetBinding *renderTargets,
 	int32_t numRenderTargets,
-	FNA3D_Renderbuffer *renderbuffer,
+	FNA3D_Renderbuffer *depthStencilBuffer,
 	FNA3D_DepthFormat depthFormat
 );
 static void METAL_SwapBuffers(
@@ -2959,7 +2959,7 @@ static void METAL_SetRenderTargets(
 	FNA3D_Renderer *driverData,
 	FNA3D_RenderTargetBinding *renderTargets,
 	int32_t numRenderTargets,
-	FNA3D_Renderbuffer *renderbuffer,
+	FNA3D_Renderbuffer *depthStencilBuffer,
 	FNA3D_DepthFormat depthFormat
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
@@ -3032,12 +3032,12 @@ static void METAL_SetRenderTargets(
 
 	/* Update depth stencil buffer */
 	renderer->currentDepthStencilBuffer = (
-		renderbuffer == NULL ?
+		depthStencilBuffer == NULL ?
 			NULL :
-			((MetalRenderbuffer*) renderbuffer)->handle
+			((MetalRenderbuffer*) depthStencilBuffer)->handle
 	);
 	renderer->currentDepthFormat = (
-		renderbuffer == NULL ?
+		depthStencilBuffer == NULL ?
 			FNA3D_DEPTHFORMAT_NONE :
 			depthFormat
 	);

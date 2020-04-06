@@ -266,7 +266,7 @@ struct GLThreadCommand
 		{
 			FNA3D_RenderTargetBinding *renderTargets;
 			int32_t numRenderTargets;
-			FNA3D_Renderbuffer *renderbuffer;
+			FNA3D_Renderbuffer *depthStencilBuffer;
 			FNA3D_DepthFormat depthFormat;
 		} setRenderTargets;
 		struct
@@ -821,7 +821,7 @@ static int GLRenderThread(void* data)
 					renderer->actualDevice->driverData,
 					cmd->setRenderTargets.renderTargets,
 					cmd->setRenderTargets.numRenderTargets,
-					cmd->setRenderTargets.renderbuffer,
+					cmd->setRenderTargets.depthStencilBuffer,
 					cmd->setRenderTargets.depthFormat
 				);
 				break;
@@ -1640,7 +1640,7 @@ static void THREADEDGL_SetRenderTargets(
 	FNA3D_Renderer *driverData,
 	FNA3D_RenderTargetBinding *renderTargets,
 	int32_t numRenderTargets,
-	FNA3D_Renderbuffer *renderbuffer,
+	FNA3D_Renderbuffer *depthStencilBuffer,
 	FNA3D_DepthFormat depthFormat
 ) {
 	GLThreadCommand cmd;
@@ -1649,7 +1649,7 @@ static void THREADEDGL_SetRenderTargets(
 	cmd.type = COMMAND_SETRENDERTARGETS;
 	cmd.setRenderTargets.renderTargets = renderTargets;
 	cmd.setRenderTargets.numRenderTargets = numRenderTargets;
-	cmd.setRenderTargets.renderbuffer = renderbuffer;
+	cmd.setRenderTargets.depthStencilBuffer = depthStencilBuffer;
 	cmd.setRenderTargets.depthFormat = depthFormat;
 	ForceToRenderThread(renderer, &cmd);
 }

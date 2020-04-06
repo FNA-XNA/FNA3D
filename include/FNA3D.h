@@ -599,7 +599,7 @@ FNA3DAPI void FNA3D_SetRenderTargets(
 	FNA3D_Device *device,
 	FNA3D_RenderTargetBinding *renderTargets,
 	int32_t numRenderTargets,
-	FNA3D_Renderbuffer *renderbuffer,
+	FNA3D_Renderbuffer *depthStencilBuffer,
 	FNA3D_DepthFormat depthFormat
 );
 
