@@ -626,6 +626,8 @@ static int GLRenderThread(void* data)
 	GLThreadCommand *cmd, *next;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) data;
 
+	SDL_SetThreadPriority(SDL_THREAD_PRIORITY_HIGH);
+
 	while (renderer->run)
 	{
 		SDL_SemWait(renderer->commandEvent);
@@ -1120,8 +1122,8 @@ static int GLRenderThread(void* data)
 					renderer->actualDevice->driverData,
 					cmd->createEffect.effectCode,
 					cmd->createEffect.effectCodeLength,
-					cmd->cloneEffect.effect,
-					cmd->cloneEffect.effectData
+					cmd->createEffect.effect,
+					cmd->createEffect.effectData
 				);
 				break;
 			case COMMAND_CLONEEFFECT:
@@ -1277,6 +1279,7 @@ static void THREADEDGL_DestroyDevice(FNA3D_Device *device)
 {
 	ThreadedGLRenderer* renderer = (ThreadedGLRenderer*) device->driverData;
 	renderer->run = 0;
+	SDL_SemPost(renderer->commandEvent);
 	SDL_WaitThread(renderer->thread, NULL);
 	SDL_DestroyMutex(renderer->commandsLock);
 	SDL_DestroySemaphore(renderer->commandEvent);
@@ -2535,6 +2538,8 @@ static FNA3D_Device* THREADEDGL_CreateDevice(
 	FNA3D_Device *result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
 	result->driverData = (FNA3D_Renderer*) renderer;
 	ASSIGN_DRIVER(THREADEDGL)
+
+	FNA3D_LogInfo("Using ThreadedGL!");
 
 	/* ... then start the thread, finally. */
 	renderer->thread = SDL_CreateThread(

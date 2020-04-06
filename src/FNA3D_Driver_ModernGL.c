@@ -4790,10 +4790,10 @@ static uint8_t MODERNGL_PrepareWindowAttributes(uint32_t *flags)
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, depthSize);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, stencilSize);
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
-	SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
 	if (forceCore)
 	{
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
 		SDL_GL_SetAttribute(
 			SDL_GL_CONTEXT_PROFILE_MASK,
 			SDL_GL_CONTEXT_PROFILE_CORE
@@ -4801,6 +4801,8 @@ static uint8_t MODERNGL_PrepareWindowAttributes(uint32_t *flags)
 	}
 	else if (forceCompat)
 	{
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+		SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
 		SDL_GL_SetAttribute(
 			SDL_GL_CONTEXT_PROFILE_MASK,
 			SDL_GL_CONTEXT_PROFILE_COMPATIBILITY
@@ -4905,7 +4907,7 @@ static FNA3D_Device* MODERNGL_CreateDevice(
 		rendererStr, versionStr, vendorStr
 	);
 	FNA3D_LogInfo(
-		"ModernGL Driver: OpenGL\n%s",
+		"FNA3D Driver: ModernGL\n%s",
 		driverInfo
 	);
 
