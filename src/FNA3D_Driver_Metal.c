@@ -4720,7 +4720,7 @@ FNA3D_Device* METAL_CreateDevice(
 
 	/* Some users might want pixely upscaling... */
 	renderer->backbufferScaleMode = SDL_GetHintBoolean(
-		"FNA_GRAPHICS_BACKBUFFER_SCALE_NEAREST", 0
+		"FNA3D_BACKBUFFER_SCALE_NEAREST", 0
 	) ? MTLSamplerMinMagFilterNearest : MTLSamplerMinMagFilterLinear;
 
 	/* Set device properties */

@@ -4942,7 +4942,7 @@ static FNA3D_Device* MODERNGL_CreateDevice(
 
 	/* Some users might want pixely upscaling... */
 	renderer->backbufferScaleMode = SDL_GetHintBoolean(
-		"FNA_GRAPHICS_BACKBUFFER_SCALE_NEAREST", 0
+		"FNA3D_BACKBUFFER_SCALE_NEAREST", 0
 	) ? GL_NEAREST : GL_LINEAR;
 
 	/* Load the extension list, initialize extension-dependent components */
