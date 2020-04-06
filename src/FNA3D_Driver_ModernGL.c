@@ -4912,7 +4912,7 @@ static FNA3D_Device* MODERNGL_CreateDevice(
 	);
 
 	/* Initialize shader context */
-	renderer->shaderProfile = SDL_GetHint("FNA_GRAPHICS_MOJOSHADER_PROFILE");
+	renderer->shaderProfile = SDL_GetHint("FNA3D_MOJOSHADER_PROFILE");
 	if (renderer->shaderProfile == NULL || renderer->shaderProfile[0] == '\0')
 	{
 		renderer->shaderProfile = MOJOSHADER_glBestProfile(
