@@ -977,7 +977,10 @@ static void MODERNGL_SetPresentationInterval(
 	}
 	else
 	{
-		SDL_assert(0 && "Unrecognized PresentInterval!");
+		FNA3D_LogError(
+			"Unrecognized PresentInterval: %d",
+			presentInterval
+		);
 	}
 }
 
@@ -4298,7 +4301,6 @@ static void MODERNGL_CloneEffect(
 		FNA3D_LogError(
 			"%s", MOJOSHADER_glGetError()
 		);
-		SDL_assert(0);
 	}
 
 	result = (ModernGLEffect*) SDL_malloc(sizeof(ModernGLEffect));
@@ -4882,7 +4884,12 @@ static FNA3D_Device* MODERNGL_CreateDevice(
 	}
 	else
 	{
-		SDL_assert(0 && "Unrecognized window depth/stencil format!");
+		FNA3D_LogError(
+			"Unrecognized window depth/stencil format: %d %d",
+			depthSize,
+			stencilSize
+		);
+		renderer->windowDepthFormat = FNA3D_DEPTHFORMAT_D24S8;
 	}
 
 	/* Initialize entry points */

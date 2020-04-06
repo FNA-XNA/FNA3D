@@ -1037,7 +1037,10 @@ static void OPENGL_SetPresentationInterval(
 	}
 	else
 	{
-		SDL_assert(0 && "Unrecognized PresentInterval!");
+		FNA3D_LogError(
+			"Unrecognized PresentInterval: %d",
+			presentInterval
+		);
 	}
 }
 
@@ -4654,7 +4657,6 @@ static void OPENGL_CloneEffect(
 		FNA3D_LogError(
 			"%s", MOJOSHADER_glGetError()
 		);
-		SDL_assert(0);
 	}
 
 	result = (OpenGLEffect*) SDL_malloc(sizeof(OpenGLEffect));
@@ -5432,7 +5434,12 @@ FNA3D_Device* OPENGL_CreateDevice(
 	}
 	else
 	{
-		SDL_assert(0 && "Unrecognized window depth/stencil format!");
+		FNA3D_LogError(
+			"Unrecognized window depth/stencil format: %d %d",
+			depthSize,
+			stencilSize
+		);
+		renderer->windowDepthFormat = FNA3D_DEPTHFORMAT_D24S8;
 	}
 
 	/* UIKit needs special treatment for backbuffer behavior */
@@ -5456,6 +5463,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 #pragma GCC diagnostic pop
 	if (!renderer->glGetString)
 	{
+		FNA3D_LogError("GRAPHICS DRIVER IS EXTREMELY BROKEN!");
 		SDL_assert(0 && "GRAPHICS DRIVER IS EXTREMELY BROKEN!");
 	}
 	rendererStr =	(const char*) renderer->glGetString(GL_RENDERER);
