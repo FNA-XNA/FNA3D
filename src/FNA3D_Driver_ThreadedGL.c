@@ -537,7 +537,6 @@ struct GLThreadCommand
 		struct
 		{
 			FNA3D_Effect *effect;
-			MOJOSHADER_effectTechnique *technique;
 			uint32_t pass;
 			MOJOSHADER_effectStateChanges *stateChanges;
 		} applyEffect;
@@ -1151,7 +1150,6 @@ static int GLRenderThread(void* data)
 				renderer->actualDevice->ApplyEffect(
 					renderer->actualDevice->driverData,
 					cmd->applyEffect.effect,
-					cmd->applyEffect.technique,
 					cmd->applyEffect.pass,
 					cmd->applyEffect.stateChanges
 				);
@@ -2322,7 +2320,6 @@ static void THREADEDGL_SetEffectTechnique(
 static void THREADEDGL_ApplyEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect,
-	MOJOSHADER_effectTechnique *technique,
 	uint32_t pass,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
@@ -2331,7 +2328,6 @@ static void THREADEDGL_ApplyEffect(
 
 	cmd.type = COMMAND_APPLYEFFECT;
 	cmd.applyEffect.effect = effect;
-	cmd.applyEffect.technique = technique;
 	cmd.applyEffect.pass = pass;
 	cmd.applyEffect.stateChanges = stateChanges;
 	ForceToRenderThread(renderer, &cmd);

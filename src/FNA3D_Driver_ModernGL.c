@@ -206,7 +206,7 @@ typedef struct ModernGLRenderer /* Cast FNA3D_Renderer* to this! */
 	FNA3D_VertexDeclaration *ldVertexDeclaration;
 	void* ldPointer;
 	MOJOSHADER_glEffect *ldEffect;
-	MOJOSHADER_effectTechnique *ldTechnique;
+	const MOJOSHADER_effectTechnique *ldTechnique;
 	uint32_t ldPass;
 
 	/* Some vertex declarations may have overlapping attributes :/ */
@@ -245,7 +245,7 @@ typedef struct ModernGLRenderer /* Cast FNA3D_Renderer* to this! */
 	const char *shaderProfile;
 	MOJOSHADER_glContext *shaderContext;
 	MOJOSHADER_glEffect *currentEffect;
-	MOJOSHADER_effectTechnique *currentTechnique;
+	const MOJOSHADER_effectTechnique *currentTechnique;
 	uint32_t currentPass;
 	uint8_t renderTargetBound;
 	uint8_t effectApplied;
@@ -4361,13 +4361,13 @@ static void MODERNGL_SetEffectTechnique(
 static void MODERNGL_ApplyEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect,
-	MOJOSHADER_effectTechnique *technique,
 	uint32_t pass,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
 	ModernGLEffect *fnaEffect = (ModernGLEffect*) effect;
 	MOJOSHADER_glEffect *glEffectData = fnaEffect->glEffect;
+	const MOJOSHADER_effectTechnique *technique = fnaEffect->effect->current_technique;
 	uint32_t whatever;
 
 	renderer->effectApplied = 1;

@@ -581,7 +581,6 @@ struct FNA3D_Device
 	void (*ApplyEffect)(
 		FNA3D_Renderer *driverData,
 		FNA3D_Effect *effect,
-		MOJOSHADER_effectTechnique *technique,
 		uint32_t pass,
 		MOJOSHADER_effectStateChanges *stateChanges
 	);

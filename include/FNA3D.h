@@ -886,7 +886,6 @@ FNA3DAPI void FNA3D_SetEffectTechnique(
 FNA3DAPI void FNA3D_ApplyEffect(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect,
-	MOJOSHADER_effectTechnique *technique,
 	uint32_t pass,
 	MOJOSHADER_effectStateChanges *stateChanges
 );

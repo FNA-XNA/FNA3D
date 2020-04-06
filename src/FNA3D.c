@@ -1260,7 +1260,6 @@ void FNA3D_SetEffectTechnique(
 void FNA3D_ApplyEffect(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect,
-	MOJOSHADER_effectTechnique *technique,
 	uint32_t pass,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
@@ -1271,7 +1270,6 @@ void FNA3D_ApplyEffect(
 	device->ApplyEffect(
 		device->driverData,
 		effect,
-		technique,
 		pass,
 		stateChanges
 	);

@@ -260,7 +260,7 @@ typedef struct MetalRenderer /* Cast from FNA3D_Renderer* */
 	/* MojoShader Interop */
 	MOJOSHADER_mtlEffect *currentEffect;
 	MOJOSHADER_mtlShaderState currentShaderState;
-	MOJOSHADER_effectTechnique *currentTechnique;
+	const MOJOSHADER_effectTechnique *currentTechnique;
 	uint32_t currentPass;
 	MOJOSHADER_mtlEffect *prevEffect;
 	MOJOSHADER_mtlShaderState prevShaderState;
@@ -4264,12 +4264,13 @@ static void METAL_SetEffectTechnique(
 static void METAL_ApplyEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect,
-	MOJOSHADER_effectTechnique *technique,
 	uint32_t pass,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
+	MetalEffect *mtlEffect = (MetalEffect*) effect;
 	MOJOSHADER_mtlEffect *mtlEffectData;
+	const MOJOSHADER_effectTechnique *technique;
 	uint32_t whatever;
 
 	/* If a frame isn't already in progress,
@@ -4278,7 +4279,8 @@ static void METAL_ApplyEffect(
 	 */
 	METAL_BeginFrame(driverData);
 
-	mtlEffectData = ((MetalEffect*) effect)->mtlEffect;
+	mtlEffectData = mtlEffect->mtlEffect;
+	technique = mtlEffect->effect->current_technique;
 	if (mtlEffectData == renderer->currentEffect)
 	{
 		if (	technique == renderer->currentTechnique &&
