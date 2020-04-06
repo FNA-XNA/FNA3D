@@ -59,6 +59,33 @@ extern void FNA3D_LogError(const char *fmt, ...);
 		curr->next = toAdd; \
 	}
 
+/* This macro does NOT destroy `toRemove`!
+ * It only removes the element from the list.
+ */
+#define LinkedList_Remove(start, toRemove, curr, prev) \
+	curr = start; \
+	while (curr != NULL) \
+	{ \
+		if (curr == toRemove) \
+		{ \
+			if (curr == start) \
+			{ \
+				start = curr->next; \
+			} \
+			else \
+			{ \
+				prev->next = curr->next; \
+			} \
+			break; \
+		} \
+		prev = curr; \
+		curr = curr->next; \
+	} \
+	if (curr == NULL) \
+	{ \
+		SDL_assert(0 && "LinkedList element not found!"); \
+	} \
+
 static inline int32_t Texture_GetFormatSize(
 	FNA3D_SurfaceFormat format
 ) {
