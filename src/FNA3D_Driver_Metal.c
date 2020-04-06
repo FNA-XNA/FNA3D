@@ -4766,20 +4766,14 @@ FNA3D_Device* METAL_CreateDevice(
 		if (OperatingSystemAtLeast(10, 12, 0))
 		{
 			renderer->D16Format = MTLPixelFormatDepth16Unorm;
-			if (!supportsD24S8)
-			{
-				/* Less precision, but oh well! */
-				renderer->D24Format = MTLPixelFormatDepth16Unorm;
-			}
 		}
 	}
 	else
 	{
-		/* Depth16Unorm requires iOS 13+ */
+		/* Depth16Unorm requires iOS/tvOS 13+ */
 		if (OperatingSystemAtLeast(13, 0, 0))
 		{
 			renderer->D16Format = MTLPixelFormatDepth16Unorm;
-			renderer->D24Format = MTLPixelFormatDepth16Unorm;
 		}
 	}
 
