@@ -1192,31 +1192,46 @@ void FNA3D_GetIndexBufferData(
 
 /* Effects */
 
-FNA3D_Effect* FNA3D_CreateEffect(
+void FNA3D_CreateEffect(
 	FNA3D_Device *device,
 	uint8_t *effectCode,
-	uint32_t effectCodeLength
+	uint32_t effectCodeLength,
+	FNA3D_Effect **effect,
+	MOJOSHADER_effect **effectData
 ) {
 	if (device == NULL)
 	{
-		return NULL;
+		*effect = NULL;
+		*effectData = NULL;
+		return;
 	}
-	return device->CreateEffect(
+	device->CreateEffect(
 		device->driverData,
 		effectCode,
-		effectCodeLength
+		effectCodeLength,
+		effect,
+		effectData
 	);
 }
 
-FNA3D_Effect* FNA3D_CloneEffect(
+void FNA3D_CloneEffect(
 	FNA3D_Device *device,
-	FNA3D_Effect *effect
+	FNA3D_Effect *cloneSource,
+	FNA3D_Effect **effect,
+	MOJOSHADER_effect **effectData
 ) {
 	if (device == NULL)
 	{
-		return NULL;
+		*effect = NULL;
+		*effectData = NULL;
+		return;
 	}
-	return device->CloneEffect(device->driverData, effect);
+	device->CloneEffect(
+		device->driverData,
+		cloneSource,
+		effect,
+		effectData
+	);
 }
 
 void FNA3D_AddDisposeEffect(
@@ -1228,6 +1243,18 @@ void FNA3D_AddDisposeEffect(
 		return;
 	}
 	device->AddDisposeEffect(device->driverData, effect);
+}
+
+void FNA3D_SetEffectTechnique(
+	FNA3D_Device *device,
+	FNA3D_Effect *effect,
+	MOJOSHADER_effectTechnique *technique
+) {
+	if (device == NULL)
+	{
+		return;
+	}
+	device->SetEffectTechnique(device->driverData, effect, technique);
 }
 
 void FNA3D_ApplyEffect(
@@ -1400,32 +1427,6 @@ void FNA3D_SetStringMarker(FNA3D_Device *device, const char *text)
 		return;
 	}
 	device->SetStringMarker(device->driverData, text);
-}
-
-/* Buffer Objects */
-
-intptr_t FNA3D_GetBufferSize(
-	FNA3D_Device *device,
-	FNA3D_Buffer *buffer
-) {
-	if (device == NULL)
-	{
-		return 0;
-	}
-	return device->GetBufferSize(buffer);
-}
-
-/* Effect Objects */
-
-MOJOSHADER_effect* FNA3D_GetEffectData(
-	FNA3D_Device *device,
-	FNA3D_Effect *effect
-) {
-	if (device == NULL)
-	{
-		return NULL;
-	}
-	return device->GetEffectData(effect);
 }
 
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */

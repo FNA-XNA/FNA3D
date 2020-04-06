@@ -68,13 +68,15 @@ struct FNA3D_Command
 		{
 			uint8_t *effectCode;
 			uint32_t effectCodeLength;
-			FNA3D_Effect *retval;
+			FNA3D_Effect **effect;
+			MOJOSHADER_effect **effectData;
 		} createEffect;
 
 		struct
 		{
 			FNA3D_Effect *cloneSource;
-			FNA3D_Effect *retval;
+			FNA3D_Effect **effect;
+			MOJOSHADER_effect **effectData;
 		} cloneEffect;
 
 		struct

@@ -4140,18 +4140,19 @@ static void METAL_GetIndexBufferData(
 
 /* Effects */
 
-static FNA3D_Effect* METAL_CreateEffect(
+static void METAL_CreateEffect(
 	FNA3D_Renderer *driverData,
 	uint8_t *effectCode,
-	uint32_t effectCodeLength
+	uint32_t effectCodeLength,
+	FNA3D_Effect **effect,
+	MOJOSHADER_effect **effectData
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
-	MOJOSHADER_effect *effect;
 	MOJOSHADER_mtlEffect *mtlEffect;
 	MetalEffect *result;
 	int32_t i;
 
-	effect = MOJOSHADER_parseEffect(
+	*effectData = MOJOSHADER_parseEffect(
 		"metal",
 		effectCode,
 		effectCodeLength,
@@ -4164,16 +4165,16 @@ static FNA3D_Effect* METAL_CreateEffect(
 		NULL
 	);
 
-	for (i = 0; i < effect->error_count; i += 1)
+	for (i = 0; i < (*effectData)->error_count; i += 1)
 	{
 		FNA3D_LogError(
 			"MOJOSHADER_parseEffect Error: %s",
-			effect->errors[i].error
+			(*effectData)->errors[i].error
 		);
 	}
 
 	mtlEffect = MOJOSHADER_mtlCompileEffect(
-		effect,
+		*effectData,
 		renderer->device,
 		renderer->maxFramesInFlight
 	);
@@ -4185,25 +4186,25 @@ static FNA3D_Effect* METAL_CreateEffect(
 	}
 
 	result = (MetalEffect*) SDL_malloc(sizeof(MetalEffect));
-	result->effect = effect;
+	result->effect = *effectData;
 	result->mtlEffect = mtlEffect;
-
-	return (FNA3D_Effect*) result;
+	*effect = (FNA3D_Effect*) result;
 }
 
-static FNA3D_Effect* METAL_CloneEffect(
+static void METAL_CloneEffect(
 	FNA3D_Renderer *driverData,
-	FNA3D_Effect *effect
+	FNA3D_Effect *cloneSource,
+	FNA3D_Effect **effect,
+	MOJOSHADER_effect **effectData
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
-	MetalEffect *cloneSource = (MetalEffect*) effect;
-	MOJOSHADER_effect *effectData;
+	MetalEffect *mtlCloneSource = (MetalEffect*) cloneSource;
 	MOJOSHADER_mtlEffect *mtlEffect;
 	MetalEffect *result;
 
-	effectData = MOJOSHADER_cloneEffect(cloneSource->effect);
+	*effectData = MOJOSHADER_cloneEffect(mtlCloneSource->effect);
 	mtlEffect = MOJOSHADER_mtlCompileEffect(
-		effectData,
+		*effectData,
 		renderer->device,
 		renderer->maxFramesInFlight
 	);
@@ -4216,10 +4217,9 @@ static FNA3D_Effect* METAL_CloneEffect(
 	}
 
 	result = (MetalEffect*) SDL_malloc(sizeof(MetalEffect));
-	result->effect = effectData;
+	result->effect = *effectData;
 	result->mtlEffect = mtlEffect;
-
-	return (FNA3D_Effect*) result;
+	*effect = (FNA3D_Effect*) result;
 }
 
 static void METAL_AddDisposeEffect(
@@ -4249,6 +4249,16 @@ static void METAL_AddDisposeEffect(
 	MOJOSHADER_mtlDeleteEffect(mtlEffect->mtlEffect);
 	MOJOSHADER_freeEffect(mtlEffect->effect);
 	SDL_free(effect);
+}
+
+static void METAL_SetEffectTechnique(
+	FNA3D_Renderer *renderer,
+	FNA3D_Effect *effect,
+	MOJOSHADER_effectTechnique *technique
+) {
+	/* FIXME: Why doesn't this function do anything? */
+	MetalEffect *mtlEffect = (MetalEffect*) effect;
+	MOJOSHADER_effectSetTechnique(mtlEffect->effect, technique);
 }
 
 static void METAL_ApplyEffect(
@@ -4491,22 +4501,6 @@ static void METAL_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 	{
 		mtlInsertDebugSignpost(renderer->renderCommandEncoder, text);
 	}
-}
-
-/* Buffer Objects */
-
-static intptr_t METAL_GetBufferSize(FNA3D_Buffer *buffer)
-{
-	MetalBuffer *mtlBuffer = (MetalBuffer*) buffer;
-	return mtlBuffer->size;
-}
-
-/* Effect Objects */
-
-static MOJOSHADER_effect* METAL_GetEffectData(FNA3D_Effect *effect)
-{
-	MetalEffect *mtlEffect = (MetalEffect*) effect;
-	return mtlEffect->effect;
 }
 
 /* Driver */

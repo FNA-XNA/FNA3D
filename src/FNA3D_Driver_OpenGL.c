@@ -4565,13 +4565,14 @@ static void OPENGL_GetIndexBufferData(
 
 /* Effects */
 
-static FNA3D_Effect* OPENGL_CreateEffect(
+static void OPENGL_CreateEffect(
 	FNA3D_Renderer *driverData,
 	uint8_t *effectCode,
-	uint32_t effectCodeLength
+	uint32_t effectCodeLength,
+	FNA3D_Effect **effect,
+	MOJOSHADER_effect **effectData
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
-	MOJOSHADER_effect *effect;
 	MOJOSHADER_glEffect *glEffect;
 	OpenGLEffect *result;
 	int32_t i;
@@ -4582,11 +4583,13 @@ static FNA3D_Effect* OPENGL_CreateEffect(
 		cmd.type = FNA3D_COMMAND_CREATEEFFECT;
 		cmd.createEffect.effectCode = effectCode;
 		cmd.createEffect.effectCodeLength = effectCodeLength;
+		cmd.createEffect.effect = effect;
+		cmd.createEffect.effectData = effectData;
 		ForceToMainThread(renderer, &cmd);
-		return cmd.createEffect.retval;
+		return;
 	}
 
-	effect = MOJOSHADER_parseEffect(
+	*effectData = MOJOSHADER_parseEffect(
 		renderer->shaderProfile,
 		effectCode,
 		effectCodeLength,
@@ -4599,15 +4602,15 @@ static FNA3D_Effect* OPENGL_CreateEffect(
 		NULL
 	);
 
-	for (i = 0; i < effect->error_count; i += 1)
+	for (i = 0; i < (*effectData)->error_count; i += 1)
 	{
 		FNA3D_LogError(
 			"MOJOSHADER_parseEffect Error: %s",
-			effect->errors[i].error
+			(*effectData)->errors[i].error
 		);
 	}
 
-	glEffect = MOJOSHADER_glCompileEffect(effect);
+	glEffect = MOJOSHADER_glCompileEffect(*effectData);
 	if (glEffect == NULL)
 	{
 		FNA3D_LogError(
@@ -4616,20 +4619,20 @@ static FNA3D_Effect* OPENGL_CreateEffect(
 	}
 
 	result = (OpenGLEffect*) SDL_malloc(sizeof(OpenGLEffect));
-	result->effect = effect;
+	result->effect = *effectData;
 	result->glEffect = glEffect;
 	result->next = NULL;
-
-	return (FNA3D_Effect*) result;
+	*effect = (FNA3D_Effect*) result;
 }
 
-static FNA3D_Effect* OPENGL_CloneEffect(
+static void OPENGL_CloneEffect(
 	FNA3D_Renderer *driverData,
-	FNA3D_Effect *effect
+	FNA3D_Effect *cloneSource,
+	FNA3D_Effect **effect,
+	MOJOSHADER_effect **effectData
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
-	OpenGLEffect *cloneSource = (OpenGLEffect*) effect;
-	MOJOSHADER_effect *effectData;
+	OpenGLEffect *glCloneSource = (OpenGLEffect*) cloneSource;
 	MOJOSHADER_glEffect *glEffect;
 	OpenGLEffect *result;
 	FNA3D_Command cmd;
@@ -4637,13 +4640,15 @@ static FNA3D_Effect* OPENGL_CloneEffect(
 	if (renderer->threadID != SDL_ThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_CLONEEFFECT;
-		cmd.cloneEffect.cloneSource = effect;
+		cmd.cloneEffect.cloneSource = cloneSource;
+		cmd.cloneEffect.effect = effect;
+		cmd.cloneEffect.effectData = effectData;
 		ForceToMainThread(renderer, &cmd);
-		return cmd.cloneEffect.retval;
+		return;
 	}
 
-	effectData = MOJOSHADER_cloneEffect(cloneSource->effect);
-	glEffect = MOJOSHADER_glCompileEffect(effectData);
+	*effectData = MOJOSHADER_cloneEffect(glCloneSource->effect);
+	glEffect = MOJOSHADER_glCompileEffect(*effectData);
 	if (glEffect == NULL)
 	{
 		FNA3D_LogError(
@@ -4653,11 +4658,10 @@ static FNA3D_Effect* OPENGL_CloneEffect(
 	}
 
 	result = (OpenGLEffect*) SDL_malloc(sizeof(OpenGLEffect));
-	result->effect = effectData;
+	result->effect = *effectData;
 	result->glEffect = glEffect;
 	result->next = NULL;
-
-	return (FNA3D_Effect*) result;
+	*effect = (FNA3D_Effect*) result;
 }
 
 static void OPENGL_INTERNAL_DestroyEffect(
@@ -4696,6 +4700,16 @@ static void OPENGL_AddDisposeEffect(
 		LinkedList_Add(renderer->disposeEffects, fnaEffect, curr);
 		SDL_UnlockMutex(renderer->disposeEffectsLock);
 	}
+}
+
+static void OPENGL_SetEffectTechnique(
+	FNA3D_Renderer *renderer,
+	FNA3D_Effect *effect,
+	MOJOSHADER_effectTechnique *technique
+) {
+	/* FIXME: Why doesn't this function do anything? */
+	OpenGLEffect *fnaEffect = (OpenGLEffect*) effect;
+	MOJOSHADER_effectSetTechnique(fnaEffect->effect, technique);
 }
 
 static void OPENGL_ApplyEffect(
@@ -4985,20 +4999,6 @@ static void GLAPIENTRY DebugCall(
 			debugSeverityStr[severity - GL_DEBUG_SEVERITY_HIGH]
 		);
 	}
-}
-
-/* Buffer Objects */
-
-static intptr_t OPENGL_GetBufferSize(FNA3D_Buffer *buffer)
-{
-	return ((OpenGLBuffer*) buffer)->size;
-}
-
-/* Effect Objects */
-
-static MOJOSHADER_effect* OPENGL_GetEffectData(FNA3D_Effect *effect)
-{
-	return ((OpenGLEffect*) effect)->effect;
 }
 
 /* Load GL Entry Points */

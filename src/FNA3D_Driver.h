@@ -556,18 +556,27 @@ struct FNA3D_Device
 
 	/* Effects */
 
-	FNA3D_Effect* (*CreateEffect)(
+	void (*CreateEffect)(
 		FNA3D_Renderer *driverData,
 		uint8_t *effectCode,
-		uint32_t effectCodeLength
+		uint32_t effectCodeLength,
+		FNA3D_Effect **effect,
+		MOJOSHADER_effect **result
 	);
-	FNA3D_Effect* (*CloneEffect)(
+	void (*CloneEffect)(
 		FNA3D_Renderer *driverData,
-		FNA3D_Effect *effect
+		FNA3D_Effect *cloneSource,
+		FNA3D_Effect **effect,
+		MOJOSHADER_effect **result
 	);
 	void (*AddDisposeEffect)(
 		FNA3D_Renderer *driverData,
 		FNA3D_Effect *effect
+	);
+	void (*SetEffectTechnique)(
+		FNA3D_Renderer *driverData,
+		FNA3D_Effect *effect,
+		MOJOSHADER_effectTechnique *technique
 	);
 	void (*ApplyEffect)(
 		FNA3D_Renderer *driverData,
@@ -611,14 +620,6 @@ struct FNA3D_Device
 	/* Debugging */
 
 	void (*SetStringMarker)(FNA3D_Renderer *driverData, const char *text);
-
-	/* Buffer Objects */
-
-	intptr_t (*GetBufferSize)(FNA3D_Buffer *buffer);
-
-	/* Effect Objects */
-
-	MOJOSHADER_effect* (*GetEffectData)(FNA3D_Effect *effect);
 
 	/* Opaque pointer for the Driver */
 	FNA3D_Renderer *driverData;
@@ -685,6 +686,7 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(CreateEffect, name) \
 	ASSIGN_DRIVER_FUNC(CloneEffect, name) \
 	ASSIGN_DRIVER_FUNC(AddDisposeEffect, name) \
+	ASSIGN_DRIVER_FUNC(SetEffectTechnique, name) \
 	ASSIGN_DRIVER_FUNC(ApplyEffect, name) \
 	ASSIGN_DRIVER_FUNC(BeginPassRestore, name) \
 	ASSIGN_DRIVER_FUNC(EndPassRestore, name) \
@@ -700,9 +702,7 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(SupportsNoOverwrite, name) \
 	ASSIGN_DRIVER_FUNC(GetMaxTextureSlots, name) \
 	ASSIGN_DRIVER_FUNC(GetMaxMultiSampleCount, name) \
-	ASSIGN_DRIVER_FUNC(SetStringMarker, name) \
-	ASSIGN_DRIVER_FUNC(GetBufferSize, name) \
-	ASSIGN_DRIVER_FUNC(GetEffectData, name)
+	ASSIGN_DRIVER_FUNC(SetStringMarker, name)
 
 typedef struct FNA3D_Driver
 {

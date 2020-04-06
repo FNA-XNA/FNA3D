@@ -864,18 +864,27 @@ typedef struct MOJOSHADER_effectTechnique MOJOSHADER_effectTechnique;
 typedef struct MOJOSHADER_effectStateChanges MOJOSHADER_effectStateChanges;
 #endif /* _INCL_MOJOSHADER_H_ */
 
-FNA3DAPI FNA3D_Effect* FNA3D_CreateEffect(
+FNA3DAPI void FNA3D_CreateEffect(
 	FNA3D_Device *device,
 	uint8_t *effectCode,
-	uint32_t effectCodeLength
+	uint32_t effectCodeLength,
+	FNA3D_Effect **effect,
+	MOJOSHADER_effect **effectData
 );
-FNA3DAPI FNA3D_Effect* FNA3D_CloneEffect(
+FNA3DAPI void FNA3D_CloneEffect(
 	FNA3D_Device *device,
-	FNA3D_Effect *effect
+	FNA3D_Effect *cloneSource,
+	FNA3D_Effect **effect,
+	MOJOSHADER_effect **effectData
 );
 FNA3DAPI void FNA3D_AddDisposeEffect(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect
+);
+FNA3DAPI void FNA3D_SetEffectTechnique(
+	FNA3D_Device *device,
+	FNA3D_Effect *effect,
+	MOJOSHADER_effectTechnique *technique
 );
 FNA3DAPI void FNA3D_ApplyEffect(
 	FNA3D_Device *device,
@@ -919,20 +928,6 @@ FNA3DAPI int32_t FNA3D_GetMaxMultiSampleCount(FNA3D_Device *device);
 /* Debugging */
 
 FNA3DAPI void FNA3D_SetStringMarker(FNA3D_Device *device, const char *text);
-
-/* Buffer Objects */
-
-FNA3DAPI intptr_t FNA3D_GetBufferSize(
-	FNA3D_Device *device,
-	FNA3D_Buffer *buffer
-);
-
-/* Effect Objects */
-
-FNA3DAPI MOJOSHADER_effect* FNA3D_GetEffectData(
-	FNA3D_Device *device,
-	FNA3D_Effect *effect
-);
 
 #ifdef __cplusplus
 }

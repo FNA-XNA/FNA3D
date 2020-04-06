@@ -34,16 +34,20 @@ void FNA3D_ExecuteCommand(
 	switch (cmd->type)
 	{
 		case FNA3D_COMMAND_CREATEEFFECT:
-			cmd->createEffect.retval = FNA3D_CreateEffect(
+			FNA3D_CreateEffect(
 				device,
 				cmd->createEffect.effectCode,
-				cmd->createEffect.effectCodeLength
+				cmd->createEffect.effectCodeLength,
+				cmd->createEffect.effect,
+				cmd->createEffect.effectData
 			);
 			break;
 		case FNA3D_COMMAND_CLONEEFFECT:
-			cmd->cloneEffect.retval = FNA3D_CloneEffect(
+			FNA3D_CloneEffect(
 				device,
-				cmd->cloneEffect.cloneSource
+				cmd->cloneEffect.cloneSource,
+				cmd->cloneEffect.effect,
+				cmd->cloneEffect.effectData
 			);
 			break;
 		case FNA3D_COMMAND_GENVERTEXBUFFER:

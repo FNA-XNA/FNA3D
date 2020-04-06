@@ -109,24 +109,23 @@ struct GLThreadCommand
 	#define COMMAND_CREATEEFFECT			54
 	#define COMMAND_CLONEEFFECT			55
 	#define COMMAND_ADDDISPOSEEFFECT		56
-	#define COMMAND_APPLYEFFECT			57
-	#define COMMAND_BEGINPASSRESTORE		58
-	#define COMMAND_ENDPASSRESTORE			59
-	#define COMMAND_CREATEQUERY			60
-	#define COMMAND_ADDDISPOSEQUERY			61
-	#define COMMAND_QUERYBEGIN			62
-	#define COMMAND_QUERYEND			63
-	#define COMMAND_QUERYCOMPLETE			64
-	#define COMMAND_QUERYPIXELCOUNT			65
-	#define COMMAND_SUPPORTSDXT1			66
-	#define COMMAND_SUPPORTSS3TC			67
-	#define COMMAND_SUPPORTSHARDWAREINSTANCING	68
-	#define COMMAND_SUPPORTSNOOVERWRITE		69
-	#define COMMAND_GETMAXTEXTURESLOTS		70
-	#define COMMAND_GETMAXMULTISAMPLECOUNT		71
-	#define COMMAND_SETSTRINGMARKER			72
-	#define COMMAND_GETBUFFERSIZE			73
-	#define COMMAND_GETEFFECTDATA			74
+	#define COMMAND_SETEFFECTTECHNIQUE		57
+	#define COMMAND_APPLYEFFECT			58
+	#define COMMAND_BEGINPASSRESTORE		59
+	#define COMMAND_ENDPASSRESTORE			60
+	#define COMMAND_CREATEQUERY			61
+	#define COMMAND_ADDDISPOSEQUERY			62
+	#define COMMAND_QUERYBEGIN			63
+	#define COMMAND_QUERYEND			64
+	#define COMMAND_QUERYCOMPLETE			65
+	#define COMMAND_QUERYPIXELCOUNT			66
+	#define COMMAND_SUPPORTSDXT1			67
+	#define COMMAND_SUPPORTSS3TC			68
+	#define COMMAND_SUPPORTSHARDWAREINSTANCING	69
+	#define COMMAND_SUPPORTSNOOVERWRITE		70
+	#define COMMAND_GETMAXTEXTURESLOTS		71
+	#define COMMAND_GETMAXMULTISAMPLECOUNT		72
+	#define COMMAND_SETSTRINGMARKER			73
 
 	FNA3DNAMELESS union
 	{
@@ -517,17 +516,24 @@ struct GLThreadCommand
 		{
 			uint8_t *effectCode;
 			uint32_t effectCodeLength;
-			FNA3D_Effect *retval;
+			FNA3D_Effect **effect;
+			MOJOSHADER_effect **effectData;
 		} createEffect;
 		struct
 		{
 			FNA3D_Effect *cloneSource;
-			FNA3D_Effect *retval;
+			FNA3D_Effect **effect;
+			MOJOSHADER_effect **effectData;
 		} cloneEffect;
 		struct
 		{
 			FNA3D_Effect *effect;
 		} addDisposeEffect;
+		struct
+		{
+			FNA3D_Effect *effect;
+			MOJOSHADER_effectTechnique *technique;
+		} setEffectTechnique;
 		struct
 		{
 			FNA3D_Effect *effect;
@@ -598,16 +604,6 @@ struct GLThreadCommand
 		{
 			const char *text;
 		} setStringMarker;
-		struct
-		{
-			FNA3D_Buffer *buffer;
-			intptr_t retval;
-		} getBufferSize;
-		struct
-		{
-			FNA3D_Effect *effect;
-			MOJOSHADER_effect *retval;
-		} getEffectData;
 	};
 };
 
@@ -622,30 +618,6 @@ typedef struct ThreadedGLRenderer /* Cast FNA3D_Renderer* to this! */
 	SDL_Thread *thread;
 	uint8_t run;
 } ThreadedGLRenderer;
-
-/* Do NOT make ThreadedGLTexture!
- * Just pass actualDevice's results directly.
- */
-
-typedef struct ThreadedGLBuffer /* Cast FNA3D_Buffer* to this! */
-{
-	ThreadedGLRenderer *parent;
-	FNA3D_Buffer *actualBuffer;
-} ThreadedGLBuffer;
-
-/* Do NOT make ThreadedGLRenderbuffer!
- * Just pass actualDevice's results directly.
- */
-
-typedef struct ThreadedGLEffect /* Cast FNA3D_Effect* to this! */
-{
-	ThreadedGLRenderer *parent;
-	FNA3D_Effect *actualEffect;
-} ThreadedGLEffect;
-
-/* Do NOT make ThreadedGLQuery!
- * Just pass actualDevice's results directly.
- */
 
 /* The Graphics Thread */
 
@@ -1144,22 +1116,33 @@ static int GLRenderThread(void* data)
 				);
 				break;
 			case COMMAND_CREATEEFFECT:
-				cmd->createEffect.retval = renderer->actualDevice->CreateEffect(
+				renderer->actualDevice->CreateEffect(
 					renderer->actualDevice->driverData,
 					cmd->createEffect.effectCode,
-					cmd->createEffect.effectCodeLength
+					cmd->createEffect.effectCodeLength,
+					cmd->cloneEffect.effect,
+					cmd->cloneEffect.effectData
 				);
 				break;
 			case COMMAND_CLONEEFFECT:
-				cmd->cloneEffect.retval = renderer->actualDevice->CloneEffect(
+				renderer->actualDevice->CloneEffect(
 					renderer->actualDevice->driverData,
-					cmd->cloneEffect.cloneSource
+					cmd->cloneEffect.cloneSource,
+					cmd->cloneEffect.effect,
+					cmd->cloneEffect.effectData
 				);
 				break;
 			case COMMAND_ADDDISPOSEEFFECT:
 				renderer->actualDevice->AddDisposeEffect(
 					renderer->actualDevice->driverData,
 					cmd->addDisposeEffect.effect
+				);
+				break;
+			case COMMAND_SETEFFECTTECHNIQUE:
+				renderer->actualDevice->SetEffectTechnique(
+					renderer->actualDevice->driverData,
+					cmd->setEffectTechnique.effect,
+					cmd->setEffectTechnique.technique
 				);
 				break;
 			case COMMAND_APPLYEFFECT:
@@ -1253,16 +1236,6 @@ static int GLRenderThread(void* data)
 				renderer->actualDevice->SetStringMarker(
 					renderer->actualDevice->driverData,
 					cmd->setStringMarker.text
-				);
-				break;
-			case COMMAND_GETBUFFERSIZE:
-				cmd->getBufferSize.retval = renderer->actualDevice->GetBufferSize(
-					cmd->getBufferSize.buffer
-				);
-				break;
-			case COMMAND_GETEFFECTDATA:
-				cmd->getEffectData.retval = renderer->actualDevice->GetEffectData(
-					cmd->getEffectData.effect
 				);
 				break;
 			default:
@@ -1383,7 +1356,6 @@ static void THREADEDGL_DrawIndexedPrimitives(
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
-	ThreadedGLBuffer *buffer = (ThreadedGLBuffer*) indices;
 
 	cmd.type = COMMAND_DRAWINDEXEDPRIMITIVES;
 	cmd.drawIndexedPrimitives.primitiveType = primitiveType;
@@ -1392,7 +1364,7 @@ static void THREADEDGL_DrawIndexedPrimitives(
 	cmd.drawIndexedPrimitives.numVertices = numVertices;
 	cmd.drawIndexedPrimitives.startIndex = startIndex;
 	cmd.drawIndexedPrimitives.primitiveCount = primitiveCount;
-	cmd.drawIndexedPrimitives.indices = buffer->actualBuffer;
+	cmd.drawIndexedPrimitives.indices = indices;
 	cmd.drawIndexedPrimitives.indexElementSize = indexElementSize;
 	ForceToRenderThread(renderer, &cmd);
 }
@@ -1411,7 +1383,6 @@ static void THREADEDGL_DrawInstancedPrimitives(
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
-	ThreadedGLBuffer *buffer = (ThreadedGLBuffer*) indices;
 
 	cmd.type = COMMAND_DRAWINSTANCEDPRIMITIVES;
 	cmd.drawInstancedPrimitives.primitiveType = primitiveType;
@@ -1421,7 +1392,7 @@ static void THREADEDGL_DrawInstancedPrimitives(
 	cmd.drawInstancedPrimitives.startIndex = startIndex;
 	cmd.drawInstancedPrimitives.primitiveCount = primitiveCount;
 	cmd.drawInstancedPrimitives.instanceCount = instanceCount;
-	cmd.drawInstancedPrimitives.indices = buffer->actualBuffer;
+	cmd.drawInstancedPrimitives.indices = indices;
 	cmd.drawInstancedPrimitives.indexElementSize = indexElementSize;
 	ForceToRenderThread(renderer, &cmd);
 }
@@ -1635,16 +1606,8 @@ static void THREADEDGL_ApplyVertexBufferBindings(
 	uint8_t bindingsUpdated,
 	int32_t baseVertex
 ) {
-	int32_t i;
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
-
-	/* FIXME: Can we thrash the bindings memory like this? -flibit */
-	for (i = 0; i < numBindings; i += 1)
-	{
-		bindings[i].vertexBuffer =
-			((ThreadedGLBuffer*) bindings[i].vertexBuffer)->actualBuffer;
-	}
 
 	cmd.type = COMMAND_APPLYVERTEXBUFFERBINDINGS;
 	cmd.applyVertexBufferBindings.bindings = bindings;
@@ -2151,10 +2114,6 @@ static FNA3D_Buffer* THREADEDGL_GenVertexBuffer(
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
-	ThreadedGLBuffer *result = (ThreadedGLBuffer*) SDL_malloc(
-		sizeof(ThreadedGLBuffer)
-	);
-	result->parent = renderer;
 
 	cmd.type = COMMAND_GENVERTEXBUFFER;
 	cmd.genVertexBuffer.dynamic = dynamic;
@@ -2162,9 +2121,7 @@ static FNA3D_Buffer* THREADEDGL_GenVertexBuffer(
 	cmd.genVertexBuffer.vertexCount = vertexCount;
 	cmd.genVertexBuffer.vertexStride = vertexStride;
 	ForceToRenderThread(renderer, &cmd);
-	result->actualBuffer = cmd.genVertexBuffer.retval;
-
-	return (FNA3D_Buffer*) result;
+	return cmd.genVertexBuffer.retval;
 }
 
 static void THREADEDGL_AddDisposeVertexBuffer(
@@ -2173,13 +2130,10 @@ static void THREADEDGL_AddDisposeVertexBuffer(
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
-	ThreadedGLBuffer *glBuffer = (ThreadedGLBuffer*) buffer;
 
 	cmd.type = COMMAND_ADDDISPOSEVERTEXBUFFER;
-	cmd.addDisposeVertexBuffer.buffer = glBuffer->actualBuffer;
+	cmd.addDisposeVertexBuffer.buffer = buffer;
 	ForceToRenderThread(renderer, &cmd);
-
-	SDL_free(glBuffer);
 }
 
 static void THREADEDGL_SetVertexBufferData(
@@ -2192,10 +2146,9 @@ static void THREADEDGL_SetVertexBufferData(
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
-	ThreadedGLBuffer *glBuffer = (ThreadedGLBuffer*) buffer;
 
 	cmd.type = COMMAND_SETVERTEXBUFFERDATA;
-	cmd.setVertexBufferData.buffer = glBuffer->actualBuffer;
+	cmd.setVertexBufferData.buffer = buffer;
 	cmd.setVertexBufferData.offsetInBytes = offsetInBytes;
 	cmd.setVertexBufferData.data = data;
 	cmd.setVertexBufferData.dataLength = dataLength;
@@ -2215,10 +2168,9 @@ static void THREADEDGL_GetVertexBufferData(
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
-	ThreadedGLBuffer *glBuffer = (ThreadedGLBuffer*) buffer;
 
 	cmd.type = COMMAND_GETVERTEXBUFFERDATA;
-	cmd.getVertexBufferData.buffer = glBuffer->actualBuffer;
+	cmd.getVertexBufferData.buffer = buffer;
 	cmd.getVertexBufferData.offsetInBytes = offsetInBytes;
 	cmd.getVertexBufferData.data = data;
 	cmd.getVertexBufferData.startIndex = startIndex;
@@ -2239,10 +2191,6 @@ static FNA3D_Buffer* THREADEDGL_GenIndexBuffer(
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
-	ThreadedGLBuffer *result = (ThreadedGLBuffer*) SDL_malloc(
-		sizeof(ThreadedGLBuffer)
-	);
-	result->parent = renderer;
 
 	cmd.type = COMMAND_GENINDEXBUFFER;
 	cmd.genIndexBuffer.dynamic = dynamic;
@@ -2250,9 +2198,7 @@ static FNA3D_Buffer* THREADEDGL_GenIndexBuffer(
 	cmd.genIndexBuffer.indexCount = indexCount;
 	cmd.genIndexBuffer.indexElementSize = indexElementSize;
 	ForceToRenderThread(renderer, &cmd);
-	result->actualBuffer = cmd.genIndexBuffer.retval;
-
-	return (FNA3D_Buffer*) result;
+	return cmd.genIndexBuffer.retval;
 }
 
 static void THREADEDGL_AddDisposeIndexBuffer(
@@ -2261,13 +2207,10 @@ static void THREADEDGL_AddDisposeIndexBuffer(
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
-	ThreadedGLBuffer *glBuffer = (ThreadedGLBuffer*) buffer;
 
 	cmd.type = COMMAND_ADDDISPOSEINDEXBUFFER;
-	cmd.addDisposeIndexBuffer.buffer = glBuffer->actualBuffer;
+	cmd.addDisposeIndexBuffer.buffer = buffer;
 	ForceToRenderThread(renderer, &cmd);
-
-	SDL_free(glBuffer);
 }
 
 static void THREADEDGL_SetIndexBufferData(
@@ -2280,10 +2223,9 @@ static void THREADEDGL_SetIndexBufferData(
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
-	ThreadedGLBuffer *glBuffer = (ThreadedGLBuffer*) buffer;
 
 	cmd.type = COMMAND_GETINDEXBUFFERDATA;
-	cmd.setIndexBufferData.buffer = glBuffer->actualBuffer;
+	cmd.setIndexBufferData.buffer = buffer;
 	cmd.setIndexBufferData.offsetInBytes = offsetInBytes;
 	cmd.setIndexBufferData.data = data;
 	cmd.setIndexBufferData.dataLength = dataLength;
@@ -2301,10 +2243,9 @@ static void THREADEDGL_GetIndexBufferData(
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
-	ThreadedGLBuffer *glBuffer = (ThreadedGLBuffer*) buffer;
 
 	cmd.type = COMMAND_GETINDEXBUFFERDATA;
-	cmd.getIndexBufferData.buffer = glBuffer->actualBuffer;
+	cmd.getIndexBufferData.buffer = buffer;
 	cmd.getIndexBufferData.offsetInBytes = offsetInBytes;
 	cmd.getIndexBufferData.data = data;
 	cmd.getIndexBufferData.startIndex = startIndex;
@@ -2315,45 +2256,38 @@ static void THREADEDGL_GetIndexBufferData(
 
 /* Effects */
 
-static FNA3D_Effect* THREADEDGL_CreateEffect(
+static void THREADEDGL_CreateEffect(
 	FNA3D_Renderer *driverData,
 	uint8_t *effectCode,
-	uint32_t effectCodeLength
+	uint32_t effectCodeLength,
+	FNA3D_Effect **effect,
+	MOJOSHADER_effect **effectData
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
-	ThreadedGLEffect *result = (ThreadedGLEffect*) SDL_malloc(
-		sizeof(ThreadedGLEffect)
-	);
-	result->parent = renderer;
 
 	cmd.type = COMMAND_CREATEEFFECT;
 	cmd.createEffect.effectCode = effectCode;
 	cmd.createEffect.effectCodeLength = effectCodeLength;
+	cmd.createEffect.effect = effect;
+	cmd.createEffect.effectData = effectData;
 	ForceToRenderThread(renderer, &cmd);
-	result->actualEffect = cmd.createEffect.retval;
-
-	return (FNA3D_Effect*) result;
 }
 
-static FNA3D_Effect* THREADEDGL_CloneEffect(
+static void THREADEDGL_CloneEffect(
 	FNA3D_Renderer *driverData,
-	FNA3D_Effect *effect
+	FNA3D_Effect *cloneSource,
+	FNA3D_Effect **effect,
+	MOJOSHADER_effect **effectData
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
-	ThreadedGLEffect *glEffect = (ThreadedGLEffect*) effect;
-	ThreadedGLEffect *result  = (ThreadedGLEffect*) SDL_malloc(
-		sizeof(ThreadedGLEffect)
-	);
-	result->parent = renderer;
 
 	cmd.type = COMMAND_CLONEEFFECT;
-	cmd.cloneEffect.cloneSource = glEffect->actualEffect;
+	cmd.cloneEffect.cloneSource = cloneSource;
+	cmd.cloneEffect.effect = effect;
+	cmd.cloneEffect.effectData = effectData;
 	ForceToRenderThread(renderer, &cmd);
-	result->actualEffect = cmd.cloneEffect.retval;
-
-	return (FNA3D_Effect*) result;
 }
 
 static void THREADEDGL_AddDisposeEffect(
@@ -2362,13 +2296,24 @@ static void THREADEDGL_AddDisposeEffect(
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
-	ThreadedGLEffect *glEffect = (ThreadedGLEffect*) effect;
 
 	cmd.type = COMMAND_ADDDISPOSEEFFECT;
-	cmd.addDisposeEffect.effect = glEffect->actualEffect;
+	cmd.addDisposeEffect.effect = effect;
 	ForceToRenderThread(renderer, &cmd);
+}
 
-	SDL_free(glEffect);
+static void THREADEDGL_SetEffectTechnique(
+	FNA3D_Renderer *driverData,
+	FNA3D_Effect *effect,
+	MOJOSHADER_effectTechnique *technique
+) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_SETEFFECTTECHNIQUE;
+	cmd.setEffectTechnique.effect = effect;
+	cmd.setEffectTechnique.technique = technique;
+	ForceToRenderThread(renderer, &cmd);
 }
 
 static void THREADEDGL_ApplyEffect(
@@ -2380,10 +2325,9 @@ static void THREADEDGL_ApplyEffect(
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
-	ThreadedGLEffect *glEffect = (ThreadedGLEffect*) effect;
 
 	cmd.type = COMMAND_APPLYEFFECT;
-	cmd.applyEffect.effect = glEffect->actualEffect;
+	cmd.applyEffect.effect = effect;
 	cmd.applyEffect.technique = technique;
 	cmd.applyEffect.pass = pass;
 	cmd.applyEffect.stateChanges = stateChanges;
@@ -2397,10 +2341,9 @@ static void THREADEDGL_BeginPassRestore(
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
-	ThreadedGLEffect *glEffect = (ThreadedGLEffect*) effect;
 
 	cmd.type = COMMAND_BEGINPASSRESTORE;
-	cmd.beginPassRestore.effect = glEffect->actualEffect;
+	cmd.beginPassRestore.effect = effect;
 	cmd.beginPassRestore.stateChanges = stateChanges;
 	ForceToRenderThread(renderer, &cmd);
 }
@@ -2411,10 +2354,9 @@ static void THREADEDGL_EndPassRestore(
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
-	ThreadedGLEffect *glEffect = (ThreadedGLEffect*) effect;
 
 	cmd.type = COMMAND_ENDPASSRESTORE;
-	cmd.endPassRestore.effect = glEffect->actualEffect;
+	cmd.endPassRestore.effect = effect;
 	ForceToRenderThread(renderer, &cmd);
 }
 
@@ -2560,34 +2502,6 @@ static void THREADEDGL_SetStringMarker(FNA3D_Renderer *driverData, const char *t
 	cmd.type = COMMAND_SETSTRINGMARKER;
 	cmd.setStringMarker.text = text;
 	ForceToRenderThread(renderer, &cmd);
-}
-
-/* Buffer Objects */
-
-static intptr_t THREADEDGL_GetBufferSize(FNA3D_Buffer *buffer)
-{
-	GLThreadCommand cmd;
-	ThreadedGLBuffer *buf = (ThreadedGLBuffer*) buffer;
-	ThreadedGLRenderer *renderer = buf->parent;
-
-	cmd.type = COMMAND_GETBUFFERSIZE;
-	cmd.getBufferSize.buffer = buf->actualBuffer;
-	ForceToRenderThread(renderer, &cmd);
-	return cmd.getBufferSize.retval;
-}
-
-/* Effect Objects */
-
-static MOJOSHADER_effect* THREADEDGL_GetEffectData(FNA3D_Effect *effect)
-{
-	GLThreadCommand cmd;
-	ThreadedGLEffect *eff = (ThreadedGLEffect*) effect;
-	ThreadedGLRenderer *renderer = eff->parent;
-
-	cmd.type = COMMAND_GETEFFECTDATA;
-	cmd.getEffectData.effect = eff->actualEffect;
-	ForceToRenderThread(renderer, &cmd);
-	return cmd.getEffectData.retval;
 }
 
 /* Driver */
