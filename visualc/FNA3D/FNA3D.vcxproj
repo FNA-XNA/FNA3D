@@ -107,10 +107,12 @@
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="..\..\src\FNA3D.c" />
+    <ClCompile Include="..\..\src\FNA3D_Driver_ThreadedGL.c" />
     <ClCompile Include="..\..\src\FNA3D_Image.c" />
     <ClCompile Include="..\..\src\FNA3D_CommandStream.c" />
     <ClCompile Include="..\..\src\FNA3D_Driver_OpenGL.c" />
     <ClCompile Include="..\..\src\FNA3D_Driver_ModernGL.c" />
+    <ClCompile Include="..\..\src\FNA3D_PipelineCache.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\include\FNA3D.h" />
@@ -121,6 +123,7 @@
     <ClInclude Include="..\..\src\FNA3D_Driver_OpenGL_glfuncs.h" />
     <ClInclude Include="..\..\src\FNA3D_Driver_ModernGL.h" />
     <ClInclude Include="..\..\src\FNA3D_Driver_ModernGL_glfuncs.h" />
+    <ClInclude Include="..\..\src\FNA3D_PipelineCache.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
