@@ -53,7 +53,10 @@ add_definitions(
 	-DSUPPORT_PROFILE_D3D=0
 )
 if(APPLE)
-	add_definitions(-DSUPPORT_PROFILE_METAL=1)
+	add_definitions(
+		-DFNA3D_DRIVER_METAL
+		-DSUPPORT_PROFILE_METAL=1
+	)
 else()
 	add_definitions(
 		-DFNA3D_DRIVER_MODERNGL
@@ -72,6 +75,7 @@ add_library(FNA3D
 	src/FNA3D_Driver.h
 	src/FNA3D_Driver_OpenGL.h
 	src/FNA3D_Driver_OpenGL_glfuncs.h
+	src/FNA3D_Driver_Metal.h
 	src/FNA3D_Driver_ModernGL.h
 	src/FNA3D_Driver_ModernGL_glfuncs.h
 	src/FNA3D_PipelineCache.h
@@ -79,6 +83,7 @@ add_library(FNA3D
 	src/FNA3D.c
 	src/FNA3D_CommandStream.c
 	src/FNA3D_Driver_OpenGL.c
+	src/FNA3D_Driver_Metal.c
 	src/FNA3D_Driver_ModernGL.c
 	src/FNA3D_Driver_ThreadedGL.c
 	src/FNA3D_Image.c
