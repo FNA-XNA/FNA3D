@@ -2559,6 +2559,10 @@ FNA3D_Driver ThreadedGLDriver = {
 	THREADEDGL_CreateDevice
 };
 
+#else
+
+extern int this_tu_is_empty;
+
 #endif /* FNA3D_DRIVER_THREADEDGL */
 
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */

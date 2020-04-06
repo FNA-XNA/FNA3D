@@ -4825,6 +4825,10 @@ FNA3D_Driver MetalDriver = {
 	METAL_CreateDevice
 };
 
+#else
+
+extern int this_tu_is_empty;
+
 #endif /* FNA3D_DRIVER_METAL */
 
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */
