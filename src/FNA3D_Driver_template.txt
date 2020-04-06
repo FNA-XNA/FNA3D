@@ -570,19 +570,25 @@ static void TEMPLATE_GetIndexBufferData(
 
 /* Effects */
 
-static FNA3D_Effect* TEMPLATE_CreateEffect(
+static void TEMPLATE_CreateEffect(
 	FNA3D_Renderer *driverData,
 	uint8_t *effectCode,
-	uint32_t effectCodeLength
+	uint32_t effectCodeLength,
+	FNA3D_Effect **effect,
+	MOJOSHADER_effect **effectData
 ) {
-	return NULL;
+	*effect = NULL;
+	*effectData = NULL;
 }
 
-static FNA3D_Effect* TEMPLATE_CloneEffect(
+static void TEMPLATE_CloneEffect(
 	FNA3D_Renderer *driverData,
-	FNA3D_Effect *effect
+	FNA3D_Effect *cloneSource,
+	FNA3D_Effect **effect,
+	MOJOSHADER_effect **effectData
 ) {
-	return NULL;
+	*effect = NULL;
+	*effectData = NULL;
 }
 
 static void TEMPLATE_AddDisposeEffect(
@@ -591,10 +597,16 @@ static void TEMPLATE_AddDisposeEffect(
 ) {
 }
 
+static void TEMPLATE_SetEffectTechnique(
+	FNA3D_Renderer *driverData,
+	FNA3D_Effect *effect,
+	MOJOSHADER_effectTechnique *technique
+) {
+}
+
 static void TEMPLATE_ApplyEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect,
-	MOJOSHADER_effectTechnique *technique,
 	uint32_t pass,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
@@ -684,20 +696,6 @@ static int32_t TEMPLATE_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
 
 static void TEMPLATE_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 {
-}
-
-/* Buffer Objects */
-
-static intptr_t TEMPLATE_GetBufferSize(FNA3D_Buffer *buffer)
-{
-	return ((TemplateBuffer*) buffer)->size;
-}
-
-/* Effect Objects */
-
-static MOJOSHADER_effect* TEMPLATE_GetEffectData(FNA3D_Effect *effect)
-{
-	return ((TemplateEffect*) effect)->effect;
 }
 
 /* Driver */
