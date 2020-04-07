@@ -27,10 +27,11 @@
 #if FNA3D_DRIVER_DIRECTX11
 
 #include "FNA3D_Driver.h"
+#include "FNA3D_PipelineCache.h"
+#include "stb_ds.h"
 
 #include <SDL.h>
 #include <SDL_syswm.h>
-// #include <d3d11.h>
 #include <d3d11_1.h>
 
 /* Internal Structures */
@@ -81,6 +82,12 @@ typedef struct DirectX11Renderer /* Cast FNA3D_Renderer* to this! */
 
 	/* Depth Stencil State */
 	int32_t stencilRef;
+
+	/* Render State Caches */
+	StateHashMap *blendStateCache;
+	StateHashMap *depthStencilStateCache;
+	StateHashMap *rasterizerStateCache;
+	StateHashMap *samplerStateCache;
 
 	/* Render Targets */
 	int32_t numRenderTargets;
@@ -226,11 +233,11 @@ static float XNAToD3D_DepthBiasScale[] =
 	(float) ((1 << 24) - 1) 	/* DepthFormat.Depth24Stencil8 */
 };
 
-static D3D11_CULL_MODE XNAToD3D_CullingEnabled[] =
+static D3D11_CULL_MODE XNAToD3D_CullMode[] =
 {
 	D3D11_CULL_NONE,		/* CullMode.None */
-	D3D11_CULL_FRONT,		/* CullMode.Front */
-	D3D11_CULL_BACK 		/* CullMode.Back */
+	D3D11_CULL_BACK,		/* CullMode.CullClockwiseFace */
+	D3D11_CULL_FRONT 		/* CullMode.CullCounterClockwiseFace */
 };
 
 static D3D11_TEXTURE_ADDRESS_MODE XNAToD3D_Wrap[] =
@@ -261,6 +268,226 @@ static D3D_PRIMITIVE_TOPOLOGY XNAToD3D_Primitive[] =
 	D3D_PRIMITIVE_TOPOLOGY_LINESTRIP,	/* PrimitiveType.LineStrip */
 	D3D_PRIMITIVE_TOPOLOGY_POINTLIST	/* PrimitiveType.PointListEXT */
 };
+
+/* Pipeline State Object Caching */
+
+static ID3D11BlendState* FetchBlendState(
+	DirectX11Renderer *renderer,
+	FNA3D_BlendState *state
+) {
+	StateHash hash;
+	D3D11_BLEND_DESC desc;
+	ID3D11BlendState *result;
+
+	/* Can we just reuse an existing state? */
+	hash = GetBlendStateHash(*state);
+	result = hmget(renderer->blendStateCache, hash);
+	if (result != NULL)
+	{
+		/* The state is already cached! */
+		return result;
+	}
+
+	/* We need to make a new blend state... */
+	desc.AlphaToCoverageEnable = 0;
+	desc.IndependentBlendEnable = 0; /* FIXME: MRT? */
+	desc.RenderTarget[0].BlendEnable = !(
+		state->colorSourceBlend == FNA3D_BLEND_ONE &&
+		state->colorDestinationBlend == FNA3D_BLEND_ZERO &&
+		state->alphaSourceBlend == FNA3D_BLEND_ONE &&
+		state->alphaDestinationBlend == FNA3D_BLEND_ZERO
+	);
+	desc.RenderTarget[0].BlendOp = XNAToD3D_BlendOperation[
+		state->colorBlendFunction
+	];
+	desc.RenderTarget[0].BlendOpAlpha = XNAToD3D_BlendOperation[
+		state->alphaBlendFunction
+	];
+	desc.RenderTarget[0].DestBlend = XNAToD3D_BlendMode[
+		state->colorDestinationBlend
+	];
+	desc.RenderTarget[0].DestBlendAlpha = XNAToD3D_BlendMode[
+		state->alphaDestinationBlend
+	];
+	desc.RenderTarget[0].RenderTargetWriteMask = (
+		(uint32_t) state->colorWriteEnable
+	);
+	desc.RenderTarget[0].SrcBlend = XNAToD3D_BlendMode[
+		state->colorSourceBlend
+	];
+	desc.RenderTarget[0].SrcBlendAlpha = XNAToD3D_BlendMode[
+		state->alphaSourceBlend
+	];
+
+	/* Bake the state! */
+	renderer->device->lpVtbl->CreateBlendState(
+		renderer->device,
+		&desc,
+		&result
+	);
+	hmput(renderer->blendStateCache, hash, result);
+
+	/* Return the state! */
+	return result;
+}
+
+static ID3D11DepthStencilState* FetchDepthStencilState(
+	DirectX11Renderer *renderer,
+	FNA3D_DepthStencilState *state
+) {
+	StateHash hash;
+	D3D11_DEPTH_STENCIL_DESC desc;
+	D3D11_DEPTH_STENCILOP_DESC front, back;
+	ID3D11DepthStencilState *result;
+
+	/* Can we just reuse an existing state? */
+	hash = GetDepthStencilStateHash(*state);
+	result = hmget(renderer->depthStencilStateCache, hash);
+	if (result != NULL)
+	{
+		/* The state is already cached! */
+		return result;
+	}
+
+	/* We have to make a new depth stencil state... */
+	desc.DepthEnable = state->depthBufferEnable;
+	desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+	desc.DepthFunc = XNAToD3D_CompareFunc[
+		state->depthBufferFunction
+	];
+	desc.StencilEnable = state->stencilEnable;
+	desc.StencilReadMask = (uint8_t) state->stencilMask;
+	desc.StencilWriteMask = (uint8_t) state->stencilWriteMask;
+	front.StencilDepthFailOp = XNAToD3D_StencilOp[
+		state->stencilDepthBufferFail
+	];
+	front.StencilFailOp = XNAToD3D_StencilOp[
+		state->stencilFail
+	];
+	front.StencilFunc = XNAToD3D_CompareFunc[
+		state->stencilFunction
+	];
+	front.StencilPassOp = XNAToD3D_StencilOp[
+		state->stencilPass
+	];
+	if (state->twoSidedStencilMode)
+	{
+		back.StencilDepthFailOp = XNAToD3D_StencilOp[
+			state->ccwStencilDepthBufferFail
+		];
+		back.StencilFailOp = XNAToD3D_StencilOp[
+			state->ccwStencilFail
+		];
+		back.StencilFunc = XNAToD3D_CompareFunc[
+			state->ccwStencilFunction
+		];
+		back.StencilPassOp = XNAToD3D_StencilOp[
+			state->ccwStencilPass
+		];
+	}
+	else
+	{
+		back = front;
+	}
+	desc.FrontFace = front;
+	desc.BackFace = back;
+
+	/* Bake the state! */
+	renderer->device->lpVtbl->CreateDepthStencilState(
+		renderer->device,
+		&desc,
+		&result
+	);
+	hmput(renderer->depthStencilStateCache, hash, result);
+
+	/* Return the state! */
+	return result;
+}
+
+static ID3D11RasterizerState* FetchRasterizerState(
+	DirectX11Renderer *renderer,
+	FNA3D_RasterizerState *state
+) {
+	StateHash hash;
+	D3D11_RASTERIZER_DESC desc;
+	ID3D11RasterizerState *result;
+
+	/* Can we just reuse an existing state? */
+	hash = GetRasterizerStateHash(*state);
+	result = hmget(renderer->rasterizerStateCache, hash);
+	if (result != NULL)
+	{
+		/* The state is already cached! */
+		return result;
+	}
+
+	/* We have to make a new rasterizer state... */
+	desc.AntialiasedLineEnable = 0;
+	desc.CullMode = XNAToD3D_CullMode[state->cullMode];
+	desc.DepthBias = 0; /* FIXME */
+	desc.DepthBiasClamp = 0; /* FIXME */
+	desc.DepthClipEnable = 1;
+	desc.FillMode = XNAToD3D_FillMode[state->fillMode];
+	desc.FrontCounterClockwise = 1;
+	desc.MultisampleEnable = state->multiSampleAntiAlias;
+	desc.ScissorEnable = state->scissorTestEnable;
+	desc.SlopeScaledDepthBias = 0; /* FIXME */
+
+	/* Bake the state! */
+	renderer->device->lpVtbl->CreateRasterizerState(
+		renderer->device,
+		&desc,
+		&result
+	);
+	hmput(renderer->rasterizerStateCache, hash, result);
+
+	/* Return the state! */
+	return result;
+}
+
+static ID3D11SamplerState* FetchSamplerState(
+	DirectX11Renderer *renderer,
+	FNA3D_SamplerState *state
+) {
+	StateHash hash;
+	D3D11_SAMPLER_DESC desc;
+	ID3D11SamplerState *result;
+
+	/* Can we just reuse an existing state? */
+	hash = GetSamplerStateHash(*state);
+	result = hmget(renderer->samplerStateCache, hash);
+	if (result != NULL)
+	{
+		/* The state is already cached! */
+		return result;
+	}
+
+	/* We have to make a new sampler state... */
+	desc.AddressU = XNAToD3D_Wrap[state->addressU];
+	desc.AddressV = XNAToD3D_Wrap[state->addressV];
+	desc.AddressW = XNAToD3D_Wrap[state->addressW];
+	desc.BorderColor[0] = 1.0f;
+	desc.BorderColor[1] = 1.0f;
+	desc.BorderColor[2] = 1.0f;
+	desc.BorderColor[3] = 1.0f;
+	desc.ComparisonFunc = D3D11_COMPARISON_NEVER; /* FIXME: What should this be? */
+	desc.Filter = XNAToD3D_Filter[state->filter];
+	desc.MaxAnisotropy = (uint32_t) state->maxAnisotropy;
+	desc.MaxLOD = D3D11_FLOAT32_MAX; /* FIXME: Is this right? */
+	desc.MinLOD = (float) state->maxMipLevel;
+	desc.MipLODBias = state->mipMapLevelOfDetailBias;
+
+	/* Bake the state! */
+	renderer->device->lpVtbl->CreateSamplerState(
+		renderer->device,
+		&desc,
+		&result
+	);
+	hmput(renderer->samplerStateCache, hash, result);
+
+	/* Return the state! */
+	return result;
+}
 
 /* Renderer Implementation */
 
@@ -575,52 +802,18 @@ static void DIRECTX11_SetBlendState(
 	FNA3D_BlendState *blendState
 ) {
 	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
-	ID3D11BlendState *d3dBlendState;
-	D3D11_BLEND_DESC desc;
-	float blendFactor[4] =
+	float blendFactor[] =
 	{
 		renderer->blendFactor.r / 255.0f,
 		renderer->blendFactor.g / 255.0f,
 		renderer->blendFactor.b / 255.0f,
 		renderer->blendFactor.a / 255.0f
 	};
-
-	/* FIXME: This needs to be cached! */
-	desc.AlphaToCoverageEnable = 0;
-	desc.IndependentBlendEnable = 0; /* FIXME: MRT? */
-	desc.RenderTarget[0].BlendEnable = 1; /* FIXME: alphaBlendEnable */
-	desc.RenderTarget[0].BlendOp = XNAToD3D_BlendOperation[
-		blendState->colorBlendFunction
-	];
-	desc.RenderTarget[0].BlendOpAlpha = XNAToD3D_BlendOperation[
-		blendState->alphaBlendFunction
-	];
-	desc.RenderTarget[0].DestBlend = XNAToD3D_BlendMode[
-		blendState->colorDestinationBlend
-	];
-	desc.RenderTarget[0].DestBlendAlpha = XNAToD3D_BlendMode[
-		blendState->alphaDestinationBlend
-	];
-	desc.RenderTarget[0].RenderTargetWriteMask = (
-		(uint32_t) blendState->colorWriteEnable
-	);
-	desc.RenderTarget[0].SrcBlend = XNAToD3D_BlendMode[
-		blendState->colorSourceBlend
-	];
-	desc.RenderTarget[0].SrcBlendAlpha = XNAToD3D_BlendMode[
-		blendState->alphaSourceBlend
-	];
-	renderer->device->lpVtbl->CreateBlendState(
-		renderer->device,
-		&desc,
-		&d3dBlendState
-	);
-
 	renderer->context->lpVtbl->OMSetBlendState(
 		renderer->context,
-		d3dBlendState,
+		FetchBlendState(renderer, blendState),
 		blendFactor,
-		renderer->multiSampleMask
+		blendState->multiSampleMask /* FIXME: Do we use the dynamic versions anywhere...? */
 	);
 }
 
@@ -628,14 +821,23 @@ static void DIRECTX11_SetDepthStencilState(
 	FNA3D_Renderer *driverData,
 	FNA3D_DepthStencilState *depthStencilState
 ) {
-	/* TODO */
+	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	renderer->context->lpVtbl->OMSetDepthStencilState(
+		renderer->context,
+		FetchDepthStencilState(renderer, depthStencilState),
+		(uint32_t) depthStencilState->referenceStencil /* FIXME: Is the dynamic version ever used? */
+	);
 }
 
 static void DIRECTX11_ApplyRasterizerState(
 	FNA3D_Renderer *driverData,
 	FNA3D_RasterizerState *rasterizerState
 ) {
-	/* TODO */
+	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	renderer->context->lpVtbl->RSSetState(
+		renderer->context,
+		FetchRasterizerState(renderer, rasterizerState)
+	);
 }
 
 static void DIRECTX11_VerifySampler(
@@ -644,7 +846,10 @@ static void DIRECTX11_VerifySampler(
 	FNA3D_Texture *texture,
 	FNA3D_SamplerState *sampler
 ) {
+	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+
 	/* TODO */
+	/* FIXME: We need to bind all samplers at once !*/
 }
 
 /* Vertex State */
@@ -1286,6 +1491,12 @@ static FNA3D_Device* DIRECTX11_CreateDevice(
 		);
 		return NULL;
 	}
+
+	/* Initialize state object caches */
+	hmdefault(renderer->blendStateCache, NULL);
+	hmdefault(renderer->depthStencilStateCache, NULL);
+	hmdefault(renderer->rasterizerStateCache, NULL);
+	hmdefault(renderer->samplerStateCache, NULL);
 
 	/* Create and return the FNA3D_Device */
 	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
