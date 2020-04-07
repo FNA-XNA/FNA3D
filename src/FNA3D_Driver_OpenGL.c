@@ -516,23 +516,6 @@ static float XNAToGL_DepthBiasScale[] =
 	(float) ((1 << 24) - 1)		/* DepthFormat.Depth24Stencil8 */
 };
 
-static MOJOSHADER_usage XNAToGL_VertexAttribUsage[] =
-{
-	MOJOSHADER_USAGE_POSITION,	/* VertexElementUsage.Position */
-	MOJOSHADER_USAGE_COLOR,		/* VertexElementUsage.Color */
-	MOJOSHADER_USAGE_TEXCOORD,	/* VertexElementUsage.TextureCoordinate */
-	MOJOSHADER_USAGE_NORMAL,	/* VertexElementUsage.Normal */
-	MOJOSHADER_USAGE_BINORMAL,	/* VertexElementUsage.Binormal */
-	MOJOSHADER_USAGE_TANGENT,	/* VertexElementUsage.Tangent */
-	MOJOSHADER_USAGE_BLENDINDICES,	/* VertexElementUsage.BlendIndices */
-	MOJOSHADER_USAGE_BLENDWEIGHT,	/* VertexElementUsage.BlendWeight */
-	MOJOSHADER_USAGE_DEPTH,		/* VertexElementUsage.Depth */
-	MOJOSHADER_USAGE_FOG,		/* VertexElementUsage.Fog */
-	MOJOSHADER_USAGE_POINTSIZE,	/* VertexElementUsage.PointSize */
-	MOJOSHADER_USAGE_SAMPLE,	/* VertexElementUsage.Sample */
-	MOJOSHADER_USAGE_TESSFACTOR	/* VertexElementUsage.TessellateFactor */
-};
-
 static int32_t XNAToGL_VertexAttribSize[] =
 {
 	1,	/* VertexElementFormat.Single */
@@ -576,12 +559,6 @@ static int32_t XNAToGL_IndexType[] =
 {
 	GL_UNSIGNED_SHORT,	/* IndexElementSize.SixteenBits */
 	GL_UNSIGNED_INT		/* IndexElementSize.ThirtyTwoBits */
-};
-
-static int32_t XNAToGL_IndexSize[] =
-{
-	2,	/* IndexElementSize.SixteenBits */
-	4	/* IndexElementSize.ThirtyTwoBits */
 };
 
 static int32_t XNAToGL_Primitive[] =
@@ -1190,7 +1167,7 @@ static void OPENGL_DrawIndexedPrimitives(
 			minVertexIndex + numVertices - 1,
 			PrimitiveVerts(primitiveType, primitiveCount),
 			XNAToGL_IndexType[indexElementSize],
-			(void*) (size_t) (startIndex * XNAToGL_IndexSize[indexElementSize]),
+			(void*) (size_t) (startIndex * IndexSize(indexElementSize)),
 			baseVertex
 		);
 	}
@@ -1202,7 +1179,7 @@ static void OPENGL_DrawIndexedPrimitives(
 			minVertexIndex + numVertices - 1,
 			PrimitiveVerts(primitiveType, primitiveCount),
 			XNAToGL_IndexType[indexElementSize],
-			(void*) (size_t) (startIndex * XNAToGL_IndexSize[indexElementSize])
+			(void*) (size_t) (startIndex * IndexSize(indexElementSize))
 		);
 	}
 
@@ -1248,7 +1225,7 @@ static void OPENGL_DrawInstancedPrimitives(
 			XNAToGL_Primitive[primitiveType],
 			PrimitiveVerts(primitiveType, primitiveCount),
 			XNAToGL_IndexType[indexElementSize],
-			(void*) (size_t) (startIndex * XNAToGL_IndexSize[indexElementSize]),
+			(void*) (size_t) (startIndex * IndexSize(indexElementSize)),
 			instanceCount,
 			baseVertex
 		);
@@ -1259,7 +1236,7 @@ static void OPENGL_DrawInstancedPrimitives(
 			XNAToGL_Primitive[primitiveType],
 			PrimitiveVerts(primitiveType, primitiveCount),
 			XNAToGL_IndexType[indexElementSize],
-			(void*) (size_t) (startIndex * XNAToGL_IndexSize[indexElementSize]),
+			(void*) (size_t) (startIndex * IndexSize(indexElementSize)),
 			instanceCount
 		);
 	}
@@ -1332,7 +1309,7 @@ static void OPENGL_DrawUserIndexedPrimitives(
 		XNAToGL_IndexType[indexElementSize],
 		(void*) (
 			((size_t) indexData) +
-			(indexOffset * XNAToGL_IndexSize[indexElementSize])
+			(indexOffset * IndexSize(indexElementSize))
 		)
 	);
 
@@ -2145,7 +2122,7 @@ static void OPENGL_ApplyVertexBufferBindings(
 				}
 				renderer->attrUse[usage][index] = 1;
 				attribLoc = MOJOSHADER_glGetVertexAttribLocation(
-					XNAToGL_VertexAttribUsage[usage],
+					VertexAttribUsage(usage),
 					index
 				);
 				if (attribLoc == -1)
@@ -2259,7 +2236,7 @@ static void OPENGL_ApplyVertexDeclaration(
 			}
 			renderer->attrUse[usage][index] = 1;
 			attribLoc = MOJOSHADER_glGetVertexAttribLocation(
-				XNAToGL_VertexAttribUsage[usage],
+				VertexAttribUsage(usage),
 				index
 			);
 			if (attribLoc == -1)
@@ -4435,7 +4412,7 @@ static FNA3D_Buffer* OPENGL_GenIndexBuffer(
 	result = (OpenGLBuffer*) SDL_malloc(sizeof(OpenGLBuffer));
 	result->handle = handle;
 	result->size = (intptr_t) (
-		indexCount * XNAToGL_IndexSize[indexElementSize]
+		indexCount * IndexSize(indexElementSize)
 	);
 	result->dynamic = (dynamic ? GL_STREAM_DRAW : GL_STATIC_DRAW);
 	result->next = NULL;

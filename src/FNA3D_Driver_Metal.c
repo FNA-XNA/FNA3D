@@ -312,23 +312,6 @@ static MTLPixelFormat XNAToMTL_DepthFormat(
 	}
 }
 
-static MOJOSHADER_usage XNAToMTL_VertexAttribUsage[] =
-{
-	MOJOSHADER_USAGE_POSITION,	/* VertexElementUsage.Position */
-	MOJOSHADER_USAGE_COLOR,		/* VertexElementUsage.Color */
-	MOJOSHADER_USAGE_TEXCOORD,	/* VertexElementUsage.TextureCoordinate */
-	MOJOSHADER_USAGE_NORMAL,	/* VertexElementUsage.Normal */
-	MOJOSHADER_USAGE_BINORMAL,	/* VertexElementUsage.Binormal */
-	MOJOSHADER_USAGE_TANGENT,	/* VertexElementUsage.Tangent */
-	MOJOSHADER_USAGE_BLENDINDICES,	/* VertexElementUsage.BlendIndices */
-	MOJOSHADER_USAGE_BLENDWEIGHT,	/* VertexElementUsage.BlendWeight */
-	MOJOSHADER_USAGE_DEPTH,		/* VertexElementUsage.Depth */
-	MOJOSHADER_USAGE_FOG,		/* VertexElementUsage.Fog */
-	MOJOSHADER_USAGE_POINTSIZE,	/* VertexElementUsage.PointSize */
-	MOJOSHADER_USAGE_SAMPLE,	/* VertexElementUsage.Sample */
-	MOJOSHADER_USAGE_TESSFACTOR	/* VertexElementUsage.TessellateFactor */
-};
-
 static MTLVertexFormat XNAToMTL_VertexAttribType[] =
 {
 	MTLVertexFormatFloat,			/* VertexElementFormat.Single */
@@ -349,12 +332,6 @@ static MTLIndexType XNAToMTL_IndexType[] =
 {
 	MTLIndexTypeUInt16,	/* IndexElementSize.SixteenBits */
 	MTLIndexTypeUInt32	/* IndexElementSize.ThirtyTwoBits */
-};
-
-static int32_t XNAToMTL_IndexSize[] =
-{
-	2,	/* IndexElementSize.SixteenBits */
-	4	/* IndexElementSize.ThirtyTwoBits */
 };
 
 static MTLBlendFactor XNAToMTL_BlendMode[] =
@@ -1868,7 +1845,7 @@ static MTLVertexDescriptor* FetchVertexBufferBindingsDescriptor(
 			renderer->attrUse[usage][index] = 1;
 			attribLoc = MOJOSHADER_mtlGetVertexAttribLocation(
 				renderer->currentShaderState.vertexShader,
-				XNAToMTL_VertexAttribUsage[usage],
+				VertexAttribUsage(usage),
 				index
 			);
 			if (attribLoc == -1)
@@ -1982,7 +1959,7 @@ static MTLVertexDescriptor* FetchVertexDeclarationDescriptor(
 		renderer->attrUse[usage][index] = 1;
 		attribLoc = MOJOSHADER_mtlGetVertexAttribLocation(
 			renderer->currentShaderState.vertexShader,
-			XNAToMTL_VertexAttribUsage[usage],
+			VertexAttribUsage(usage),
 			index
 		);
 		if (attribLoc == -1)
@@ -2385,7 +2362,7 @@ static void METAL_DrawInstancedPrimitives(
 
 	indexBuffer->boundThisFrame = 1;
 	totalIndexOffset = (
-		(startIndex * XNAToMTL_IndexSize[indexElementSize]) +
+		(startIndex * IndexSize(indexElementSize)) +
 		indexBuffer->internalOffset
 	);
 	mtlDrawIndexedPrimitives(
@@ -2463,7 +2440,7 @@ static void METAL_DrawUserIndexedPrimitives(
 
 	/* Prepare the index buffer */
 	numIndices = PrimitiveVerts(primitiveType, primitiveCount);
-	indexSize = XNAToMTL_IndexSize[indexElementSize];
+	indexSize = IndexSize(indexElementSize);
 	len = numIndices * indexSize;
 	if (renderer->userIndexBuffer == NULL)
 	{
@@ -4090,7 +4067,7 @@ static FNA3D_Buffer* METAL_GenIndexBuffer(
 	return (FNA3D_Buffer*) CreateBuffer(
 		driverData,
 		usage,
-		indexCount * XNAToMTL_IndexSize[indexElementSize]
+		indexCount * IndexSize(indexElementSize)
 	);
 }
 

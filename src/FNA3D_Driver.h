@@ -142,9 +142,54 @@ static inline int32_t PrimitiveVerts(
 			return primitiveCount + 1;
 		case FNA3D_PRIMITIVETYPE_POINTLIST_EXT:
 			return primitiveCount;
+		default:
+			FNA3D_LogError(
+				"Unrecognized primitive type!"
+			);
+			return 0;
 	}
-	FNA3D_LogError("Unrecognized primitive type!");
-	return 0;
+}
+
+static inline MOJOSHADER_usage VertexAttribUsage(
+	FNA3D_VertexElementUsage usage
+) {
+	switch (usage)
+	{
+		case FNA3D_VERTEXELEMENTUSAGE_POSITION:
+			return MOJOSHADER_USAGE_POSITION;
+		case FNA3D_VERTEXELEMENTUSAGE_COLOR:
+			return MOJOSHADER_USAGE_COLOR;
+		case FNA3D_VERTEXELEMENTUSAGE_TEXTURECOORDINATE:
+			return MOJOSHADER_USAGE_TEXCOORD;
+		case FNA3D_VERTEXELEMENTUSAGE_NORMAL:
+			return MOJOSHADER_USAGE_NORMAL;
+		case FNA3D_VERTEXELEMENTUSAGE_BINORMAL:
+			return MOJOSHADER_USAGE_BINORMAL;
+		case FNA3D_VERTEXELEMENTUSAGE_TANGENT:
+			return MOJOSHADER_USAGE_TANGENT;
+		case FNA3D_VERTEXELEMENTUSAGE_BLENDINDICES:
+			return MOJOSHADER_USAGE_BLENDINDICES;
+		case FNA3D_VERTEXELEMENTUSAGE_BLENDWEIGHT:
+			return MOJOSHADER_USAGE_BLENDWEIGHT;
+		case FNA3D_VERTEXELEMENTUSAGE_FOG:
+			return MOJOSHADER_USAGE_FOG;
+		case FNA3D_VERTEXELEMENTUSAGE_POINTSIZE:
+			return MOJOSHADER_USAGE_POINTSIZE;
+		case FNA3D_VERTEXELEMENTUSAGE_SAMPLE:
+			return MOJOSHADER_USAGE_SAMPLE;
+		case FNA3D_VERTEXELEMENTUSAGE_TESSELATEFACTOR:
+			return MOJOSHADER_USAGE_TESSFACTOR;
+		default:
+			FNA3D_LogError(
+				"Unrecognized VertexElementUsage!"
+			);
+			return 0;
+	}
+}
+
+static inline int32_t IndexSize(FNA3D_IndexElementSize size)
+{
+	return (size == FNA3D_INDEXELEMENTSIZE_16BIT) ? 2 : 4;
 }
 
 /* XNA GraphicsDevice Limits */
