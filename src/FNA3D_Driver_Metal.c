@@ -445,8 +445,8 @@ static float XNAToMTL_DepthBiasScale(MTLPixelFormat format)
 static MTLCullMode XNAToMTL_CullingEnabled[] =
 {
 	MTLCullModeNone,		/* CullMode.None */
-	MTLCullModeFront,		/* CullMode.Front */
-	MTLCullModeBack 		/* CullMode.Back */
+	MTLCullModeFront,		/* CullMode.CullClockwiseFace */
+	MTLCullModeBack 		/* CullMode.CullCounterClockwiseFace */
 };
 
 static MTLSamplerAddressMode XNAToMTL_Wrap[] =

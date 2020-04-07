@@ -186,8 +186,8 @@ static float XNAToTMP_DepthBiasScale[] =
 static TEMPLATE_CULL_MODE_TYPE XNAToTMP_CullingEnabled[] =
 {
 	0,	/* CullMode.None */
-	0,	/* CullMode.Front */
-	0 	/* CullMode.Back */
+	0,	/* CullMode.CullClockwiseFace */
+	0 	/* CullMode.CullCounterClockwiseFace */
 };
 
 static TEMPLATE_TEXTURE_ADDRESS_MODE_TYPE XNAToTMP_Wrap[] =
