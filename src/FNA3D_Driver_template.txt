@@ -62,6 +62,191 @@ typedef struct TemplateRenderer /* Cast FNA3D_Renderer* to this! */
 	uint8_t filler;
 } TemplateRenderer;
 
+/* XNA->Template Translation Arrays */
+
+static TEMPLATE_SURFACE_FORMAT_TYPE XNAToTMP_TextureFormat[] =
+{
+	0,	/* SurfaceFormat.Color */
+	0,	/* SurfaceFormat.Bgr565 */
+	0,	/* SurfaceFormat.Bgra5551 */
+	0,	/* SurfaceFormat.Bgra4444 */
+	0,	/* SurfaceFormat.Dxt1 */
+	0,	/* SurfaceFormat.Dxt3 */
+	0,	/* SurfaceFormat.Dxt5 */
+	0,	/* SurfaceFormat.NormalizedByte2 */
+	0,	/* SurfaceFormat.NormalizedByte4 */
+	0,	/* SurfaceFormat.Rgba1010102 */
+	0,	/* SurfaceFormat.Rg32 */
+	0,	/* SurfaceFormat.Rgba64 */
+	0,	/* SurfaceFormat.Alpha8 */
+	0,	/* SurfaceFormat.Single */
+	0,	/* SurfaceFormat.Vector2 */
+	0,	/* SurfaceFormat.Vector4 */
+	0,	/* SurfaceFormat.HalfSingle */
+	0,	/* SurfaceFormat.HalfVector2 */
+	0,	/* SurfaceFormat.HalfVector4 */
+	0,	/* SurfaceFormat.HdrBlendable */
+	0,	/* SurfaceFormat.ColorBgraEXT */
+};
+
+static TEMPLATE_DEPTH_FORMAT_TYPE XNAToTMP_DepthFormat[] =
+{
+	0,	/* DepthFormat.None */
+	0,	/* DepthFormat.Depth16 */
+	0,	/* DepthFormat.Depth24 */
+	0	/* DepthFormat.Depth24Stencil8 */
+};
+
+static TEMPLATE_VERTEX_FORMAT_TYPE XNAToTMP_VertexAttribType[] =
+{
+	0,	/* VertexElementFormat.Single */
+	0,	/* VertexElementFormat.Vector2 */
+	0,	/* VertexElementFormat.Vector3 */
+	0,	/* VertexElementFormat.Vector4 */
+	0,	/* VertexElementFormat.Color */
+	0,	/* VertexElementFormat.Byte4 */
+	0,	/* VertexElementFormat.Short2 */
+	0,	/* VertexElementFormat.Short4 */
+	0,	/* VertexElementFormat.NormalizedShort2 */
+	0,	/* VertexElementFormat.NormalizedShort4 */
+	0,	/* VertexElementFormat.HalfVector2 */
+	0	/* VertexElementFormat.HalfVector4 */
+};
+
+static TEMPLATE_INDEX_TYPE XNAToTMP_IndexType[] =
+{
+	0,	/* IndexElementSize.SixteenBits */
+	0	/* IndexElementSize.ThirtyTwoBits */
+};
+
+static TEMPLATE_BLEND_MODE_TYPE XNAToTMP_BlendMode[] =
+{
+	0,	/* Blend.One */
+	0,	/* Blend.Zero */
+	0,	/* Blend.SourceColor */
+	0,	/* Blend.InverseSourceColor */
+	0,	/* Blend.SourceAlpha */
+	0,	/* Blend.InverseSourceAlpha */
+	0,	/* Blend.DestinationColor */
+	0,	/* Blend.InverseDestinationColor */
+	0,	/* Blend.DestinationAlpha */
+	0,	/* Blend.InverseDestinationAlpha */
+	0,	/* Blend.BlendFactor */
+	0,	/* Blend.InverseBlendFactor */
+	0	/* Blend.SourceAlphaSaturation */
+};
+
+static TEMPLATE_BLEND_OPERATION_TYPE XNAToTMP_BlendOperation[] =
+{
+	0,	/* BlendFunction.Add */
+	0,	/* BlendFunction.Subtract */
+	0,	/* BlendFunction.ReverseSubtract */
+	0,	/* BlendFunction.Max */
+	0	/* BlendFunction.Min */
+};
+
+static TEMPLATE_COMPARE_FUNCTION_TYPE XNAToTMP_CompareFunc[] =
+{
+	0,	/* CompareFunction.Always */
+	0,	/* CompareFunction.Never */
+	0,	/* CompareFunction.Less */
+	0,	/* CompareFunction.LessEqual */
+	0,	/* CompareFunction.Equal */
+	0,	/* CompareFunction.GreaterEqual */
+	0,	/* CompareFunction.Greater */
+	0	/* CompareFunction.NotEqual */
+};
+
+static TEMPLATE_STENCIL_OPERATION_TYPE XNAToTMP_StencilOp[] =
+{
+	0,	/* StencilOperation.Keep */
+	0,	/* StencilOperation.Zero */
+	0,	/* StencilOperation.Replace */
+	0,	/* StencilOperation.Increment */
+	0,	/* StencilOperation.Decrement */
+	0,	/* StencilOperation.IncrementSaturation */
+	0,	/* StencilOperation.DecrementSaturation */
+	0	/* StencilOperation.Invert */
+};
+
+static TEMPLATE_FILL_MODE_TYPE XNAToTMP_FillMode[] =
+{
+	0,	/* FillMode.Solid */
+	0,	/* FillMode.WireFrame */
+};
+
+static float XNAToTMP_DepthBiasScale[] =
+{
+	0.0f,				/* DepthFormat.None */
+	(float) ((1 << 16) - 1),	/* DepthFormat.Depth16 */
+	(float) ((1 << 24) - 1),	/* DepthFormat.Depth24 */
+	(float) ((1 << 24) - 1) 	/* DepthFormat.Depth24Stencil8 */
+};
+
+static TEMPLATE_CULL_MODE_TYPE XNAToTMP_CullingEnabled[] =
+{
+	0,	/* CullMode.None */
+	0,	/* CullMode.Front */
+	0 	/* CullMode.Back */
+};
+
+static TEMPLATE_TEXTURE_ADDRESS_MODE_TYPE XNAToTMP_Wrap[] =
+{
+	0,	/* TextureAddressMode.Wrap */
+	0,	/* TextureAddressMode.Clamp */
+	0	/* TextureAddressMode.Mirror */
+};
+
+static TEMPLATE_TEXTURE_FILTER_TYPE XNAToTMP_MagFilter[] =
+{
+	0,	/* TextureFilter.Linear */
+	0,	/* TextureFilter.Point */
+	0,	/* TextureFilter.Anisotropic */
+	0,	/* TextureFilter.LinearMipPoint */
+	0,	/* TextureFilter.PointMipLinear */
+	0,	/* TextureFilter.MinLinearMagPointMipLinear */
+	0,	/* TextureFilter.MinLinearMagPointMipPoint */
+	0,	/* TextureFilter.MinPointMagLinearMipLinear */
+	0	/* TextureFilter.MinPointMagLinearMipPoint */
+};
+
+static TEMPLATE_TEXTURE_MIP_FILTER_TYPE XNAToTMP_MipFilter[] =
+{
+	0,	/* TextureFilter.Linear */
+	0,	/* TextureFilter.Point */
+	0,	/* TextureFilter.Anisotropic */
+	0,	/* TextureFilter.LinearMipPoint */
+	0,	/* TextureFilter.PointMipLinear */
+	0,	/* TextureFilter.MinLinearMagPointMipLinear */
+	0,	/* TextureFilter.MinLinearMagPointMipPoint */
+	0,	/* TextureFilter.MinPointMagLinearMipLinear */
+	0	/* TextureFilter.MinPointMagLinearMipPoint */
+};
+
+static TEMPLATE_TEXTURE_FILTER_TYPE XNAToTMP_MinFilter[] =
+{
+	0,	/* TextureFilter.Linear */
+	0,	/* TextureFilter.Point */
+	0,	/* TextureFilter.Anisotropic */
+	0,	/* TextureFilter.LinearMipPoint */
+	0,	/* TextureFilter.PointMipLinear */
+	0,	/* TextureFilter.MinLinearMagPointMipLinear */
+	0,	/* TextureFilter.MinLinearMagPointMipPoint */
+	0,	/* TextureFilter.MinPointMagLinearMipLinear */
+	0	/* TextureFilter.MinPointMagLinearMipPoint */
+};
+
+static TEMPLATE_PRIMITIVE_TYPE XNAToTMP_Primitive[] =
+{
+	0,	/* PrimitiveType.TriangleList */
+	0,	/* PrimitiveType.TriangleStrip */
+	0,	/* PrimitiveType.LineList */
+	0,	/* PrimitiveType.LineStrip */
+	0	/* PrimitiveType.PointListEXT */
+};
+
+/* Renderer Implementation */
+
 /* Quit */
 
 static void TEMPLATE_DestroyDevice(FNA3D_Device *device)
