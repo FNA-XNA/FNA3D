@@ -93,6 +93,7 @@ typedef struct DirectX11Renderer /* Cast FNA3D_Renderer* to this! */
 	int32_t numRenderTargets;
 	ID3D11RenderTargetView *renderTargetViews[MAX_RENDERTARGET_BINDINGS];
 	ID3D11DepthStencilView *depthStencilView;
+	FNA3D_DepthFormat currentDepthFormat;
 } DirectX11Renderer;
 
 /* XNA->DirectX11 Translation Arrays */
@@ -132,18 +133,18 @@ static DXGI_FORMAT XNAToD3D_DepthFormat[] =
 
 static LPCSTR XNAToD3D_VertexAttribSemanticName[] =
 {
-	L"POSITION",			/* VertexElementUsage.Position */
-	L"COLOR",			/* VertexElementUsage.Color */
+	L"SV_POSITION",			/* VertexElementUsage.Position */
+	L"SV_TARGET",			/* VertexElementUsage.Color */
 	L"TEXCOORD",			/* VertexElementUsage.TextureCoordinate */
 	L"NORMAL",			/* VertexElementUsage.Normal */
 	L"BINORMAL",			/* VertexElementUsage.Binormal */
 	L"TANGENT",			/* VertexElementUsage.Tangent */
 	L"BLENDINDICES",		/* VertexElementUsage.BlendIndices */
 	L"BLENDWEIGHT",			/* VertexElementUsage.BlendWeight */
-	L"DEPTH",			/* VertexElementUsage.Depth */
+	L"SV_DEPTH",			/* VertexElementUsage.Depth */
 	L"FOG",				/* VertexElementUsage.Fog */
 	L"PSIZE",			/* VertexElementUsage.PointSize */
-	L"FIXME: ???",			/* VertexElementUsage.Sample */
+	L"SV_SampleIndex",		/* VertexElementUsage.Sample */
 	L"TESSFACTOR"			/* VertexElementUsage.TessellateFactor */
 };
 
@@ -290,7 +291,7 @@ static ID3D11BlendState* FetchBlendState(
 
 	/* We need to make a new blend state... */
 	desc.AlphaToCoverageEnable = 0;
-	desc.IndependentBlendEnable = 0; /* FIXME: MRT? */
+	desc.IndependentBlendEnable = 0;
 	desc.RenderTarget[0].BlendEnable = !(
 		state->colorSourceBlend == FNA3D_BLEND_ONE &&
 		state->colorDestinationBlend == FNA3D_BLEND_ZERO &&
@@ -312,6 +313,11 @@ static ID3D11BlendState* FetchBlendState(
 	desc.RenderTarget[0].RenderTargetWriteMask = (
 		(uint32_t) state->colorWriteEnable
 	);
+	/* FIXME: For colorWriteEnable1/2/3, we'll need
+	 * to loop over all render target descriptors
+	 * and apply the same state, except for the mask.
+	 * Ugh. -caleb
+	 */
 	desc.RenderTarget[0].SrcBlend = XNAToD3D_BlendMode[
 		state->colorSourceBlend
 	];
@@ -424,14 +430,16 @@ static ID3D11RasterizerState* FetchRasterizerState(
 	/* We have to make a new rasterizer state... */
 	desc.AntialiasedLineEnable = 0;
 	desc.CullMode = XNAToD3D_CullMode[state->cullMode];
-	desc.DepthBias = 0; /* FIXME */
-	desc.DepthBiasClamp = 0; /* FIXME */
+	desc.DepthBias = state->depthBias * XNAToD3D_DepthBiasScale[
+		renderer->currentDepthFormat
+	];
+	desc.DepthBiasClamp = D3D11_FLOAT32_MAX;
 	desc.DepthClipEnable = 1;
 	desc.FillMode = XNAToD3D_FillMode[state->fillMode];
 	desc.FrontCounterClockwise = 1;
 	desc.MultisampleEnable = state->multiSampleAntiAlias;
 	desc.ScissorEnable = state->scissorTestEnable;
-	desc.SlopeScaledDepthBias = 0; /* FIXME */
+	desc.SlopeScaledDepthBias = state->slopeScaleDepthBias;
 
 	/* Bake the state! */
 	renderer->device->lpVtbl->CreateRasterizerState(
@@ -473,7 +481,7 @@ static ID3D11SamplerState* FetchSamplerState(
 	desc.ComparisonFunc = D3D11_COMPARISON_NEVER; /* FIXME: What should this be? */
 	desc.Filter = XNAToD3D_Filter[state->filter];
 	desc.MaxAnisotropy = (uint32_t) state->maxAnisotropy;
-	desc.MaxLOD = D3D11_FLOAT32_MAX; /* FIXME: Is this right? */
+	desc.MaxLOD = D3D11_FLOAT32_MAX;
 	desc.MinLOD = (float) state->maxMipLevel;
 	desc.MipLODBias = state->mipMapLevelOfDetailBias;
 
@@ -813,7 +821,7 @@ static void DIRECTX11_SetBlendState(
 		renderer->context,
 		FetchBlendState(renderer, blendState),
 		blendFactor,
-		blendState->multiSampleMask /* FIXME: Do we use the dynamic versions anywhere...? */
+		(uint32_t) renderer->multiSampleMask
 	);
 }
 
@@ -825,7 +833,7 @@ static void DIRECTX11_SetDepthStencilState(
 	renderer->context->lpVtbl->OMSetDepthStencilState(
 		renderer->context,
 		FetchDepthStencilState(renderer, depthStencilState),
-		(uint32_t) depthStencilState->referenceStencil /* FIXME: Is the dynamic version ever used? */
+		(uint32_t) renderer->stencilRef
 	);
 }
 
@@ -849,7 +857,7 @@ static void DIRECTX11_VerifySampler(
 	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
 
 	/* TODO */
-	/* FIXME: We need to bind all samplers at once !*/
+	/* We need to bind all samplers at once !*/
 }
 
 /* Vertex State */
@@ -1363,7 +1371,7 @@ static int32_t DIRECTX11_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
 {
 	/* 8x MSAA is guaranteed for all
 	 * surface formats except Vector4.
-	 * FIXME: Can we check if that actual limit is higher?
+	 * FIXME: Can we check if the actual limit is higher?
 	 */
 	return 8;
 }
