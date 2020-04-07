@@ -38,7 +38,13 @@
 
 typedef struct DirectX11Texture /* Cast FNA3D_Texture* to this! */
 {
-	uint8_t filler;
+	union
+	{
+		ID3D11Texture2D *h2D;
+		ID3D11Texture3D *h3D;
+	} handle;
+	int32_t levelCount;
+	uint8_t isRenderTarget;
 } DirectX11Texture;
 
 typedef struct DirectX11Renderbuffer /* Cast FNA3D_Renderbuffer* to this! */
@@ -83,7 +89,7 @@ typedef struct DirectX11Renderer /* Cast FNA3D_Renderer* to this! */
 	/* Depth Stencil State */
 	int32_t stencilRef;
 
-	/* Render State Caches */
+	/* Resource Caches */
 	StateHashMap *blendStateCache;
 	StateHashMap *depthStencilStateCache;
 	StateHashMap *rasterizerStateCache;
@@ -269,6 +275,43 @@ static D3D_PRIMITIVE_TOPOLOGY XNAToD3D_Primitive[] =
 	D3D_PRIMITIVE_TOPOLOGY_LINESTRIP,	/* PrimitiveType.LineStrip */
 	D3D_PRIMITIVE_TOPOLOGY_POINTLIST	/* PrimitiveType.PointListEXT */
 };
+
+/* Texture Helper Functions */
+
+static inline int32_t BytesPerRow(
+	int32_t width,
+	FNA3D_SurfaceFormat format
+) {
+	int32_t blocksPerRow = width;
+
+	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
+		format == FNA3D_SURFACEFORMAT_DXT3 ||
+		format == FNA3D_SURFACEFORMAT_DXT5	)
+	{
+		blocksPerRow = (width + 3) / 4;
+	}
+
+	return blocksPerRow * Texture_GetFormatSize(format);
+}
+
+static inline int32_t BytesPerDepthSlice(
+	int32_t width,
+	int32_t height,
+	FNA3D_SurfaceFormat format
+) {
+	int32_t blocksPerRow = width;
+	int32_t blocksPerColumn = height;
+
+	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
+		format == FNA3D_SURFACEFORMAT_DXT3 ||
+		format == FNA3D_SURFACEFORMAT_DXT5	)
+	{
+		blocksPerRow = (width + 3) / 4;
+		blocksPerColumn = (height + 3) / 4;
+	}
+
+	return blocksPerRow * blocksPerColumn * Texture_GetFormatSize(format);
+}
 
 /* Pipeline State Object Caching */
 
@@ -963,8 +1006,40 @@ static FNA3D_Texture* DIRECTX11_CreateTexture2D(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
-	/* TODO */
-	return NULL;
+	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	DirectX11Texture *result = SDL_malloc(sizeof(DirectX11Texture));
+	DXGI_SAMPLE_DESC sampleDesc = {1, 0};
+	D3D11_TEXTURE2D_DESC desc =
+	{
+		width,
+		height,
+		levelCount,
+		1,
+		XNAToD3D_TextureFormat[format],
+		sampleDesc,
+		D3D11_USAGE_DEFAULT,
+		D3D11_BIND_SHADER_RESOURCE,
+		0,
+		0
+	};
+	if (isRenderTarget)
+	{
+		/* FIXME: Apparently it's faster to specify
+		 * a single bind flag. What can we do here?
+		 */
+		desc.BindFlags |= D3D11_BIND_RENDER_TARGET;
+	}
+
+	/* Create the texture */
+	renderer->device->lpVtbl->CreateTexture2D(
+		renderer->device,
+		&desc,
+		NULL,
+		&result->handle.h2D
+	);
+	result->levelCount = levelCount;
+	result->isRenderTarget = isRenderTarget;
+	return (FNA3D_Texture*) result;
 }
 
 static FNA3D_Texture* DIRECTX11_CreateTexture3D(
@@ -975,8 +1050,31 @@ static FNA3D_Texture* DIRECTX11_CreateTexture3D(
 	int32_t depth,
 	int32_t levelCount
 ) {
-	/* TODO */
-	return NULL;
+	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	DirectX11Texture *result = SDL_malloc(sizeof(DirectX11Texture));
+	D3D11_TEXTURE3D_DESC desc =
+	{
+		width,
+		height,
+		depth,
+		levelCount,
+		XNAToD3D_TextureFormat[format],
+		D3D11_USAGE_DEFAULT,
+		D3D11_BIND_SHADER_RESOURCE,
+		0,
+		0
+	};
+
+	/* Create the texture */
+	renderer->device->lpVtbl->CreateTexture3D(
+		renderer->device,
+		&desc,
+		NULL,
+		&result->handle.h3D
+	);
+	result->levelCount = levelCount;
+	result->isRenderTarget = 0;
+	return (FNA3D_Texture*) result;
 }
 
 static FNA3D_Texture* DIRECTX11_CreateTextureCube(
@@ -986,8 +1084,40 @@ static FNA3D_Texture* DIRECTX11_CreateTextureCube(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
-	/* TODO */
-	return NULL;
+	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	DirectX11Texture *result = SDL_malloc(sizeof(DirectX11Texture));
+	DXGI_SAMPLE_DESC sampleDesc = {1, 0};
+	D3D11_TEXTURE2D_DESC desc =
+	{
+		size,
+		size,
+		levelCount,
+		6,
+		XNAToD3D_TextureFormat[format],
+		sampleDesc,
+		D3D11_USAGE_DEFAULT,
+		D3D11_BIND_SHADER_RESOURCE,
+		0,
+		D3D11_RESOURCE_MISC_TEXTURECUBE
+	};
+	if (isRenderTarget)
+	{
+		/* FIXME: Apparently it's faster to specify
+		 * a single bind flag. What can we do here?
+		 */
+		desc.BindFlags |= D3D11_BIND_RENDER_TARGET;
+	}
+
+	/* Create the texture */
+	renderer->device->lpVtbl->CreateTexture2D(
+		renderer->device,
+		&desc,
+		NULL,
+		&result->handle.h2D
+	);
+	result->levelCount = levelCount;
+	result->isRenderTarget = isRenderTarget;
+	return (FNA3D_Texture*) result;
 }
 
 static void DIRECTX11_AddDisposeTexture(
@@ -995,6 +1125,17 @@ static void DIRECTX11_AddDisposeTexture(
 	FNA3D_Texture *texture
 ) {
 	/* TODO */
+}
+
+/* FIXME: Supposedly this is already included
+ * in d3d11.h, but I'm not seeing it. -caleb
+ */
+static inline uint32_t CalcSubresource(
+	uint32_t mipLevel,
+	uint32_t arraySlice,
+	uint32_t numLevels
+) {
+	return mipLevel + (arraySlice * numLevels);
 }
 
 static void DIRECTX11_SetTextureData2D(
@@ -1009,7 +1150,19 @@ static void DIRECTX11_SetTextureData2D(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
+	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	DirectX11Texture *d3dTexture = (DirectX11Texture*) texture;
+	D3D11_BOX dstBox = {x, y, 0, x + w, y + h, 1};
+
+	renderer->context->lpVtbl->UpdateSubresource(
+		renderer->context,
+		d3dTexture->handle.h2D,
+		CalcSubresource(level, 0, d3dTexture->levelCount),
+		&dstBox,
+		data,
+		BytesPerRow(w, format),
+		BytesPerDepthSlice(w, h, format)
+	);
 }
 
 static void DIRECTX11_SetTextureData3D(
@@ -1026,7 +1179,19 @@ static void DIRECTX11_SetTextureData3D(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
+	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	DirectX11Texture *d3dTexture = (DirectX11Texture*) texture;
+	D3D11_BOX dstBox = {left, top, front, right, bottom, back};
+
+	renderer->context->lpVtbl->UpdateSubresource(
+		renderer->context,
+		d3dTexture->handle.h3D,
+		CalcSubresource(level, 0, d3dTexture->levelCount),
+		&dstBox,
+		data,
+		BytesPerRow(right - left, format),
+		BytesPerDepthSlice(right - left, bottom - top, format)
+	);
 }
 
 static void DIRECTX11_SetTextureDataCube(
@@ -1042,7 +1207,23 @@ static void DIRECTX11_SetTextureDataCube(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
+	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	DirectX11Texture *d3dTexture = (DirectX11Texture*) texture;
+	D3D11_BOX dstBox = {x, y, 0, x + w, y + h, 1};
+
+	renderer->context->lpVtbl->UpdateSubresource(
+		renderer->context,
+		d3dTexture->handle.h2D,
+		CalcSubresource(
+			level,
+			cubeMapFace,
+			d3dTexture->levelCount
+		),
+		&dstBox,
+		data,
+		BytesPerRow(w, format),
+		BytesPerDepthSlice(w, h, format)
+	);
 }
 
 static void DIRECTX11_SetTextureDataYUV(
