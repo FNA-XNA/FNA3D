@@ -2115,13 +2115,13 @@ static void MODERNGL_SetRenderTargets(
 		else
 		{
 			renderer->attachments[i] = ((ModernGLTexture*) rt->texture)->handle;
-			if (rt->type == RENDERTARGET_TYPE_2D)
+			if (rt->type == FNA3D_RENDERTARGET_TYPE_2D)
 			{
 				renderer->attachmentTypes[i] = GL_TEXTURE_2D;
 			}
 			else
 			{
-				renderer->attachmentTypes[i] = GL_TEXTURE_CUBE_MAP_POSITIVE_X + rt->cubeMapFace;
+				renderer->attachmentTypes[i] = GL_TEXTURE_CUBE_MAP_POSITIVE_X + rt->cube.face;
 			}
 		}
 	}
@@ -2310,11 +2310,12 @@ static void MODERNGL_ResolveTarget(
 ) {
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
 	ModernGLTexture *rtTex = (ModernGLTexture*) target->texture;
+	int32_t width, height;
 
 	if (target->multiSampleCount > 0)
 	{
 		/* Set up the texture framebuffer */
-		if (target->type == RENDERTARGET_TYPE_2D)
+		if (target->type == FNA3D_RENDERTARGET_TYPE_2D)
 		{
 			renderer->glNamedFramebufferTexture(
 				renderer->resolveFramebufferDraw,
@@ -2322,6 +2323,8 @@ static void MODERNGL_ResolveTarget(
 				rtTex->handle,
 				0
 			);
+			width = target->twod.width;
+			height = target->twod.height;
 		}
 		else
 		{
@@ -2330,8 +2333,10 @@ static void MODERNGL_ResolveTarget(
 				GL_COLOR_ATTACHMENT0,
 				rtTex->handle,
 				0,
-				target->cubeMapFace
+				target->cube.face
 			);
+			width = target->cube.size;
+			height = target->cube.size;
 		}
 
 		/* Set up the renderbuffer framebuffer */
@@ -2350,8 +2355,8 @@ static void MODERNGL_ResolveTarget(
 		renderer->glBlitNamedFramebuffer(
 			renderer->resolveFramebufferRead,
 			renderer->resolveFramebufferDraw,
-			0, 0, target->width, target->height,
-			0, 0, target->width, target->height,
+			0, 0, width, height,
+			0, 0, width, height,
 			GL_COLOR_BUFFER_BIT,
 			GL_LINEAR
 		);

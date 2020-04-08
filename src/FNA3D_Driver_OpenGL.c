@@ -2333,13 +2333,13 @@ static void OPENGL_SetRenderTargets(
 		else
 		{
 			renderer->attachments[i] = ((OpenGLTexture*) rt->texture)->handle;
-			if (rt->type == RENDERTARGET_TYPE_2D)
+			if (rt->type == FNA3D_RENDERTARGET_TYPE_2D)
 			{
 				renderer->attachmentTypes[i] = GL_TEXTURE_2D;
 			}
 			else
 			{
-				renderer->attachmentTypes[i] = GL_TEXTURE_CUBE_MAP_POSITIVE_X + rt->cubeMapFace;
+				renderer->attachmentTypes[i] = GL_TEXTURE_CUBE_MAP_POSITIVE_X + rt->cube.face;
 			}
 		}
 	}
@@ -2496,11 +2496,21 @@ static void OPENGL_ResolveTarget(
 	GLuint prevBuffer;
 	OpenGLTexture *prevTex;
 	OpenGLTexture *rtTex = (OpenGLTexture*) target->texture;
-	GLenum textureTarget = (
-		target->type == RENDERTARGET_TYPE_2D ?
-			GL_TEXTURE_2D :
-			GL_TEXTURE_CUBE_MAP_POSITIVE_X + target->cubeMapFace
-	);
+	int32_t width, height;
+	GLenum textureTarget;
+
+	if (target->type == FNA3D_RENDERTARGET_TYPE_2D)
+	{
+		textureTarget = GL_TEXTURE_2D;
+		width = target->twod.width;
+		height = target->twod.height;
+	}
+	else
+	{
+		textureTarget = GL_TEXTURE_CUBE_MAP_POSITIVE_X + target->cube.face;
+		width = target->cube.size;
+		height = target->cube.size;
+	}
 
 	if (target->multiSampleCount > 0)
 	{
@@ -2532,8 +2542,8 @@ static void OPENGL_ResolveTarget(
 		}
 		BindDrawFramebuffer(renderer, renderer->resolveFramebufferDraw);
 		renderer->glBlitFramebuffer(
-			0, 0, target->width, target->height,
-			0, 0, target->width, target->height,
+			0, 0, width, height,
+			0, 0, width, height,
 			GL_COLOR_BUFFER_BIT,
 			GL_LINEAR
 		);

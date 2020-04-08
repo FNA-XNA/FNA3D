@@ -35,6 +35,15 @@
 #define FNA3DCALL
 #endif
 
+/* -Wpedantic nameless union/struct silencing */
+#ifndef FNA3DNAMELESS
+#ifdef __GNUC__
+#define FNA3DNAMELESS __extension__
+#else
+#define FNA3DNAMELESS
+#endif /* __GNUC__ */
+#endif /* FNA3DNAMELESS */
+
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -411,23 +420,35 @@ typedef struct FNA3D_PresentationParameters
 
 typedef struct FNA3D_RenderTargetBinding
 {
-	/* FNA3D */
-	#define RENDERTARGET_TYPE_2D 0
-	#define RENDERTARGET_TYPE_CUBE 1
+	/* Basic target information */
+	#define FNA3D_RENDERTARGET_TYPE_2D 0
+	#define FNA3D_RENDERTARGET_TYPE_CUBE 1
 	uint8_t type;
+	FNA3DNAMELESS union
+	{
+		struct
+		{
+			int32_t width;
+			int32_t height;
+		} twod;
+		struct
+		{
+			int32_t size;
+			FNA3D_CubeMapFace face;
+		} cube;
+	};
 
-	/* Texture */
+	/* If this is >0, you MUST call ResolveTarget after rendering! */
 	int32_t levelCount;
+
+	/* If this is >0, colorBuffer MUST be non-NULL! */
+	int32_t multiSampleCount;
+
+	/* Destination texture. This MUST be non-NULL! */
 	FNA3D_Texture *texture;
 
-	/* IRenderTarget */
-	int32_t width;
-	int32_t height;
-	int32_t multiSampleCount;
+	/* If this is non-NULL, you MUST call ResolveTarget after rendering! */
 	FNA3D_Renderbuffer *colorBuffer;
-
-	/* RenderTargetBinding */
-	FNA3D_CubeMapFace cubeMapFace;
 } FNA3D_RenderTargetBinding;
 
 /* Functions */

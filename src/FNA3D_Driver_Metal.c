@@ -2987,7 +2987,14 @@ static void METAL_SetRenderTargets(
 	/* Update color buffers */
 	for (i = 0; i < numRenderTargets; i += 1)
 	{
-		renderer->currentAttachmentSlices[i] = renderTargets[i].cubeMapFace;
+		if (renderTargets[i].type == FNA3D_RENDERTARGET_TYPE_CUBE)
+		{
+			renderer->currentAttachmentSlices[i] = renderTargets[i].cube.face;
+		}
+		else
+		{
+			renderer->currentAttachmentSlices[i] = 0;
+		}
 		if (renderTargets[i].colorBuffer != NULL)
 		{
 			rb = (MetalRenderbuffer*) renderTargets[i].colorBuffer;
