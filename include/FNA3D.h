@@ -438,10 +438,10 @@ typedef struct FNA3D_RenderTargetBinding
 		} cube;
 	};
 
-	/* If this is >0, you MUST call ResolveTarget after rendering! */
+	/* If this is >1, you MUST call ResolveTarget after rendering! */
 	int32_t levelCount;
 
-	/* If this is >0, colorBuffer MUST be non-NULL! */
+	/* If this is >1, colorBuffer MUST be non-NULL! */
 	int32_t multiSampleCount;
 
 	/* Destination texture. This MUST be non-NULL! */
