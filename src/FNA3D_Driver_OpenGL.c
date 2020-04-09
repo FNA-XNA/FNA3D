@@ -3825,6 +3825,8 @@ static void OPENGL_GetTextureData2D(
 	}
 
 	glTexture = (OpenGLTexture*) texture;
+	textureWidth = glTexture->twod.width >> level;
+	textureHeight = glTexture->twod.height >> level;
 	BindTexture(renderer, glTexture);
 	glFormat = XNAToGL_TextureFormat[format];
 	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
@@ -3836,8 +3838,8 @@ static void OPENGL_GetTextureData2D(
 	}
 	else if (	x == 0 &&
 			y == 0 &&
-			w == glTexture->twod.width &&
-			h == glTexture->twod.height	)
+			w == textureWidth &&
+			h == textureHeight	)
 	{
 		/* Just throw the whole texture into the user array. */
 		renderer->glGetTexImage(
@@ -3851,8 +3853,6 @@ static void OPENGL_GetTextureData2D(
 	else
 	{
 		glFormatSize = Texture_GetFormatSize(format);
-		textureWidth = glTexture->twod.width >> level;
-		textureHeight = glTexture->twod.height >> level;
 
 		/* Get the whole texture... */
 		texData = (uint8_t*) SDL_malloc(
@@ -3952,6 +3952,7 @@ static void OPENGL_GetTextureDataCube(
 	}
 
 	glTexture = (OpenGLTexture*) texture;
+	textureSize = glTexture->cube.size >> level;
 	BindTexture(renderer, glTexture);
 	glFormat = XNAToGL_TextureFormat[format];
 	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
@@ -3963,8 +3964,8 @@ static void OPENGL_GetTextureDataCube(
 	}
 	else if (	x == 0 &&
 			y == 0 &&
-			w == glTexture->cube.size &&
-			h == glTexture->cube.size	)
+			w == textureSize &&
+			h == textureSize	)
 	{
 		/* Just throw the whole texture into the user array. */
 		renderer->glGetTexImage(
@@ -3978,7 +3979,6 @@ static void OPENGL_GetTextureDataCube(
 	else
 	{
 		glFormatSize = Texture_GetFormatSize(format);
-		textureSize = glTexture->cube.size >> level;
 
 		/* Get the whole texture... */
 		texData = (uint8_t*) SDL_malloc(
