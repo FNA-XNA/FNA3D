@@ -4147,13 +4147,10 @@ static void MODERNGL_GetIndexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
 	ModernGLBuffer *buf = (ModernGLBuffer*) buffer;
-	uint8_t *dataPtr = (uint8_t*) data;
 	FNA3D_Command cmd;
 
 	if (	buf->pin == NULL &&
@@ -4163,9 +4160,7 @@ static void MODERNGL_GetIndexBufferData(
 		cmd.getIndexBufferData.buffer = buffer;
 		cmd.getIndexBufferData.offsetInBytes = offsetInBytes;
 		cmd.getIndexBufferData.data = data;
-		cmd.getIndexBufferData.startIndex = startIndex;
-		cmd.getIndexBufferData.elementCount = elementCount;
-		cmd.getIndexBufferData.elementSizeInBytes = elementSizeInBytes;
+		cmd.getIndexBufferData.dataLength = dataLength;
 		ForceToMainThread(renderer, &cmd);
 		return;
 	}
@@ -4175,19 +4170,15 @@ static void MODERNGL_GetIndexBufferData(
 		/* Buffers can't get written to by anyone other than the
 		 * application, so we can just memcpy here... right?
 		 */
-		SDL_memcpy(
-			dataPtr + (startIndex * elementSizeInBytes),
-			buf->pin + offsetInBytes,
-			elementCount * elementSizeInBytes
-		);
+		SDL_memcpy(data, buf->pin + offsetInBytes, dataLength);
 	}
 	else
 	{
 		renderer->glGetNamedBufferSubData(
 			buf->handle,
 			(GLintptr) offsetInBytes,
-			(GLsizeiptr) (elementCount * elementSizeInBytes),
-			dataPtr + (startIndex * elementSizeInBytes)
+			(GLsizeiptr) dataLength,
+			data
 		);
 	}
 }

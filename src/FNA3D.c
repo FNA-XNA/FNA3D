@@ -1171,9 +1171,7 @@ void FNA3D_GetIndexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	if (device == NULL)
 	{
@@ -1184,9 +1182,7 @@ void FNA3D_GetIndexBufferData(
 		buffer,
 		offsetInBytes,
 		data,
-		startIndex,
-		elementCount,
-		elementSizeInBytes
+		dataLength
 	);
 }
 

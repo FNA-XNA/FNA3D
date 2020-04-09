@@ -499,9 +499,7 @@ struct GLThreadCommand
 			FNA3D_Buffer *buffer;
 			int32_t offsetInBytes;
 			void* data;
-			int32_t startIndex;
-			int32_t elementCount;
-			int32_t elementSizeInBytes;
+			int32_t dataLength;
 		} getIndexBufferData;
 		struct
 		{
@@ -1102,9 +1100,7 @@ static int GLRenderThread(void* data)
 					cmd->getIndexBufferData.buffer,
 					cmd->getIndexBufferData.offsetInBytes,
 					cmd->getIndexBufferData.data,
-					cmd->getIndexBufferData.startIndex,
-					cmd->getIndexBufferData.elementCount,
-					cmd->getIndexBufferData.elementSizeInBytes
+					cmd->getIndexBufferData.dataLength
 				);
 				break;
 			case COMMAND_CREATEEFFECT:
@@ -2216,7 +2212,7 @@ static void THREADEDGL_SetIndexBufferData(
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
 
-	cmd.type = COMMAND_GETINDEXBUFFERDATA;
+	cmd.type = COMMAND_SETINDEXBUFFERDATA;
 	cmd.setIndexBufferData.buffer = buffer;
 	cmd.setIndexBufferData.offsetInBytes = offsetInBytes;
 	cmd.setIndexBufferData.data = data;
@@ -2229,9 +2225,7 @@ static void THREADEDGL_GetIndexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
@@ -2240,9 +2234,7 @@ static void THREADEDGL_GetIndexBufferData(
 	cmd.getIndexBufferData.buffer = buffer;
 	cmd.getIndexBufferData.offsetInBytes = offsetInBytes;
 	cmd.getIndexBufferData.data = data;
-	cmd.getIndexBufferData.startIndex = startIndex;
-	cmd.getIndexBufferData.elementCount = elementCount;
-	cmd.getIndexBufferData.elementSizeInBytes = elementSizeInBytes;
+	cmd.getIndexBufferData.dataLength = dataLength;
 	ForceToRenderThread(renderer, &cmd);
 }
 

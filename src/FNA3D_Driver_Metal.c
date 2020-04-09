@@ -4108,17 +4108,14 @@ static void METAL_GetIndexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	MetalBuffer *mtlBuffer = (MetalBuffer*) buffer;
-	uint8_t *dataPtr = (uint8_t*) data;
 	uint8_t *contentsPtr = (uint8_t*) mtlBuffer->contents;
 	SDL_memcpy(
-		dataPtr + (startIndex * elementSizeInBytes),
+		data,
 		contentsPtr + offsetInBytes,
-		elementCount * elementSizeInBytes
+		dataLength
 	);
 }
 

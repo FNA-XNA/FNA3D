@@ -4520,9 +4520,7 @@ static void OPENGL_GetIndexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
@@ -4536,9 +4534,7 @@ static void OPENGL_GetIndexBufferData(
 		cmd.getIndexBufferData.buffer = buffer;
 		cmd.getIndexBufferData.offsetInBytes = offsetInBytes;
 		cmd.getIndexBufferData.data = data;
-		cmd.getIndexBufferData.startIndex = startIndex;
-		cmd.getIndexBufferData.elementCount = elementCount;
-		cmd.getIndexBufferData.elementSizeInBytes = elementSizeInBytes;
+		cmd.getIndexBufferData.dataLength = dataLength;
 		ForceToMainThread(renderer, &cmd);
 		return;
 	}
@@ -4548,8 +4544,8 @@ static void OPENGL_GetIndexBufferData(
 	renderer->glGetBufferSubData(
 		GL_ELEMENT_ARRAY_BUFFER,
 		(GLintptr) offsetInBytes,
-		(GLsizeiptr) (elementCount * elementSizeInBytes),
-		((uint8_t*) data) + (startIndex * elementSizeInBytes)
+		(GLsizeiptr) dataLength,
+		data
 	);
 }
 

@@ -594,9 +594,7 @@ struct FNA3D_Device
 		FNA3D_Buffer *buffer,
 		int32_t offsetInBytes,
 		void* data,
-		int32_t startIndex,
-		int32_t elementCount,
-		int32_t elementSizeInBytes
+		int32_t dataLength
 	);
 
 	/* Effects */

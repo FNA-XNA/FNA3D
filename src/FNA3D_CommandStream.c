@@ -106,9 +106,7 @@ void FNA3D_ExecuteCommand(
 				cmd->getIndexBufferData.buffer,
 				cmd->getIndexBufferData.offsetInBytes,
 				cmd->getIndexBufferData.data,
-				cmd->getIndexBufferData.startIndex,
-				cmd->getIndexBufferData.elementCount,
-				cmd->getIndexBufferData.elementSizeInBytes
+				cmd->getIndexBufferData.dataLength
 			);
 			break;
 		case FNA3D_COMMAND_CREATETEXTURE2D:
