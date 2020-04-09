@@ -4286,7 +4286,9 @@ static void OPENGL_SetVertexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t dataLength,
+	int32_t elementCount,
+	int32_t elementSizeInBytes,
+	int32_t vertexStride,
 	FNA3D_SetDataOptions options
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
@@ -4299,13 +4301,17 @@ static void OPENGL_SetVertexBufferData(
 		cmd.setVertexBufferData.buffer = buffer;
 		cmd.setVertexBufferData.offsetInBytes = offsetInBytes;
 		cmd.setVertexBufferData.data = data;
-		cmd.setVertexBufferData.dataLength = dataLength;
+		cmd.setVertexBufferData.elementCount = elementCount;
+		cmd.setVertexBufferData.elementSizeInBytes = elementSizeInBytes;
+		cmd.setVertexBufferData.vertexStride = vertexStride;
 		cmd.setVertexBufferData.options = options;
 		ForceToMainThread(renderer, &cmd);
 		return;
 	}
 
 	BindVertexBuffer(renderer, glBuffer->handle);
+
+	/* FIXME: Staging buffer for elementSizeInBytes < vertexStride! */
 
 	if (options == FNA3D_SETDATAOPTIONS_DISCARD)
 	{
@@ -4320,7 +4326,7 @@ static void OPENGL_SetVertexBufferData(
 	renderer->glBufferSubData(
 		GL_ARRAY_BUFFER,
 		(GLintptr) offsetInBytes,
-		(GLsizeiptr) dataLength,
+		(GLsizeiptr) (elementCount * vertexStride),
 		data
 	);
 }
@@ -4330,7 +4336,6 @@ static void OPENGL_GetVertexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t startIndex,
 	int32_t elementCount,
 	int32_t elementSizeInBytes,
 	int32_t vertexStride
@@ -4350,7 +4355,6 @@ static void OPENGL_GetVertexBufferData(
 		cmd.getVertexBufferData.buffer = buffer;
 		cmd.getVertexBufferData.offsetInBytes = offsetInBytes;
 		cmd.getVertexBufferData.data = data;
-		cmd.getVertexBufferData.startIndex = startIndex;
 		cmd.getVertexBufferData.elementCount = elementCount;
 		cmd.getVertexBufferData.elementSizeInBytes = elementSizeInBytes;
 		cmd.getVertexBufferData.vertexStride = vertexStride;
@@ -4366,7 +4370,7 @@ static void OPENGL_GetVertexBufferData(
 	}
 	else
 	{
-		cpy = dataBytes + (startIndex * elementSizeInBytes);
+		cpy = dataBytes;
 	}
 
 	BindVertexBuffer(renderer, glBuffer->handle);
@@ -4381,7 +4385,7 @@ static void OPENGL_GetVertexBufferData(
 	if (useStagingBuffer)
 	{
 		src = cpy;
-		dst = dataBytes + (startIndex * elementSizeInBytes);
+		dst = dataBytes;
 		for (i = 0; i < elementCount; i += 1)
 		{
 			SDL_memcpy(dst, src, elementSizeInBytes);

@@ -554,7 +554,9 @@ struct FNA3D_Device
 		FNA3D_Buffer *buffer,
 		int32_t offsetInBytes,
 		void* data,
-		int32_t dataLength,
+		int32_t elementCount,
+		int32_t elementSizeInBytes,
+		int32_t vertexStride,
 		FNA3D_SetDataOptions options
 	);
 	void (*GetVertexBufferData)(
@@ -562,7 +564,6 @@ struct FNA3D_Device
 		FNA3D_Buffer *buffer,
 		int32_t offsetInBytes,
 		void* data,
-		int32_t startIndex,
 		int32_t elementCount,
 		int32_t elementSizeInBytes,
 		int32_t vertexStride

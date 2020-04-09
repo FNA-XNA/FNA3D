@@ -461,7 +461,9 @@ struct GLThreadCommand
 			FNA3D_Buffer *buffer;
 			int32_t offsetInBytes;
 			void* data;
-			int32_t dataLength;
+			int32_t elementCount;
+			int32_t elementSizeInBytes;
+			int32_t vertexStride;
 			FNA3D_SetDataOptions options;
 		} setVertexBufferData;
 		struct
@@ -469,7 +471,6 @@ struct GLThreadCommand
 			FNA3D_Buffer *buffer;
 			int32_t offsetInBytes;
 			void* data;
-			int32_t startIndex;
 			int32_t elementCount;
 			int32_t elementSizeInBytes;
 			int32_t vertexStride;
@@ -1053,7 +1054,9 @@ static int GLRenderThread(void* data)
 					cmd->setVertexBufferData.buffer,
 					cmd->setVertexBufferData.offsetInBytes,
 					cmd->setVertexBufferData.data,
-					cmd->setVertexBufferData.dataLength,
+					cmd->setVertexBufferData.elementCount,
+					cmd->setVertexBufferData.elementSizeInBytes,
+					cmd->setVertexBufferData.vertexStride,
 					cmd->setVertexBufferData.options
 				);
 				break;
@@ -1063,7 +1066,6 @@ static int GLRenderThread(void* data)
 					cmd->getVertexBufferData.buffer,
 					cmd->getVertexBufferData.offsetInBytes,
 					cmd->getVertexBufferData.data,
-					cmd->getVertexBufferData.startIndex,
 					cmd->getVertexBufferData.elementCount,
 					cmd->getVertexBufferData.elementSizeInBytes,
 					cmd->getVertexBufferData.vertexStride
@@ -2129,7 +2131,9 @@ static void THREADEDGL_SetVertexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t dataLength,
+	int32_t elementCount,
+	int32_t elementSizeInBytes,
+	int32_t vertexStride,
 	FNA3D_SetDataOptions options
 ) {
 	GLThreadCommand cmd;
@@ -2139,7 +2143,9 @@ static void THREADEDGL_SetVertexBufferData(
 	cmd.setVertexBufferData.buffer = buffer;
 	cmd.setVertexBufferData.offsetInBytes = offsetInBytes;
 	cmd.setVertexBufferData.data = data;
-	cmd.setVertexBufferData.dataLength = dataLength;
+	cmd.setVertexBufferData.elementCount = elementCount;
+	cmd.setVertexBufferData.elementSizeInBytes = elementSizeInBytes;
+	cmd.setVertexBufferData.vertexStride = vertexStride;
 	cmd.setVertexBufferData.options = options;
 	ForceToRenderThread(renderer, &cmd);
 }
@@ -2149,7 +2155,6 @@ static void THREADEDGL_GetVertexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t startIndex,
 	int32_t elementCount,
 	int32_t elementSizeInBytes,
 	int32_t vertexStride
@@ -2161,7 +2166,6 @@ static void THREADEDGL_GetVertexBufferData(
 	cmd.getVertexBufferData.buffer = buffer;
 	cmd.getVertexBufferData.offsetInBytes = offsetInBytes;
 	cmd.getVertexBufferData.data = data;
-	cmd.getVertexBufferData.startIndex = startIndex;
 	cmd.getVertexBufferData.elementCount = elementCount;
 	cmd.getVertexBufferData.elementSizeInBytes = elementSizeInBytes;
 	cmd.getVertexBufferData.vertexStride = vertexStride;

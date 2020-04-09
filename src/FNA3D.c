@@ -1068,7 +1068,9 @@ void FNA3D_SetVertexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t dataLength,
+	int32_t elementCount,
+	int32_t elementSizeInBytes,
+	int32_t vertexStride,
 	FNA3D_SetDataOptions options
 ) {
 	if (device == NULL)
@@ -1080,7 +1082,9 @@ void FNA3D_SetVertexBufferData(
 		buffer,
 		offsetInBytes,
 		data,
-		dataLength,
+		elementCount,
+		elementSizeInBytes,
+		vertexStride,
 		options
 	);
 }
@@ -1090,7 +1094,6 @@ void FNA3D_GetVertexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t startIndex,
 	int32_t elementCount,
 	int32_t elementSizeInBytes,
 	int32_t vertexStride
@@ -1104,7 +1107,6 @@ void FNA3D_GetVertexBufferData(
 		buffer,
 		offsetInBytes,
 		data,
-		startIndex,
 		elementCount,
 		elementSizeInBytes,
 		vertexStride

@@ -93,7 +93,9 @@ struct FNA3D_Command
 			FNA3D_Buffer *buffer;
 			int32_t offsetInBytes;
 			void* data;
-			int32_t dataLength;
+			int32_t elementCount;
+			int32_t elementSizeInBytes;
+			int32_t vertexStride;
 			FNA3D_SetDataOptions options;
 		} setVertexBufferData;
 
@@ -111,7 +113,6 @@ struct FNA3D_Command
 			FNA3D_Buffer *buffer;
 			int32_t offsetInBytes;
 			void* data;
-			int32_t startIndex;
 			int32_t elementCount;
 			int32_t elementSizeInBytes;
 			int32_t vertexStride;

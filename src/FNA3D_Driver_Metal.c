@@ -4002,15 +4002,18 @@ static void METAL_SetVertexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t dataLength,
+	int32_t elementCount,
+	int32_t elementSizeInBytes,
+	int32_t vertexStride,
 	FNA3D_SetDataOptions options
 ) {
+	/* FIXME: Staging buffer for elementSizeInBytes < vertexStride! */
 	SetBufferData(
 		driverData,
 		buffer,
 		offsetInBytes,
 		data,
-		dataLength,
+		elementCount * vertexStride,
 		options
 	);
 }
@@ -4020,7 +4023,6 @@ static void METAL_GetVertexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t startIndex,
 	int32_t elementCount,
 	int32_t elementSizeInBytes,
 	int32_t vertexStride
@@ -4038,7 +4040,7 @@ static void METAL_GetVertexBufferData(
 	}
 	else
 	{
-		cpy = dataBytes + (startIndex * elementSizeInBytes);
+		cpy = dataBytes;
 	}
 
 	SDL_memcpy(
@@ -4050,7 +4052,7 @@ static void METAL_GetVertexBufferData(
 	if (useStagingBuffer)
 	{
 		src = cpy;
-		dst = dataBytes + (startIndex * elementSizeInBytes);
+		dst = dataBytes;
 		for (i = 0; i < elementCount; i += 1)
 		{
 			SDL_memcpy(dst, src, elementSizeInBytes);

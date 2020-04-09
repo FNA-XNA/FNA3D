@@ -3848,7 +3848,9 @@ static void MODERNGL_SetVertexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t dataLength,
+	int32_t elementCount,
+	int32_t elementSizeInBytes,
+	int32_t vertexStride,
 	FNA3D_SetDataOptions options
 ) {
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
@@ -3863,11 +3865,15 @@ static void MODERNGL_SetVertexBufferData(
 		cmd.setVertexBufferData.buffer = buffer;
 		cmd.setVertexBufferData.offsetInBytes = offsetInBytes;
 		cmd.setVertexBufferData.data = data;
-		cmd.setVertexBufferData.dataLength = dataLength;
+		cmd.setVertexBufferData.elementCount = elementCount;
+		cmd.setVertexBufferData.elementSizeInBytes = elementSizeInBytes;
+		cmd.setVertexBufferData.vertexStride = vertexStride;
 		cmd.setVertexBufferData.options = options;
 		ForceToMainThread(renderer, &cmd);
 		return;
 	}
+
+	/* FIXME: Staging buffer for elementSizeInBytes < vertexStride! */
 
 	if (options == FNA3D_SETDATAOPTIONS_NONE)
 	{
@@ -3880,7 +3886,7 @@ static void MODERNGL_SetVertexBufferData(
 		renderer->glNamedBufferSubData(
 			buf->handle,
 			offsetInBytes,
-			dataLength,
+			elementCount * vertexStride,
 			data
 		);
 		return;
@@ -3900,7 +3906,7 @@ static void MODERNGL_SetVertexBufferData(
 	SDL_memcpy(
 		buf->pin + offsetInBytes,
 		data,
-		dataLength
+		elementCount * vertexStride
 	);
 }
 
@@ -3909,7 +3915,6 @@ static void MODERNGL_GetVertexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t startIndex,
 	int32_t elementCount,
 	int32_t elementSizeInBytes,
 	int32_t vertexStride
@@ -3928,7 +3933,6 @@ static void MODERNGL_GetVertexBufferData(
 		cmd.getVertexBufferData.buffer = buffer;
 		cmd.getVertexBufferData.offsetInBytes = offsetInBytes;
 		cmd.getVertexBufferData.data = data;
-		cmd.getVertexBufferData.startIndex = startIndex;
 		cmd.getVertexBufferData.elementCount = elementCount;
 		cmd.getVertexBufferData.elementSizeInBytes = elementSizeInBytes;
 		cmd.getVertexBufferData.vertexStride = vertexStride;
@@ -3944,7 +3948,7 @@ static void MODERNGL_GetVertexBufferData(
 	}
 	else
 	{
-		cpy = dataBytes + (startIndex * elementSizeInBytes);
+		cpy = dataBytes;
 	}
 
 	if (buf->pin != NULL)
@@ -3971,7 +3975,7 @@ static void MODERNGL_GetVertexBufferData(
 	if (useStagingBuffer)
 	{
 		src = cpy;
-		dst = dataBytes + (startIndex * elementSizeInBytes);
+		dst = dataBytes;
 		for (i = 0; i < elementCount; i += 1)
 		{
 			SDL_memcpy(dst, src, elementSizeInBytes);

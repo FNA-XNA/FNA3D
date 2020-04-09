@@ -74,7 +74,9 @@ void FNA3D_ExecuteCommand(
 				cmd->setVertexBufferData.buffer,
 				cmd->setVertexBufferData.offsetInBytes,
 				cmd->setVertexBufferData.data,
-				cmd->setVertexBufferData.dataLength,
+				cmd->setVertexBufferData.elementCount,
+				cmd->setVertexBufferData.elementSizeInBytes,
+				cmd->setVertexBufferData.vertexStride,
 				cmd->setVertexBufferData.options
 			);
 			break;
@@ -94,7 +96,6 @@ void FNA3D_ExecuteCommand(
 				cmd->getVertexBufferData.buffer,
 				cmd->getVertexBufferData.offsetInBytes,
 				cmd->getVertexBufferData.data,
-				cmd->getVertexBufferData.startIndex,
 				cmd->getVertexBufferData.elementCount,
 				cmd->getVertexBufferData.elementSizeInBytes,
 				cmd->getVertexBufferData.vertexStride
