@@ -600,15 +600,12 @@ void FNA3D_ResetBackbuffer(
 
 void FNA3D_ReadBackbuffer(
 	FNA3D_Device *device,
-	void* data,
-	int32_t dataLen,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes,
 	int32_t x,
 	int32_t y,
 	int32_t w,
-	int32_t h
+	int32_t h,
+	void* data,
+	int32_t dataLen
 ) {
 	if (device == NULL)
 	{
@@ -616,15 +613,12 @@ void FNA3D_ReadBackbuffer(
 	}
 	device->ReadBackbuffer(
 		device->driverData,
-		data,
-		dataLen,
-		startIndex,
-		elementCount,
-		elementSizeInBytes,
 		x,
 		y,
 		w,
-		h
+		h,
+		data,
+		dataLen
 	);
 }
 

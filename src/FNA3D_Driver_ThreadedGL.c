@@ -270,15 +270,12 @@ struct GLThreadCommand
 		} resetBackbuffer;
 		struct
 		{
-			void* data;
-			int32_t dataLen;
-			int32_t startIndex;
-			int32_t elementCount;
-			int32_t elementSizeInBytes;
 			int32_t x;
 			int32_t y;
 			int32_t w;
 			int32_t h;
+			void* data;
+			int32_t dataLen;
 		} readBackbuffer;
 		struct
 		{
@@ -830,15 +827,12 @@ static int GLRenderThread(void* data)
 			case COMMAND_READBACKBUFFER:
 				renderer->actualDevice->ReadBackbuffer(
 					renderer->actualDevice->driverData,
-					cmd->readBackbuffer.data,
-					cmd->readBackbuffer.dataLen,
-					cmd->readBackbuffer.startIndex,
-					cmd->readBackbuffer.elementCount,
-					cmd->readBackbuffer.elementSizeInBytes,
 					cmd->readBackbuffer.x,
 					cmd->readBackbuffer.y,
 					cmd->readBackbuffer.w,
-					cmd->readBackbuffer.h
+					cmd->readBackbuffer.h,
+					cmd->readBackbuffer.data,
+					cmd->readBackbuffer.dataLen
 				);
 				break;
 			case COMMAND_GETBACKBUFFERSIZE:
@@ -1671,29 +1665,23 @@ static void THREADEDGL_ResetBackbuffer(
 
 static void THREADEDGL_ReadBackbuffer(
 	FNA3D_Renderer *driverData,
-	void* data,
-	int32_t dataLen,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes,
 	int32_t x,
 	int32_t y,
 	int32_t w,
-	int32_t h
+	int32_t h,
+	void* data,
+	int32_t dataLen
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
 
 	cmd.type = COMMAND_READBACKBUFFER;
-	cmd.readBackbuffer.data = data;
-	cmd.readBackbuffer.dataLen = dataLen;
-	cmd.readBackbuffer.startIndex = startIndex;
-	cmd.readBackbuffer.elementCount = elementCount;
-	cmd.readBackbuffer.elementSizeInBytes = elementSizeInBytes;
 	cmd.readBackbuffer.x = x;
 	cmd.readBackbuffer.y = y;
 	cmd.readBackbuffer.w = w;
 	cmd.readBackbuffer.h = h;
+	cmd.readBackbuffer.data = data;
+	cmd.readBackbuffer.dataLen = dataLen;
 	ForceToRenderThread(renderer, &cmd);
 }
 

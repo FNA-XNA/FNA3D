@@ -3187,37 +3187,15 @@ static void METAL_GetTextureData2D(
 );
 static void METAL_ReadBackbuffer(
 	FNA3D_Renderer *driverData,
-	void* data,
-	int32_t dataLen,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes,
 	int32_t x,
 	int32_t y,
 	int32_t w,
-	int32_t h
+	int32_t h,
+	void* data,
+	int32_t dataLen
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
 	MetalTexture backbufferTexture;
-
-	/* FIXME: Right now we're expecting one of the following:
-	 * - byte[]
-	 * - int[]
-	 * - uint[]
-	 * - Color[]
-	 * Anything else will freak out because we're using
-	 * color backbuffers. Maybe check this out when adding
-	 * support for more backbuffer types!
-	 * -flibit
-	 */
-
-	if (startIndex > 0 || elementCount != (dataLen / elementSizeInBytes))
-	{
-		FNA3D_LogError(
-			"ReadBackbuffer startIndex/elementCount combination unimplemented!"
-		);
-		return;
-	}
 
 	/* Create a pseudo-texture we can feed to GetTextureData2D.
 	 * These are the only members we need to initialize.
@@ -3233,17 +3211,13 @@ static void METAL_ReadBackbuffer(
 		driverData,
 		(FNA3D_Texture*) &backbufferTexture,
 		renderer->backbuffer->surfaceFormat,
-		renderer->backbuffer->width,
-		renderer->backbuffer->height,
-		0,
 		x,
 		y,
 		w,
 		h,
-		data,
 		0,
-		dataLen,
-		1
+		data,
+		dataLen
 	);
 }
 

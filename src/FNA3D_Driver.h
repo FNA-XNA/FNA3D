@@ -365,15 +365,12 @@ struct FNA3D_Device
 
 	void (*ReadBackbuffer)(
 		FNA3D_Renderer *driverData,
-		void* data,
-		int32_t dataLen,
-		int32_t startIndex,
-		int32_t elementCount,
-		int32_t elementSizeInBytes,
 		int32_t x,
 		int32_t y,
 		int32_t w,
-		int32_t h
+		int32_t h,
+		void* data,
+		int32_t dataLen
 	);
 
 	void (*GetBackbufferSize)(

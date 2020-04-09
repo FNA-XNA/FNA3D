@@ -2731,40 +2731,18 @@ static void MODERNGL_ResetBackbuffer(
 
 static void MODERNGL_ReadBackbuffer(
 	FNA3D_Renderer *driverData,
-	void* data,
-	int32_t dataLen,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes,
 	int32_t x,
 	int32_t y,
 	int32_t w,
-	int32_t h
+	int32_t h,
+	void* data,
+	int32_t dataLen
 ) {
 	GLuint prevReadBuffer;
 	int32_t pitch, row;
 	uint8_t *temp;
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
 	uint8_t *dataPtr = (uint8_t*) data;
-
-	/* FIXME: Right now we're expecting one of the following:
-	 * - byte[]
-	 * - int[]
-	 * - uint[]
-	 * - Color[]
-	 * Anything else will freak out because we're using
-	 * color backbuffers. Maybe check this out when adding
-	 * support for more backbuffer types!
-	 * -flibit
-	 */
-
-	if (startIndex > 0 || elementCount != (dataLen / elementSizeInBytes))
-	{
-		FNA3D_LogError(
-			"ReadBackbuffer startIndex/elementCount combination unimplemented!"
-		);
-		return;
-	}
 
 	prevReadBuffer = renderer->currentReadFramebuffer;
 
