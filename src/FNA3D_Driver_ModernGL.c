@@ -2682,8 +2682,6 @@ static void MODERNGL_INTERNAL_DisposeBackbuffer(ModernGLRenderer *renderer)
 static uint8_t MODERNGL_INTERNAL_ReadTargetIfApplicable(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture* textureIn,
-	int32_t width,
-	int32_t height,
 	int32_t level,
 	void* data,
 	int32_t subX,
@@ -3206,13 +3204,13 @@ static void MODERNGL_SetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t w,
+	int32_t h,
+	int32_t d,
 	int32_t level,
-	int32_t left,
-	int32_t top,
-	int32_t right,
-	int32_t bottom,
-	int32_t front,
-	int32_t back,
 	void* data,
 	int32_t dataLength
 ) {
@@ -3224,13 +3222,13 @@ static void MODERNGL_SetTextureData3D(
 		cmd.type = FNA3D_COMMAND_SETTEXTUREDATA3D;
 		cmd.setTextureData3D.texture = texture;
 		cmd.setTextureData3D.format = format;
+		cmd.setTextureData3D.x = x;
+		cmd.setTextureData3D.y = y;
+		cmd.setTextureData3D.z = z;
+		cmd.setTextureData3D.w = w;
+		cmd.setTextureData3D.h = h;
+		cmd.setTextureData3D.d = d;
 		cmd.setTextureData3D.level = level;
-		cmd.setTextureData3D.left = left;
-		cmd.setTextureData3D.top = top;
-		cmd.setTextureData3D.right = right;
-		cmd.setTextureData3D.bottom = bottom;
-		cmd.setTextureData3D.front = front;
-		cmd.setTextureData3D.back = back;
 		cmd.setTextureData3D.data = data;
 		cmd.setTextureData3D.dataLength = dataLength;
 		ForceToMainThread(renderer, &cmd);
@@ -3240,12 +3238,12 @@ static void MODERNGL_SetTextureData3D(
 	renderer->glTextureSubImage3D(
 		((ModernGLTexture*) texture)->handle,
 		level,
-		left,
-		top,
-		front,
-		right - left,
-		bottom - top,
-		back - front,
+		x,
+		y,
+		z,
+		w,
+		h,
+		d,
 		XNAToGL_TextureFormat[format],
 		XNAToGL_TextureDataType[format],
 		data
@@ -3382,17 +3380,13 @@ static void MODERNGL_GetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int32_t textureWidth,
-	int32_t textureHeight,
-	int32_t level,
 	int32_t x,
 	int32_t y,
 	int32_t w,
 	int32_t h,
+	int32_t level,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
 	FNA3D_Command cmd;
@@ -3402,17 +3396,13 @@ static void MODERNGL_GetTextureData2D(
 		cmd.type = FNA3D_COMMAND_GETTEXTUREDATA2D;
 		cmd.getTextureData2D.texture = texture;
 		cmd.getTextureData2D.format = format;
-		cmd.getTextureData2D.textureWidth = textureWidth;
-		cmd.getTextureData2D.textureHeight = textureHeight;
-		cmd.getTextureData2D.level = level;
 		cmd.getTextureData2D.x = x;
 		cmd.getTextureData2D.y = y;
 		cmd.getTextureData2D.w = w;
 		cmd.getTextureData2D.h = h;
+		cmd.getTextureData2D.level = level;
 		cmd.getTextureData2D.data = data;
-		cmd.getTextureData2D.startIndex = startIndex;
-		cmd.getTextureData2D.elementCount = elementCount;
-		cmd.getTextureData2D.elementSizeInBytes = elementSizeInBytes;
+		cmd.getTextureData2D.dataLength = dataLength;
 		ForceToMainThread(renderer, &cmd);
 		return;
 	}
@@ -3420,8 +3410,6 @@ static void MODERNGL_GetTextureData2D(
 	if (level == 0 && MODERNGL_INTERNAL_ReadTargetIfApplicable(
 		driverData,
 		texture,
-		textureWidth,
-		textureHeight,
 		level,
 		data,
 		x,
@@ -3443,7 +3431,7 @@ static void MODERNGL_GetTextureData2D(
 		1,
 		XNAToGL_TextureFormat[format],
 		XNAToGL_TextureDataType[format],
-		elementCount * elementSizeInBytes,
+		dataLength,
 		data
 	);
 }
@@ -3452,17 +3440,15 @@ static void MODERNGL_GetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int32_t left,
-	int32_t top,
-	int32_t front,
-	int32_t right,
-	int32_t bottom,
-	int32_t back,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t w,
+	int32_t h,
+	int32_t d,
 	int32_t level,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
 	FNA3D_Command cmd;
@@ -3472,17 +3458,15 @@ static void MODERNGL_GetTextureData3D(
 		cmd.type = FNA3D_COMMAND_GETTEXTUREDATA3D;
 		cmd.getTextureData3D.texture = texture;
 		cmd.getTextureData3D.format = format;
-		cmd.getTextureData3D.left = left;
-		cmd.getTextureData3D.top = top;
-		cmd.getTextureData3D.front = front;
-		cmd.getTextureData3D.right = right;
-		cmd.getTextureData3D.bottom = bottom;
-		cmd.getTextureData3D.back = back;
+		cmd.getTextureData3D.x = x;
+		cmd.getTextureData3D.y = y;
+		cmd.getTextureData3D.z = z;
+		cmd.getTextureData3D.w = w;
+		cmd.getTextureData3D.h = h;
+		cmd.getTextureData3D.d = d;
 		cmd.getTextureData3D.level = level;
 		cmd.getTextureData3D.data = data;
-		cmd.getTextureData3D.startIndex = startIndex;
-		cmd.getTextureData3D.elementCount = elementCount;
-		cmd.getTextureData3D.elementSizeInBytes = elementSizeInBytes;
+		cmd.getTextureData3D.dataLength = dataLength;
 		ForceToMainThread(renderer, &cmd);
 		return;
 	}
@@ -3490,15 +3474,15 @@ static void MODERNGL_GetTextureData3D(
 	renderer->glGetTextureSubImage(
 		((ModernGLTexture*) texture)->handle,
 		level,
-		left,
-		top,
-		front,
-		right - left,
-		bottom - top,
-		back - front,
+		x,
+		y,
+		z,
+		w,
+		h,
+		d,
 		XNAToGL_TextureFormat[format],
 		XNAToGL_TextureDataType[format],
-		elementCount * elementSizeInBytes,
+		dataLength,
 		data
 	);
 }
@@ -3507,17 +3491,14 @@ static void MODERNGL_GetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int32_t textureSize,
-	FNA3D_CubeMapFace cubeMapFace,
-	int32_t level,
 	int32_t x,
 	int32_t y,
 	int32_t w,
 	int32_t h,
+	FNA3D_CubeMapFace cubeMapFace,
+	int32_t level,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
 	FNA3D_Command cmd;
@@ -3527,17 +3508,14 @@ static void MODERNGL_GetTextureDataCube(
 		cmd.type = FNA3D_COMMAND_GETTEXTUREDATACUBE;
 		cmd.getTextureDataCube.texture = texture;
 		cmd.getTextureDataCube.format = format;
-		cmd.getTextureDataCube.textureSize = textureSize;
-		cmd.getTextureDataCube.cubeMapFace = cubeMapFace;
-		cmd.getTextureDataCube.level = level;
 		cmd.getTextureDataCube.x = x;
 		cmd.getTextureDataCube.y = y;
 		cmd.getTextureDataCube.w = w;
 		cmd.getTextureDataCube.h = h;
+		cmd.getTextureDataCube.cubeMapFace = cubeMapFace;
+		cmd.getTextureDataCube.level = level;
 		cmd.getTextureDataCube.data = data;
-		cmd.getTextureDataCube.startIndex = startIndex;
-		cmd.getTextureDataCube.elementCount = elementCount;
-		cmd.getTextureDataCube.elementSizeInBytes = elementSizeInBytes;
+		cmd.getTextureDataCube.dataLength = dataLength;
 		ForceToMainThread(renderer, &cmd);
 		return;
 	}
@@ -3553,7 +3531,7 @@ static void MODERNGL_GetTextureDataCube(
 		1,
 		XNAToGL_TextureFormat[format],
 		XNAToGL_TextureDataType[format],
-		elementCount * elementSizeInBytes,
+		dataLength,
 		data
 	);
 }

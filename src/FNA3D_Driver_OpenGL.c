@@ -53,6 +53,18 @@ struct OpenGLTexture /* Cast from FNA3D_Texture* */
 	float anisotropy;
 	int32_t maxMipmapLevel;
 	float lodBias;
+	FNA3DNAMELESS union
+	{
+		struct
+		{
+			int32_t width;
+			int32_t height;
+		} twod;
+		struct
+		{
+			int32_t size;
+		} cube;
+	};
 	OpenGLTexture *next; /* linked list */
 };
 
@@ -68,6 +80,9 @@ static OpenGLTexture NullTexture =
 	0.0f,
 	0,
 	0.0f,
+	{
+		{ 0, 0 }
+	},
 	NULL
 };
 
@@ -2936,8 +2951,6 @@ static void OPENGL_INTERNAL_DisposeBackbuffer(OpenGLRenderer *renderer)
 static uint8_t OPENGL_INTERNAL_ReadTargetIfApplicable(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture* textureIn,
-	int32_t width,
-	int32_t height,
 	int32_t level,
 	void* data,
 	int32_t subX,
@@ -3261,6 +3274,9 @@ static FNA3D_Texture* OPENGL_CreateTexture2D(
 		levelCount
 	);
 
+	result->twod.width = width;
+	result->twod.height = height;
+
 	glFormat = XNAToGL_TextureFormat[format];
 	glInternalFormat = XNAToGL_TextureInternalFormat[format];
 	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
@@ -3387,6 +3403,8 @@ static FNA3D_Texture* OPENGL_CreateTextureCube(
 		GL_TEXTURE_CUBE_MAP,
 		levelCount
 	);
+
+	result->cube.size = size;
 
 	glFormat = XNAToGL_TextureFormat[format];
 	glInternalFormat = XNAToGL_TextureInternalFormat[format];
@@ -3576,13 +3594,13 @@ static void OPENGL_SetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t w,
+	int32_t h,
+	int32_t d,
 	int32_t level,
-	int32_t left,
-	int32_t top,
-	int32_t right,
-	int32_t bottom,
-	int32_t front,
-	int32_t back,
 	void* data,
 	int32_t dataLength
 ) {
@@ -3596,13 +3614,13 @@ static void OPENGL_SetTextureData3D(
 		cmd.type = FNA3D_COMMAND_SETTEXTUREDATA3D;
 		cmd.setTextureData3D.texture = texture;
 		cmd.setTextureData3D.format = format;
+		cmd.setTextureData3D.x = x;
+		cmd.setTextureData3D.y = y;
+		cmd.setTextureData3D.z = z;
+		cmd.setTextureData3D.w = w;
+		cmd.setTextureData3D.h = h;
+		cmd.setTextureData3D.d = d;
 		cmd.setTextureData3D.level = level;
-		cmd.setTextureData3D.left = left;
-		cmd.setTextureData3D.top = top;
-		cmd.setTextureData3D.right = right;
-		cmd.setTextureData3D.bottom = bottom;
-		cmd.setTextureData3D.front = front;
-		cmd.setTextureData3D.back = back;
 		cmd.setTextureData3D.data = data;
 		cmd.setTextureData3D.dataLength = dataLength;
 		ForceToMainThread(renderer, &cmd);
@@ -3614,12 +3632,12 @@ static void OPENGL_SetTextureData3D(
 	renderer->glTexSubImage3D(
 		GL_TEXTURE_3D,
 		level,
-		left,
-		top,
-		front,
-		right - left,
-		bottom - top,
-		back - front,
+		x,
+		y,
+		z,
+		w,
+		h,
+		d,
 		XNAToGL_TextureFormat[format],
 		XNAToGL_TextureDataType[format],
 		data
@@ -3757,22 +3775,20 @@ static void OPENGL_GetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int32_t textureWidth,
-	int32_t textureHeight,
-	int32_t level,
 	int32_t x,
 	int32_t y,
 	int32_t w,
 	int32_t h,
+	int32_t level,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	OpenGLTexture *glTexture;
 	GLenum glFormat;
+	int32_t glFormatSize;
 	uint8_t *texData;
-	int32_t curPixel, row, col;
+	int32_t row, col;
 	uint8_t *dataPtr = (uint8_t*) data;
 	FNA3D_Command cmd;
 
@@ -3783,17 +3799,13 @@ static void OPENGL_GetTextureData2D(
 		cmd.type = FNA3D_COMMAND_GETTEXTUREDATA2D;
 		cmd.getTextureData2D.texture = texture;
 		cmd.getTextureData2D.format = format;
-		cmd.getTextureData2D.textureWidth = textureWidth;
-		cmd.getTextureData2D.textureHeight = textureHeight;
-		cmd.getTextureData2D.level = level;
 		cmd.getTextureData2D.x = x;
 		cmd.getTextureData2D.y = y;
 		cmd.getTextureData2D.w = w;
 		cmd.getTextureData2D.h = h;
+		cmd.getTextureData2D.level = level;
 		cmd.getTextureData2D.data = data;
-		cmd.getTextureData2D.startIndex = startIndex;
-		cmd.getTextureData2D.elementCount = elementCount;
-		cmd.getTextureData2D.elementSizeInBytes = elementSizeInBytes;
+		cmd.getTextureData2D.dataLength = dataLength;
 		ForceToMainThread(renderer, &cmd);
 		return;
 	}
@@ -3801,8 +3813,6 @@ static void OPENGL_GetTextureData2D(
 	if (level == 0 && OPENGL_INTERNAL_ReadTargetIfApplicable(
 		driverData,
 		texture,
-		textureWidth,
-		textureHeight,
 		level,
 		data,
 		x,
@@ -3813,7 +3823,8 @@ static void OPENGL_GetTextureData2D(
 		return;
 	}
 
-	BindTexture(renderer, (OpenGLTexture*) texture);
+	glTexture = (OpenGLTexture*) texture;
+	BindTexture(renderer, glTexture);
 	glFormat = XNAToGL_TextureFormat[format];
 	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
 	{
@@ -3822,7 +3833,10 @@ static void OPENGL_GetTextureData2D(
 		);
 		return;
 	}
-	else if (x == 0 && y == 0 && w == textureWidth && h == textureHeight)
+	else if (	x == 0 &&
+			y == 0 &&
+			w == glTexture->twod.width &&
+			h == glTexture->twod.height	)
 	{
 		/* Just throw the whole texture into the user array. */
 		renderer->glGetTexImage(
@@ -3835,11 +3849,13 @@ static void OPENGL_GetTextureData2D(
 	}
 	else
 	{
+		glFormatSize = Texture_GetFormatSize(format);
+
 		/* Get the whole texture... */
 		texData = (uint8_t*) SDL_malloc(
-			textureWidth *
-			textureHeight *
-			elementSizeInBytes
+			glTexture->twod.width *
+			glTexture->twod.height *
+			glFormatSize
 		);
 
 		renderer->glGetTexImage(
@@ -3851,28 +3867,17 @@ static void OPENGL_GetTextureData2D(
 		);
 
 		/* Now, blit the rect region into the user array. */
-		curPixel = -1;
 		for (row = y; row < y + h; row += 1)
 		{
 			for (col = x; col < x + w; col += 1)
 			{
-				curPixel += 1;
-				if (curPixel < startIndex)
-				{
-					/* If we're not at the start yet, just keep going... */
-					continue;
-				}
-				if (curPixel > elementCount)
-				{
-					/* If we're past the end, we're done! */
-					return;
-				}
 				/* FIXME: Can we copy via pitch instead, or something? -flibit */
 				SDL_memcpy(
-					dataPtr + ((curPixel - startIndex) * elementSizeInBytes),
-					texData + (((row * textureWidth) + col) * elementSizeInBytes),
-					elementSizeInBytes
+					dataPtr,
+					texData + (((row * glTexture->twod.width) + col) * glFormatSize),
+					glFormatSize
 				);
+				dataPtr += glFormatSize;
 			}
 		}
 		SDL_free(texData);
@@ -3883,17 +3888,15 @@ static void OPENGL_GetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int32_t left,
-	int32_t top,
-	int32_t front,
-	int32_t right,
-	int32_t bottom,
-	int32_t back,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t w,
+	int32_t h,
+	int32_t d,
 	int32_t level,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	SDL_assert(renderer->supports_NonES3);
@@ -3907,22 +3910,21 @@ static void OPENGL_GetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int32_t textureSize,
-	FNA3D_CubeMapFace cubeMapFace,
-	int32_t level,
 	int32_t x,
 	int32_t y,
 	int32_t w,
 	int32_t h,
+	FNA3D_CubeMapFace cubeMapFace,
+	int32_t level,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	OpenGLTexture *glTexture;
 	GLenum glFormat;
+	int32_t glFormatSize;
 	uint8_t *texData;
-	int32_t curPixel, row, col;
+	int32_t row, col;
 	uint8_t *dataPtr = (uint8_t*) data;
 	FNA3D_Command cmd;
 
@@ -3933,22 +3935,20 @@ static void OPENGL_GetTextureDataCube(
 		cmd.type = FNA3D_COMMAND_GETTEXTUREDATACUBE;
 		cmd.getTextureDataCube.texture = texture;
 		cmd.getTextureDataCube.format = format;
-		cmd.getTextureDataCube.textureSize = textureSize;
-		cmd.getTextureDataCube.cubeMapFace = cubeMapFace;
-		cmd.getTextureDataCube.level = level;
 		cmd.getTextureDataCube.x = x;
 		cmd.getTextureDataCube.y = y;
 		cmd.getTextureDataCube.w = w;
 		cmd.getTextureDataCube.h = h;
+		cmd.getTextureDataCube.cubeMapFace = cubeMapFace;
+		cmd.getTextureDataCube.level = level;
 		cmd.getTextureDataCube.data = data;
-		cmd.getTextureDataCube.startIndex = startIndex;
-		cmd.getTextureDataCube.elementCount = elementCount;
-		cmd.getTextureDataCube.elementSizeInBytes = elementSizeInBytes;
+		cmd.getTextureDataCube.dataLength = dataLength;
 		ForceToMainThread(renderer, &cmd);
 		return;
 	}
 
-	BindTexture(renderer, (OpenGLTexture*) texture);
+	glTexture = (OpenGLTexture*) texture;
+	BindTexture(renderer, glTexture);
 	glFormat = XNAToGL_TextureFormat[format];
 	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
 	{
@@ -3957,7 +3957,10 @@ static void OPENGL_GetTextureDataCube(
 		);
 		return;
 	}
-	else if (x == 0 && y == 0 && w == textureSize && h == textureSize)
+	else if (	x == 0 &&
+			y == 0 &&
+			w == glTexture->cube.size &&
+			h == glTexture->cube.size	)
 	{
 		/* Just throw the whole texture into the user array. */
 		renderer->glGetTexImage(
@@ -3970,11 +3973,13 @@ static void OPENGL_GetTextureDataCube(
 	}
 	else
 	{
+		glFormatSize = Texture_GetFormatSize(format);
+
 		/* Get the whole texture... */
 		texData = (uint8_t*) SDL_malloc(
-			textureSize *
-			textureSize *
-			elementSizeInBytes
+			glTexture->cube.size *
+			glTexture->cube.size *
+			glFormatSize
 		);
 
 		renderer->glGetTexImage(
@@ -3986,28 +3991,17 @@ static void OPENGL_GetTextureDataCube(
 		);
 
 		/* Now, blit the rect region into the user array. */
-		curPixel = -1;
 		for (row = y; row < y + h; row += 1)
 		{
 			for (col = x; col < x + w; col += 1)
 			{
-				curPixel += 1;
-				if (curPixel < startIndex)
-				{
-					/* If we're not at the start yet, just keep going... */
-					continue;
-				}
-				if (curPixel > elementCount)
-				{
-					/* If we're past the end, we're done! */
-					return;
-				}
 				/* FIXME: Can we copy via pitch instead, or something? -flibit */
 				SDL_memcpy(
-					dataPtr + ((curPixel - startIndex) * elementSizeInBytes),
-					texData + (((row * textureSize) + col) * elementSizeInBytes),
-					elementSizeInBytes
+					dataPtr,
+					texData + (((row * glTexture->twod.width) + col) * glFormatSize),
+					glFormatSize
 				);
+				dataPtr += glFormatSize;
 			}
 		}
 		SDL_free(texData);

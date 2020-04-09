@@ -158,13 +158,13 @@ void FNA3D_ExecuteCommand(
 				device,
 				cmd->setTextureData3D.texture,
 				cmd->setTextureData3D.format,
+				cmd->setTextureData3D.x,
+				cmd->setTextureData3D.y,
+				cmd->setTextureData3D.z,
+				cmd->setTextureData3D.w,
+				cmd->setTextureData3D.h,
+				cmd->setTextureData3D.d,
 				cmd->setTextureData3D.level,
-				cmd->setTextureData3D.left,
-				cmd->setTextureData3D.top,
-				cmd->setTextureData3D.right,
-				cmd->setTextureData3D.bottom,
-				cmd->setTextureData3D.front,
-				cmd->setTextureData3D.back,
 				cmd->setTextureData3D.data,
 				cmd->setTextureData3D.dataLength
 			);
@@ -189,17 +189,13 @@ void FNA3D_ExecuteCommand(
 				device,
 				cmd->getTextureData2D.texture,
 				cmd->getTextureData2D.format,
-				cmd->getTextureData2D.textureWidth,
-				cmd->getTextureData2D.textureHeight,
-				cmd->getTextureData2D.level,
 				cmd->getTextureData2D.x,
 				cmd->getTextureData2D.y,
 				cmd->getTextureData2D.w,
 				cmd->getTextureData2D.h,
+				cmd->getTextureData2D.level,
 				cmd->getTextureData2D.data,
-				cmd->getTextureData2D.startIndex,
-				cmd->getTextureData2D.elementCount,
-				cmd->getTextureData2D.elementSizeInBytes
+				cmd->getTextureData2D.dataLength
 			);
 			break;
 		case FNA3D_COMMAND_GETTEXTUREDATA3D:
@@ -207,17 +203,15 @@ void FNA3D_ExecuteCommand(
 				device,
 				cmd->getTextureData3D.texture,
 				cmd->getTextureData3D.format,
-				cmd->getTextureData3D.left,
-				cmd->getTextureData3D.top,
-				cmd->getTextureData3D.front,
-				cmd->getTextureData3D.right,
-				cmd->getTextureData3D.bottom,
-				cmd->getTextureData3D.back,
+				cmd->getTextureData3D.x,
+				cmd->getTextureData3D.y,
+				cmd->getTextureData3D.z,
+				cmd->getTextureData3D.w,
+				cmd->getTextureData3D.h,
+				cmd->getTextureData3D.d,
 				cmd->getTextureData3D.level,
 				cmd->getTextureData3D.data,
-				cmd->getTextureData3D.startIndex,
-				cmd->getTextureData3D.elementCount,
-				cmd->getTextureData3D.elementSizeInBytes
+				cmd->getTextureData3D.dataLength
 			);
 			break;
 		case FNA3D_COMMAND_GETTEXTUREDATACUBE:
@@ -225,17 +219,14 @@ void FNA3D_ExecuteCommand(
 				device,
 				cmd->getTextureDataCube.texture,
 				cmd->getTextureDataCube.format,
-				cmd->getTextureDataCube.textureSize,
-				cmd->getTextureDataCube.cubeMapFace,
-				cmd->getTextureDataCube.level,
 				cmd->getTextureDataCube.x,
 				cmd->getTextureDataCube.y,
 				cmd->getTextureDataCube.w,
 				cmd->getTextureDataCube.h,
+				cmd->getTextureDataCube.cubeMapFace,
+				cmd->getTextureDataCube.level,
 				cmd->getTextureDataCube.data,
-				cmd->getTextureDataCube.startIndex,
-				cmd->getTextureDataCube.elementCount,
-				cmd->getTextureDataCube.elementSizeInBytes
+				cmd->getTextureDataCube.dataLength
 			);
 			break;
 		case FNA3D_COMMAND_GENCOLORRENDERBUFFER:

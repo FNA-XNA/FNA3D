@@ -340,13 +340,13 @@ struct GLThreadCommand
 		{
 			FNA3D_Texture *texture;
 			FNA3D_SurfaceFormat format;
+			int32_t x;
+			int32_t y;
+			int32_t z;
+			int32_t w;
+			int32_t h;
+			int32_t d;
 			int32_t level;
-			int32_t left;
-			int32_t top;
-			int32_t right;
-			int32_t bottom;
-			int32_t front;
-			int32_t back;
 			void* data;
 			int32_t dataLength;
 		} setTextureData3D;
@@ -376,49 +376,40 @@ struct GLThreadCommand
 		{
 			FNA3D_Texture *texture;
 			FNA3D_SurfaceFormat format;
-			int32_t textureWidth;
-			int32_t textureHeight;
-			int32_t level;
 			int32_t x;
 			int32_t y;
 			int32_t w;
 			int32_t h;
+			int32_t level;
 			void* data;
-			int32_t startIndex;
-			int32_t elementCount;
-			int32_t elementSizeInBytes;
+			int32_t dataLength;
 		} getTextureData2D;
 		struct
 		{
 			FNA3D_Texture *texture;
 			FNA3D_SurfaceFormat format;
-			int32_t left;
-			int32_t top;
-			int32_t front;
-			int32_t right;
-			int32_t bottom;
-			int32_t back;
+			int32_t x;
+			int32_t y;
+			int32_t z;
+			int32_t w;
+			int32_t h;
+			int32_t d;
 			int32_t level;
 			void* data;
-			int32_t startIndex;
-			int32_t elementCount;
-			int32_t elementSizeInBytes;
+			int32_t dataLength;
 		} getTextureData3D;
 		struct
 		{
 			FNA3D_Texture *texture;
 			FNA3D_SurfaceFormat format;
-			int32_t textureSize;
-			FNA3D_CubeMapFace cubeMapFace;
-			int32_t level;
 			int32_t x;
 			int32_t y;
 			int32_t w;
 			int32_t h;
+			FNA3D_CubeMapFace cubeMapFace;
+			int32_t level;
 			void* data;
-			int32_t startIndex;
-			int32_t elementCount;
-			int32_t elementSizeInBytes;
+			int32_t dataLength;
 		} getTextureDataCube;
 		struct
 		{
@@ -911,13 +902,13 @@ static int GLRenderThread(void* data)
 					renderer->actualDevice->driverData,
 					cmd->setTextureData3D.texture,
 					cmd->setTextureData3D.format,
+					cmd->setTextureData3D.x,
+					cmd->setTextureData3D.y,
+					cmd->setTextureData3D.z,
+					cmd->setTextureData3D.w,
+					cmd->setTextureData3D.h,
+					cmd->setTextureData3D.d,
 					cmd->setTextureData3D.level,
-					cmd->setTextureData3D.left,
-					cmd->setTextureData3D.top,
-					cmd->setTextureData3D.right,
-					cmd->setTextureData3D.bottom,
-					cmd->setTextureData3D.front,
-					cmd->setTextureData3D.back,
 					cmd->setTextureData3D.data,
 					cmd->setTextureData3D.dataLength
 				);
@@ -953,17 +944,13 @@ static int GLRenderThread(void* data)
 					renderer->actualDevice->driverData,
 					cmd->getTextureData2D.texture,
 					cmd->getTextureData2D.format,
-					cmd->getTextureData2D.textureWidth,
-					cmd->getTextureData2D.textureHeight,
-					cmd->getTextureData2D.level,
 					cmd->getTextureData2D.x,
 					cmd->getTextureData2D.y,
 					cmd->getTextureData2D.w,
 					cmd->getTextureData2D.h,
+					cmd->getTextureData2D.level,
 					cmd->getTextureData2D.data,
-					cmd->getTextureData2D.startIndex,
-					cmd->getTextureData2D.elementCount,
-					cmd->getTextureData2D.elementSizeInBytes
+					cmd->getTextureData2D.dataLength
 				);
 				break;
 			case COMMAND_GETTEXTUREDATA3D:
@@ -971,17 +958,15 @@ static int GLRenderThread(void* data)
 					renderer->actualDevice->driverData,
 					cmd->getTextureData3D.texture,
 					cmd->getTextureData3D.format,
-					cmd->getTextureData3D.left,
-					cmd->getTextureData3D.top,
-					cmd->getTextureData3D.front,
-					cmd->getTextureData3D.right,
-					cmd->getTextureData3D.bottom,
-					cmd->getTextureData3D.back,
+					cmd->getTextureData3D.x,
+					cmd->getTextureData3D.y,
+					cmd->getTextureData3D.z,
+					cmd->getTextureData3D.w,
+					cmd->getTextureData3D.h,
+					cmd->getTextureData3D.d,
 					cmd->getTextureData3D.level,
 					cmd->getTextureData3D.data,
-					cmd->getTextureData3D.startIndex,
-					cmd->getTextureData3D.elementCount,
-					cmd->getTextureData3D.elementSizeInBytes
+					cmd->getTextureData3D.dataLength
 				);
 				break;
 			case COMMAND_GETTEXTUREDATACUBE:
@@ -989,17 +974,14 @@ static int GLRenderThread(void* data)
 					renderer->actualDevice->driverData,
 					cmd->getTextureDataCube.texture,
 					cmd->getTextureDataCube.format,
-					cmd->getTextureDataCube.textureSize,
-					cmd->getTextureDataCube.cubeMapFace,
-					cmd->getTextureDataCube.level,
 					cmd->getTextureDataCube.x,
 					cmd->getTextureDataCube.y,
 					cmd->getTextureDataCube.w,
 					cmd->getTextureDataCube.h,
+					cmd->getTextureDataCube.cubeMapFace,
+					cmd->getTextureDataCube.level,
 					cmd->getTextureDataCube.data,
-					cmd->getTextureDataCube.startIndex,
-					cmd->getTextureDataCube.elementCount,
-					cmd->getTextureDataCube.elementSizeInBytes
+					cmd->getTextureDataCube.dataLength
 				);
 				break;
 			case COMMAND_GENCOLORRENDERBUFFER:
@@ -1839,13 +1821,13 @@ static void THREADEDGL_SetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t w,
+	int32_t h,
+	int32_t d,
 	int32_t level,
-	int32_t left,
-	int32_t top,
-	int32_t right,
-	int32_t bottom,
-	int32_t front,
-	int32_t back,
 	void* data,
 	int32_t dataLength
 ) {
@@ -1855,13 +1837,13 @@ static void THREADEDGL_SetTextureData3D(
 	cmd.type = COMMAND_SETTEXTUREDATA3D;
 	cmd.setTextureData3D.texture = texture;
 	cmd.setTextureData3D.format = format;
+	cmd.setTextureData3D.x = x;
+	cmd.setTextureData3D.y = y;
+	cmd.setTextureData3D.z = z;
+	cmd.setTextureData3D.w = w;
+	cmd.setTextureData3D.h = h;
+	cmd.setTextureData3D.d = d;
 	cmd.setTextureData3D.level = level;
-	cmd.setTextureData3D.left = left;
-	cmd.setTextureData3D.top = top;
-	cmd.setTextureData3D.right = right;
-	cmd.setTextureData3D.bottom = bottom;
-	cmd.setTextureData3D.front = front;
-	cmd.setTextureData3D.back = back;
 	cmd.setTextureData3D.data = data;
 	cmd.setTextureData3D.dataLength = dataLength;
 	ForceToRenderThread(renderer, &cmd);
@@ -1923,17 +1905,13 @@ static void THREADEDGL_GetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int32_t textureWidth,
-	int32_t textureHeight,
 	int32_t level,
 	int32_t x,
 	int32_t y,
 	int32_t w,
 	int32_t h,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
@@ -1941,17 +1919,13 @@ static void THREADEDGL_GetTextureData2D(
 	cmd.type = COMMAND_GETTEXTUREDATA2D;
 	cmd.getTextureData2D.texture = texture;
 	cmd.getTextureData2D.format = format;
-	cmd.getTextureData2D.textureWidth = textureWidth;
-	cmd.getTextureData2D.textureHeight = textureHeight;
-	cmd.getTextureData2D.level = level;
 	cmd.getTextureData2D.x = x;
 	cmd.getTextureData2D.y = y;
 	cmd.getTextureData2D.w = w;
 	cmd.getTextureData2D.h = h;
+	cmd.getTextureData2D.level = level;
 	cmd.getTextureData2D.data = data;
-	cmd.getTextureData2D.startIndex = startIndex;
-	cmd.getTextureData2D.elementCount = elementCount;
-	cmd.getTextureData2D.elementSizeInBytes = elementSizeInBytes;
+	cmd.getTextureData2D.dataLength = dataLength;
 	ForceToRenderThread(renderer, &cmd);
 }
 
@@ -1959,17 +1933,15 @@ static void THREADEDGL_GetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int32_t left,
-	int32_t top,
-	int32_t front,
-	int32_t right,
-	int32_t bottom,
-	int32_t back,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t w,
+	int32_t h,
+	int32_t d,
 	int32_t level,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
@@ -1977,17 +1949,15 @@ static void THREADEDGL_GetTextureData3D(
 	cmd.type = COMMAND_GETTEXTUREDATA3D;
 	cmd.getTextureData3D.texture = texture;
 	cmd.getTextureData3D.format = format;
-	cmd.getTextureData3D.left = left;
-	cmd.getTextureData3D.top = top;
-	cmd.getTextureData3D.front = front;
-	cmd.getTextureData3D.right = right;
-	cmd.getTextureData3D.bottom = bottom;
-	cmd.getTextureData3D.back = back;
+	cmd.getTextureData3D.x = x;
+	cmd.getTextureData3D.y = y;
+	cmd.getTextureData3D.z = z;
+	cmd.getTextureData3D.w = w;
+	cmd.getTextureData3D.h = h;
+	cmd.getTextureData3D.d = d;
 	cmd.getTextureData3D.level = level;
 	cmd.getTextureData3D.data = data;
-	cmd.getTextureData3D.startIndex = startIndex;
-	cmd.getTextureData3D.elementCount = elementCount;
-	cmd.getTextureData3D.elementSizeInBytes = elementSizeInBytes;
+	cmd.getTextureData3D.dataLength = dataLength;
 	ForceToRenderThread(renderer, &cmd);
 }
 
@@ -1995,17 +1965,14 @@ static void THREADEDGL_GetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int32_t textureSize,
-	FNA3D_CubeMapFace cubeMapFace,
-	int32_t level,
 	int32_t x,
 	int32_t y,
 	int32_t w,
 	int32_t h,
+	FNA3D_CubeMapFace cubeMapFace,
+	int32_t level,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
@@ -2013,7 +1980,6 @@ static void THREADEDGL_GetTextureDataCube(
 	cmd.type = COMMAND_GETTEXTUREDATACUBE;
 	cmd.getTextureDataCube.texture = texture;
 	cmd.getTextureDataCube.format = format;
-	cmd.getTextureDataCube.textureSize = textureSize;
 	cmd.getTextureDataCube.cubeMapFace = cubeMapFace;
 	cmd.getTextureDataCube.level = level;
 	cmd.getTextureDataCube.x = x;
@@ -2021,9 +1987,7 @@ static void THREADEDGL_GetTextureDataCube(
 	cmd.getTextureDataCube.w = w;
 	cmd.getTextureDataCube.h = h;
 	cmd.getTextureDataCube.data = data;
-	cmd.getTextureDataCube.startIndex = startIndex;
-	cmd.getTextureDataCube.elementCount = elementCount;
-	cmd.getTextureDataCube.elementSizeInBytes = elementSizeInBytes;
+	cmd.getTextureDataCube.dataLength = dataLength;
 	ForceToRenderThread(renderer, &cmd);
 }
 

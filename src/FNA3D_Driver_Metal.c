@@ -3460,21 +3460,17 @@ static void METAL_SetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t w,
+	int32_t h,
+	int32_t d,
 	int32_t level,
-	int32_t left,
-	int32_t top,
-	int32_t right,
-	int32_t bottom,
-	int32_t front,
-	int32_t back,
 	void* data,
 	int32_t dataLength
 ) {
-	int32_t w = right - left;
-	int32_t h = bottom - top;
-	int32_t d = back - front;
-
-	MTLOrigin origin = {left, top, front};
+	MTLOrigin origin = {x, y, z};
 	MTLSize size = {w, h, d};
 	MTLRegion region = {origin, size};
 
@@ -3621,17 +3617,13 @@ static void METAL_GetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int32_t textureWidth,
-	int32_t textureHeight,
-	int32_t level,
 	int32_t x,
 	int32_t y,
 	int32_t w,
 	int32_t h,
+	int32_t level,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
 	MetalTexture *mtlTexture = (MetalTexture*) texture;
@@ -3703,23 +3695,17 @@ static void METAL_GetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int32_t left,
-	int32_t top,
-	int32_t front,
-	int32_t right,
-	int32_t bottom,
-	int32_t back,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t w,
+	int32_t h,
+	int32_t d,
 	int32_t level,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
-	int32_t w = right - left;
-	int32_t h = bottom - top;
-	int32_t d = back - front;
-
-	MTLOrigin origin = {left, top, right};
+	MTLOrigin origin = {x, y, z};
 	MTLSize size = {w, h, d};
 	MTLRegion region = {origin, size};
 
@@ -3738,17 +3724,14 @@ static void METAL_GetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int32_t textureSize,
-	FNA3D_CubeMapFace cubeMapFace,
-	int32_t level,
 	int32_t x,
 	int32_t y,
 	int32_t w,
 	int32_t h,
+	FNA3D_CubeMapFace cubeMapFace,
+	int32_t level,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
 	MetalTexture *mtlTexture = (MetalTexture*) texture;
