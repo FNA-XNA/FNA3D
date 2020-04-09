@@ -3789,6 +3789,7 @@ static void OPENGL_GetTextureData2D(
 	int32_t glFormatSize;
 	uint8_t *texData;
 	int32_t row, col;
+	int32_t textureWidth, textureHeight;
 	uint8_t *dataPtr = (uint8_t*) data;
 	FNA3D_Command cmd;
 
@@ -3850,11 +3851,13 @@ static void OPENGL_GetTextureData2D(
 	else
 	{
 		glFormatSize = Texture_GetFormatSize(format);
+		textureWidth = glTexture->twod.width >> level;
+		textureHeight = glTexture->twod.height >> level;
 
 		/* Get the whole texture... */
 		texData = (uint8_t*) SDL_malloc(
-			glTexture->twod.width *
-			glTexture->twod.height *
+			textureWidth *
+			textureHeight *
 			glFormatSize
 		);
 
@@ -3874,7 +3877,7 @@ static void OPENGL_GetTextureData2D(
 				/* FIXME: Can we copy via pitch instead, or something? -flibit */
 				SDL_memcpy(
 					dataPtr,
-					texData + (((row * glTexture->twod.width) + col) * glFormatSize),
+					texData + (((row * textureWidth) + col) * glFormatSize),
 					glFormatSize
 				);
 				dataPtr += glFormatSize;
@@ -3925,6 +3928,7 @@ static void OPENGL_GetTextureDataCube(
 	int32_t glFormatSize;
 	uint8_t *texData;
 	int32_t row, col;
+	int32_t textureSize;
 	uint8_t *dataPtr = (uint8_t*) data;
 	FNA3D_Command cmd;
 
@@ -3974,11 +3978,12 @@ static void OPENGL_GetTextureDataCube(
 	else
 	{
 		glFormatSize = Texture_GetFormatSize(format);
+		textureSize = glTexture->cube.size >> level;
 
 		/* Get the whole texture... */
 		texData = (uint8_t*) SDL_malloc(
-			glTexture->cube.size *
-			glTexture->cube.size *
+			textureSize *
+			textureSize *
 			glFormatSize
 		);
 
@@ -3998,7 +4003,7 @@ static void OPENGL_GetTextureDataCube(
 				/* FIXME: Can we copy via pitch instead, or something? -flibit */
 				SDL_memcpy(
 					dataPtr,
-					texData + (((row * glTexture->twod.width) + col) * glFormatSize),
+					texData + (((row * textureSize) + col) * glFormatSize),
 					glFormatSize
 				);
 				dataPtr += glFormatSize;
