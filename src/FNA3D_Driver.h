@@ -370,7 +370,7 @@ struct FNA3D_Device
 		int32_t w,
 		int32_t h,
 		void* data,
-		int32_t dataLen
+		int32_t dataLength
 	);
 
 	void (*GetBackbufferSize)(

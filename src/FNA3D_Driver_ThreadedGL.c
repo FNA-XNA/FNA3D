@@ -275,7 +275,7 @@ struct GLThreadCommand
 			int32_t w;
 			int32_t h;
 			void* data;
-			int32_t dataLen;
+			int32_t dataLength;
 		} readBackbuffer;
 		struct
 		{
@@ -823,7 +823,7 @@ static int GLRenderThread(void* data)
 					cmd->readBackbuffer.w,
 					cmd->readBackbuffer.h,
 					cmd->readBackbuffer.data,
-					cmd->readBackbuffer.dataLen
+					cmd->readBackbuffer.dataLength
 				);
 				break;
 			case COMMAND_GETBACKBUFFERSIZE:
@@ -1652,7 +1652,7 @@ static void THREADEDGL_ReadBackbuffer(
 	int32_t w,
 	int32_t h,
 	void* data,
-	int32_t dataLen
+	int32_t dataLength
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
@@ -1663,7 +1663,7 @@ static void THREADEDGL_ReadBackbuffer(
 	cmd.readBackbuffer.w = w;
 	cmd.readBackbuffer.h = h;
 	cmd.readBackbuffer.data = data;
-	cmd.readBackbuffer.dataLen = dataLen;
+	cmd.readBackbuffer.dataLength = dataLength;
 	ForceToRenderThread(renderer, &cmd);
 }
 

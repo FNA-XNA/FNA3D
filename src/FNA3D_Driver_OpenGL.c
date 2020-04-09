@@ -3033,7 +3033,7 @@ static void OPENGL_ReadBackbuffer(
 	int32_t w,
 	int32_t h,
 	void* data,
-	int32_t dataLen
+	int32_t dataLength
 ) {
 	GLuint prevReadBuffer, prevDrawBuffer;
 	int32_t pitch, row;

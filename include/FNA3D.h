@@ -643,7 +643,7 @@ FNA3DAPI void FNA3D_ReadBackbuffer(
 	int32_t w,
 	int32_t h,
 	void* data,
-	int32_t dataLen
+	int32_t dataLength
 );
 
 FNA3DAPI void FNA3D_GetBackbufferSize(
