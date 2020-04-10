@@ -5398,6 +5398,9 @@ FNA3D_Device* OPENGL_CreateDevice(
 	}
 	else if (depthSize == 32 && stencilSize == 8)
 	{
+		/* There's like a 99% chance this is GDI, expect a
+		 * NoSuitableGraphicsDevice soon after this line...
+		 */
 		FNA3D_LogWarn("Non-standard D32S8 window depth format!");
 		renderer->windowDepthFormat = FNA3D_DEPTHFORMAT_D24S8;
 	}
