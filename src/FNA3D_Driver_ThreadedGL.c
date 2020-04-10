@@ -2458,6 +2458,7 @@ static FNA3D_Device* THREADEDGL_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters,
 	uint8_t debugMode
 ) {
+	FNA3D_Device *result;
 	GLThreadCommand cmd;
 
 	/* Initialize the Renderer first... */
@@ -2470,7 +2471,7 @@ static FNA3D_Device* THREADEDGL_CreateDevice(
 	renderer->commandEvent = SDL_CreateSemaphore(0);
 
 	/* Then allocate the end user's device... */
-	FNA3D_Device *result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
+	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
 	result->driverData = (FNA3D_Renderer*) renderer;
 	ASSIGN_DRIVER(THREADEDGL)
 
