@@ -34,6 +34,7 @@ if(APPLE)
 elseif(WIN32)
 	# "FNA3D.dll", not "libFNA3D.dll"
 	set(CMAKE_SHARED_LIBRARY_PREFIX "")
+	set(LD3D11 "d3d11.lib;dxgi.lib;dxguid.lib")
 endif()
 
 # Defines
@@ -65,6 +66,17 @@ else()
 	)
 endif()
 
+if (WIN32)
+	add_definitions(
+		-DFNA3D_DRIVER_DIRECTX11
+		-DSUPPORT_PROFILE_HLSL=1
+	)
+else()
+	add_definitions(
+		-DSUPPORT_PROFILE_HLSL=0
+	)
+endif()
+
 # Source lists
 add_library(FNA3D
 	# Public Headers
@@ -82,6 +94,7 @@ add_library(FNA3D
 	# Source Files
 	src/FNA3D.c
 	src/FNA3D_CommandStream.c
+	src/FNA3D_Driver_DirectX11.c
 	src/FNA3D_Driver_OpenGL.c
 	src/FNA3D_Driver_Metal.c
 	src/FNA3D_Driver_ModernGL.c
@@ -130,7 +143,7 @@ set_target_properties(FNA3D PROPERTIES OUTPUT_NAME "FNA3D"
 )
 
 # Internal Dependencies
-target_link_libraries(FNA3D PRIVATE mojoshader ${LOBJC})
+target_link_libraries(FNA3D PRIVATE mojoshader ${LOBJC} ${LD3D11})
 
 # SDL2 Dependency
 if (DEFINED SDL2_INCLUDE_DIRS AND DEFINED SDL2_LIBRARIES)
