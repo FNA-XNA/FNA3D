@@ -5396,6 +5396,11 @@ FNA3D_Device* OPENGL_CreateDevice(
 	{
 		renderer->windowDepthFormat = FNA3D_DEPTHFORMAT_D24S8;
 	}
+	else if (depthSize == 32 && stencilSize == 8)
+	{
+		FNA3D_LogWarn("Non-standard D32S8 window depth format!");
+		renderer->windowDepthFormat = FNA3D_DEPTHFORMAT_D24S8;
+	}
 	else
 	{
 		FNA3D_LogError(
