@@ -1125,7 +1125,7 @@ FNA3DAPI void FNA3D_SetVertexBufferData(
 
 /* Pulls data from a region of the vertex buffer into a client pointer.
  *
- * buffer:		The vertex buffer to be updated.
+ * buffer:		The vertex buffer to be read from.
  * offsetInBytes:	The starting offset of the buffer to write into.
  * data:		The client data to write into from the buffer.
  * elementCount:	The number of elements from the client buffer to read.
@@ -1199,7 +1199,7 @@ FNA3DAPI void FNA3D_SetIndexBufferData(
 
 /* Pulls data from a region of the index buffer into a client pointer.
  *
- * buffer:		The index buffer to be updated.
+ * buffer:		The index buffer to be read from.
  * offsetInBytes:	The starting offset of the buffer to read from.
  * data:		The pointer to read buffer data into.
  * dataLength:		The size (in bytes) of the client data.
