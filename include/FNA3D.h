@@ -457,6 +457,12 @@ typedef struct FNA3D_RenderTargetBinding
 
 typedef void (FNA3DCALL * FNA3D_LogFunc)(const char *msg);
 
+/* Reroutes FNA3D's logging to custom logging functions.
+ *
+ * info:	Basic logs that might be useful to have stored for support.
+ * warn:	Something went wrong, but it's really just annoying, not fatal.
+ * error:	You better have this stored somewhere because it's crashing now!
+ */
 FNA3DAPI void FNA3D_HookLogFunctions(
 	FNA3D_LogFunc info,
 	FNA3D_LogFunc warn,
@@ -465,27 +471,49 @@ FNA3DAPI void FNA3D_HookLogFunctions(
 
 /* Init/Quit */
 
-/* This should be called before window creation!
- * Returns an SDL_WindowFlags mask.
+/* Selects the most suitable graphics rendering backend for the system, then
+ * provides the application with context-sensitive bitflags for the OS window.
+ *
+ * Returns a bitflag value, typically SDL_WindowFlags masks.
  */
 FNA3DAPI uint32_t FNA3D_PrepareWindowAttributes();
 
-/* This should be called after window creation!
- * Use this for detecting high-DPI windows.
+/* After your window is created, call this to check for high-DPI support.
+ *
+ * window:	The OS window handle, typically an SDL_Window*.
+ * x:		Filled with the width of the window's drawable canvas.
+ * y:		Filled with the height of the window's drawable canvas.
  */
 FNA3DAPI void FNA3D_GetDrawableSize(void* window, int32_t *x, int32_t *y);
 
+/* Creates a rendering context for use on the calling thread.
+ *
+ * presentationParameters:	The initial device/backbuffer settings.
+ * debugMode:			Enable debugging and backend validation features
+ *				at the cost of reduced overall performance.
+ *
+ * Returns a device ready for use. Be sure to only call device functions from
+ * the thread that it was created on!
+ */
 FNA3DAPI FNA3D_Device* FNA3D_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters,
 	uint8_t debugMode
 );
 
+/* Destroys a rendering context previously returned by FNA3D_CreateDevice. */
 FNA3DAPI void FNA3D_DestroyDevice(FNA3D_Device *device);
 
 /* Begin/End Frame */
 
+/* This should be the first thing you call when rendering a frame. */
 FNA3DAPI void FNA3D_BeginFrame(FNA3D_Device *device);
 
+/* Presents the backbuffer to the window.
+ *
+ * sourceRectangle:		The region of the buffer to present (or NULL).
+ * destinationRectangle:	The region of the window to update (or NULL).
+ * overrideWindowHandle:	The OS window handle (not really "overridden").
+ */
 FNA3DAPI void FNA3D_SwapBuffers(
 	FNA3D_Device *device,
 	FNA3D_Rect *sourceRectangle,
@@ -493,6 +521,12 @@ FNA3DAPI void FNA3D_SwapBuffers(
 	void* overrideWindowHandle
 );
 
+/* Sets the swap interval of the device. For the default presentation interval,
+ * we try to use an OS-provided feature (if available) to sync when meeting the
+ * target framefrate while tearing if the program misses vblank.
+ *
+ * presentInterval: The requested interval for presenting frames.
+ */
 FNA3DAPI void FNA3D_SetPresentationInterval(
 	FNA3D_Device *device,
 	FNA3D_PresentInterval presentInterval
@@ -500,6 +534,14 @@ FNA3DAPI void FNA3D_SetPresentationInterval(
 
 /* Drawing */
 
+/* Clears the active draw buffers of any previous contents.
+ *
+ * options:	Bitflags to specify color/depth/stencil buffers for clearing.
+ * color:	The new value of the cleared color buffer. It is STRONGLY
+ *		recommended to use 0x00 and 0xFF for all color channels!
+ * depth:	The new value of the cleared depth buffer.
+ * stencil:	The new value of the cleared stencil buffer.
+ */
 FNA3DAPI void FNA3D_Clear(
 	FNA3D_Device *device,
 	FNA3D_ClearOptions options,
@@ -508,6 +550,17 @@ FNA3DAPI void FNA3D_Clear(
 	int32_t stencil
 );
 
+/* Draws data from vertex/index buffers.
+ *
+ * primitiveType:	The primitive topology of the vertex data.
+ * baseVertex:		The starting offset to read from the vertex buffer.
+ * minVertexIndex:	The lowest index value expected from the index buffer.
+ * numVertices:		The highest offset expected from the index buffer.
+ * startIndex:		The starting offset to read from the index buffer.
+ * primitiveCount:	The number of primitives to draw.
+ * indices:		The index buffer to bind for this draw call.
+ * indexElementSize:	The size of the index type for this index buffer.
+ */
 FNA3DAPI void FNA3D_DrawIndexedPrimitives(
 	FNA3D_Device *device,
 	FNA3D_PrimitiveType primitiveType,
@@ -519,6 +572,19 @@ FNA3DAPI void FNA3D_DrawIndexedPrimitives(
 	FNA3D_Buffer *indices,
 	FNA3D_IndexElementSize indexElementSize
 );
+
+/* Draws data from vertex/index buffers with instancing enabled.
+ *
+ * primitiveType:	The primitive topology of the vertex data.
+ * baseVertex:		The starting offset to read from the vertex buffer.
+ * minVertexIndex:	The lowest index value expected from the index buffer.
+ * numVertices:		The highest offset expected from the index buffer.
+ * startIndex:		The starting offset to read from the index buffer.
+ * primitiveCount:	The number of primitives to draw.
+ * instanceCount:	The number of instances that will be drawn.
+ * indices:		The index buffer to bind for this draw call.
+ * indexElementSize:	The size of the index type for this index buffer.
+ */
 FNA3DAPI void FNA3D_DrawInstancedPrimitives(
 	FNA3D_Device *device,
 	FNA3D_PrimitiveType primitiveType,
@@ -531,12 +597,32 @@ FNA3DAPI void FNA3D_DrawInstancedPrimitives(
 	FNA3D_Buffer *indices,
 	FNA3D_IndexElementSize indexElementSize
 );
+
+/* Draws data from vertex buffers.
+ * primitiveType:	The primitive topology of the vertex data.
+ * vertexStart:		The starting offset to read from the vertex buffer.
+ * primitiveCount:	The number of primitives to draw.
+ */
 FNA3DAPI void FNA3D_DrawPrimitives(
 	FNA3D_Device *device,
 	FNA3D_PrimitiveType primitiveType,
 	int32_t vertexStart,
 	int32_t primitiveCount
 );
+
+/* Draws data from client-side vertex/index arrays. It is STRONGLY recommended
+ * that you do NOT use this function, and instead upload your data to buffer
+ * objects instead. The renderer is probably doing this behind your back anyway!
+ *
+ * primitiveType:	The primitive topology of the vertex data.
+ * vertexData:		A pointer to the client vertex data.
+ * vertexOffset:	The starting offset to read from the vertex array.
+ * numVertices:		The number of vertices to read from the vertex array.
+ * indexData:		A pointer to the client index data.
+ * indexOffset:		The starting offset to ready from the index array.
+ * indexElementSize:	The size of the index type for this index array.
+ * primitiveCount:	The number of primitives to draw.
+ */
 FNA3DAPI void FNA3D_DrawUserIndexedPrimitives(
 	FNA3D_Device *device,
 	FNA3D_PrimitiveType primitiveType,
@@ -548,6 +634,16 @@ FNA3DAPI void FNA3D_DrawUserIndexedPrimitives(
 	FNA3D_IndexElementSize indexElementSize,
 	int32_t primitiveCount
 );
+
+/* Draws data from client-side vertex arrays. It is STRONGLY recommended that
+ * you do NOT use this functions, and instead upload your data to buffer objects
+ * instead. The renderer is probably doing this behind your back anyway!
+ *
+ * primitiveType:	The primitive topology of the vertex data.
+ * vertexData:		A pointer to the client vertex data.
+ * vertexOffset:	The starting offset to read from the vertex array.
+ * primitiveCount:	The number of primitives to draw.
+ */
 FNA3DAPI void FNA3D_DrawUserPrimitives(
 	FNA3D_Device *device,
 	FNA3D_PrimitiveType primitiveType,
