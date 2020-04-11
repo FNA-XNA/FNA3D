@@ -1106,6 +1106,13 @@ typedef struct MOJOSHADER_effectTechnique MOJOSHADER_effectTechnique;
 typedef struct MOJOSHADER_effectStateChanges MOJOSHADER_effectStateChanges;
 #endif /* _INCL_MOJOSHADER_H_ */
 
+/* Parses and compiles a Direct3D 9 Effects Framework binary.
+ *
+ * effectCode:		The D3D9 Effect binary blob.
+ * effectCodeLength:	The size in bytes of the blob.
+ * effect:		Filled with the compiled FNA3D_Effect*.
+ * effectData:		Filled with the parsed Effect Framework data.
+ */
 FNA3DAPI void FNA3D_CreateEffect(
 	FNA3D_Device *device,
 	uint8_t *effectCode,
@@ -1113,32 +1120,80 @@ FNA3DAPI void FNA3D_CreateEffect(
 	FNA3D_Effect **effect,
 	MOJOSHADER_effect **effectData
 );
+
+/* Copies a compiled Effect, including its current technique/parameter data.
+ *
+ * cloneSource:	The FNA3D_Effect to copy.
+ * effect:	Filled with the new compiled FNA3D_Effect*.
+ * effectData:	Filled with the copied Effect Framework data.
+ */
 FNA3DAPI void FNA3D_CloneEffect(
 	FNA3D_Device *device,
 	FNA3D_Effect *cloneSource,
 	FNA3D_Effect **effect,
 	MOJOSHADER_effect **effectData
 );
+
+/* Sends an Effect to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * effect: The Effect to be destroyed.
+ */
 FNA3DAPI void FNA3D_AddDisposeEffect(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect
 );
+
+/* Sets the active technique on the Effect.
+ *
+ * effect:	The Effect to be modified.
+ * technique:	The technique to be used by future ApplyEffect calls.
+ */
 FNA3DAPI void FNA3D_SetEffectTechnique(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectTechnique *technique
 );
+
+/* Applies an effect pass from a given Effect, setting the active shader program
+ * and committing any parameter data changes to be used by future draw calls.
+ *
+ * effect:		The Effect to be applied.
+ * pass:		The current technique's pass index to be applied.
+ * stateChanges:	Structure to be filled with any render state changes
+ *			made by the Effect. This must be valid for the entire
+ * 			duration that this Effect is being applied.
+ */
 FNA3DAPI void FNA3D_ApplyEffect(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect,
 	uint32_t pass,
 	MOJOSHADER_effectStateChanges *stateChanges
 );
+
+/* Applies an effect pass from a given Effect, setting the active shader program
+ * and committing and parameter data changes to be used by future draw calls,
+ * while also caching the current program object to be stored once this Effect's
+ * pass has been completed.
+ *
+ * effect:		The Effect to be applied.
+ * stateChanges:	Structure to be filled with any render state changes
+ *			made by the Effect. This must be valid for the entire
+ * 			duration that this Effect is being applied.
+ */
 FNA3DAPI void FNA3D_BeginPassRestore(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectStateChanges *stateChanges
 );
+
+/* Ends a pass started by BeginPassRestore, unsetting the current Effect and
+ * restoring the previous shader state from before BeginPassRestore was called.
+ *
+ * effect: The Effect that was applied at BeginPassRestore.
+ */
 FNA3DAPI void FNA3D_EndPassRestore(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect
@@ -1158,16 +1213,31 @@ FNA3DAPI int32_t FNA3D_QueryPixelCount(
 
 /* Feature Queries */
 
+/* Returns 1 if the renderer natively supports DXT1 texture data. */
 FNA3DAPI uint8_t FNA3D_SupportsDXT1(FNA3D_Device *device);
+
+/* Returns 1 if the renderer natively supports S3TC texture data. */
 FNA3DAPI uint8_t FNA3D_SupportsS3TC(FNA3D_Device *device);
+
+/* Returns 1 if the renderer natively supports hardware instancing. */
 FNA3DAPI uint8_t FNA3D_SupportsHardwareInstancing(FNA3D_Device *device);
+
+/* Returns 1 if the renderer natively supports asynchronous buffer writing. */
 FNA3DAPI uint8_t FNA3D_SupportsNoOverwrite(FNA3D_Device *device);
 
+/* Returns the number of sampler slots supported by the renderer. */
 FNA3DAPI int32_t FNA3D_GetMaxTextureSlots(FNA3D_Device *device);
+
+/* Return the highest multisample count supported for anti-aliasing. */
 FNA3DAPI int32_t FNA3D_GetMaxMultiSampleCount(FNA3D_Device *device);
 
 /* Debugging */
 
+/* Sets an arbitrary string constant to be stored in a rendering API trace,
+ * useful for labeling call streams for debugging purposes.
+ *
+ * text: The string constant to mark in the API call stream.
+ */
 FNA3DAPI void FNA3D_SetStringMarker(FNA3D_Device *device, const char *text);
 
 #ifdef __cplusplus
