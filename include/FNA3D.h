@@ -1016,6 +1016,16 @@ FNA3DAPI void FNA3D_GetTextureDataCube(
 
 /* Renderbuffers */
 
+/* Creates a color buffer to be used by SetRenderTargets/ResolveTarget.
+ *
+ * width:		The width of the color buffer.
+ * height:		The height of the color buffer.
+ * format:		The pixel format of the color buffer.
+ * multiSampleCount:	The MSAA value for the color buffer.
+ * texture:		The texture that this buffer will be resolving to.
+ *
+ * Returns a color FNA3D_Renderbuffer object.
+ */
 FNA3DAPI FNA3D_Renderbuffer* FNA3D_GenColorRenderbuffer(
 	FNA3D_Device *device,
 	int32_t width,
@@ -1024,6 +1034,16 @@ FNA3DAPI FNA3D_Renderbuffer* FNA3D_GenColorRenderbuffer(
 	int32_t multiSampleCount,
 	FNA3D_Texture *texture
 );
+
+/* Creates a depth/stencil buffer to be used by SetRenderTargets/ResolveTarget.
+ *
+ * width:		The width of the depth/stencil buffer.
+ * height:		The height of the depth/stencil buffer.
+ * format:		The storage format of the depth/stencil buffer.
+ * multiSampleCount:	The MSAA value for the depth/stencil buffer.
+ *
+ * Returns a depth/stencil FNA3D_Renderbuffer object.
+ */
 FNA3DAPI FNA3D_Renderbuffer* FNA3D_GenDepthStencilRenderbuffer(
 	FNA3D_Device *device,
 	int32_t width,
@@ -1031,6 +1051,14 @@ FNA3DAPI FNA3D_Renderbuffer* FNA3D_GenDepthStencilRenderbuffer(
 	FNA3D_DepthFormat format,
 	int32_t multiSampleCount
 );
+
+/* Sends a renderbuffer to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * renderbuffer: The FNA3D_Renderbuffer to be destroyed.
+ */
 FNA3DAPI void FNA3D_AddDisposeRenderbuffer(
 	FNA3D_Device *device,
 	FNA3D_Renderbuffer *renderbuffer
@@ -1140,7 +1168,7 @@ FNA3DAPI void FNA3D_CloneEffect(
  * this is not called from the main thread (for example, if a garbage collector
  * deletes the resource instead of the programmer).
  *
- * effect: The Effect to be destroyed.
+ * effect: The FNA3D_Effect to be destroyed.
  */
 FNA3DAPI void FNA3D_AddDisposeEffect(
 	FNA3D_Device *device,
