@@ -132,6 +132,13 @@ void FNA3D_HookLogFunctions(
 	FNA3D_LogErrorFunc = error;
 }
 
+/* Version API */
+
+uint32_t FNA3D_LinkedVersion()
+{
+	return FNA3D_COMPILED_VERSION;
+}
+
 /* Driver Functions */
 
 static int32_t selectedDriver = -1;

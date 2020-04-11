@@ -451,6 +451,22 @@ typedef struct FNA3D_RenderTargetBinding
 	FNA3D_Renderbuffer *colorBuffer;
 } FNA3D_RenderTargetBinding;
 
+/* Version API */
+
+#define FNA3D_ABI_VERSION	 0
+#define FNA3D_MAJOR_VERSION	20
+#define FNA3D_MINOR_VERSION	 4
+#define FNA3D_PATCH_VERSION	 0
+
+#define FNA3D_COMPILED_VERSION ( \
+	(FNA3D_ABI_VERSION * 100 * 100 * 100) + \
+	(FNA3D_MAJOR_VERSION * 100 * 100) + \
+	(FNA3D_MINOR_VERSION * 100) + \
+	(FNA3D_PATCH_VERSION) \
+)
+
+FNA3DAPI uint32_t FNA3D_LinkedVersion(void);
+
 /* Functions */
 
 /* Logging */
