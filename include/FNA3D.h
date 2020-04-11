@@ -1100,6 +1100,7 @@ FNA3DAPI void FNA3D_GetIndexBufferData(
 
 /* Effects */
 
+/* When using this API, be sure to include mojoshader.h! */
 #ifndef _INCL_MOJOSHADER_H_
 typedef struct MOJOSHADER_effect MOJOSHADER_effect;
 typedef struct MOJOSHADER_effectTechnique MOJOSHADER_effectTechnique;
