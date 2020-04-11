@@ -1066,6 +1066,16 @@ FNA3DAPI void FNA3D_AddDisposeRenderbuffer(
 
 /* Vertex Buffers */
 
+/* Creates a vertex buffer to be used by Draw*Primitives.
+ *
+ * dynamic:		Set to 1 if this buffer will be updated frequently.
+ * usage:		Set to WRITEONLY if you do not intend to call GetData.
+ * vertexCount:		The number of vertices to store in this buffer object.
+ * vertexStride:	The size (in bytes) of a single vertex.
+ *
+ * Returns an allocated FNA3D_Buffer* object. Note that the contents of the
+ * buffer are undefined, so you must call SetData at least once before drawing!
+ */
 FNA3DAPI FNA3D_Buffer* FNA3D_GenVertexBuffer(
 	FNA3D_Device *device,
 	uint8_t dynamic,
@@ -1073,10 +1083,35 @@ FNA3DAPI FNA3D_Buffer* FNA3D_GenVertexBuffer(
 	int32_t vertexCount,
 	int32_t vertexStride
 );
+
+/* Sends a vertex buffer to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * buffer: The FNA3D_Buffer to be destroyed.
+ */
 FNA3DAPI void FNA3D_AddDisposeVertexBuffer(
 	FNA3D_Device *device,
 	FNA3D_Buffer *buffer
 );
+
+/* Sets a region of the vertex buffer with client data.
+ *
+ * buffer:		The vertex buffer to be updated.
+ * offsetInBytes:	The starting offset of the buffer to write into.
+ * data:		The client data to write into the buffer.
+ * elementCount:	The number of elements from the client buffer to write.
+ * elementSizeInBytes:	The size of each element in the client buffer.
+ * vertexStride:	Try to set this to the same value as elementSizeInBytes.
+ *			XNA has this ridiculous thing where if vertexStride is
+ *			greated than elementSizeInBytes, it tries to do partial
+ *			updates of each vertex with the client data's smaller
+ *			elements. It's... just, really bad. Don't try to use it.
+ *			You probably just want '1' for both parameters, so that
+ *			elementCount can just be the buffer length in bytes.
+ * options:		Try not to call NONE if this is a dynamic buffer!
+ */
 FNA3DAPI void FNA3D_SetVertexBufferData(
 	FNA3D_Device *device,
 	FNA3D_Buffer *buffer,
@@ -1087,6 +1122,22 @@ FNA3DAPI void FNA3D_SetVertexBufferData(
 	int32_t vertexStride,
 	FNA3D_SetDataOptions options
 );
+
+/* Pulls data from a region of the vertex buffer into a client pointer.
+ *
+ * buffer:		The vertex buffer to be updated.
+ * offsetInBytes:	The starting offset of the buffer to write into.
+ * data:		The client data to write into from the buffer.
+ * elementCount:	The number of elements from the client buffer to read.
+ * elementSizeInBytes:	The size of each element in the client buffer.
+ * vertexStride:	Try to set this to the same value as elementSizeInBytes.
+ *			XNA has this ridiculous thing where if vertexStride is
+ *			greated than elementSizeInBytes, it tries to do partial
+ *			updates of each vertex with the client data's smaller
+ *			elements. It's... just, really bad. Don't try to use it.
+ *			You probably just want '1' for both parameters, so that
+ *			elementCount can just be the buffer length in bytes.
+ */
 FNA3DAPI void FNA3D_GetVertexBufferData(
 	FNA3D_Device *device,
 	FNA3D_Buffer *buffer,
@@ -1099,6 +1150,16 @@ FNA3DAPI void FNA3D_GetVertexBufferData(
 
 /* Index Buffers */
 
+/* Creates an index buffer to be used by Draw*Primitives.
+ *
+ * dynamic:		Set to 1 if this buffer will be updated frequently.
+ * usage:		Set to WRITEONLY if you do not intend to call GetData.
+ * indexCount:		The number of indices to store in this buffer object.
+ * indexElementSize:	The size of the index value type.
+ *
+ * Returns an allocated FNA3D_Buffer* object. Note that the contents of the
+ * buffer are undefined, so you must call SetData at least once before drawing!
+ */
 FNA3DAPI FNA3D_Buffer* FNA3D_GenIndexBuffer(
 	FNA3D_Device *device,
 	uint8_t dynamic,
@@ -1106,10 +1167,27 @@ FNA3DAPI FNA3D_Buffer* FNA3D_GenIndexBuffer(
 	int32_t indexCount,
 	FNA3D_IndexElementSize indexElementSize
 );
+
+/* Sends an index buffer to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * buffer: The FNA3D_Buffer to be destroyed.
+ */
 FNA3DAPI void FNA3D_AddDisposeIndexBuffer(
 	FNA3D_Device *device,
 	FNA3D_Buffer *buffer
 );
+
+/* Sets a region of the index buffer with client data.
+ *
+ * buffer:		The index buffer to be updated.
+ * offsetInBytes:	The starting offset of the buffer to write into.
+ * data:		The client data to write into the buffer.
+ * dataLength:		The size (in bytes) of the client data.
+ * options:		Try not to call NONE if this is a dynamic buffer!
+ */
 FNA3DAPI void FNA3D_SetIndexBufferData(
 	FNA3D_Device *device,
 	FNA3D_Buffer *buffer,
@@ -1118,6 +1196,14 @@ FNA3DAPI void FNA3D_SetIndexBufferData(
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
 );
+
+/* Pulls data from a region of the index buffer into a client pointer.
+ *
+ * buffer:		The index buffer to be updated.
+ * offsetInBytes:	The starting offset of the buffer to read from.
+ * data:		The pointer to read buffer data into.
+ * dataLength:		The size (in bytes) of the client data.
+ */
 FNA3DAPI void FNA3D_GetIndexBufferData(
 	FNA3D_Device *device,
 	FNA3D_Buffer *buffer,
