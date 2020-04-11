@@ -654,38 +654,110 @@ FNA3DAPI void FNA3D_DrawUserPrimitives(
 
 /* Mutable Render States */
 
+/* Sets the view dimensions for rendering, relative to the active render target.
+ * It is required to call this at least once after calling SetRenderTargets, as
+ * the renderer may need to adjust these dimensions to fit the backend's
+ * potentially goofy coordinate systems.
+ *
+ * viewport: The new view dimensions for future draw calls.
+ */
 FNA3DAPI void FNA3D_SetViewport(FNA3D_Device *device, FNA3D_Viewport *viewport);
+
+/* Sets the scissor box for rendering, relative to the active render target.
+ * It is required to call this at least once after calling SetRenderTargets, as
+ * the renderer may need to adjust these dimensions to fit the backend's
+ * potentially goofy coordinate systems.
+ *
+ * scissor: The new scissor box for future draw calls.
+ */
 FNA3DAPI void FNA3D_SetScissorRect(FNA3D_Device *device, FNA3D_Rect *scissor);
 
+/* Gets the blending factor used for current draw calls.
+ *
+ * blendFactor: Filled with color being used as the device blend factor.
+ */
 FNA3DAPI void FNA3D_GetBlendFactor(
 	FNA3D_Device *device,
 	FNA3D_Color *blendFactor
 );
+
+/* Sets the blending factor used for future draw calls.
+ *
+ * blendFactor: The color to use as the device blend factor.
+ */
 FNA3DAPI void FNA3D_SetBlendFactor(
 	FNA3D_Device *device,
 	FNA3D_Color *blendFactor
 );
 
+/* Gets the mask from which multisample fragment data is sampled from.
+ *
+ * Returns the coverage mask used to determine sample locations.
+ */
 FNA3DAPI int32_t FNA3D_GetMultiSampleMask(FNA3D_Device *device);
+
+/* Sets the mask with which multisample fragment data will be sampled from.
+ *
+ * mask: The new coverage mask to use for determining sample locations.
+ */
 FNA3DAPI void FNA3D_SetMultiSampleMask(FNA3D_Device *device, int32_t mask);
 
+/* Gets the reference value used for certain types of stencil testing.
+ *
+ * Returns the stencil reference value.
+ */
 FNA3DAPI int32_t FNA3D_GetReferenceStencil(FNA3D_Device *device);
+
+/* Sets the reference value used for certain types of stencil testing.
+ *
+ * ref: The new stencil reference value.
+ */
 FNA3DAPI void FNA3D_SetReferenceStencil(FNA3D_Device *device, int32_t ref);
 
 /* Immutable Render States */
 
+/* Applies a blending state to use for future draw calls. This only needs to be
+ * called when the state actually changes. Redundant calls may negatively affect
+ * performance!
+ *
+ * blendState: The new parameters to use for color blending.
+ */
 FNA3DAPI void FNA3D_SetBlendState(
 	FNA3D_Device *device,
 	FNA3D_BlendState *blendState
 );
+
+/* Applies depth/stencil states to use for future draw calls. This only needs to
+ * be called when the states actually change. Redundant calls may negatively
+ * affect performance!
+ *
+ * depthStencilState: The new parameters to use for depth/stencil work.
+ */
 FNA3DAPI void FNA3D_SetDepthStencilState(
 	FNA3D_Device *device,
 	FNA3D_DepthStencilState *depthStencilState
 );
+
+/* Applies the rasterizing state to use for future draw calls.
+ * It's generally a good idea to call this for each draw call, but if you really
+ * wanted to you could try reducing it to when the state changes and when the
+ * render target state changes.
+ *
+ * rasterizerState: The new parameters to use for rasterization work.
+ */
 FNA3DAPI void FNA3D_ApplyRasterizerState(
 	FNA3D_Device *device,
 	FNA3D_RasterizerState *rasterizerState
 );
+
+/* Updates a sampler slot with new texture/sampler data for future draw calls.
+ * This should only be called on slots that have modified texture/sampler state.
+ * Redundant calls may negatively affect performance!
+ *
+ * index:	The sampler slot to update.
+ * texture:	The texture bound to this sampler.
+ * sampler:	The new parameters to use for this slot's texture sampling.
+ */
 FNA3DAPI void FNA3D_VerifySampler(
 	FNA3D_Device *device,
 	int32_t index,
@@ -695,6 +767,21 @@ FNA3DAPI void FNA3D_VerifySampler(
 
 /* Vertex State */
 
+/* Updates the vertex attribute state to read from a set of vertex buffers. This
+ * should be the very last thing you call before making a draw call, as this
+ * does all the final prep work for the shader program before it's ready to use.
+ *
+ * bindings:		The vertex buffers and their attribute data.
+ * numBindings:		The number of elements in the bindings array.
+ * bindingsUpdated:	If the bindings array hasn't changed since the last
+ *			update, this can be false. We'll only update the shader
+ *			state, updating vertex attribute data only if we 100%
+ *			have to, for a tiny performance improvement.
+ * baseVertex:		This should be the same as the `baseVertex` parameter
+ *			from your Draw*Primitives call, if applicable. Not every
+ *			rendering backend has native base vertex support, so we
+ *			work around it by passing this here.
+ */
 FNA3DAPI void FNA3D_ApplyVertexBufferBindings(
 	FNA3D_Device *device,
 	FNA3D_VertexBufferBinding *bindings,
@@ -703,6 +790,16 @@ FNA3DAPI void FNA3D_ApplyVertexBufferBindings(
 	int32_t baseVertex
 );
 
+/* Updates the vertex attribute state to read from a vertex array. This should
+ * be the very last thing you call before making a draw call, as this does all
+ * the final prep work for the shader program before it's ready to use. At the
+ * same time, it is STRONGLY recommended that you do NOT use this function, as
+ * it is only useful for DrawUser*Primitives, which you should also not use.
+ *
+ * vertexDeclaration:	The vertex layout information for the vertex array.
+ * ptr:			The vertex array to be read by DrawUser*Primitives.
+ * vertexOffset:	The starting offset to read from the vertex array.
+ */
 FNA3DAPI void FNA3D_ApplyVertexDeclaration(
 	FNA3D_Device *device,
 	FNA3D_VertexDeclaration *vertexDeclaration,
@@ -712,6 +809,13 @@ FNA3DAPI void FNA3D_ApplyVertexDeclaration(
 
 /* Render Targets */
 
+/* Sets the color/depth/stencil buffers to write future draw calls to.
+ *
+ * renderTargets:	The targets to write to, or NULL for the backbuffer.
+ * numRenderTargets:	The size of the renderTargets array (can be 0).
+ * depthStencilBuffer:	The depth/stencil renderbuffer (can be NULL).
+ * depthFormat:		The format of the depth/stencil renderbuffer.
+ */
 FNA3DAPI void FNA3D_SetRenderTargets(
 	FNA3D_Device *device,
 	FNA3D_RenderTargetBinding *renderTargets,
@@ -720,6 +824,11 @@ FNA3DAPI void FNA3D_SetRenderTargets(
 	FNA3D_DepthFormat depthFormat
 );
 
+/* After unsetting a render target, call this to resolve multisample targets or
+ * generate mipmap data for the final texture.
+ *
+ * target: The render target to resolve once rendering is complete.
+ */
 FNA3DAPI void FNA3D_ResolveTarget(
 	FNA3D_Device *device,
 	FNA3D_RenderTargetBinding *target
@@ -727,11 +836,26 @@ FNA3DAPI void FNA3D_ResolveTarget(
 
 /* Backbuffer Functions */
 
+/* After modifying the OS window state, call this to reset the backbuffer to
+ * match your window changes.
+ *
+ * presentationParameters: The new settings for the backbuffer.
+ */
 FNA3DAPI void FNA3D_ResetBackbuffer(
 	FNA3D_Device *device,
 	FNA3D_PresentationParameters *presentationParameters
 );
 
+/* Read the backbuffer's contents directly into client memory. This function is
+ * basically one giant CPU/GPU sync point, do NOT ever call this during any
+ * performance-critical situation! Just use it for screenshots.
+ *
+ * x:		The x offset of the backbuffer region to read.
+ * y:		The y offset of the backbuffer region to read.
+ * w:		The width of the backbuffer region to read.
+ * h:		The height of the backbuffer region to read.
+ * data:	The pointer to read the backbuffer data into.
+ */
 FNA3DAPI void FNA3D_ReadBackbuffer(
 	FNA3D_Device *device,
 	int32_t x,
@@ -742,18 +866,35 @@ FNA3DAPI void FNA3D_ReadBackbuffer(
 	int32_t dataLength
 );
 
+/* Gets the current dimensions of the backbuffer.
+ *
+ * w:	Filled with the backbuffer's width.
+ * h:	Filled with the backbuffer's height.
+ */
 FNA3DAPI void FNA3D_GetBackbufferSize(
 	FNA3D_Device *device,
 	int32_t *w,
 	int32_t *h
 );
 
+/* Gets the current pixel format of the backbuffer.
+ *
+ * Returns the backbuffer's pixel format.
+ */
 FNA3DAPI FNA3D_SurfaceFormat FNA3D_GetBackbufferSurfaceFormat(
 	FNA3D_Device *device
 );
 
+/* Gets the format of the backbuffer's depth/stencil buffer.
+ *
+ * Returns the backbuffer's depth/stencil format.
+ */
 FNA3DAPI FNA3D_DepthFormat FNA3D_GetBackbufferDepthFormat(FNA3D_Device *device);
 
+/* Gets the multisample sample count of the backbuffer.
+ *
+ * Returns the backbuffer's multisample sample count.
+ */
 FNA3DAPI int32_t FNA3D_GetBackbufferMultiSampleCount(FNA3D_Device *device);
 
 /* Textures */
