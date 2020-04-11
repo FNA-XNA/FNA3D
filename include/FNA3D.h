@@ -539,7 +539,7 @@ FNA3DAPI void FNA3D_SwapBuffers(
 
 /* Sets the swap interval of the device. For the default presentation interval,
  * we try to use an OS-provided feature (if available) to sync when meeting the
- * target framefrate while tearing if the program misses vblank.
+ * target framerate while tearing if the program misses vblank.
  *
  * presentInterval: The requested interval for presenting frames.
  */
@@ -1121,7 +1121,7 @@ FNA3DAPI void FNA3D_AddDisposeVertexBuffer(
  * elementSizeInBytes:	The size of each element in the client buffer.
  * vertexStride:	Try to set this to the same value as elementSizeInBytes.
  *			XNA has this ridiculous thing where if vertexStride is
- *			greated than elementSizeInBytes, it tries to do partial
+ *			greater than elementSizeInBytes, it tries to do partial
  *			updates of each vertex with the client data's smaller
  *			elements. It's... just, really bad. Don't try to use it.
  *			You probably just want '1' for both parameters, so that
@@ -1148,7 +1148,7 @@ FNA3DAPI void FNA3D_SetVertexBufferData(
  * elementSizeInBytes:	The size of each element in the client buffer.
  * vertexStride:	Try to set this to the same value as elementSizeInBytes.
  *			XNA has this ridiculous thing where if vertexStride is
- *			greated than elementSizeInBytes, it tries to do partial
+ *			greater than elementSizeInBytes, it tries to do partial
  *			updates of each vertex with the client data's smaller
  *			elements. It's... just, really bad. Don't try to use it.
  *			You probably just want '1' for both parameters, so that
@@ -1240,7 +1240,7 @@ typedef struct MOJOSHADER_effectStateChanges MOJOSHADER_effectStateChanges;
 /* Parses and compiles a Direct3D 9 Effects Framework binary.
  *
  * effectCode:		The D3D9 Effect binary blob.
- * effectCodeLength:	The size in bytes of the blob.
+ * effectCodeLength:	The size (in bytes) of the blob.
  * effect:		Filled with the compiled FNA3D_Effect*.
  * effectData:		Filled with the parsed Effect Framework data.
  */
