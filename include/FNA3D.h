@@ -1332,11 +1332,49 @@ FNA3DAPI void FNA3D_EndPassRestore(
 
 /* Queries */
 
+/* Creates an object used to run occlusion queries.
+ *
+ * Returns an FNA3D_Query object.
+ */
 FNA3DAPI FNA3D_Query* FNA3D_CreateQuery(FNA3D_Device *device);
+
+/* Sends a query object to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * query: The FNA3D_Query to be destroyed.
+ */
 FNA3DAPI void FNA3D_AddDisposeQuery(FNA3D_Device *device, FNA3D_Query *query);
+
+/* Marks the start of when a query object should count pixels written.
+ *
+ * query: The FNA3D_Query to start.
+ */
 FNA3DAPI void FNA3D_QueryBegin(FNA3D_Device *device, FNA3D_Query *query);
+
+/* Marks the end of when a query object should count pixels written. Note that
+ * this does NOT mean the query has finished executing, you will need to poll
+ * QueryComplete before checking the pixel count.
+ *
+ * query: The FNA3D_Query to stop.
+ *
+ * Returns 1 when complete, 0 when still in execution.
+ */
 FNA3DAPI void FNA3D_QueryEnd(FNA3D_Device *device, FNA3D_Query *query);
+
+/* Call this until the function returns 1 to safely query for pixel counts.
+ *
+ * query: The FNA3D_Query to sync with.
+ */
 FNA3DAPI uint8_t FNA3D_QueryComplete(FNA3D_Device *device, FNA3D_Query *query);
+
+/* Query the pixels counted between the begin/end markers set for the object.
+ *
+ * query: The FNA3D_Query to poll for pixel count
+ *
+ * Returns the pixels written during the begin/end period.
+ */
 FNA3DAPI int32_t FNA3D_QueryPixelCount(
 	FNA3D_Device *device,
 	FNA3D_Query *query
