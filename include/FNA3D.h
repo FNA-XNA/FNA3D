@@ -492,7 +492,7 @@ FNA3DAPI void FNA3D_HookLogFunctions(
  *
  * Returns a bitflag value, typically SDL_WindowFlags masks.
  */
-FNA3DAPI uint32_t FNA3D_PrepareWindowAttributes();
+FNA3DAPI uint32_t FNA3D_PrepareWindowAttributes(void);
 
 /* After your window is created, call this to check for high-DPI support.
  *

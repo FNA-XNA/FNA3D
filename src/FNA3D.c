@@ -143,7 +143,7 @@ uint32_t FNA3D_LinkedVersion(void)
 
 static int32_t selectedDriver = -1;
 
-uint32_t FNA3D_PrepareWindowAttributes()
+uint32_t FNA3D_PrepareWindowAttributes(void)
 {
 	uint32_t result = 0;
 	uint32_t i;
