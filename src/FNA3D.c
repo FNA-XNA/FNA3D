@@ -134,7 +134,7 @@ void FNA3D_HookLogFunctions(
 
 /* Version API */
 
-uint32_t FNA3D_LinkedVersion()
+uint32_t FNA3D_LinkedVersion(void)
 {
 	return FNA3D_COMPILED_VERSION;
 }
