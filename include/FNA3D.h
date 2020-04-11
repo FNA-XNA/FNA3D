@@ -1358,14 +1358,14 @@ FNA3DAPI void FNA3D_QueryBegin(FNA3D_Device *device, FNA3D_Query *query);
  * QueryComplete before checking the pixel count.
  *
  * query: The FNA3D_Query to stop.
- *
- * Returns 1 when complete, 0 when still in execution.
  */
 FNA3DAPI void FNA3D_QueryEnd(FNA3D_Device *device, FNA3D_Query *query);
 
 /* Call this until the function returns 1 to safely query for pixel counts.
  *
  * query: The FNA3D_Query to sync with.
+ *
+ * Returns 1 when complete, 0 when still in execution.
  */
 FNA3DAPI uint8_t FNA3D_QueryComplete(FNA3D_Device *device, FNA3D_Query *query);
 
