@@ -636,7 +636,7 @@ FNA3DAPI void FNA3D_DrawUserIndexedPrimitives(
 );
 
 /* Draws data from client-side vertex arrays. It is STRONGLY recommended that
- * you do NOT use this functions, and instead upload your data to buffer objects
+ * you do NOT use this function, and instead upload your data to buffer objects
  * instead. The renderer is probably doing this behind your back anyway!
  *
  * primitiveType:	The primitive topology of the vertex data.
