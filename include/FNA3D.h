@@ -1074,8 +1074,6 @@ FNA3DAPI void FNA3D_SetTextureDataCube(
  * w:		The width of the YUV image.
  * h:		The height of the YUV image.
  * ptr:		A pointer to the raw YUV image data.
- * data:	A pointer to the image data.
- * dataLength:	The size of the image data in bytes.
  */
 FNA3DAPI void FNA3D_SetTextureDataYUV(
 	FNA3D_Device *device,
