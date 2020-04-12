@@ -915,6 +915,17 @@ FNA3DAPI int32_t FNA3D_GetBackbufferMultiSampleCount(FNA3D_Device *device);
 
 /* Textures */
 
+/* Creates a 2D texture to be applied to VerifySampler.
+ *
+ * format:		The pixel format of the texture data.
+ * width:		The width of the texture image.
+ * height:		The height of the texture image.
+ * levelCount:		The number of mipmap levels to allocate.
+ * isRenderTarget:	Set this to 1 when using this with SetRenderTargets.
+ *
+ * Returns an allocated FNA3D_Texture* object. Note that the contents of the
+ * texture are undefined, so you must call SetData at least once before drawing!
+ */
 FNA3DAPI FNA3D_Texture* FNA3D_CreateTexture2D(
 	FNA3D_Device *device,
 	FNA3D_SurfaceFormat format,
@@ -923,6 +934,18 @@ FNA3DAPI FNA3D_Texture* FNA3D_CreateTexture2D(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 );
+
+/* Creates a 3D texture to be applied to VerifySampler.
+ *
+ * format:		The pixel format of the texture data.
+ * width:		The width of the texture image.
+ * height:		The height of the texture image.
+ * depth:		The depth of the texture image.
+ * levelCount:		The number of mipmap levels to allocate.
+ *
+ * Returns an allocated FNA3D_Texture* object. Note that the contents of the
+ * texture are undefined, so you must call SetData at least once before drawing!
+ */
 FNA3DAPI FNA3D_Texture* FNA3D_CreateTexture3D(
 	FNA3D_Device *device,
 	FNA3D_SurfaceFormat format,
@@ -931,6 +954,17 @@ FNA3DAPI FNA3D_Texture* FNA3D_CreateTexture3D(
 	int32_t depth,
 	int32_t levelCount
 );
+
+/* Creates a texture cube to be applied to VerifySampler.
+ *
+ * format:		The pixel format of the texture data.
+ * size:		The length of a single edge of the texture cube.
+ * levelCount:		The number of mipmap levels to allocate.
+ * isRenderTarget:	Set this to 1 when using this with SetRenderTargets.
+ *
+ * Returns an allocated FNA3D_Texture* object. Note that the contents of the
+ * texture are undefined, so you must call SetData at least once before drawing!
+ */
 FNA3DAPI FNA3D_Texture* FNA3D_CreateTextureCube(
 	FNA3D_Device *device,
 	FNA3D_SurfaceFormat format,
@@ -938,10 +972,31 @@ FNA3DAPI FNA3D_Texture* FNA3D_CreateTextureCube(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 );
+
+/* Sends a texture to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * texture: The FNA3D_Texture to be destroyed.
+ */
 FNA3DAPI void FNA3D_AddDisposeTexture(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture
 );
+
+/* Uploads image data to a 2D texture object.
+ *
+ * texture:	The texture to be updated.
+ * format:	The pixel format of the texture data.
+ * x:		The x offset of the subregion being updated.
+ * y:		The y offset of the subregion being updated.
+ * w:		The width of the subregion being updated.
+ * h:		The height of the subregion being updated.
+ * level:	The mipmap level being updated.
+ * data:	A pointer to the image data.
+ * dataLength:	The size of the image data in bytes.
+ */
 FNA3DAPI void FNA3D_SetTextureData2D(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
@@ -954,6 +1009,21 @@ FNA3DAPI void FNA3D_SetTextureData2D(
 	void* data,
 	int32_t dataLength
 );
+
+/* Uploads image data to a 3D texture object.
+ *
+ * texture:	The texture to be updated.
+ * format:	The pixel format of the texture data.
+ * x:		The x offset of the subregion being updated.
+ * y:		The y offset of the subregion being updated.
+ * z:		The z offset of the subregion being updated.
+ * w:		The width of the subregion being updated.
+ * h:		The height of the subregion being updated.
+ * d:		The depth of the subregion being updated.
+ * level:	The mipmap level being updated.
+ * data:	A pointer to the image data.
+ * dataLength:	The size of the image data in bytes.
+ */
 FNA3DAPI void FNA3D_SetTextureData3D(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
@@ -968,6 +1038,20 @@ FNA3DAPI void FNA3D_SetTextureData3D(
 	void* data,
 	int32_t dataLength
 );
+
+/* Uploads image data to a single face of a texture cube object.
+ *
+ * texture:	The texture to be updated.
+ * format:	The pixel format of the texture data.
+ * x:		The x offset of the subregion being updated.
+ * y:		The y offset of the subregion being updated.
+ * w:		The width of the subregion being updated.
+ * h:		The height of the subregion being updated.
+ * cubeMapFace:	The face of the cube being updated.
+ * level:	The mipmap level being updated.
+ * data:	A pointer to the image data.
+ * dataLength:	The size of the image data in bytes.
+ */
 FNA3DAPI void FNA3D_SetTextureDataCube(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
@@ -981,6 +1065,18 @@ FNA3DAPI void FNA3D_SetTextureDataCube(
 	void* data,
 	int32_t dataLength
 );
+
+/* Uploads YUV (YCbCr 4:2:0) image data to three ALPHA8 texture objects.
+ *
+ * y:		The texture storing the Y data.
+ * u:		The texture storing the U (Cb) data.
+ * v:		The texture storing the V (Cr) data.
+ * w:		The width of the YUV image.
+ * h:		The height of the YUV image.
+ * ptr:		A pointer to the raw YUV image data.
+ * data:	A pointer to the image data.
+ * dataLength:	The size of the image data in bytes.
+ */
 FNA3DAPI void FNA3D_SetTextureDataYUV(
 	FNA3D_Device *device,
 	FNA3D_Texture *y,
@@ -990,6 +1086,21 @@ FNA3DAPI void FNA3D_SetTextureDataYUV(
 	int32_t h,
 	void* ptr
 );
+
+/* Pulls image data from a 2D texture into client memory. Like any GetData,
+ * this is generally asking for a massive CPU/GPU sync point, don't call this
+ * unless there's absolutely no other way to use the image data!
+ *
+ * texture:	The texture object being read.
+ * format:	The pixel format of the texture data.
+ * x:		The x offset of the subregion being read.
+ * y:		The y offset of the subregion being read.
+ * w:		The width of the subregion being read.
+ * h:		The height of the subregion being read.
+ * level:	The mipmap level being read.
+ * data:	The pointer being filled with the image data.
+ * dataLength:	The size of the image data in bytes.
+ */
 FNA3DAPI void FNA3D_GetTextureData2D(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
@@ -1002,6 +1113,23 @@ FNA3DAPI void FNA3D_GetTextureData2D(
 	void* data,
 	int32_t dataLength
 );
+
+/* Pulls image data from a 3D texture into client memory. Like any GetData,
+ * this is generally asking for a massive CPU/GPU sync point, don't call this
+ * unless there's absolutely no other way to use the image data!
+ *
+ * texture:	The texture object being read.
+ * format:	The pixel format of the texture data.
+ * x:		The x offset of the subregion being read.
+ * y:		The y offset of the subregion being read.
+ * z:		The z offset of the subregion being read.
+ * w:		The width of the subregion being read.
+ * h:		The height of the subregion being read.
+ * d:		The depth of the subregion being read.
+ * level:	The mipmap level being read.
+ * data:	The pointer being filled with the image data.
+ * dataLength:	The size of the image data in bytes.
+ */
 FNA3DAPI void FNA3D_GetTextureData3D(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
@@ -1016,6 +1144,23 @@ FNA3DAPI void FNA3D_GetTextureData3D(
 	void* data,
 	int32_t dataLength
 );
+
+/* Pulls image data from a single face of a texture cube object into client
+ * memory. Like any GetData, this is generally asking for a massive CPU/GPU sync
+ * point, don't call this unless there's absolutely no other way to use the
+ * image data!
+ *
+ * texture:	The texture object being read.
+ * format:	The pixel format of the texture data.
+ * x:		The x offset of the subregion being read.
+ * y:		The y offset of the subregion being read.
+ * w:		The width of the subregion being read.
+ * h:		The height of the subregion being read.
+ * cubeMapFace:	The face of the cube being read.
+ * level:	The mipmap level being read.
+ * data:	The pointer being filled with the image data.
+ * dataLength:	The size of the image data in bytes.
+ */
 FNA3DAPI void FNA3D_GetTextureDataCube(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
