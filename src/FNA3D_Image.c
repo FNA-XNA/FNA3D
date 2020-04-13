@@ -290,7 +290,7 @@ void FNA3D_Image_SavePNG(
 	int32_t dstH,
 	uint8_t *data
 ) {
-	SDL_Surface *surface, *scaledSurface;
+	SDL_Surface *surface, *scaledSurface = NULL;
 	uint8_t *pixels;
 	uint8_t scale = (srcW != dstW) || (srcH != dstH);
 
