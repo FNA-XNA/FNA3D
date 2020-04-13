@@ -3567,9 +3567,10 @@ static void METAL_SetTextureDataYUV(
 	FNA3D_Texture *v,
 	int32_t w,
 	int32_t h,
-	void* ptr
+	void* data,
+	int32_t dataLength
 ) {
-	uint8_t* dataPtr = (uint8_t*) ptr;
+	uint8_t* dataPtr = (uint8_t*) data;
 	MTLOrigin origin = {0, 0, 0};
 	MTLSize sizeY = {w, h, 1};
 	MTLSize sizeUV = {w / 2, h / 2, 1};

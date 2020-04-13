@@ -370,7 +370,8 @@ struct GLThreadCommand
 			FNA3D_Texture *v;
 			int32_t w;
 			int32_t h;
-			void* ptr;
+			void* data;
+			int32_t dataLength;
 		} setTextureDataYUV;
 		struct
 		{
@@ -936,7 +937,8 @@ static int GLRenderThread(void* data)
 					cmd->setTextureDataYUV.v,
 					cmd->setTextureDataYUV.w,
 					cmd->setTextureDataYUV.h,
-					cmd->setTextureDataYUV.ptr
+					cmd->setTextureDataYUV.data,
+					cmd->setTextureDataYUV.dataLength
 				);
 				break;
 			case COMMAND_GETTEXTUREDATA2D:
@@ -1886,7 +1888,8 @@ static void THREADEDGL_SetTextureDataYUV(
 	FNA3D_Texture *v,
 	int32_t w,
 	int32_t h,
-	void* ptr
+	void* data,
+	int32_t dataLength
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
@@ -1897,7 +1900,8 @@ static void THREADEDGL_SetTextureDataYUV(
 	cmd.setTextureDataYUV.v = v;
 	cmd.setTextureDataYUV.w = w;
 	cmd.setTextureDataYUV.h = h;
-	cmd.setTextureDataYUV.ptr = ptr;
+	cmd.setTextureDataYUV.data = data;
+	cmd.setTextureDataYUV.dataLength = dataLength;
 	ForceToRenderThread(renderer, &cmd);
 }
 

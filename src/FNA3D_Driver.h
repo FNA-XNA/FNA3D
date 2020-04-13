@@ -460,7 +460,8 @@ struct FNA3D_Device
 		FNA3D_Texture *v,
 		int32_t w,
 		int32_t h,
-		void* ptr
+		void* data,
+		int32_t dataLength
 	);
 	void (*GetTextureData2D)(
 		FNA3D_Renderer *driverData,

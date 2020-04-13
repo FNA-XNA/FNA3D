@@ -3724,10 +3724,11 @@ static void OPENGL_SetTextureDataYUV(
 	FNA3D_Texture *v,
 	int32_t w,
 	int32_t h,
-	void* ptr
+	void* data,
+	int32_t dataLength
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
-	uint8_t *dataPtr = (uint8_t*) ptr;
+	uint8_t *dataPtr = (uint8_t*) data;
 
 	renderer->glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	BindTexture(renderer, (OpenGLTexture*) y);

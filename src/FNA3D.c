@@ -850,13 +850,23 @@ void FNA3D_SetTextureDataYUV(
 	FNA3D_Texture *v,
 	int32_t w,
 	int32_t h,
-	void* ptr
+	void* data,
+	int32_t dataLength
 ) {
 	if (device == NULL)
 	{
 		return;
 	}
-	device->SetTextureDataYUV(device->driverData, y, u, v, w, h, ptr);
+	device->SetTextureDataYUV(
+		device->driverData,
+		y,
+		u,
+		v,
+		w,
+		h,
+		data,
+		dataLength
+	);
 }
 
 void FNA3D_GetTextureData2D(

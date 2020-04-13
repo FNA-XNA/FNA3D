@@ -3332,10 +3332,11 @@ static void MODERNGL_SetTextureDataYUV(
 	FNA3D_Texture *v,
 	int32_t w,
 	int32_t h,
-	void* ptr
+	void* data,
+	int32_t dataLength
 ) {
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
-	uint8_t *dataPtr = (uint8_t*) ptr;
+	uint8_t *dataPtr = (uint8_t*) data;
 
 	renderer->glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
 	renderer->glTextureSubImage2D(
