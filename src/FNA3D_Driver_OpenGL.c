@@ -5325,7 +5325,7 @@ void OPENGL_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 	SDL_GL_GetDrawableSize((SDL_Window*) window, x, y);
 
 #if defined(__IPHONEOS__) || defined(__TVOS__)
-	SDL_GL_DestroyContext(tempContext);
+	SDL_GL_DeleteContext(tempContext);
 #endif
 }
 
