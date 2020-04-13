@@ -426,7 +426,7 @@ static void TEMPLATE_ApplyVertexBufferBindings(
 static void TEMPLATE_ApplyVertexDeclaration(
 	FNA3D_Renderer *driverData,
 	FNA3D_VertexDeclaration *vertexDeclaration,
-	void* ptr,
+	void* vertexData,
 	int32_t vertexOffset
 ) {
 }
@@ -584,7 +584,8 @@ static void TEMPLATE_SetTextureDataYUV(
 	FNA3D_Texture *v,
 	int32_t w,
 	int32_t h,
-	void* ptr
+	void* data,
+	int32_t dataLength
 ) {
 }
 
