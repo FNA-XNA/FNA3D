@@ -544,7 +544,7 @@ void FNA3D_ApplyVertexBufferBindings(
 void FNA3D_ApplyVertexDeclaration(
 	FNA3D_Device *device,
 	FNA3D_VertexDeclaration *vertexDeclaration,
-	void* ptr,
+	void* vertexData,
 	int32_t vertexOffset
 ) {
 	if (device == NULL)
@@ -554,7 +554,7 @@ void FNA3D_ApplyVertexDeclaration(
 	device->ApplyVertexDeclaration(
 		device->driverData,
 		vertexDeclaration,
-		ptr,
+		vertexData,
 		vertexOffset
 	);
 }

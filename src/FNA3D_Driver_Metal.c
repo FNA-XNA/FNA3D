@@ -2910,7 +2910,7 @@ static void METAL_ApplyVertexBufferBindings(
 static void METAL_ApplyVertexDeclaration(
 	FNA3D_Renderer *driverData,
 	FNA3D_VertexDeclaration *vertexDeclaration,
-	void* ptr,
+	void* vertexData,
 	int32_t vertexOffset
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;

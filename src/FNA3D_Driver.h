@@ -337,7 +337,7 @@ struct FNA3D_Device
 	void (*ApplyVertexDeclaration)(
 		FNA3D_Renderer *driverData,
 		FNA3D_VertexDeclaration *vertexDeclaration,
-		void* ptr,
+		void* vertexData,
 		int32_t vertexOffset
 	);
 

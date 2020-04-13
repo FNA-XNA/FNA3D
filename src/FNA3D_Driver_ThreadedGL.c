@@ -250,7 +250,7 @@ struct GLThreadCommand
 		struct
 		{
 			FNA3D_VertexDeclaration *vertexDeclaration;
-			void* ptr;
+			void* vertexData;
 			int32_t vertexOffset;
 		} applyVertexDeclaration;
 		struct
@@ -790,7 +790,7 @@ static int GLRenderThread(void* data)
 				renderer->actualDevice->ApplyVertexDeclaration(
 					renderer->actualDevice->driverData,
 					cmd->applyVertexDeclaration.vertexDeclaration,
-					cmd->applyVertexDeclaration.ptr,
+					cmd->applyVertexDeclaration.vertexData,
 					cmd->applyVertexDeclaration.vertexOffset
 				);
 				break;
@@ -1586,7 +1586,7 @@ static void THREADEDGL_ApplyVertexBufferBindings(
 static void THREADEDGL_ApplyVertexDeclaration(
 	FNA3D_Renderer *driverData,
 	FNA3D_VertexDeclaration *vertexDeclaration,
-	void* ptr,
+	void* vertexData,
 	int32_t vertexOffset
 ) {
 	GLThreadCommand cmd;
@@ -1594,7 +1594,7 @@ static void THREADEDGL_ApplyVertexDeclaration(
 
 	cmd.type = COMMAND_APPLYVERTEXDECLARATION;
 	cmd.applyVertexDeclaration.vertexDeclaration = vertexDeclaration;
-	cmd.applyVertexDeclaration.ptr = ptr;
+	cmd.applyVertexDeclaration.vertexData = vertexData;
 	cmd.applyVertexDeclaration.vertexOffset = vertexOffset;
 	ForceToRenderThread(renderer, &cmd);
 }

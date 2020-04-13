@@ -2197,7 +2197,7 @@ static void OPENGL_ApplyVertexBufferBindings(
 static void OPENGL_ApplyVertexDeclaration(
 	FNA3D_Renderer *driverData,
 	FNA3D_VertexDeclaration *vertexDeclaration,
-	void* ptr,
+	void* vertexData,
 	int32_t vertexOffset
 ) {
 	int32_t usage, index, attribLoc, i, j;
@@ -2205,7 +2205,7 @@ static void OPENGL_ApplyVertexDeclaration(
 	OpenGLVertexAttribute *attr;
 	uint8_t normalized;
 	uint8_t *finalPtr;
-	uint8_t *basePtr = (uint8_t*) ptr;
+	uint8_t *basePtr = (uint8_t*) vertexData;
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 
 	BindVertexBuffer(renderer, 0);
@@ -2288,7 +2288,7 @@ static void OPENGL_ApplyVertexDeclaration(
 		OPENGL_INTERNAL_FlushGLVertexAttributes(renderer);
 
 		renderer->ldVertexDeclaration = vertexDeclaration;
-		renderer->ldPointer = ptr;
+		renderer->ldPointer = vertexData;
 		renderer->ldEffect = renderer->currentEffect;
 		renderer->ldTechnique = renderer->currentTechnique;
 		renderer->ldPass = renderer->currentPass;

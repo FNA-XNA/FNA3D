@@ -813,13 +813,13 @@ FNA3DAPI void FNA3D_ApplyVertexBufferBindings(
  * it is only useful for DrawUser*Primitives, which you should also not use.
  *
  * vertexDeclaration:	The vertex layout information for the vertex array.
- * ptr:			The vertex array to be read by DrawUser*Primitives.
+ * vertexData:		The vertex array to be read by DrawUser*Primitives.
  * vertexOffset:	The starting offset to read from the vertex array.
  */
 FNA3DAPI void FNA3D_ApplyVertexDeclaration(
 	FNA3D_Device *device,
 	FNA3D_VertexDeclaration *vertexDeclaration,
-	void* ptr,
+	void* vertexData,
 	int32_t vertexOffset
 );
 

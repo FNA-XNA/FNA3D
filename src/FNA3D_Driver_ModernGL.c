@@ -1964,7 +1964,7 @@ static void MODERNGL_ApplyVertexBufferBindings(
 static void MODERNGL_ApplyVertexDeclaration(
 	FNA3D_Renderer *driverData,
 	FNA3D_VertexDeclaration *vertexDeclaration,
-	void* ptr,
+	void* vertexData,
 	int32_t vertexOffset
 ) {
 	int32_t usage, index, attribLoc, i, j;
@@ -1972,7 +1972,7 @@ static void MODERNGL_ApplyVertexDeclaration(
 	ModernGLVertexAttribute *attr;
 	uint8_t normalized;
 	uint8_t *finalPtr;
-	uint8_t *basePtr = (uint8_t*) ptr;
+	uint8_t *basePtr = (uint8_t*) vertexData;
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
 
 	BindVertexBuffer(renderer, 0);
@@ -2055,7 +2055,7 @@ static void MODERNGL_ApplyVertexDeclaration(
 		MODERNGL_INTERNAL_FlushGLVertexAttributes(renderer);
 
 		renderer->ldVertexDeclaration = vertexDeclaration;
-		renderer->ldPointer = ptr;
+		renderer->ldPointer = vertexData;
 		renderer->ldEffect = renderer->currentEffect;
 		renderer->ldTechnique = renderer->currentTechnique;
 		renderer->ldPass = renderer->currentPass;
