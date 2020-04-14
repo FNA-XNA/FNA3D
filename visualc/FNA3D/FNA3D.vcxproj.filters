@@ -35,6 +35,13 @@
     <ClCompile Include="..\..\src\FNA3D_Driver_ModernGL.c" />
     <ClCompile Include="..\..\src\FNA3D_Driver_ThreadedGL.c" />
     <ClCompile Include="..\..\src\FNA3D_PipelineCache.c" />
+    <ClCompile Include="..\..\src\FNA3D_Driver_DirectX11.c" />
+    <ClCompile Include="..\..\MojoShader\mojoshader_d3d11.c">
+      <Filter>mojoshader</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\MojoShader\profiles\mojoshader_profile_hlsl.c">
+      <Filter>mojoshader</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\include\FNA3D.h" />
