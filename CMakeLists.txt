@@ -34,7 +34,6 @@ if(APPLE)
 elseif(WIN32)
 	# "FNA3D.dll", not "libFNA3D.dll"
 	set(CMAKE_SHARED_LIBRARY_PREFIX "")
-	set(LD3D11 "d3d11.lib;dxgi.lib;dxguid.lib")
 endif()
 
 # Defines
@@ -106,10 +105,12 @@ add_library(mojoshader STATIC
 	MojoShader/mojoshader.c
 	MojoShader/mojoshader_effects.c
 	MojoShader/mojoshader_common.c
+	MojoShader/mojoshader_d3d11.c
 	MojoShader/mojoshader_opengl.c
 	MojoShader/mojoshader_metal.c
 	MojoShader/profiles/mojoshader_profile_common.c
 	MojoShader/profiles/mojoshader_profile_glsl.c
+	MojoShader/profiles/mojoshader_profile_hlsl.c
 	MojoShader/profiles/mojoshader_profile_metal.c
 	MojoShader/profiles/mojoshader_profile_spirv.c
 )
@@ -143,7 +144,7 @@ set_target_properties(FNA3D PROPERTIES OUTPUT_NAME "FNA3D"
 )
 
 # Internal Dependencies
-target_link_libraries(FNA3D PRIVATE mojoshader ${LOBJC} ${LD3D11})
+target_link_libraries(FNA3D PRIVATE mojoshader ${LOBJC})
 
 # SDL2 Dependency
 if (DEFINED SDL2_INCLUDE_DIRS AND DEFINED SDL2_LIBRARIES)
