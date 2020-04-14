@@ -3565,15 +3565,17 @@ static void METAL_SetTextureDataYUV(
 	FNA3D_Texture *y,
 	FNA3D_Texture *u,
 	FNA3D_Texture *v,
-	int32_t w,
-	int32_t h,
+	int32_t yWidth,
+	int32_t yHeight,
+	int32_t uvWidth,
+	int32_t uvHeight,
 	void* data,
 	int32_t dataLength
 ) {
 	uint8_t* dataPtr = (uint8_t*) data;
 	MTLOrigin origin = {0, 0, 0};
-	MTLSize sizeY = {w, h, 1};
-	MTLSize sizeUV = {w / 2, h / 2, 1};
+	MTLSize sizeY = {yWidth, yHeight, 1};
+	MTLSize sizeUV = {uvWidth, uvHeight, 1};
 	MTLRegion regionY = {origin, sizeY};
 	MTLRegion regionUV = {origin, sizeUV};
 
@@ -3583,10 +3585,10 @@ static void METAL_SetTextureDataYUV(
 		0,
 		0,
 		dataPtr,
-		w,
+		yWidth,
 		0
 	);
-	dataPtr += w * h;
+	dataPtr += yWidth * yHeight;
 
 	mtlReplaceRegion(
 		((MetalTexture*) u)->handle,
@@ -3594,10 +3596,10 @@ static void METAL_SetTextureDataYUV(
 		0,
 		0,
 		dataPtr,
-		w / 2,
+		uvWidth,
 		0
 	);
-	dataPtr += (w / 2) * (h / 2);
+	dataPtr += uvWidth * uvHeight;
 
 	mtlReplaceRegion(
 		((MetalTexture*) v)->handle,
@@ -3605,7 +3607,7 @@ static void METAL_SetTextureDataYUV(
 		0,
 		0,
 		dataPtr,
-		w / 2,
+		uvWidth,
 		0
 	);
 }

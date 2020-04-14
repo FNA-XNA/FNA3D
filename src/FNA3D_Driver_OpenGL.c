@@ -3722,8 +3722,10 @@ static void OPENGL_SetTextureDataYUV(
 	FNA3D_Texture *y,
 	FNA3D_Texture *u,
 	FNA3D_Texture *v,
-	int32_t w,
-	int32_t h,
+	int32_t yWidth,
+	int32_t yHeight,
+	int32_t uvWidth,
+	int32_t uvHeight,
 	void* data,
 	int32_t dataLength
 ) {
@@ -3737,34 +3739,34 @@ static void OPENGL_SetTextureDataYUV(
 		0,
 		0,
 		0,
-		w,
-		h,
+		yWidth,
+		yHeight,
 		GL_ALPHA,
 		GL_UNSIGNED_BYTE,
 		dataPtr
 	);
-	dataPtr += (w * h);
+	dataPtr += yWidth * yHeight;
 	BindTexture(renderer, (OpenGLTexture*) u);
 	renderer->glTexSubImage2D(
 		GL_TEXTURE_2D,
 		0,
 		0,
 		0,
-		w / 2,
-		h / 2,
+		uvWidth,
+		uvHeight,
 		GL_ALPHA,
 		GL_UNSIGNED_BYTE,
 		dataPtr
 	);
-	dataPtr += (w / 2) * (h / 2);
+	dataPtr += uvWidth * uvHeight;
 	BindTexture(renderer, (OpenGLTexture*) v);
 	renderer->glTexSubImage2D(
 		GL_TEXTURE_2D,
 		0,
 		0,
 		0,
-		w / 2,
-		h / 2,
+		uvWidth,
+		uvHeight,
 		GL_ALPHA,
 		GL_UNSIGNED_BYTE,
 		dataPtr

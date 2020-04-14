@@ -3330,8 +3330,10 @@ static void MODERNGL_SetTextureDataYUV(
 	FNA3D_Texture *y,
 	FNA3D_Texture *u,
 	FNA3D_Texture *v,
-	int32_t w,
-	int32_t h,
+	int32_t yWidth,
+	int32_t yHeight,
+	int32_t uvWidth,
+	int32_t uvHeight,
 	void* data,
 	int32_t dataLength
 ) {
@@ -3344,32 +3346,32 @@ static void MODERNGL_SetTextureDataYUV(
 		0,
 		0,
 		0,
-		w,
-		h,
+		yWidth,
+		yHeight,
 		GL_RED,
 		GL_UNSIGNED_BYTE,
 		dataPtr
 	);
-	dataPtr += (w * h);
+	dataPtr += yWidth * yHeight;
 	renderer->glTextureSubImage2D(
 		((ModernGLTexture*) u)->handle,
 		0,
 		0,
 		0,
-		w / 2,
-		h / 2,
+		uvWidth,
+		uvHeight,
 		GL_RED,
 		GL_UNSIGNED_BYTE,
 		dataPtr
 	);
-	dataPtr += (w / 2) * (h / 2);
+	dataPtr += uvWidth * uvHeight;
 	renderer->glTextureSubImage2D(
 		((ModernGLTexture*) v)->handle,
 		0,
 		0,
 		0,
-		w / 2,
-		h / 2,
+		uvWidth,
+		uvHeight,
 		GL_RED,
 		GL_UNSIGNED_BYTE,
 		dataPtr

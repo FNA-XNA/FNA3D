@@ -1066,13 +1066,15 @@ FNA3DAPI void FNA3D_SetTextureDataCube(
 	int32_t dataLength
 );
 
-/* Uploads YUV (YCbCr 4:2:0) image data to three ALPHA8 texture objects.
+/* Uploads YUV image data to three ALPHA8 texture objects.
  *
  * y:		The texture storing the Y data.
  * u:		The texture storing the U (Cb) data.
  * v:		The texture storing the V (Cr) data.
- * w:		The width of the YUV image.
- * h:		The height of the YUV image.
+ * yWidth:	The width of the Y plane.
+ * yHeight:	The height of the Y plane.
+ * uvWidth:	The width of the U/V planes.
+ * uvHeight:	The height of the U/V planes.
  * data:	A pointer to the raw YUV image data.
  * dataLength:	The size of the image data in bytes.
  */
@@ -1081,8 +1083,10 @@ FNA3DAPI void FNA3D_SetTextureDataYUV(
 	FNA3D_Texture *y,
 	FNA3D_Texture *u,
 	FNA3D_Texture *v,
-	int32_t w,
-	int32_t h,
+	int32_t yWidth,
+	int32_t yHeight,
+	int32_t uvWidth,
+	int32_t uvHeight,
 	void* data,
 	int32_t dataLength
 );

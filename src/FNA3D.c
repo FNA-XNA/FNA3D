@@ -848,8 +848,10 @@ void FNA3D_SetTextureDataYUV(
 	FNA3D_Texture *y,
 	FNA3D_Texture *u,
 	FNA3D_Texture *v,
-	int32_t w,
-	int32_t h,
+	int32_t yWidth,
+	int32_t yHeight,
+	int32_t uvWidth,
+	int32_t uvHeight,
 	void* data,
 	int32_t dataLength
 ) {
@@ -862,8 +864,10 @@ void FNA3D_SetTextureDataYUV(
 		y,
 		u,
 		v,
-		w,
-		h,
+		yWidth,
+		yHeight,
+		uvWidth,
+		uvHeight,
 		data,
 		dataLength
 	);

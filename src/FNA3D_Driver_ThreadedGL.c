@@ -368,8 +368,10 @@ struct GLThreadCommand
 			FNA3D_Texture *y;
 			FNA3D_Texture *u;
 			FNA3D_Texture *v;
-			int32_t w;
-			int32_t h;
+			int32_t yWidth;
+			int32_t yHeight;
+			int32_t uvWidth;
+			int32_t uvHeight;
 			void* data;
 			int32_t dataLength;
 		} setTextureDataYUV;
@@ -935,8 +937,10 @@ static int GLRenderThread(void* data)
 					cmd->setTextureDataYUV.y,
 					cmd->setTextureDataYUV.u,
 					cmd->setTextureDataYUV.v,
-					cmd->setTextureDataYUV.w,
-					cmd->setTextureDataYUV.h,
+					cmd->setTextureDataYUV.yWidth,
+					cmd->setTextureDataYUV.yHeight,
+					cmd->setTextureDataYUV.uvWidth,
+					cmd->setTextureDataYUV.uvHeight,
 					cmd->setTextureDataYUV.data,
 					cmd->setTextureDataYUV.dataLength
 				);
@@ -1886,8 +1890,10 @@ static void THREADEDGL_SetTextureDataYUV(
 	FNA3D_Texture *y,
 	FNA3D_Texture *u,
 	FNA3D_Texture *v,
-	int32_t w,
-	int32_t h,
+	int32_t yWidth,
+	int32_t yHeight,
+	int32_t uvWidth,
+	int32_t uvHeight,
 	void* data,
 	int32_t dataLength
 ) {
@@ -1898,8 +1904,10 @@ static void THREADEDGL_SetTextureDataYUV(
 	cmd.setTextureDataYUV.y = y;
 	cmd.setTextureDataYUV.u = u;
 	cmd.setTextureDataYUV.v = v;
-	cmd.setTextureDataYUV.w = w;
-	cmd.setTextureDataYUV.h = h;
+	cmd.setTextureDataYUV.yWidth = yWidth;
+	cmd.setTextureDataYUV.yHeight = yHeight;
+	cmd.setTextureDataYUV.uvWidth = uvWidth;
+	cmd.setTextureDataYUV.uvHeight = uvHeight;
 	cmd.setTextureDataYUV.data = data;
 	cmd.setTextureDataYUV.dataLength = dataLength;
 	ForceToRenderThread(renderer, &cmd);
