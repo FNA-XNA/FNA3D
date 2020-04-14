@@ -8,3 +8,6 @@ Debug/
 Release/
 *.vcxproj.user
 *.suo
+.DS_Store
+xcuserdata/
+*.xcworkspace/
