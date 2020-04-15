@@ -7,6 +7,9 @@ project(FNA3D C)
 option(BUILD_SHARED_LIBS "Build shared library" ON)
 option(BUILD_DXVK_NATIVE "Build D3D11 with DXVK-Native" OFF)
 
+# for easy testing
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ./FNA3DMinimal/lib64)
+
 # Version
 SET(LIB_MAJOR_VERSION "0")
 SET(LIB_MINOR_VERSION "20")
@@ -40,7 +43,6 @@ endif()
 # Defines
 add_definitions(
 	-DFNA3D_DRIVER_OPENGL
-	-DFNA3D_DRIVER_VULKAN
 )
 add_definitions(
 	-DMOJOSHADER_NO_VERSION_INCLUDE
@@ -61,6 +63,7 @@ if(APPLE)
 	)
 else()
 	add_definitions(
+		-DFNA3D_DRIVER_VULKAN
 		-DSUPPORT_PROFILE_METAL=0
 	)
 endif()
@@ -179,3 +182,39 @@ else()
 		target_link_libraries(FNA3D PUBLIC ${SDL2_LIBRARIES})
 	endif()
 endif()
+
+# Compile builtin shaders to SPIR-V
+find_program(GLSLVALIDATOR glslangValidator)
+if(NOT GLSLVALIDATOR)
+	message(FATAL_ERROR "glslangValidator not found")
+endif()
+
+function(CompileShader shaderFile prefix)
+	get_filename_component(shaderFileName "${shaderFile}" NAME_WE)
+	if ("${shaderFile}" MATCHES ".*\\.vert")
+		add_custom_command(
+			OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/src/${prefix}${shaderFileName}_vert.h"
+			COMMAND ${GLSLVALIDATOR} -V --vn "${shaderFileName}_vert_shader" "${shaderFile}" -o "${CMAKE_CURRENT_SOURCE_DIR}/src/${prefix}${shaderFileName}_vert.h"
+			COMMENT "Compiling ${shaderFileName} to SPIR-V bytecode"
+		)
+		add_custom_target(${shaderFileName} ALL DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/${prefix}${shaderFileName}_vert.h")
+		add_dependencies(FNA3D ${shaderFileName})
+	elseif ("${shaderFile}" MATCHES ".*\\.frag")
+		add_custom_command(
+			OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/src/${prefix}${shaderFileName}_frag.h"
+			COMMAND ${GLSLVALIDATOR} -V --vn "${shaderFileName}_frag_shader" "${shaderFile}" -o "${CMAKE_CURRENT_SOURCE_DIR}/src/${prefix}${shaderFileName}_frag.h"
+			COMMENT "Compiling ${shaderFileName} to SPIR-V bytecode"
+		)
+		add_custom_target(${shaderFileName} ALL DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/${prefix}${shaderFileName}_frag.h")
+		add_dependencies(FNA3D ${shaderFileName})
+	endif()
+endfunction()
+
+function(CompileShaders shaderDir prefix)
+	file(GLOB files "${shaderDir}/*")
+	foreach(shaderFile ${files})
+		CompileShader(${shaderFile} ${prefix})
+	endforeach()
+endfunction()
+
+CompileShaders("${CMAKE_CURRENT_SOURCE_DIR}/glsl/vulkan" "FNA3D_Driver_Vulkan_")
