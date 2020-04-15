@@ -6,6 +6,9 @@ project(FNA3D)
 # Options
 option(BUILD_SHARED_LIBS "Build shared library" ON)
 
+# for easy testing
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ./FNA3DMinimal/lib64)
+
 # Version
 SET(LIB_MAJOR_VERSION "0")
 SET(LIB_MINOR_VERSION "20")
@@ -39,7 +42,6 @@ endif()
 # Defines
 add_definitions(
 	-DFNA3D_DRIVER_OPENGL
-	-DFNA3D_DRIVER_VULKAN
 )
 add_definitions(
 	-DMOJOSHADER_NO_VERSION_INCLUDE
@@ -62,6 +64,7 @@ else()
 	add_definitions(
 		-DFNA3D_DRIVER_MODERNGL
 		-DFNA3D_DRIVER_THREADEDGL
+		-DFNA3D_DRIVER_VULKAN
 		-DSUPPORT_PROFILE_METAL=0
 	)
 endif()
@@ -74,11 +77,11 @@ add_library(FNA3D
 	# Internal Headers
 	src/FNA3D_CommandStream.h
 	src/FNA3D_Driver.h
-	src/FNA3D_Driver_OpenGL.h
-	src/FNA3D_Driver_OpenGL_glfuncs.h
 	src/FNA3D_Driver_Metal.h
 	src/FNA3D_Driver_ModernGL.h
 	src/FNA3D_Driver_ModernGL_glfuncs.h
+	src/FNA3D_Driver_OpenGL.h
+	src/FNA3D_Driver_OpenGL_glfuncs.h
 	src/FNA3D_Driver_Vulkan.h
 	src/FNA3D_Driver_Vulkan_device_funcs.h
 	src/FNA3D_Driver_Vulkan_global_funcs.h
@@ -165,3 +168,39 @@ else()
 		target_link_libraries(FNA3D PUBLIC ${SDL2_LIBRARIES})
 	endif()
 endif()
+
+# Compile builtin shaders to SPIR-V
+find_program(GLSLVALIDATOR glslangValidator)
+if(NOT GLSLVALIDATOR)
+	message(FATAL_ERROR "glslangValidator not found")
+endif()
+
+function(CompileShader shaderFile prefix)
+	get_filename_component(shaderFileName "${shaderFile}" NAME_WE)
+	if ("${shaderFile}" MATCHES ".*\\.vert")
+		add_custom_command(
+			OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/src/${prefix}${shaderFileName}_vert.h"
+			COMMAND ${GLSLVALIDATOR} -V --vn "${shaderFileName}_vert_shader" "${shaderFile}" -o "${CMAKE_CURRENT_SOURCE_DIR}/src/${prefix}${shaderFileName}_vert.h"
+			COMMENT "Compiling ${shaderFileName} to SPIR-V bytecode"
+		)
+		add_custom_target(${shaderFileName} ALL DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/${prefix}${shaderFileName}_vert.h")
+		add_dependencies(FNA3D ${shaderFileName})
+	elseif ("${shaderFile}" MATCHES ".*\\.frag")
+		add_custom_command(
+			OUTPUT "${CMAKE_CURRENT_SOURCE_DIR}/src/${prefix}${shaderFileName}_frag.h"
+			COMMAND ${GLSLVALIDATOR} -V --vn "${shaderFileName}_frag_shader" "${shaderFile}" -o "${CMAKE_CURRENT_SOURCE_DIR}/src/${prefix}${shaderFileName}_frag.h"
+			COMMENT "Compiling ${shaderFileName} to SPIR-V bytecode"
+		)
+		add_custom_target(${shaderFileName} ALL DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/${prefix}${shaderFileName}_frag.h")
+		add_dependencies(FNA3D ${shaderFileName})
+	endif()
+endfunction()
+
+function(CompileShaders shaderDir prefix)
+	file(GLOB files "${shaderDir}/*")
+	foreach(shaderFile ${files})
+		CompileShader(${shaderFile} ${prefix})
+	endforeach()
+endfunction()
+
+CompileShaders("${CMAKE_CURRENT_SOURCE_DIR}/glsl/vulkan" "FNA3D_Driver_Vulkan_")

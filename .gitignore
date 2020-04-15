@@ -24,3 +24,6 @@ Makefile
 
 build/
 FNA3DMinimal/
+
+src/*_vert.h
+src/*_frag.h
