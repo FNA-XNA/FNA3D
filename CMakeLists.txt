@@ -67,7 +67,7 @@ endif()
 
 if (WIN32)
 	add_definitions(
-		-DFNA3D_DRIVER_DIRECTX11
+		-DFNA3D_DRIVER_D3D11
 		-DSUPPORT_PROFILE_HLSL=1
 	)
 else()
@@ -93,7 +93,7 @@ add_library(FNA3D
 	# Source Files
 	src/FNA3D.c
 	src/FNA3D_CommandStream.c
-	src/FNA3D_Driver_DirectX11.c
+	src/FNA3D_Driver_D3D11.c
 	src/FNA3D_Driver_OpenGL.c
 	src/FNA3D_Driver_Metal.c
 	src/FNA3D_Driver_ModernGL.c

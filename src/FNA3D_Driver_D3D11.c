@@ -24,7 +24,7 @@
  *
  */
 
-#if FNA3D_DRIVER_DIRECTX11
+#if FNA3D_DRIVER_D3D11
 
 #include "FNA3D_Driver.h"
 #include "FNA3D_PipelineCache.h"
@@ -33,11 +33,10 @@
 #include <SDL.h>
 #include <SDL_syswm.h>
 #include <d3d11.h>
-#include <dxgi1_2.h>
 
 /* Internal Structures */
 
-typedef struct DirectX11Texture /* Cast FNA3D_Texture* to this! */
+typedef struct D3D11Texture /* Cast FNA3D_Texture* to this! */
 {
 	union
 	{
@@ -46,29 +45,29 @@ typedef struct DirectX11Texture /* Cast FNA3D_Texture* to this! */
 	} handle;
 	int32_t levelCount;
 	uint8_t isRenderTarget;
-} DirectX11Texture;
+} D3D11Texture;
 
-typedef struct DirectX11Renderbuffer /* Cast FNA3D_Renderbuffer* to this! */
+typedef struct D3D11Renderbuffer /* Cast FNA3D_Renderbuffer* to this! */
 {
 	uint8_t filler;
-} DirectX11Renderbuffer;
+} D3D11Renderbuffer;
 
-typedef struct DirectX11Buffer /* Cast FNA3D_Buffer* to this! */
+typedef struct D3D11Buffer /* Cast FNA3D_Buffer* to this! */
 {
 	ID3D11Buffer *handle;
-} DirectX11Buffer;
+} D3D11Buffer;
 
-typedef struct DirectX11Effect /* Cast FNA3D_Effect* to this! */
+typedef struct D3D11Effect /* Cast FNA3D_Effect* to this! */
 {
 	MOJOSHADER_effect *effect;
-} DirectX11Effect;
+} D3D11Effect;
 
-typedef struct DirectX11Query /* Cast FNA3D_Query* to this! */
+typedef struct D3D11Query /* Cast FNA3D_Query* to this! */
 {
 	uint8_t filler;
-} DirectX11Query;
+} D3D11Query;
 
-typedef struct DirectX11Renderer /* Cast FNA3D_Renderer* to this! */
+typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 {
 	/* Persistent D3D11 Objects */
 	ID3D11Device *device;
@@ -101,9 +100,9 @@ typedef struct DirectX11Renderer /* Cast FNA3D_Renderer* to this! */
 	ID3D11RenderTargetView *renderTargetViews[MAX_RENDERTARGET_BINDINGS];
 	ID3D11DepthStencilView *depthStencilView;
 	FNA3D_DepthFormat currentDepthFormat;
-} DirectX11Renderer;
+} D3D11Renderer;
 
-/* XNA->DirectX11 Translation Arrays */
+/* XNA->D3D11 Translation Arrays */
 
 static DXGI_FORMAT XNAToD3D_TextureFormat[] =
 {
@@ -317,7 +316,7 @@ static inline int32_t BytesPerDepthSlice(
 /* Pipeline State Object Caching */
 
 static ID3D11BlendState* FetchBlendState(
-	DirectX11Renderer *renderer,
+	D3D11Renderer *renderer,
 	FNA3D_BlendState *state
 ) {
 	StateHash hash;
@@ -382,7 +381,7 @@ static ID3D11BlendState* FetchBlendState(
 }
 
 static ID3D11DepthStencilState* FetchDepthStencilState(
-	DirectX11Renderer *renderer,
+	D3D11Renderer *renderer,
 	FNA3D_DepthStencilState *state
 ) {
 	StateHash hash;
@@ -455,7 +454,7 @@ static ID3D11DepthStencilState* FetchDepthStencilState(
 }
 
 static ID3D11RasterizerState* FetchRasterizerState(
-	DirectX11Renderer *renderer,
+	D3D11Renderer *renderer,
 	FNA3D_RasterizerState *state
 ) {
 	StateHash hash;
@@ -498,7 +497,7 @@ static ID3D11RasterizerState* FetchRasterizerState(
 }
 
 static ID3D11SamplerState* FetchSamplerState(
-	DirectX11Renderer *renderer,
+	D3D11Renderer *renderer,
 	FNA3D_SamplerState *state
 ) {
 	StateHash hash;
@@ -545,21 +544,21 @@ static ID3D11SamplerState* FetchSamplerState(
 
 /* Quit */
 
-static void DIRECTX11_DestroyDevice(FNA3D_Device *device)
+static void D3D11_DestroyDevice(FNA3D_Device *device)
 {
-	DirectX11Renderer* renderer = (DirectX11Renderer*) device->driverData;
+	D3D11Renderer* renderer = (D3D11Renderer*) device->driverData;
 	SDL_free(renderer);
 	SDL_free(device);
 }
 
 /* Begin/End Frame */
 
-static void DIRECTX11_BeginFrame(FNA3D_Renderer *driverData)
+static void D3D11_BeginFrame(FNA3D_Renderer *driverData)
 {
 	/* TODO */
 }
 
-static void DIRECTX11_SwapBuffers(
+static void D3D11_SwapBuffers(
 	FNA3D_Renderer *driverData,
 	FNA3D_Rect *sourceRectangle,
 	FNA3D_Rect *destinationRectangle,
@@ -568,11 +567,11 @@ static void DIRECTX11_SwapBuffers(
 	/* TODO */
 }
 
-static void DIRECTX11_SetPresentationInterval(
+static void D3D11_SetPresentationInterval(
 	FNA3D_Renderer *driverData,
 	FNA3D_PresentInterval presentInterval
 ) {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	if (	presentInterval == FNA3D_PRESENTINTERVAL_DEFAULT ||
 		presentInterval == FNA3D_PRESENTINTERVAL_ONE	)
 	{
@@ -597,14 +596,14 @@ static void DIRECTX11_SetPresentationInterval(
 
 /* Drawing */
 
-static void DIRECTX11_Clear(
+static void D3D11_Clear(
 	FNA3D_Renderer *driverData,
 	FNA3D_ClearOptions options,
 	FNA3D_Vec4 *color,
 	float depth,
 	int32_t stencil
 ) {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	int32_t i;
 	uint32_t dsClearFlags;
 
@@ -645,7 +644,7 @@ static void DIRECTX11_Clear(
 	}
 }
 
-static void DIRECTX11_DrawIndexedPrimitives(
+static void D3D11_DrawIndexedPrimitives(
 	FNA3D_Renderer *driverData,
 	FNA3D_PrimitiveType primitiveType,
 	int32_t baseVertex,
@@ -657,12 +656,12 @@ static void DIRECTX11_DrawIndexedPrimitives(
 	FNA3D_IndexElementSize indexElementSize
 ) {
 	/* FIXME: Needs testing! */
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 
 	/* Bind index buffer */
 	renderer->context->lpVtbl->IASetIndexBuffer(
 		renderer->context,
-		((DirectX11Buffer*) indices)->handle,
+		((D3D11Buffer*) indices)->handle,
 		XNAToD3D_IndexType[indexElementSize],
 		startIndex * IndexSize(indexElementSize)
 	);
@@ -682,7 +681,7 @@ static void DIRECTX11_DrawIndexedPrimitives(
 	);
 }
 
-static void DIRECTX11_DrawInstancedPrimitives(
+static void D3D11_DrawInstancedPrimitives(
 	FNA3D_Renderer *driverData,
 	FNA3D_PrimitiveType primitiveType,
 	int32_t baseVertex,
@@ -695,12 +694,12 @@ static void DIRECTX11_DrawInstancedPrimitives(
 	FNA3D_IndexElementSize indexElementSize
 ) {
 	/* FIXME: Needs testing! */
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 
 	/* Bind index buffer */
 	renderer->context->lpVtbl->IASetIndexBuffer(
 		renderer->context,
-		((DirectX11Buffer*) indices)->handle,
+		((D3D11Buffer*) indices)->handle,
 		XNAToD3D_IndexType[indexElementSize],
 		startIndex * IndexSize(indexElementSize)
 	);
@@ -722,14 +721,14 @@ static void DIRECTX11_DrawInstancedPrimitives(
 	);
 }
 
-static void DIRECTX11_DrawPrimitives(
+static void D3D11_DrawPrimitives(
 	FNA3D_Renderer *driverData,
 	FNA3D_PrimitiveType primitiveType,
 	int32_t vertexStart,
 	int32_t primitiveCount
 ) {
 	/* FIXME: Needs testing! */
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 
 	/* Bind draw state */
 	renderer->context->lpVtbl->IASetPrimitiveTopology(
@@ -745,7 +744,7 @@ static void DIRECTX11_DrawPrimitives(
 	);
 }
 
-static void DIRECTX11_DrawUserIndexedPrimitives(
+static void D3D11_DrawUserIndexedPrimitives(
 	FNA3D_Renderer *driverData,
 	FNA3D_PrimitiveType primitiveType,
 	void* vertexData,
@@ -759,7 +758,7 @@ static void DIRECTX11_DrawUserIndexedPrimitives(
 	/* TODO */
 }
 
-static void DIRECTX11_DrawUserPrimitives(
+static void D3D11_DrawUserPrimitives(
 	FNA3D_Renderer *driverData,
 	FNA3D_PrimitiveType primitiveType,
 	void* vertexData,
@@ -771,9 +770,9 @@ static void DIRECTX11_DrawUserPrimitives(
 
 /* Mutable Render States */
 
-static void DIRECTX11_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewport)
+static void D3D11_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewport)
 {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11_VIEWPORT vp =
 	{
 		(float) viewport->x,
@@ -790,9 +789,9 @@ static void DIRECTX11_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *vi
 	);
 }
 
-static void DIRECTX11_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor)
+static void D3D11_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor)
 {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11_RECT rect =
 	{
 		scissor->x,
@@ -807,53 +806,53 @@ static void DIRECTX11_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *sci
 	);
 }
 
-static void DIRECTX11_GetBlendFactor(
+static void D3D11_GetBlendFactor(
 	FNA3D_Renderer *driverData,
 	FNA3D_Color *blendFactor
 ) {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	SDL_memcpy(blendFactor, &renderer->blendFactor, sizeof(FNA3D_Color));
 }
 
-static void DIRECTX11_SetBlendFactor(
+static void D3D11_SetBlendFactor(
 	FNA3D_Renderer *driverData,
 	FNA3D_Color *blendFactor
 ) {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	SDL_memcpy(&renderer->blendFactor, blendFactor, sizeof(FNA3D_Color));
 }
 
-static int32_t DIRECTX11_GetMultiSampleMask(FNA3D_Renderer *driverData)
+static int32_t D3D11_GetMultiSampleMask(FNA3D_Renderer *driverData)
 {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	return renderer->multiSampleMask;
 }
 
-static void DIRECTX11_SetMultiSampleMask(FNA3D_Renderer *driverData, int32_t mask)
+static void D3D11_SetMultiSampleMask(FNA3D_Renderer *driverData, int32_t mask)
 {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	renderer->multiSampleMask = mask;
 }
 
-static int32_t DIRECTX11_GetReferenceStencil(FNA3D_Renderer *driverData)
+static int32_t D3D11_GetReferenceStencil(FNA3D_Renderer *driverData)
 {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	return renderer->stencilRef;
 }
 
-static void DIRECTX11_SetReferenceStencil(FNA3D_Renderer *driverData, int32_t ref)
+static void D3D11_SetReferenceStencil(FNA3D_Renderer *driverData, int32_t ref)
 {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	renderer->stencilRef = ref;
 }
 
 /* Immutable Render States */
 
-static void DIRECTX11_SetBlendState(
+static void D3D11_SetBlendState(
 	FNA3D_Renderer *driverData,
 	FNA3D_BlendState *blendState
 ) {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	float blendFactor[] =
 	{
 		renderer->blendFactor.r / 255.0f,
@@ -869,11 +868,11 @@ static void DIRECTX11_SetBlendState(
 	);
 }
 
-static void DIRECTX11_SetDepthStencilState(
+static void D3D11_SetDepthStencilState(
 	FNA3D_Renderer *driverData,
 	FNA3D_DepthStencilState *depthStencilState
 ) {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	renderer->context->lpVtbl->OMSetDepthStencilState(
 		renderer->context,
 		FetchDepthStencilState(renderer, depthStencilState),
@@ -881,24 +880,24 @@ static void DIRECTX11_SetDepthStencilState(
 	);
 }
 
-static void DIRECTX11_ApplyRasterizerState(
+static void D3D11_ApplyRasterizerState(
 	FNA3D_Renderer *driverData,
 	FNA3D_RasterizerState *rasterizerState
 ) {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	renderer->context->lpVtbl->RSSetState(
 		renderer->context,
 		FetchRasterizerState(renderer, rasterizerState)
 	);
 }
 
-static void DIRECTX11_VerifySampler(
+static void D3D11_VerifySampler(
 	FNA3D_Renderer *driverData,
 	int32_t index,
 	FNA3D_Texture *texture,
 	FNA3D_SamplerState *sampler
 ) {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 
 	/* TODO */
 	/* We need to bind all samplers at once !*/
@@ -906,7 +905,7 @@ static void DIRECTX11_VerifySampler(
 
 /* Vertex State */
 
-static void DIRECTX11_ApplyVertexBufferBindings(
+static void D3D11_ApplyVertexBufferBindings(
 	FNA3D_Renderer *driverData,
 	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings,
@@ -916,7 +915,7 @@ static void DIRECTX11_ApplyVertexBufferBindings(
 	/* TODO */
 }
 
-static void DIRECTX11_ApplyVertexDeclaration(
+static void D3D11_ApplyVertexDeclaration(
 	FNA3D_Renderer *driverData,
 	FNA3D_VertexDeclaration *vertexDeclaration,
 	void* ptr,
@@ -927,7 +926,7 @@ static void DIRECTX11_ApplyVertexDeclaration(
 
 /* Render Targets */
 
-static void DIRECTX11_SetRenderTargets(
+static void D3D11_SetRenderTargets(
 	FNA3D_Renderer *driverData,
 	FNA3D_RenderTargetBinding *renderTargets,
 	int32_t numRenderTargets,
@@ -937,7 +936,7 @@ static void DIRECTX11_SetRenderTargets(
 	/* TODO */
 }
 
-static void DIRECTX11_ResolveTarget(
+static void D3D11_ResolveTarget(
 	FNA3D_Renderer *driverData,
 	FNA3D_RenderTargetBinding *target
 ) {
@@ -946,14 +945,14 @@ static void DIRECTX11_ResolveTarget(
 
 /* Backbuffer Functions */
 
-static void DIRECTX11_ResetBackbuffer(
+static void D3D11_ResetBackbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_PresentationParameters *presentationParameters
 ) {
 	/* TODO */
 }
 
-static void DIRECTX11_ReadBackbuffer(
+static void D3D11_ReadBackbuffer(
 	FNA3D_Renderer *driverData,
 	void* data,
 	int32_t dataLen,
@@ -968,7 +967,7 @@ static void DIRECTX11_ReadBackbuffer(
 	/* TODO */
 }
 
-static void DIRECTX11_GetBackbufferSize(
+static void D3D11_GetBackbufferSize(
 	FNA3D_Renderer *driverData,
 	int32_t *w,
 	int32_t *h
@@ -976,21 +975,21 @@ static void DIRECTX11_GetBackbufferSize(
 	/* TODO */
 }
 
-static FNA3D_SurfaceFormat DIRECTX11_GetBackbufferSurfaceFormat(
+static FNA3D_SurfaceFormat D3D11_GetBackbufferSurfaceFormat(
 	FNA3D_Renderer *driverData
 ) {
 	/* TODO */
 	return FNA3D_SURFACEFORMAT_COLOR;
 }
 
-static FNA3D_DepthFormat DIRECTX11_GetBackbufferDepthFormat(
+static FNA3D_DepthFormat D3D11_GetBackbufferDepthFormat(
 	FNA3D_Renderer *driverData
 ) {
 	/* TODO */
 	return FNA3D_DEPTHFORMAT_NONE;
 }
 
-static int32_t DIRECTX11_GetBackbufferMultiSampleCount(
+static int32_t D3D11_GetBackbufferMultiSampleCount(
 	FNA3D_Renderer *driverData
 ) {
 	/* TODO */
@@ -999,7 +998,7 @@ static int32_t DIRECTX11_GetBackbufferMultiSampleCount(
 
 /* Textures */
 
-static FNA3D_Texture* DIRECTX11_CreateTexture2D(
+static FNA3D_Texture* D3D11_CreateTexture2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_SurfaceFormat format,
 	int32_t width,
@@ -1007,8 +1006,8 @@ static FNA3D_Texture* DIRECTX11_CreateTexture2D(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
-	DirectX11Texture *result = SDL_malloc(sizeof(DirectX11Texture));
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Texture *result = SDL_malloc(sizeof(D3D11Texture));
 	DXGI_SAMPLE_DESC sampleDesc = {1, 0};
 	D3D11_TEXTURE2D_DESC desc =
 	{
@@ -1043,7 +1042,7 @@ static FNA3D_Texture* DIRECTX11_CreateTexture2D(
 	return (FNA3D_Texture*) result;
 }
 
-static FNA3D_Texture* DIRECTX11_CreateTexture3D(
+static FNA3D_Texture* D3D11_CreateTexture3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_SurfaceFormat format,
 	int32_t width,
@@ -1051,8 +1050,8 @@ static FNA3D_Texture* DIRECTX11_CreateTexture3D(
 	int32_t depth,
 	int32_t levelCount
 ) {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
-	DirectX11Texture *result = SDL_malloc(sizeof(DirectX11Texture));
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Texture *result = SDL_malloc(sizeof(D3D11Texture));
 	D3D11_TEXTURE3D_DESC desc =
 	{
 		width,
@@ -1078,15 +1077,15 @@ static FNA3D_Texture* DIRECTX11_CreateTexture3D(
 	return (FNA3D_Texture*) result;
 }
 
-static FNA3D_Texture* DIRECTX11_CreateTextureCube(
+static FNA3D_Texture* D3D11_CreateTextureCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_SurfaceFormat format,
 	int32_t size,
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
-	DirectX11Texture *result = SDL_malloc(sizeof(DirectX11Texture));
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Texture *result = SDL_malloc(sizeof(D3D11Texture));
 	DXGI_SAMPLE_DESC sampleDesc = {1, 0};
 	D3D11_TEXTURE2D_DESC desc =
 	{
@@ -1121,7 +1120,7 @@ static FNA3D_Texture* DIRECTX11_CreateTextureCube(
 	return (FNA3D_Texture*) result;
 }
 
-static void DIRECTX11_AddDisposeTexture(
+static void D3D11_AddDisposeTexture(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture
 ) {
@@ -1139,7 +1138,7 @@ static inline uint32_t CalcSubresource(
 	return mipLevel + (arraySlice * numLevels);
 }
 
-static void DIRECTX11_SetTextureData2D(
+static void D3D11_SetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
@@ -1151,8 +1150,8 @@ static void DIRECTX11_SetTextureData2D(
 	void* data,
 	int32_t dataLength
 ) {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
-	DirectX11Texture *d3dTexture = (DirectX11Texture*) texture;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
 	D3D11_BOX dstBox = {x, y, 0, x + w, y + h, 1};
 
 	renderer->context->lpVtbl->UpdateSubresource(
@@ -1166,7 +1165,7 @@ static void DIRECTX11_SetTextureData2D(
 	);
 }
 
-static void DIRECTX11_SetTextureData3D(
+static void D3D11_SetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
@@ -1180,8 +1179,8 @@ static void DIRECTX11_SetTextureData3D(
 	void* data,
 	int32_t dataLength
 ) {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
-	DirectX11Texture *d3dTexture = (DirectX11Texture*) texture;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
 	D3D11_BOX dstBox = {left, top, front, right, bottom, back};
 
 	renderer->context->lpVtbl->UpdateSubresource(
@@ -1195,7 +1194,7 @@ static void DIRECTX11_SetTextureData3D(
 	);
 }
 
-static void DIRECTX11_SetTextureDataCube(
+static void D3D11_SetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
@@ -1208,8 +1207,8 @@ static void DIRECTX11_SetTextureDataCube(
 	void* data,
 	int32_t dataLength
 ) {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
-	DirectX11Texture *d3dTexture = (DirectX11Texture*) texture;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
 	D3D11_BOX dstBox = {x, y, 0, x + w, y + h, 1};
 
 	renderer->context->lpVtbl->UpdateSubresource(
@@ -1227,7 +1226,7 @@ static void DIRECTX11_SetTextureDataCube(
 	);
 }
 
-static void DIRECTX11_SetTextureDataYUV(
+static void D3D11_SetTextureDataYUV(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *y,
 	FNA3D_Texture *u,
@@ -1239,7 +1238,7 @@ static void DIRECTX11_SetTextureDataYUV(
 	/* TODO */
 }
 
-static void DIRECTX11_GetTextureData2D(
+static void D3D11_GetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
@@ -1258,7 +1257,7 @@ static void DIRECTX11_GetTextureData2D(
 	/* TODO */
 }
 
-static void DIRECTX11_GetTextureData3D(
+static void D3D11_GetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
@@ -1277,7 +1276,7 @@ static void DIRECTX11_GetTextureData3D(
 	/* TODO */
 }
 
-static void DIRECTX11_GetTextureDataCube(
+static void D3D11_GetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
@@ -1298,7 +1297,7 @@ static void DIRECTX11_GetTextureDataCube(
 
 /* Renderbuffers */
 
-static FNA3D_Renderbuffer* DIRECTX11_GenColorRenderbuffer(
+static FNA3D_Renderbuffer* D3D11_GenColorRenderbuffer(
 	FNA3D_Renderer *driverData,
 	int32_t width,
 	int32_t height,
@@ -1310,7 +1309,7 @@ static FNA3D_Renderbuffer* DIRECTX11_GenColorRenderbuffer(
 	return NULL;
 }
 
-static FNA3D_Renderbuffer* DIRECTX11_GenDepthStencilRenderbuffer(
+static FNA3D_Renderbuffer* D3D11_GenDepthStencilRenderbuffer(
 	FNA3D_Renderer *driverData,
 	int32_t width,
 	int32_t height,
@@ -1321,7 +1320,7 @@ static FNA3D_Renderbuffer* DIRECTX11_GenDepthStencilRenderbuffer(
 	return NULL;
 }
 
-static void DIRECTX11_AddDisposeRenderbuffer(
+static void D3D11_AddDisposeRenderbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Renderbuffer *renderbuffer
 ) {
@@ -1330,7 +1329,7 @@ static void DIRECTX11_AddDisposeRenderbuffer(
 
 /* Vertex Buffers */
 
-static FNA3D_Buffer* DIRECTX11_GenVertexBuffer(
+static FNA3D_Buffer* D3D11_GenVertexBuffer(
 	FNA3D_Renderer *driverData,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
@@ -1341,14 +1340,14 @@ static FNA3D_Buffer* DIRECTX11_GenVertexBuffer(
 	return NULL;
 }
 
-static void DIRECTX11_AddDisposeVertexBuffer(
+static void D3D11_AddDisposeVertexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
 	/* TODO */
 }
 
-static void DIRECTX11_SetVertexBufferData(
+static void D3D11_SetVertexBufferData(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
@@ -1359,7 +1358,7 @@ static void DIRECTX11_SetVertexBufferData(
 	/* TODO */
 }
 
-static void DIRECTX11_GetVertexBufferData(
+static void D3D11_GetVertexBufferData(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
@@ -1374,7 +1373,7 @@ static void DIRECTX11_GetVertexBufferData(
 
 /* Index Buffers */
 
-static FNA3D_Buffer* DIRECTX11_GenIndexBuffer(
+static FNA3D_Buffer* D3D11_GenIndexBuffer(
 	FNA3D_Renderer *driverData,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
@@ -1385,14 +1384,14 @@ static FNA3D_Buffer* DIRECTX11_GenIndexBuffer(
 	return NULL;
 }
 
-static void DIRECTX11_AddDisposeIndexBuffer(
+static void D3D11_AddDisposeIndexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
 	/* TODO */
 }
 
-static void DIRECTX11_SetIndexBufferData(
+static void D3D11_SetIndexBufferData(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
@@ -1403,7 +1402,7 @@ static void DIRECTX11_SetIndexBufferData(
 	/* TODO */
 }
 
-static void DIRECTX11_GetIndexBufferData(
+static void D3D11_GetIndexBufferData(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
@@ -1417,7 +1416,7 @@ static void DIRECTX11_GetIndexBufferData(
 
 /* Effects */
 
-static void DIRECTX11_CreateEffect(
+static void D3D11_CreateEffect(
 	FNA3D_Renderer *driverData,
 	uint8_t *effectCode,
 	uint32_t effectCodeLength,
@@ -1429,7 +1428,7 @@ static void DIRECTX11_CreateEffect(
 	*effectData = NULL;
 }
 
-static void DIRECTX11_CloneEffect(
+static void D3D11_CloneEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *cloneSource,
 	FNA3D_Effect **effect,
@@ -1440,14 +1439,14 @@ static void DIRECTX11_CloneEffect(
 	*effectData = NULL;
 }
 
-static void DIRECTX11_AddDisposeEffect(
+static void D3D11_AddDisposeEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
 	/* TODO */
 }
 
-static void DIRECTX11_SetEffectTechnique(
+static void D3D11_SetEffectTechnique(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectTechnique *technique
@@ -1455,7 +1454,7 @@ static void DIRECTX11_SetEffectTechnique(
 	/* TODO */
 }
 
-static void DIRECTX11_ApplyEffect(
+static void D3D11_ApplyEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect,
 	uint32_t pass,
@@ -1464,7 +1463,7 @@ static void DIRECTX11_ApplyEffect(
 	/* TODO */
 }
 
-static void DIRECTX11_BeginPassRestore(
+static void D3D11_BeginPassRestore(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectStateChanges *stateChanges
@@ -1472,7 +1471,7 @@ static void DIRECTX11_BeginPassRestore(
 	/* TODO */
 }
 
-static void DIRECTX11_EndPassRestore(
+static void D3D11_EndPassRestore(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
@@ -1481,30 +1480,30 @@ static void DIRECTX11_EndPassRestore(
 
 /* Queries */
 
-static FNA3D_Query* DIRECTX11_CreateQuery(FNA3D_Renderer *driverData)
+static FNA3D_Query* D3D11_CreateQuery(FNA3D_Renderer *driverData)
 {
 	/* TODO */
 	return NULL;
 }
 
-static void DIRECTX11_AddDisposeQuery(
+static void D3D11_AddDisposeQuery(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
 ) {
 	/* TODO */
 }
 
-static void DIRECTX11_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
+static void D3D11_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
 	/* TODO */
 }
 
-static void DIRECTX11_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
+static void D3D11_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
 	/* TODO */
 }
 
-static uint8_t DIRECTX11_QueryComplete(
+static uint8_t D3D11_QueryComplete(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
 ) {
@@ -1512,7 +1511,7 @@ static uint8_t DIRECTX11_QueryComplete(
 	return 1;
 }
 
-static int32_t DIRECTX11_QueryPixelCount(
+static int32_t D3D11_QueryPixelCount(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
 ) {
@@ -1522,34 +1521,34 @@ static int32_t DIRECTX11_QueryPixelCount(
 
 /* Feature Queries */
 
-static uint8_t DIRECTX11_SupportsDXT1(FNA3D_Renderer *driverData)
+static uint8_t D3D11_SupportsDXT1(FNA3D_Renderer *driverData)
 {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	return renderer->supportsDxt1;
 }
 
-static uint8_t DIRECTX11_SupportsS3TC(FNA3D_Renderer *driverData)
+static uint8_t D3D11_SupportsS3TC(FNA3D_Renderer *driverData)
 {
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	return renderer->supportsS3tc;
 }
 
-static uint8_t DIRECTX11_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
+static uint8_t D3D11_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
 {
 	return 1;
 }
 
-static uint8_t DIRECTX11_SupportsNoOverwrite(FNA3D_Renderer *driverData)
+static uint8_t D3D11_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 {
 	return 1;
 }
 
-static int32_t DIRECTX11_GetMaxTextureSlots(FNA3D_Renderer *driverData)
+static int32_t D3D11_GetMaxTextureSlots(FNA3D_Renderer *driverData)
 {
 	return D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT;
 }
 
-static int32_t DIRECTX11_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
+static int32_t D3D11_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
 {
 	/* 8x MSAA is guaranteed for all
 	 * surface formats except Vector4.
@@ -1560,11 +1559,11 @@ static int32_t DIRECTX11_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
 
 /* Debugging */
 
-static void DIRECTX11_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
+static void D3D11_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 {
 	/* TODO: Something like this? */
 /*
-	DirectX11Renderer *renderer = (DirectX11Renderer*) driverData;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	wchar_t wString[1024];
 
 	MultiByteToWideChar(CP_ACP, 0, text, -1, &wString[0], 1024);
@@ -1577,7 +1576,7 @@ static void DIRECTX11_SetStringMarker(FNA3D_Renderer *driverData, const char *te
 
 /* Driver */
 
-static uint8_t DIRECTX11_PrepareWindowAttributes(uint32_t *flags)
+static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 {
 	const char *osVersion = SDL_GetPlatform();
 	if (	(strcmp(osVersion, "Windows") != 0) &&
@@ -1594,7 +1593,7 @@ static uint8_t DIRECTX11_PrepareWindowAttributes(uint32_t *flags)
 	return 1;
 }
 
-static void DIRECTX11_GetDrawableSize(void* window, int32_t *x, int32_t *y)
+static void D3D11_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 {
 	SDL_SysWMinfo info;
 	RECT clientRect;
@@ -1607,19 +1606,19 @@ static void DIRECTX11_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 	*y = (clientRect.bottom - clientRect.top);
 }
 
-static FNA3D_Device* DIRECTX11_CreateDevice(
+static FNA3D_Device* D3D11_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters,
 	uint8_t debugMode
 ) {
 	FNA3D_Device *result;
-	DirectX11Renderer *renderer;
+	D3D11Renderer *renderer;
 	D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_1 };
 	uint32_t flags, supportsDxt3, supportsDxt5;
 	HRESULT ret;
 
 	/* Allocate and zero out the renderer */
-	renderer = (DirectX11Renderer*) SDL_malloc(
-		sizeof(DirectX11Renderer)
+	renderer = (D3D11Renderer*) SDL_malloc(
+		sizeof(D3D11Renderer)
 	);
 	SDL_memset(renderer, '\0', sizeof(renderer));
 
@@ -1691,23 +1690,23 @@ static FNA3D_Device* DIRECTX11_CreateDevice(
 	/* Create and return the FNA3D_Device */
 	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
 	result->driverData = (FNA3D_Renderer*) renderer;
-	ASSIGN_DRIVER(DIRECTX11)
+	ASSIGN_DRIVER(D3D11)
 	return result;
 
 	/* TODO */
 }
 
-FNA3D_Driver DirectX11Driver = {
-	"DirectX11",
-	DIRECTX11_PrepareWindowAttributes,
-	DIRECTX11_GetDrawableSize,
-	DIRECTX11_CreateDevice
+FNA3D_Driver D3D11Driver = {
+	"D3D11",
+	D3D11_PrepareWindowAttributes,
+	D3D11_GetDrawableSize,
+	D3D11_CreateDevice
 };
 
 #else
 
 extern int this_tu_is_empty;
 
-#endif /* FNA3D_DRIVER_DIRECTX11 */
+#endif /* FNA3D_DRIVER_D3D11 */
 
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */
