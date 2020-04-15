@@ -32,7 +32,12 @@
 
 #include <SDL.h>
 #include <SDL_syswm.h>
+
+#define D3D11_NO_HELPERS
+#define CINTERFACE
+#define COBJMACROS
 #include <d3d11.h>
+#include <dxgi.h>
 
 /* Internal Structures */
 
@@ -72,11 +77,11 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	/* Persistent D3D11 Objects */
 	ID3D11Device *device;
 	ID3D11DeviceContext *context;
-	IDXGIFactory2 *factory;
+	void *factory; // IDXGIFactory2*, not defined in DirectX SDK
 
 	/* Capabilities */
-	uint8_t supportsDxt1;
-	uint8_t supportsS3tc;
+	uint32_t supportsDxt1;
+	uint32_t supportsS3tc;
 	int32_t maxMultiSampleCount;
 
 	/* Presentation */
@@ -103,6 +108,10 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 } D3D11Renderer;
 
 /* XNA->D3D11 Translation Arrays */
+
+#ifndef DXGI_FORMAT_B4G4R4A4_UNORM
+#define DXGI_FORMAT_B4G4R4A4_UNORM (DXGI_FORMAT) 115
+#endif
 
 static DXGI_FORMAT XNAToD3D_TextureFormat[] =
 {
@@ -139,19 +148,19 @@ static DXGI_FORMAT XNAToD3D_DepthFormat[] =
 
 static LPCSTR XNAToD3D_VertexAttribSemanticName[] =
 {
-	L"SV_POSITION",			/* VertexElementUsage.Position */
-	L"SV_TARGET",			/* VertexElementUsage.Color */
-	L"TEXCOORD",			/* VertexElementUsage.TextureCoordinate */
-	L"NORMAL",			/* VertexElementUsage.Normal */
-	L"BINORMAL",			/* VertexElementUsage.Binormal */
-	L"TANGENT",			/* VertexElementUsage.Tangent */
-	L"BLENDINDICES",		/* VertexElementUsage.BlendIndices */
-	L"BLENDWEIGHT",			/* VertexElementUsage.BlendWeight */
-	L"SV_DEPTH",			/* VertexElementUsage.Depth */
-	L"FOG",				/* VertexElementUsage.Fog */
-	L"PSIZE",			/* VertexElementUsage.PointSize */
-	L"SV_SampleIndex",		/* VertexElementUsage.Sample */
-	L"TESSFACTOR"			/* VertexElementUsage.TessellateFactor */
+	"SV_POSITION",			/* VertexElementUsage.Position */
+	"SV_TARGET",			/* VertexElementUsage.Color */
+	"TEXCOORD",			/* VertexElementUsage.TextureCoordinate */
+	"NORMAL",			/* VertexElementUsage.Normal */
+	"BINORMAL",			/* VertexElementUsage.Binormal */
+	"TANGENT",			/* VertexElementUsage.Tangent */
+	"BLENDINDICES",			/* VertexElementUsage.BlendIndices */
+	"BLENDWEIGHT",			/* VertexElementUsage.BlendWeight */
+	"SV_DEPTH",			/* VertexElementUsage.Depth */
+	"FOG",				/* VertexElementUsage.Fog */
+	"PSIZE",			/* VertexElementUsage.PointSize */
+	"SV_SampleIndex",		/* VertexElementUsage.Sample */
+	"TESSFACTOR"			/* VertexElementUsage.TessellateFactor */
 };
 
 static DXGI_FORMAT XNAToD3D_VertexAttribFormat[] =
@@ -276,6 +285,10 @@ static D3D_PRIMITIVE_TOPOLOGY XNAToD3D_Primitive[] =
 	D3D_PRIMITIVE_TOPOLOGY_POINTLIST	/* PrimitiveType.PointListEXT */
 };
 
+/* IID Imports */
+
+static const GUID D3D_IID_IDXGIFactory2 = { 0x50c83a1c, 0xe072, 0x4c48, { 0x87, 0xb0, 0x36, 0x30, 0xfa, 0x36, 0xa6, 0xd0 } };
+
 /* Texture Helper Functions */
 
 static inline int32_t BytesPerRow(
@@ -369,7 +382,7 @@ static ID3D11BlendState* FetchBlendState(
 	];
 
 	/* Bake the state! */
-	renderer->device->lpVtbl->CreateBlendState(
+	ID3D11Device_CreateBlendState(
 		renderer->device,
 		&desc,
 		&result
@@ -442,7 +455,7 @@ static ID3D11DepthStencilState* FetchDepthStencilState(
 	desc.BackFace = back;
 
 	/* Bake the state! */
-	renderer->device->lpVtbl->CreateDepthStencilState(
+	ID3D11Device_CreateDepthStencilState(
 		renderer->device,
 		&desc,
 		&result
@@ -485,7 +498,7 @@ static ID3D11RasterizerState* FetchRasterizerState(
 	desc.SlopeScaledDepthBias = state->slopeScaleDepthBias;
 
 	/* Bake the state! */
-	renderer->device->lpVtbl->CreateRasterizerState(
+	ID3D11Device_CreateRasterizerState(
 		renderer->device,
 		&desc,
 		&result
@@ -529,7 +542,7 @@ static ID3D11SamplerState* FetchSamplerState(
 	desc.MipLODBias = state->mipMapLevelOfDetailBias;
 
 	/* Bake the state! */
-	renderer->device->lpVtbl->CreateSamplerState(
+	ID3D11Device_CreateSamplerState(
 		renderer->device,
 		&desc,
 		&result
@@ -606,6 +619,7 @@ static void D3D11_Clear(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	int32_t i;
 	uint32_t dsClearFlags;
+	float clearColor[4] = {color->x, color->y, color->z, color->w};
 
 	/* Clear color? */
 	if (options & FNA3D_CLEAROPTIONS_TARGET)
@@ -613,10 +627,10 @@ static void D3D11_Clear(
 		for (i = 0; i < renderer->numRenderTargets; i += 1)
 		{
 			/* Clear! */
-			renderer->context->lpVtbl->ClearRenderTargetView(
+			ID3D11DeviceContext_ClearRenderTargetView(
 				renderer->context,
 				renderer->renderTargetViews[i],
-				color
+				clearColor
 			);
 		}
 	}
@@ -634,7 +648,7 @@ static void D3D11_Clear(
 	if (dsClearFlags != 0 && renderer->depthStencilView != NULL)
 	{
 		/* Clear! */
-		renderer->context->lpVtbl->ClearDepthStencilView(
+		ID3D11DeviceContext_ClearDepthStencilView(
 			renderer->context,
 			renderer->depthStencilView,
 			dsClearFlags,
@@ -659,7 +673,7 @@ static void D3D11_DrawIndexedPrimitives(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 
 	/* Bind index buffer */
-	renderer->context->lpVtbl->IASetIndexBuffer(
+	ID3D11DeviceContext_IASetIndexBuffer(
 		renderer->context,
 		((D3D11Buffer*) indices)->handle,
 		XNAToD3D_IndexType[indexElementSize],
@@ -667,13 +681,13 @@ static void D3D11_DrawIndexedPrimitives(
 	);
 
 	/* Set up draw state */
-	renderer->context->lpVtbl->IASetPrimitiveTopology(
+	ID3D11DeviceContext_IASetPrimitiveTopology(
 		renderer->context,
 		XNAToD3D_Primitive[primitiveType]
 	);
 
 	/* Draw! */
-	renderer->context->lpVtbl->DrawIndexed(
+	ID3D11DeviceContext_DrawIndexed(
 		renderer->context,
 		PrimitiveVerts(primitiveType, primitiveCount),
 		(uint32_t) startIndex, /* FIXME: Is this right? */
@@ -697,7 +711,7 @@ static void D3D11_DrawInstancedPrimitives(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 
 	/* Bind index buffer */
-	renderer->context->lpVtbl->IASetIndexBuffer(
+	ID3D11DeviceContext_IASetIndexBuffer(
 		renderer->context,
 		((D3D11Buffer*) indices)->handle,
 		XNAToD3D_IndexType[indexElementSize],
@@ -705,13 +719,13 @@ static void D3D11_DrawInstancedPrimitives(
 	);
 
 	/* Set up draw state */
-	renderer->context->lpVtbl->IASetPrimitiveTopology(
+	ID3D11DeviceContext_IASetPrimitiveTopology(
 		renderer->context,
 		XNAToD3D_Primitive[primitiveType]
 	);
 
 	/* Draw! */
-	renderer->context->lpVtbl->DrawIndexedInstanced(
+	ID3D11DeviceContext_DrawIndexedInstanced(
 		renderer->context,
 		PrimitiveVerts(primitiveType, primitiveCount),
 		instanceCount,
@@ -731,13 +745,13 @@ static void D3D11_DrawPrimitives(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 
 	/* Bind draw state */
-	renderer->context->lpVtbl->IASetPrimitiveTopology(
+	ID3D11DeviceContext_IASetPrimitiveTopology(
 		renderer->context,
 		XNAToD3D_Primitive[primitiveType]
 	);
 
 	/* Draw! */
-	renderer->context->lpVtbl->Draw(
+	ID3D11DeviceContext_Draw(
 		renderer->context,
 		(uint32_t) PrimitiveVerts(primitiveType, primitiveCount),
 		(uint32_t) vertexStart
@@ -782,7 +796,7 @@ static void D3D11_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewpo
 		viewport->minDepth,
 		viewport->maxDepth
 	};
-	renderer->context->lpVtbl->RSSetViewports(
+	ID3D11DeviceContext_RSSetViewports(
 		renderer->context,
 		1,
 		&vp
@@ -799,7 +813,7 @@ static void D3D11_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor
 		scissor->y,
 		scissor->y + scissor->h
 	};
-	renderer->context->lpVtbl->RSSetScissorRects(
+	ID3D11DeviceContext_RSSetScissorRects(
 		renderer->context,
 		1,
 		&rect
@@ -860,7 +874,7 @@ static void D3D11_SetBlendState(
 		renderer->blendFactor.b / 255.0f,
 		renderer->blendFactor.a / 255.0f
 	};
-	renderer->context->lpVtbl->OMSetBlendState(
+	ID3D11DeviceContext_OMSetBlendState(
 		renderer->context,
 		FetchBlendState(renderer, blendState),
 		blendFactor,
@@ -873,7 +887,7 @@ static void D3D11_SetDepthStencilState(
 	FNA3D_DepthStencilState *depthStencilState
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	renderer->context->lpVtbl->OMSetDepthStencilState(
+	ID3D11DeviceContext_OMSetDepthStencilState(
 		renderer->context,
 		FetchDepthStencilState(renderer, depthStencilState),
 		(uint32_t) renderer->stencilRef
@@ -885,7 +899,7 @@ static void D3D11_ApplyRasterizerState(
 	FNA3D_RasterizerState *rasterizerState
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	renderer->context->lpVtbl->RSSetState(
+	ID3D11DeviceContext_RSSetState(
 		renderer->context,
 		FetchRasterizerState(renderer, rasterizerState)
 	);
@@ -918,7 +932,7 @@ static void D3D11_ApplyVertexBufferBindings(
 static void D3D11_ApplyVertexDeclaration(
 	FNA3D_Renderer *driverData,
 	FNA3D_VertexDeclaration *vertexDeclaration,
-	void* ptr,
+	void* vertexData,
 	int32_t vertexOffset
 ) {
 	/* TODO */
@@ -954,15 +968,12 @@ static void D3D11_ResetBackbuffer(
 
 static void D3D11_ReadBackbuffer(
 	FNA3D_Renderer *driverData,
-	void* data,
-	int32_t dataLen,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes,
 	int32_t x,
 	int32_t y,
 	int32_t w,
-	int32_t h
+	int32_t h,
+	void* data,
+	int32_t dataLength
 ) {
 	/* TODO */
 }
@@ -1007,21 +1018,22 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 	uint8_t isRenderTarget
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11Texture *result = SDL_malloc(sizeof(D3D11Texture));
+	D3D11Texture *result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
 	DXGI_SAMPLE_DESC sampleDesc = {1, 0};
-	D3D11_TEXTURE2D_DESC desc =
-	{
-		width,
-		height,
-		levelCount,
-		1,
-		XNAToD3D_TextureFormat[format],
-		sampleDesc,
-		D3D11_USAGE_DEFAULT,
-		D3D11_BIND_SHADER_RESOURCE,
-		0,
-		0
-	};
+	D3D11_TEXTURE2D_DESC desc;
+
+	/* Initialize descriptor */
+	desc.Width = width;
+	desc.Height = height;
+	desc.MipLevels = levelCount;
+	desc.ArraySize = 1;
+	desc.Format = XNAToD3D_TextureFormat[format];
+	desc.SampleDesc = sampleDesc;
+	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+	desc.CPUAccessFlags = 0;
+	desc.MiscFlags = 0;
+
 	if (isRenderTarget)
 	{
 		/* FIXME: Apparently it's faster to specify
@@ -1031,7 +1043,7 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 	}
 
 	/* Create the texture */
-	renderer->device->lpVtbl->CreateTexture2D(
+	ID3D11Device_CreateTexture2D(
 		renderer->device,
 		&desc,
 		NULL,
@@ -1051,22 +1063,22 @@ static FNA3D_Texture* D3D11_CreateTexture3D(
 	int32_t levelCount
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11Texture *result = SDL_malloc(sizeof(D3D11Texture));
-	D3D11_TEXTURE3D_DESC desc =
-	{
-		width,
-		height,
-		depth,
-		levelCount,
-		XNAToD3D_TextureFormat[format],
-		D3D11_USAGE_DEFAULT,
-		D3D11_BIND_SHADER_RESOURCE,
-		0,
-		0
-	};
+	D3D11Texture *result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
+	D3D11_TEXTURE3D_DESC desc;
+
+	/* Initialize descriptor */
+	desc.Width = width;
+	desc.Height = height;
+	desc.Depth = depth;
+	desc.MipLevels = levelCount;
+	desc.Format = XNAToD3D_TextureFormat[format];
+	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+	desc.CPUAccessFlags = 0;
+	desc.MiscFlags = 0;
 
 	/* Create the texture */
-	renderer->device->lpVtbl->CreateTexture3D(
+	ID3D11Device_CreateTexture3D(
 		renderer->device,
 		&desc,
 		NULL,
@@ -1085,21 +1097,20 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 	uint8_t isRenderTarget
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11Texture *result = SDL_malloc(sizeof(D3D11Texture));
+	D3D11Texture *result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
 	DXGI_SAMPLE_DESC sampleDesc = {1, 0};
-	D3D11_TEXTURE2D_DESC desc =
-	{
-		size,
-		size,
-		levelCount,
-		6,
-		XNAToD3D_TextureFormat[format],
-		sampleDesc,
-		D3D11_USAGE_DEFAULT,
-		D3D11_BIND_SHADER_RESOURCE,
-		0,
-		D3D11_RESOURCE_MISC_TEXTURECUBE
-	};
+	D3D11_TEXTURE2D_DESC desc;
+	desc.Width = size;
+	desc.Height = size;
+	desc.MipLevels = levelCount;
+	desc.ArraySize = 6;
+	desc.Format = XNAToD3D_TextureFormat[format];
+	desc.SampleDesc = sampleDesc;
+	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+	desc.CPUAccessFlags = 0;
+	desc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
+
 	if (isRenderTarget)
 	{
 		/* FIXME: Apparently it's faster to specify
@@ -1109,7 +1120,7 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 	}
 
 	/* Create the texture */
-	renderer->device->lpVtbl->CreateTexture2D(
+	ID3D11Device_CreateTexture2D(
 		renderer->device,
 		&desc,
 		NULL,
@@ -1154,9 +1165,9 @@ static void D3D11_SetTextureData2D(
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
 	D3D11_BOX dstBox = {x, y, 0, x + w, y + h, 1};
 
-	renderer->context->lpVtbl->UpdateSubresource(
+	ID3D11DeviceContext_UpdateSubresource(
 		renderer->context,
-		d3dTexture->handle.h2D,
+		(ID3D11Resource*) d3dTexture->handle.h2D,
 		CalcSubresource(level, 0, d3dTexture->levelCount),
 		&dstBox,
 		data,
@@ -1169,28 +1180,28 @@ static void D3D11_SetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t w,
+	int32_t h,
+	int32_t d,
 	int32_t level,
-	int32_t left,
-	int32_t top,
-	int32_t right,
-	int32_t bottom,
-	int32_t front,
-	int32_t back,
 	void* data,
 	int32_t dataLength
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
-	D3D11_BOX dstBox = {left, top, front, right, bottom, back};
+	D3D11_BOX dstBox = {x, y, z, x + w, y + h, z + d};
 
-	renderer->context->lpVtbl->UpdateSubresource(
+	ID3D11DeviceContext_UpdateSubresource(
 		renderer->context,
-		d3dTexture->handle.h3D,
+		(ID3D11Resource*) d3dTexture->handle.h3D,
 		CalcSubresource(level, 0, d3dTexture->levelCount),
 		&dstBox,
 		data,
-		BytesPerRow(right - left, format),
-		BytesPerDepthSlice(right - left, bottom - top, format)
+		BytesPerRow(w, format),
+		BytesPerDepthSlice(w, h, format)
 	);
 }
 
@@ -1211,9 +1222,9 @@ static void D3D11_SetTextureDataCube(
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
 	D3D11_BOX dstBox = {x, y, 0, x + w, y + h, 1};
 
-	renderer->context->lpVtbl->UpdateSubresource(
+	ID3D11DeviceContext_UpdateSubresource(
 		renderer->context,
-		d3dTexture->handle.h2D,
+		(ID3D11Resource*) d3dTexture->handle.h2D,
 		CalcSubresource(
 			level,
 			cubeMapFace,
@@ -1231,9 +1242,12 @@ static void D3D11_SetTextureDataYUV(
 	FNA3D_Texture *y,
 	FNA3D_Texture *u,
 	FNA3D_Texture *v,
-	int32_t w,
-	int32_t h,
-	void* ptr
+	int32_t yWidth,
+	int32_t yHeight,
+	int32_t uvWidth,
+	int32_t uvHeight,
+	void* data,
+	int32_t dataLength
 ) {
 	/* TODO */
 }
@@ -1242,17 +1256,13 @@ static void D3D11_GetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int32_t textureWidth,
-	int32_t textureHeight,
-	int32_t level,
 	int32_t x,
 	int32_t y,
 	int32_t w,
 	int32_t h,
+	int32_t level,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	/* TODO */
 }
@@ -1261,17 +1271,15 @@ static void D3D11_GetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int32_t left,
-	int32_t top,
-	int32_t front,
-	int32_t right,
-	int32_t bottom,
-	int32_t back,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t w,
+	int32_t h,
+	int32_t d,
 	int32_t level,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	/* TODO */
 }
@@ -1280,17 +1288,14 @@ static void D3D11_GetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
-	int32_t textureSize,
-	FNA3D_CubeMapFace cubeMapFace,
-	int32_t level,
 	int32_t x,
 	int32_t y,
 	int32_t w,
 	int32_t h,
+	FNA3D_CubeMapFace cubeMapFace,
+	int32_t level,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	/* TODO */
 }
@@ -1352,7 +1357,9 @@ static void D3D11_SetVertexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t dataLength,
+	int32_t elementCount,
+	int32_t elementSizeInBytes,
+	int32_t vertexStride,
 	FNA3D_SetDataOptions options
 ) {
 	/* TODO */
@@ -1363,7 +1370,6 @@ static void D3D11_GetVertexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t startIndex,
 	int32_t elementCount,
 	int32_t elementSizeInBytes,
 	int32_t vertexStride
@@ -1407,9 +1413,7 @@ static void D3D11_GetIndexBufferData(
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
 	void* data,
-	int32_t startIndex,
-	int32_t elementCount,
-	int32_t elementSizeInBytes
+	int32_t dataLength
 ) {
 	/* TODO */
 }
@@ -1606,14 +1610,31 @@ static void D3D11_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 	*y = (clientRect.bottom - clientRect.top);
 }
 
+/* DirectX SDK doesn't have this feature level */
+#ifndef D3D_FEATURE_LEVEL_11_1
+#define D3D_FEATURE_LEVEL_11_1 (D3D_FEATURE_LEVEL) 0xb100
+#endif
+
+/* FIXME: Move this! */
+typedef HRESULT(WINAPI *PFN_CREATE_DXGI_FACTORY)(const GUID *riid, void **ppFactory);
+
 static FNA3D_Device* D3D11_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters,
 	uint8_t debugMode
 ) {
 	FNA3D_Device *result;
 	D3D11Renderer *renderer;
-	D3D_FEATURE_LEVEL levels[] = { D3D_FEATURE_LEVEL_11_1 };
+	D3D_FEATURE_LEVEL levels[] =
+	{
+		D3D_FEATURE_LEVEL_11_1,
+		D3D_FEATURE_LEVEL_11_0,
+		D3D_FEATURE_LEVEL_10_1,
+		D3D_FEATURE_LEVEL_10_0
+	};
 	uint32_t flags, supportsDxt3, supportsDxt5;
+	void* module;
+	PFN_D3D11_CREATE_DEVICE D3D11CreateDeviceFunc;
+	PFN_CREATE_DXGI_FACTORY CreateDXGIFactoryFunc;
 	HRESULT ret;
 
 	/* Allocate and zero out the renderer */
@@ -1622,13 +1643,33 @@ static FNA3D_Device* D3D11_CreateDevice(
 	);
 	SDL_memset(renderer, '\0', sizeof(renderer));
 
+	/* Load function pointers */
+	/* FIXME: On WinRT, use CreateDXGIFactory1
+	 * and D3D11CreateDevice directly.
+	 */
+	module = SDL_LoadObject("dxgi.dll");
+	SDL_assert(module != NULL);
+	CreateDXGIFactoryFunc = (PFN_CREATE_DXGI_FACTORY) SDL_LoadFunction(
+		module,
+		"CreateDXGIFactory"
+	);
+	SDL_assert(CreateDXGIFactoryFunc != NULL);
+
+	module = SDL_LoadObject("d3d11.dll");
+	SDL_assert(module != NULL);
+	D3D11CreateDeviceFunc = (PFN_D3D11_CREATE_DEVICE) SDL_LoadFunction(
+		module,
+		"D3D11CreateDevice"
+	);
+	SDL_assert(D3D11CreateDeviceFunc != NULL);
+
 	/* Create the D3D11Device */
 	flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
 	if (debugMode)
 	{
 		flags |= D3D11_CREATE_DEVICE_DEBUG;
 	}
-	ret = D3D11CreateDevice(
+	ret = D3D11CreateDeviceFunc(
 		NULL,
 		D3D_DRIVER_TYPE_HARDWARE,
 		NULL,
@@ -1650,17 +1691,17 @@ static FNA3D_Device* D3D11_CreateDevice(
 	}
 
 	/* Determine DXT/S3TC support */
-	renderer->device->lpVtbl->CheckFormatSupport(
+	ID3D11Device_CheckFormatSupport(
 		renderer->device,
 		XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_DXT1],
 		&renderer->supportsDxt1
 	);
-	renderer->device->lpVtbl->CheckFormatSupport(
+	ID3D11Device_CheckFormatSupport(
 		renderer->device,
 		XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_DXT3],
 		&supportsDxt3
 	);
-	renderer->device->lpVtbl->CheckFormatSupport(
+	ID3D11Device_CheckFormatSupport(
 		renderer->device,
 		XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_DXT5],
 		&supportsDxt5
@@ -1668,8 +1709,8 @@ static FNA3D_Device* D3D11_CreateDevice(
 	renderer->supportsS3tc = (supportsDxt3 || supportsDxt5);
 
 	/* Create the DXGIFactory */
-	ret = CreateDXGIFactory1(
-		&IID_IDXGIFactory2,
+	ret = CreateDXGIFactoryFunc(
+		&D3D_IID_IDXGIFactory2,
 		&renderer->factory
 	);
 	if (ret < 0)
