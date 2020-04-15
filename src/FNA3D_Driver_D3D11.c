@@ -77,12 +77,13 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	/* Persistent D3D11 Objects */
 	ID3D11Device *device;
 	ID3D11DeviceContext *context;
-	void *factory; // IDXGIFactory2*, not defined in DirectX SDK
+	void *factory; /* IDXGIFactory2*, not defined in DirectX SDK */
 
 	/* Capabilities */
 	uint32_t supportsDxt1;
 	uint32_t supportsS3tc;
 	int32_t maxMultiSampleCount;
+	D3D_FEATURE_LEVEL featureLevel;
 
 	/* Presentation */
 	uint8_t syncInterval;
@@ -1615,15 +1616,16 @@ static void D3D11_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 #define D3D_FEATURE_LEVEL_11_1 (D3D_FEATURE_LEVEL) 0xb100
 #endif
 
-/* FIXME: Move this! */
-typedef HRESULT(WINAPI *PFN_CREATE_DXGI_FACTORY)(const GUID *riid, void **ppFactory);
-
 static FNA3D_Device* D3D11_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters,
 	uint8_t debugMode
 ) {
 	FNA3D_Device *result;
 	D3D11Renderer *renderer;
+	void* module;
+	typedef HRESULT(WINAPI *PFN_CREATE_DXGI_FACTORY)(const GUID *riid, void **ppFactory);
+	PFN_D3D11_CREATE_DEVICE D3D11CreateDeviceFunc;
+	PFN_CREATE_DXGI_FACTORY CreateDXGIFactoryFunc;
 	D3D_FEATURE_LEVEL levels[] =
 	{
 		D3D_FEATURE_LEVEL_11_1,
@@ -1632,9 +1634,6 @@ static FNA3D_Device* D3D11_CreateDevice(
 		D3D_FEATURE_LEVEL_10_0
 	};
 	uint32_t flags, supportsDxt3, supportsDxt5;
-	void* module;
-	PFN_D3D11_CREATE_DEVICE D3D11CreateDeviceFunc;
-	PFN_CREATE_DXGI_FACTORY CreateDXGIFactoryFunc;
 	HRESULT ret;
 
 	/* Allocate and zero out the renderer */
@@ -1663,6 +1662,20 @@ static FNA3D_Device* D3D11_CreateDevice(
 	);
 	SDL_assert(D3D11CreateDeviceFunc != NULL);
 
+	/* Create the DXGIFactory */
+	ret = CreateDXGIFactoryFunc(
+		&D3D_IID_IDXGIFactory2,
+		&renderer->factory
+	);
+	if (ret < 0)
+	{
+		FNA3D_LogError(
+			"Could not create DXGIFactory! Error code: %x",
+			ret
+		);
+		return NULL;
+	}
+
 	/* Create the D3D11Device */
 	flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
 	if (debugMode)
@@ -1670,15 +1683,15 @@ static FNA3D_Device* D3D11_CreateDevice(
 		flags |= D3D11_CREATE_DEVICE_DEBUG;
 	}
 	ret = D3D11CreateDeviceFunc(
-		NULL,
+		NULL, /* FIXME: Do we need to use a non-default adapter? */
 		D3D_DRIVER_TYPE_HARDWARE,
 		NULL,
 		flags,
 		levels,
-		1,
+		SDL_arraysize(levels),
 		D3D11_SDK_VERSION,
 		&renderer->device,
-		NULL,
+		&renderer->featureLevel,
 		&renderer->context
 	);
 	if (ret < 0)
@@ -1707,20 +1720,6 @@ static FNA3D_Device* D3D11_CreateDevice(
 		&supportsDxt5
 	);
 	renderer->supportsS3tc = (supportsDxt3 || supportsDxt5);
-
-	/* Create the DXGIFactory */
-	ret = CreateDXGIFactoryFunc(
-		&D3D_IID_IDXGIFactory2,
-		&renderer->factory
-	);
-	if (ret < 0)
-	{
-		FNA3D_LogError(
-			"Could not create DXGIFactory! Error code: %x",
-			ret
-		);
-		return NULL;
-	}
 
 	/* Initialize state object caches */
 	hmdefault(renderer->blendStateCache, NULL);
