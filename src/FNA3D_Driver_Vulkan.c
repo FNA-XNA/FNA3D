@@ -169,7 +169,6 @@ typedef struct FNAVulkanRenderer
 	VkExtent2D swapChainExtent;
 	uint32_t currentSwapChainIndex;
 
-
 	VkCommandPool commandPool;
 	VkPipelineCache pipelineCache;
 
@@ -188,6 +187,9 @@ typedef struct FNAVulkanRenderer
 	FNAVulkanImageData fauxBackbufferDepthStencil;
 	VkFramebuffer fauxBackbufferFramebuffer;
 	VkRenderPass backbufferRenderPass;
+	uint32_t fauxBackbufferWidth;
+	uint32_t fauxBackbufferHeight;
+	FNA3D_DepthFormat fauxBackbufferDepthFormat;
 
 	FNAVulkanImageData *colorAttachments[MAX_RENDERTARGET_BINDINGS];
 	uint32_t colorAttachmentCount;
@@ -210,8 +212,6 @@ typedef struct FNAVulkanRenderer
 	uint8_t textureNeedsUpdate[MAX_TEXTURE_SAMPLERS];
 	uint8_t samplerNeedsUpdate[MAX_TEXTURE_SAMPLERS];
 
-	uint32_t fauxBackbufferWidth;
-	uint32_t fauxBackbufferHeight;
 	FNAVulkanFramebuffer *framebuffers;
 	uint32_t framebufferCount;
 
@@ -307,12 +307,6 @@ static uint8_t FindMemoryType(
 	uint32_t *result
 );
 
-static uint8_t InitBackbufferPass(
-	FNAVulkanRenderer *renderer,
-	uint32_t backbufferWidth,
-	uint32_t backbufferHeight
-);
-
 static void InternalClear(
 	FNAVulkanRenderer *renderer,
 	FNA3D_Vec4 *color,
@@ -325,10 +319,6 @@ static void InternalClear(
 
 static void UpdateRenderPass(
 	FNA3D_Renderer *driverData
-);
-
-static void ResetAttachments(
-	FNAVulkanRenderer *renderer
 );
 
 void VULKAN_SetRenderTargets(
@@ -1510,7 +1500,7 @@ static VkRenderPass FetchRenderPass(
 		attachmentDescriptions[i].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	}
 
-	VkAttachmentReference colorAttachmentReferences[MAX_RENDERTARGET_BINDINGS];
+	VkAttachmentReference colorAttachmentReferences[renderer->colorAttachmentCount];
 	for (uint32_t i = 0; i < renderer->colorAttachmentCount; i++)
 	{
 		colorAttachmentReferences[i].attachment = i;
@@ -1520,17 +1510,17 @@ static VkRenderPass FetchRenderPass(
 	VkAttachmentReference depthStencilAttachmentReference;
 	if (renderer->currentDepthFormat != FNA3D_DEPTHFORMAT_NONE)
 	{
-		depthStencilAttachmentReference.attachment = MAX_RENDERTARGET_BINDINGS;
+		depthStencilAttachmentReference.attachment = renderer->colorAttachmentCount;
 		depthStencilAttachmentReference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		attachmentDescriptions[MAX_RENDERTARGET_BINDINGS].flags = 0;
-		attachmentDescriptions[MAX_RENDERTARGET_BINDINGS].format = XNAToVK_DepthFormat(renderer->currentDepthFormat);
-		attachmentDescriptions[MAX_RENDERTARGET_BINDINGS].samples = VK_SAMPLE_COUNT_1_BIT;
-		attachmentDescriptions[MAX_RENDERTARGET_BINDINGS].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-		attachmentDescriptions[MAX_RENDERTARGET_BINDINGS].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		attachmentDescriptions[MAX_RENDERTARGET_BINDINGS].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-		attachmentDescriptions[MAX_RENDERTARGET_BINDINGS].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
-		attachmentDescriptions[MAX_RENDERTARGET_BINDINGS].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		attachmentDescriptions[MAX_RENDERTARGET_BINDINGS].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+		attachmentDescriptions[renderer->colorAttachmentCount].flags = 0;
+		attachmentDescriptions[renderer->colorAttachmentCount].format = XNAToVK_DepthFormat(renderer->currentDepthFormat);
+		attachmentDescriptions[renderer->colorAttachmentCount].samples = VK_SAMPLE_COUNT_1_BIT;
+		attachmentDescriptions[renderer->colorAttachmentCount].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		attachmentDescriptions[renderer->colorAttachmentCount].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+		attachmentDescriptions[renderer->colorAttachmentCount].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		attachmentDescriptions[renderer->colorAttachmentCount].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
+		attachmentDescriptions[renderer->colorAttachmentCount].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		attachmentDescriptions[renderer->colorAttachmentCount].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		renderer->depthStencilAttachmentActive = 1;
 	}
 	else
@@ -1538,17 +1528,12 @@ static VkRenderPass FetchRenderPass(
 		renderer->depthStencilAttachmentActive = 0;
 	}
 
-	if (renderer->currentDepthFormat == FNA3D_DEPTHFORMAT_D24S8)
-	{
-		/* TODO: update stencil */
-	}
-
 	VkSubpassDescription subpass;
 	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
 	subpass.flags = 0;
 	subpass.inputAttachmentCount = 0;
 	subpass.pInputAttachments = NULL;
-	subpass.colorAttachmentCount = MAX_RENDERTARGET_BINDINGS;
+	subpass.colorAttachmentCount = renderer->colorAttachmentCount;
 	subpass.pColorAttachments = colorAttachmentReferences;
 	subpass.pResolveAttachments = NULL;
 	subpass.preserveAttachmentCount = 0;
@@ -1625,11 +1610,14 @@ static VkFramebuffer FetchFramebuffer(
 
 	VkImageView imageViewAttachments[MAX_RENDERTARGET_BINDINGS + 1];
 
-	for (uint32_t i = 0; i < MAX_RENDERTARGET_BINDINGS; i++)
+	for (uint32_t i = 0; i < renderer->colorAttachmentCount; i++)
 	{
 		imageViewAttachments[i] = renderer->colorAttachments[i]->view;
 	}
-	imageViewAttachments[MAX_RENDERTARGET_BINDINGS] = renderer->depthStencilAttachment->view;
+	if (renderer->depthStencilAttachmentActive)
+	{
+		imageViewAttachments[renderer->colorAttachmentCount] = renderer->depthStencilAttachment->view;
+	}
 
 	VkFramebufferCreateInfo framebufferInfo = {
 		VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO
@@ -2372,7 +2360,7 @@ void VULKAN_ApplyVertexDeclaration(
 static void UpdateRenderPass(
 	FNA3D_Renderer *driverData
 ) {
-	/* TODO */
+	/* TODO: incomplete */
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 
 	if (!renderer->needNewRenderPass) { return; }
@@ -2384,9 +2372,9 @@ static void UpdateRenderPass(
 		EndPass(renderer);
 	}
 
-	BeginRenderPass(renderer);
+	/* TODO: optimize this to pick a render pass with a LOAD_OP_CLEAR */
 
-	/* TODO: reset depth stencil binding here */
+	BeginRenderPass(renderer);
 
 	InternalClear(
 		renderer,
@@ -2402,18 +2390,6 @@ static void UpdateRenderPass(
 	renderer->shouldClearColor = 0;
 	renderer->shouldClearDepth = 0;
 	renderer->shouldClearStencil = 0;
-}
-
-static void ResetAttachments(
-	FNAVulkanRenderer *renderer
-) {
-	/* TODO */
-}
-
-static void BindBackbuffer(
-	FNAVulkanRenderer *renderer
-) {
-	/* TODO */
 }
 
 static void EndPass(
@@ -2448,22 +2424,36 @@ void VULKAN_SetRenderTargets(
 	/* TODO: incomplete */
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 
-	if (renderer->shouldClearColor)
+	/* Perform any pending clears before switching render targets */
+
+	if (	renderer->shouldClearColor ||
+			renderer->shouldClearDepth ||
+			renderer->shouldClearStencil	)
 	{
 		UpdateRenderPass(driverData);
 	}
 
 	renderer->needNewRenderPass = 1;
 
-	ResetAttachments(renderer);
+	for (uint32_t i = 0; i < MAX_RENDERTARGET_BINDINGS; i++)
+	{
+		renderer->colorAttachments[i] = NULL;
+	}
+	renderer->depthStencilAttachment = NULL;
+	renderer->depthStencilAttachmentActive = 0;
 
 	if (renderTargets == NULL)
 	{
-		BindBackbuffer(renderer);
+		renderer->colorAttachments[0] = &renderer->fauxBackbufferColor;
+		if (renderer->fauxBackbufferDepthFormat != FNA3D_DEPTHFORMAT_NONE)
+		{
+			renderer->depthStencilAttachment = &renderer->fauxBackbufferDepthStencil;
+			renderer->depthStencilAttachmentActive = 1;
+		}
 		return;
 	}
 
-	/* TODO: update color and depth stencil buffers */
+	/* TODO: update attachments */
 }
 
 void VULKAN_ResolveTarget(
@@ -3453,125 +3443,6 @@ static uint8_t FindMemoryType(
 	return 0;
 }
 
-static uint8_t InitBackbufferPass(
-	FNAVulkanRenderer *renderer,
-	uint32_t backbufferWidth,
-	uint32_t backbufferHeight
-) {
-	VkResult vulkanResult;
-
-	VkAttachmentDescription attachments[2];
-	attachments[0].format = renderer->surfaceFormatMapping.formatColor;
-	attachments[0].samples = VK_SAMPLE_COUNT_1_BIT;
-	attachments[0].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	attachments[0].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	attachments[0].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	attachments[0].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	attachments[0].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	attachments[0].finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-	attachments[0].flags = 0;
-
-	attachments[1].format = XNAToVK_DepthFormat(renderer->currentDepthFormat);
-	attachments[1].samples = VK_SAMPLE_COUNT_1_BIT;
-	attachments[1].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	attachments[1].storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	attachments[1].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-	attachments[1].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-	attachments[1].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-	attachments[1].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-	attachments[1].flags = 0;
-
-	VkAttachmentReference colorReference;
-	colorReference.attachment = 0;
-	colorReference.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-	VkAttachmentReference depthReference;
-	depthReference.attachment = 1;
-	depthReference.layout = attachments[1].finalLayout;
-
-	VkSubpassDescription subpass;
-	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subpass.flags = 0;
-	subpass.inputAttachmentCount = 0;
-	subpass.pInputAttachments = NULL;
-	subpass.colorAttachmentCount = 1;
-	subpass.pColorAttachments = &colorReference;
-	subpass.pResolveAttachments = NULL;
-	subpass.pDepthStencilAttachment = &depthReference;
-	subpass.preserveAttachmentCount = 0;
-	subpass.pPreserveAttachments = NULL;
-
-	VkSubpassDependency subpassDependency;
-	subpassDependency.srcSubpass = 0;
-	subpassDependency.dstSubpass = 0;
-	subpassDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	subpassDependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	subpassDependency.srcAccessMask = 0;
-	subpassDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-	VkRenderPassCreateInfo renderPassInfo = {
-		VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO
-	};
-	renderPassInfo.attachmentCount = 2;
-	renderPassInfo.pAttachments = attachments;
-	renderPassInfo.subpassCount = 1;
-	renderPassInfo.pSubpasses = &subpass;
-	renderPassInfo.dependencyCount = 1;
-	renderPassInfo.pDependencies = &subpassDependency;
-
-	vulkanResult = renderer->vkCreateRenderPass(
-		renderer->logicalDevice,
-		&renderPassInfo,
-		NULL,
-		&renderer->backbufferRenderPass
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
-			"%s\n",
-			"Failed to create backbuffer render pass"
-		);
-
-		return 0;
-	}
-
-	/* init the faux backbuffer */
-
-	VkImageView imageViewAttachments[2] = {
-		renderer->fauxBackbufferColor.view,
-		renderer->fauxBackbufferDepthStencil.view
-	};
-
-	VkFramebufferCreateInfo framebufferInfo = {
-		VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO
-	};
-
-	framebufferInfo.flags = 0;
-	framebufferInfo.renderPass = renderer->backbufferRenderPass;
-	framebufferInfo.attachmentCount = 2;
-	framebufferInfo.pAttachments = imageViewAttachments;
-	framebufferInfo.width = backbufferWidth;
-	framebufferInfo.height = backbufferHeight;
-	framebufferInfo.layers = 1;
-
-	vulkanResult = renderer->vkCreateFramebuffer(
-		renderer->logicalDevice,
-		&framebufferInfo,
-		NULL,
-		&renderer->fauxBackbufferFramebuffer
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkCreateFramebuffer", vulkanResult);
-		return 0;
-	}
-
-	return 1;
-}
-
 FNA3D_Device* VULKAN_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters,
 	uint8_t debugMode
@@ -4054,7 +3925,9 @@ FNA3D_Device* VULKAN_CreateDevice(
 
 	/* create faux backbuffer depth stencil image */
 
-	if (presentationParameters->depthStencilFormat != FNA3D_DEPTHFORMAT_NONE)
+	renderer->fauxBackbufferDepthFormat = presentationParameters->depthStencilFormat;
+
+	if (renderer->fauxBackbufferDepthFormat != FNA3D_DEPTHFORMAT_NONE)
 	{
 		VkComponentMapping identitySwizzle;
 		identitySwizzle.r = VK_COMPONENT_SWIZZLE_R;
@@ -4186,12 +4059,6 @@ FNA3D_Device* VULKAN_CreateDevice(
 		LogVulkanResult("vkCreateSemaphore", vulkanResult);
 		return NULL;
 	}
-
-	InitBackbufferPass(
-		renderer,
-		presentationParameters->backBufferWidth,
-		presentationParameters->backBufferHeight
-	);
 
 	renderer->commandBuffers = SDL_malloc(sizeof(VkCommandBuffer));
 	renderer->commandBufferCount = 0;
