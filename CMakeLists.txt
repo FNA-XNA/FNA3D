@@ -30,7 +30,7 @@ endif()
 if(APPLE)
 	set(CMAKE_MACOSX_RPATH ON)
 	set(CMAKE_OSX_DEPLOYMENT_TARGET 10.9)
-	set(LOBJC "objc -framework Carbon")
+	set(LOBJC "objc")
 elseif(WIN32)
 	# "FNA3D.dll", not "libFNA3D.dll"
 	set(CMAKE_SHARED_LIBRARY_PREFIX "")
