@@ -103,7 +103,6 @@ struct OpenGLRenderbuffer /* Cast from FNA3D_Renderbuffer* */
 struct OpenGLEffect /* Cast from FNA3D_Effect* */
 {
 	MOJOSHADER_effect *effect;
-	MOJOSHADER_glEffect *glEffect;
 	OpenGLEffect *next; /* linked list */
 };
 
@@ -243,7 +242,7 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	int32_t ldBaseVertex;
 	FNA3D_VertexDeclaration *ldVertexDeclaration;
 	void* ldPointer;
-	MOJOSHADER_glEffect *ldEffect;
+	MOJOSHADER_effect *ldEffect;
 	const MOJOSHADER_effectTechnique *ldTechnique;
 	uint32_t ldPass;
 
@@ -282,7 +281,7 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	/* MojoShader Interop */
 	const char *shaderProfile;
 	MOJOSHADER_glContext *shaderContext;
-	MOJOSHADER_glEffect *currentEffect;
+	MOJOSHADER_effect *currentEffect;
 	const MOJOSHADER_effectTechnique *currentTechnique;
 	uint32_t currentPass;
 	uint8_t renderTargetBound;
@@ -4543,10 +4542,10 @@ static void OPENGL_CreateEffect(
 	MOJOSHADER_effect **effectData
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
-	MOJOSHADER_glEffect *glEffect;
 	OpenGLEffect *result;
 	int32_t i;
 	FNA3D_Command cmd;
+	MOJOSHADER_effectShaderContext shaderBackend;
 
 	if (renderer->threadID != SDL_ThreadID())
 	{
@@ -4559,38 +4558,37 @@ static void OPENGL_CreateEffect(
 		return;
 	}
 
-	*effectData = MOJOSHADER_parseEffect(
-		renderer->shaderProfile,
+	shaderBackend.compileShader = (MOJOSHADER_compileShaderFunc) MOJOSHADER_glCompileShader;
+	shaderBackend.deleteShader = (MOJOSHADER_deleteShaderFunc) MOJOSHADER_glDeleteShader;
+	shaderBackend.getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_glGetShaderParseData;
+	shaderBackend.bindShaders = (MOJOSHADER_bindShadersFunc) MOJOSHADER_glBindShaders;
+	shaderBackend.getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_glGetBoundShaders;
+	shaderBackend.mapUniformBufferMemory = MOJOSHADER_glMapUniformBufferMemory;
+	shaderBackend.unmapUniformBufferMemory = MOJOSHADER_glUnmapUniformBufferMemory;
+	shaderBackend.m = NULL;
+	shaderBackend.f = NULL;
+	shaderBackend.malloc_data = NULL;
+
+	*effectData = MOJOSHADER_compileEffect(
 		effectCode,
 		effectCodeLength,
 		NULL,
 		0,
 		NULL,
 		0,
-		NULL,
-		NULL,
-		NULL
+		&shaderBackend
 	);
 
 	for (i = 0; i < (*effectData)->error_count; i += 1)
 	{
 		FNA3D_LogError(
-			"MOJOSHADER_parseEffect Error: %s",
+			"MOJOSHADER_compileEffect Error: %s",
 			(*effectData)->errors[i].error
-		);
-	}
-
-	glEffect = MOJOSHADER_glCompileEffect(*effectData);
-	if (glEffect == NULL)
-	{
-		FNA3D_LogError(
-			"%s", MOJOSHADER_glGetError()
 		);
 	}
 
 	result = (OpenGLEffect*) SDL_malloc(sizeof(OpenGLEffect));
 	result->effect = *effectData;
-	result->glEffect = glEffect;
 	result->next = NULL;
 	*effect = (FNA3D_Effect*) result;
 }
@@ -4603,7 +4601,6 @@ static void OPENGL_CloneEffect(
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLEffect *glCloneSource = (OpenGLEffect*) cloneSource;
-	MOJOSHADER_glEffect *glEffect;
 	OpenGLEffect *result;
 	FNA3D_Command cmd;
 
@@ -4618,8 +4615,7 @@ static void OPENGL_CloneEffect(
 	}
 
 	*effectData = MOJOSHADER_cloneEffect(glCloneSource->effect);
-	glEffect = MOJOSHADER_glCompileEffect(*effectData);
-	if (glEffect == NULL)
+	if (*effectData == NULL)
 	{
 		FNA3D_LogError(
 			"%s", MOJOSHADER_glGetError()
@@ -4628,7 +4624,6 @@ static void OPENGL_CloneEffect(
 
 	result = (OpenGLEffect*) SDL_malloc(sizeof(OpenGLEffect));
 	result->effect = *effectData;
-	result->glEffect = glEffect;
 	result->next = NULL;
 	*effect = (FNA3D_Effect*) result;
 }
@@ -4637,17 +4632,16 @@ static void OPENGL_INTERNAL_DestroyEffect(
 	OpenGLRenderer *renderer,
 	OpenGLEffect *effect
 ) {
-	MOJOSHADER_glEffect *glEffect = effect->glEffect;
+	MOJOSHADER_effect *glEffect = effect->effect;
 	if (glEffect == renderer->currentEffect)
 	{
-		MOJOSHADER_glEffectEndPass(renderer->currentEffect);
-		MOJOSHADER_glEffectEnd(renderer->currentEffect);
+		MOJOSHADER_effectEndPass(renderer->currentEffect);
+		MOJOSHADER_effectEnd(renderer->currentEffect);
 		renderer->currentEffect = NULL;
 		renderer->currentTechnique = NULL;
 		renderer->currentPass = 0;
 	}
-	MOJOSHADER_glDeleteEffect(glEffect);
-	MOJOSHADER_freeEffect(effect->effect);
+	MOJOSHADER_deleteEffect(glEffect);
 	SDL_free(effect);
 }
 
@@ -4689,40 +4683,40 @@ static void OPENGL_ApplyEffect(
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLEffect *fnaEffect = (OpenGLEffect*) effect;
-	MOJOSHADER_glEffect *glEffectData = fnaEffect->glEffect;
+	MOJOSHADER_effect *effectData = fnaEffect->effect;
 	const MOJOSHADER_effectTechnique *technique = fnaEffect->effect->current_technique;
 	uint32_t whatever;
 
 	renderer->effectApplied = 1;
-	if (glEffectData == renderer->currentEffect)
+	if (effectData == renderer->currentEffect)
 	{
 		if (	technique == renderer->currentTechnique &&
 			pass == renderer->currentPass		)
 		{
-			MOJOSHADER_glEffectCommitChanges(
+			MOJOSHADER_effectCommitChanges(
 				renderer->currentEffect
 			);
 			return;
 		}
-		MOJOSHADER_glEffectEndPass(renderer->currentEffect);
-		MOJOSHADER_glEffectBeginPass(renderer->currentEffect, pass);
+		MOJOSHADER_effectEndPass(renderer->currentEffect);
+		MOJOSHADER_effectBeginPass(renderer->currentEffect, pass);
 		renderer->currentTechnique = technique;
 		renderer->currentPass = pass;
 		return;
 	}
 	else if (renderer->currentEffect != NULL)
 	{
-		MOJOSHADER_glEffectEndPass(renderer->currentEffect);
-		MOJOSHADER_glEffectEnd(renderer->currentEffect);
+		MOJOSHADER_effectEndPass(renderer->currentEffect);
+		MOJOSHADER_effectEnd(renderer->currentEffect);
 	}
-	MOJOSHADER_glEffectBegin(
-		glEffectData,
+	MOJOSHADER_effectBegin(
+		effectData,
 		&whatever,
 		0,
 		stateChanges
 	);
-	MOJOSHADER_glEffectBeginPass(glEffectData, pass);
-	renderer->currentEffect = glEffectData;
+	MOJOSHADER_effectBeginPass(effectData, pass);
+	renderer->currentEffect = effectData;
 	renderer->currentTechnique = technique;
 	renderer->currentPass = pass;
 }
@@ -4733,16 +4727,16 @@ static void OPENGL_BeginPassRestore(
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
-	MOJOSHADER_glEffect *glEffectData = ((OpenGLEffect*) effect)->glEffect;
+	MOJOSHADER_effect *effectData = ((OpenGLEffect*) effect)->effect;
 	uint32_t whatever;
 
-	MOJOSHADER_glEffectBegin(
-		glEffectData,
+	MOJOSHADER_effectBegin(
+		effectData,
 		&whatever,
 		1,
 		stateChanges
 	);
-	MOJOSHADER_glEffectBeginPass(glEffectData, 0);
+	MOJOSHADER_effectBeginPass(effectData, 0);
 	renderer->effectApplied = 1;
 }
 
@@ -4751,10 +4745,10 @@ static void OPENGL_EndPassRestore(
 	FNA3D_Effect *effect
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
-	MOJOSHADER_glEffect *glEffectData = ((OpenGLEffect*) effect)->glEffect;
+	MOJOSHADER_effect *effectData = ((OpenGLEffect*) effect)->effect;
 
-	MOJOSHADER_glEffectEndPass(glEffectData);
-	MOJOSHADER_glEffectEnd(glEffectData);
+	MOJOSHADER_effectEndPass(effectData);
+	MOJOSHADER_effectEnd(effectData);
 	renderer->effectApplied = 1;
 }
 
