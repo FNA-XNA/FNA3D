@@ -161,7 +161,6 @@ typedef struct FNAVulkanRenderer
 	VkQueue graphicsQueue;
 	VkQueue presentQueue;
 
-	SurfaceFormatMapping surfaceFormatMapping;
 	VkSurfaceKHR surface;
 	VkSwapchainKHR swapChain;
 	FNAVulkanImageData *swapChainImages;
@@ -183,6 +182,8 @@ typedef struct FNAVulkanRenderer
 	float clearDepthValue;
 	uint32_t clearStencilValue;
 
+	SurfaceFormatMapping surfaceFormatMapping;
+	FNA3D_SurfaceFormat fauxBackbufferSurfaceFormat;
 	FNAVulkanImageData fauxBackbufferColor;
 	FNAVulkanImageData fauxBackbufferDepthStencil;
 	VkFramebuffer fauxBackbufferFramebuffer;
@@ -206,6 +207,8 @@ typedef struct FNAVulkanRenderer
 	FNA3D_DepthStencilState depthStencilState;
 	FNA3D_RasterizerState rasterizerState;
 	FNA3D_PrimitiveType currentPrimitiveType;
+
+	int32_t stencilRef;
 
 	VulkanTexture *textures[MAX_TEXTURE_SAMPLERS];
 	VkSampler *samplers[MAX_TEXTURE_SAMPLERS];
@@ -697,6 +700,20 @@ static void LogVulkanResult(
 			"%s: %s\n",
 			vulkanFunctionName,
 			VkErrorMessages(result)
+		);
+	}
+}
+
+/* Command Functions */
+
+static void SetReferenceStencilValueCommand(FNAVulkanRenderer *renderer)
+{
+	if (renderer->renderPassInProgress)
+	{
+		renderer->vkCmdSetStencilReference(
+			renderer->commandBuffers[renderer->commandBufferCount - 1],
+			VK_STENCIL_FACE_FRONT_AND_BACK,
+			renderer->stencilRef
 		);
 	}
 }
@@ -1716,6 +1733,8 @@ static void BeginRenderPass(
 		return;
 	}
 
+	renderer->renderPassInProgress = 1;
+
 	VkViewport viewport;
 	viewport.x = renderer->viewport.x;
 	viewport.y = renderer->viewport.y;
@@ -1762,6 +1781,8 @@ static void BeginRenderPass(
 		renderer->rasterizerState.slopeScaleDepthBias
 	);
 
+	SetReferenceStencilValueCommand(renderer);
+
 	/* TODO: visibility buffer */
 
 	/* Reset bindings */
@@ -1794,7 +1815,6 @@ static void BeginRenderPass(
 		VK_SUBPASS_CONTENTS_INLINE
 	);
 
-	renderer->renderPassInProgress = 1;
 	renderer->needNewRenderPass = 0;
 }
 
@@ -2232,7 +2252,8 @@ void VULKAN_GetBlendFactor(
 	FNA3D_Renderer *driverData,
 	FNA3D_Color *blendFactor
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	SDL_memcpy(blendFactor, &renderer->blendState.blendFactor, sizeof(FNA3D_Color));
 }
 
 void VULKAN_SetBlendFactor(
@@ -2277,12 +2298,18 @@ void VULKAN_SetMultiSampleMask(FNA3D_Renderer *driverData, int32_t mask)
 
 int32_t VULKAN_GetReferenceStencil(FNA3D_Renderer *driverData)
 {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	return renderer->stencilRef;
 }
 
 void VULKAN_SetReferenceStencil(FNA3D_Renderer *driverData, int32_t ref)
 {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	if (renderer->stencilRef != ref)
+	{
+		renderer->stencilRef = ref;
+		SetReferenceStencilValueCommand(renderer);
+	}
 }
 
 /* Immutable Render States */
@@ -2472,18 +2499,22 @@ void VULKAN_GetBackbufferSize(
 	int32_t *w,
 	int32_t *h
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	*w = renderer->fauxBackbufferWidth;
+	*h = renderer->fauxBackbufferHeight;
 }
 
 FNA3D_SurfaceFormat VULKAN_GetBackbufferSurfaceFormat(
 	FNA3D_Renderer *driverData
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	return renderer->fauxBackbufferSurfaceFormat;
 }
 
 FNA3D_DepthFormat VULKAN_GetBackbufferDepthFormat(FNA3D_Renderer *driverData)
 {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	return renderer->fauxBackbufferDepthFormat;
 }
 
 int32_t VULKAN_GetBackbufferMultiSampleCount(FNA3D_Renderer *driverData)
@@ -3904,6 +3935,8 @@ FNA3D_Device* VULKAN_CreateDevice(
 	
 	renderer->colorAttachments[0] = &renderer->fauxBackbufferColor;
 	renderer->colorAttachmentCount = 1;
+
+	renderer->fauxBackbufferSurfaceFormat = presentationParameters->backBufferFormat;
 
 	/* create faux backbuffer depth stencil image */
 
