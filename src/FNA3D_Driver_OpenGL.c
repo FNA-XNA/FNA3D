@@ -4559,6 +4559,7 @@ static void OPENGL_CreateEffect(
 	}
 
 	shaderBackend.compileShader = (MOJOSHADER_compileShaderFunc) MOJOSHADER_glCompileShader;
+	shaderBackend.shaderAddRef = (MOJOSHADER_shaderAddRefFunc) MOJOSHADER_glShaderAddRef;
 	shaderBackend.deleteShader = (MOJOSHADER_deleteShaderFunc) MOJOSHADER_glDeleteShader;
 	shaderBackend.getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_glGetShaderParseData;
 	shaderBackend.bindShaders = (MOJOSHADER_bindShadersFunc) MOJOSHADER_glBindShaders;
