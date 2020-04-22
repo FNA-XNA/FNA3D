@@ -104,6 +104,7 @@ add_library(mojoshader STATIC
 	MojoShader/mojoshader_common.c
 	MojoShader/mojoshader_opengl.c
 	MojoShader/mojoshader_metal.c
+	MojoShader/mojoshader_vulkan.c
 	MojoShader/profiles/mojoshader_profile_common.c
 	MojoShader/profiles/mojoshader_profile_glsl.c
 	MojoShader/profiles/mojoshader_profile_metal.c
@@ -126,6 +127,7 @@ target_include_directories(FNA3D PUBLIC
 )
 target_include_directories(mojoshader PUBLIC
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/MojoShader>
+	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Vulkan-Headers/include/vulkan>
 )
 
 target_compile_options(FNA3D PUBLIC -Wall)
