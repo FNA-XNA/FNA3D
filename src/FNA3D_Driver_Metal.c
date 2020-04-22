@@ -100,7 +100,7 @@ struct MetalRenderbuffer /* Cast from FNA3D_Renderbuffer* */
 struct MetalEffect /* Cast from FNA3D_Effect* */
 {
 	MOJOSHADER_effect *effect;
-	MOJOSHADER_mtlEffect *mtlEffect;
+	void *library; /* MTLLibrary */
 };
 
 struct MetalQuery /* Cast from FNA3D_Query* */
@@ -258,12 +258,9 @@ typedef struct MetalRenderer /* Cast from FNA3D_Renderer* */
 	StateHashMap *samplerStateCache;
 
 	/* MojoShader Interop */
-	MOJOSHADER_mtlEffect *currentEffect;
-	MOJOSHADER_mtlShaderState currentShaderState;
+	MOJOSHADER_effect *currentEffect;
 	const MOJOSHADER_effectTechnique *currentTechnique;
 	uint32_t currentPass;
-	MOJOSHADER_mtlEffect *prevEffect;
-	MOJOSHADER_mtlShaderState prevShaderState;
 } MetalRenderer;
 
 /* XNA->Metal Translation Arrays */
@@ -876,7 +873,7 @@ static void UpdateRenderPass(MetalRenderer *renderer)
 			MTLStoreActionStore
 		);
 
-		// Clear?
+		/* Clear? */
 		if (renderer->shouldClearStencil)
 		{
 			mtlSetAttachmentLoadAction(
@@ -1301,8 +1298,10 @@ static PipelineHash GetPipelineHash(MetalRenderer *renderer)
 		| HashPixelFormat(renderer->currentColorFormats[1]) << 5
 		| HashPixelFormat(renderer->currentColorFormats[0])
 	);
-	result.a = (uint64_t) renderer->currentShaderState.vertexShader;
-	result.b = (uint64_t) renderer->currentShaderState.fragmentShader;
+	MOJOSHADER_mtlShader *vert, *pixl;
+	MOJOSHADER_mtlGetBoundShaders(&vert, &pixl);
+	result.a = (uint64_t) vert;
+	result.b = (uint64_t) pixl;
 	result.c = (uint64_t) renderer->currentVertexDescriptor;
 	result.d = (
 		(uint64_t) GetBlendStateHashCode(renderer->blendState) << 32 |
@@ -1320,6 +1319,7 @@ static MTLRenderPipelineState* FetchRenderPipeline(MetalRenderer *renderer)
 	uint8_t alphaBlendEnable;
 	int32_t i;
 	MTLRenderPipelineColorAttachmentDescriptor *colorAttachment;
+	MOJOSHADER_mtlShader *vert, *pixl;
 	MTLRenderPipelineState *result;
 
 	/* Can we just reuse an existing pipeline? */
@@ -1332,12 +1332,9 @@ static MTLRenderPipelineState* FetchRenderPipeline(MetalRenderer *renderer)
 
 	/* We have to make a new pipeline... */
 	pipelineDesc = mtlNewRenderPipelineDescriptor();
-	vertHandle = MOJOSHADER_mtlGetFunctionHandle(
-		renderer->currentShaderState.vertexShader
-	);
-	fragHandle = MOJOSHADER_mtlGetFunctionHandle(
-		renderer->currentShaderState.fragmentShader
-	);
+	MOJOSHADER_mtlGetBoundShaders(&vert, &pixl);
+	vertHandle = MOJOSHADER_mtlGetFunctionHandle(vert);
+	fragHandle = MOJOSHADER_mtlGetFunctionHandle(pixl);
 	mtlSetPipelineVertexFunction(
 		pipelineDesc,
 		vertHandle
@@ -1788,13 +1785,17 @@ static MTLVertexDescriptor* FetchVertexBufferBindingsDescriptor(
 	FNA3D_VertexElement element;
 	MTLVertexAttributeDescriptor *attrib;
 	MTLVertexBufferLayoutDescriptor *layout;
+	MOJOSHADER_mtlShader *vertexShader, *blah;
 	MTLVertexDescriptor *result;
+
+	/* We need the vertex shader... */
+	MOJOSHADER_mtlGetBoundShaders(&vertexShader, &blah);
 
 	/* Can we just reuse an existing descriptor? */
 	hash = GetVertexBufferBindingsHash(
 		bindings,
 		numBindings,
-		renderer->currentShaderState.vertexShader
+		vertexShader
 	);
 	result = hmget(renderer->vertexDescriptorCache, hash);
 	if (result != NULL)
@@ -1844,7 +1845,7 @@ static MTLVertexDescriptor* FetchVertexBufferBindingsDescriptor(
 			}
 			renderer->attrUse[usage][index] = 1;
 			attribLoc = MOJOSHADER_mtlGetVertexAttribLocation(
-				renderer->currentShaderState.vertexShader,
+				vertexShader,
 				VertexAttribUsage(usage),
 				index
 			);
@@ -1907,12 +1908,16 @@ static MTLVertexDescriptor* FetchVertexDeclarationDescriptor(
 	FNA3D_VertexElement element;
 	MTLVertexAttributeDescriptor *attrib;
 	MTLVertexBufferLayoutDescriptor *layout;
+	MOJOSHADER_mtlShader *vertexShader, *blah;
 	MTLVertexDescriptor *result;
+
+	/* We need the vertex shader... */
+	MOJOSHADER_mtlGetBoundShaders(&vertexShader, &blah);
 
 	/* Can we just reuse an existing descriptor? */
 	hash = GetVertexDeclarationHash(
 		*vertexDeclaration,
-		renderer->currentShaderState.vertexShader
+		vertexShader
 	);
 	result = hmget(renderer->vertexDescriptorCache, hash);
 	if (result != NULL)
@@ -1958,7 +1963,7 @@ static MTLVertexDescriptor* FetchVertexDeclarationDescriptor(
 		}
 		renderer->attrUse[usage][index] = 1;
 		attribLoc = MOJOSHADER_mtlGetVertexAttribLocation(
-			renderer->currentShaderState.vertexShader,
+			vertexShader,
 			VertexAttribUsage(usage),
 			index
 		);
@@ -2058,6 +2063,9 @@ static void METAL_DestroyDevice(FNA3D_Device *device)
 
 	/* Destroy the view */
 	SDL_Metal_DestroyView(renderer->view);
+
+	/* Destroy the MojoShader context */
+	MOJOSHADER_mtlDestroyContext();
 
 	SDL_free(renderer);
 	SDL_free(device);
@@ -2776,8 +2784,12 @@ static void BindResources(MetalRenderer *renderer)
 	#define UNIFORM_REG 16
 
 	/* Bind the uniform buffers */
-	vUniform = renderer->currentShaderState.vertexUniformBuffer;
-	vOff = renderer->currentShaderState.vertexUniformOffset;
+	MOJOSHADER_mtlGetUniformBuffers(
+		(void**) &vUniform,
+		&vOff,
+		(void**) &fUniform,
+		&fOff
+	);
 	if (vUniform != renderer->ldVertUniformBuffer)
 	{
 		mtlSetVertexBuffer(
@@ -2799,8 +2811,6 @@ static void BindResources(MetalRenderer *renderer)
 		renderer->ldVertUniformOffset = vOff;
 	}
 
-	fUniform = renderer->currentShaderState.fragmentUniformBuffer;
-	fOff = renderer->currentShaderState.fragmentUniformOffset;
 	if (fUniform != renderer->ldFragUniformBuffer)
 	{
 		mtlSetFragmentBuffer(
@@ -4086,47 +4096,43 @@ static void METAL_CreateEffect(
 	FNA3D_Effect **effect,
 	MOJOSHADER_effect **effectData
 ) {
-	MetalRenderer *renderer = (MetalRenderer*) driverData;
-	MOJOSHADER_mtlEffect *mtlEffect;
-	MetalEffect *result;
 	int32_t i;
+	MOJOSHADER_effectShaderContext shaderBackend;
+	MetalEffect *result;
 
-	*effectData = MOJOSHADER_parseEffect(
-		"metal",
+	shaderBackend.compileShader = (MOJOSHADER_compileShaderFunc) MOJOSHADER_mtlCompileShader;
+	shaderBackend.shaderAddRef = (MOJOSHADER_shaderAddRefFunc) MOJOSHADER_mtlShaderAddRef;
+	shaderBackend.deleteShader = (MOJOSHADER_deleteShaderFunc) MOJOSHADER_mtlDeleteShader;
+	shaderBackend.getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_mtlGetShaderParseData;
+	shaderBackend.bindShaders = (MOJOSHADER_bindShadersFunc) MOJOSHADER_mtlBindShaders;
+	shaderBackend.getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_mtlGetBoundShaders;
+	shaderBackend.mapUniformBufferMemory = MOJOSHADER_mtlMapUniformBufferMemory;
+	shaderBackend.unmapUniformBufferMemory = MOJOSHADER_mtlUnmapUniformBufferMemory;
+	shaderBackend.m = NULL;
+	shaderBackend.f = NULL;
+	shaderBackend.malloc_data = NULL;
+
+	*effectData = MOJOSHADER_compileEffect(
 		effectCode,
 		effectCodeLength,
 		NULL,
 		0,
 		NULL,
 		0,
-		NULL,
-		NULL,
-		NULL
+		&shaderBackend
 	);
 
 	for (i = 0; i < (*effectData)->error_count; i += 1)
 	{
 		FNA3D_LogError(
-			"MOJOSHADER_parseEffect Error: %s",
+			"MOJOSHADER_compileEffect Error: %s",
 			(*effectData)->errors[i].error
-		);
-	}
-
-	mtlEffect = MOJOSHADER_mtlCompileEffect(
-		*effectData,
-		renderer->device,
-		renderer->maxFramesInFlight
-	);
-	if (mtlEffect == NULL)
-	{
-		FNA3D_LogError(
-			"%s", MOJOSHADER_mtlGetError()
 		);
 	}
 
 	result = (MetalEffect*) SDL_malloc(sizeof(MetalEffect));
 	result->effect = *effectData;
-	result->mtlEffect = mtlEffect;
+	result->library = MOJOSHADER_mtlCompileLibrary(*effectData);
 	*effect = (FNA3D_Effect*) result;
 }
 
@@ -4136,28 +4142,20 @@ static void METAL_CloneEffect(
 	FNA3D_Effect **effect,
 	MOJOSHADER_effect **effectData
 ) {
-	MetalRenderer *renderer = (MetalRenderer*) driverData;
 	MetalEffect *mtlCloneSource = (MetalEffect*) cloneSource;
-	MOJOSHADER_mtlEffect *mtlEffect;
 	MetalEffect *result;
 
 	*effectData = MOJOSHADER_cloneEffect(mtlCloneSource->effect);
-	mtlEffect = MOJOSHADER_mtlCompileEffect(
-		*effectData,
-		renderer->device,
-		renderer->maxFramesInFlight
-	);
-	if (mtlEffect == NULL)
+	if (*effectData == NULL)
 	{
 		FNA3D_LogError(
 			"%s", MOJOSHADER_mtlGetError()
 		);
-		SDL_assert(0);
 	}
 
 	result = (MetalEffect*) SDL_malloc(sizeof(MetalEffect));
 	result->effect = *effectData;
-	result->mtlEffect = mtlEffect;
+	result->library = MOJOSHADER_mtlCompileLibrary(*effectData);
 	*effect = (FNA3D_Effect*) result;
 }
 
@@ -4167,26 +4165,16 @@ static void METAL_AddDisposeEffect(
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
 	MetalEffect *mtlEffect = (MetalEffect*) effect;
-	if (mtlEffect->mtlEffect == renderer->currentEffect)
+	if (mtlEffect->effect == renderer->currentEffect)
 	{
-		MOJOSHADER_mtlEffectEndPass(renderer->currentEffect);
-		MOJOSHADER_mtlEffectEnd(
-			renderer->currentEffect,
-			&renderer->currentShaderState
-		);
+		MOJOSHADER_effectEndPass(renderer->currentEffect);
+		MOJOSHADER_effectEnd(renderer->currentEffect);
 		renderer->currentEffect = NULL;
 		renderer->currentTechnique = NULL;
 		renderer->currentPass = 0;
-
-		/* FIXME: Is this right? -caleb */
-		SDL_memset(
-			&renderer->currentShaderState,
-			'\0',
-			sizeof(MOJOSHADER_mtlShaderState)
-		);
 	}
-	MOJOSHADER_mtlDeleteEffect(mtlEffect->mtlEffect);
-	MOJOSHADER_freeEffect(mtlEffect->effect);
+	MOJOSHADER_mtlDeleteLibrary(mtlEffect->library);
+	MOJOSHADER_deleteEffect(mtlEffect->effect);
 	SDL_free(effect);
 }
 
@@ -4207,9 +4195,9 @@ static void METAL_ApplyEffect(
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
-	MetalEffect *mtlEffect = (MetalEffect*) effect;
-	MOJOSHADER_mtlEffect *mtlEffectData;
-	const MOJOSHADER_effectTechnique *technique;
+	MetalEffect *fnaEffect = (MetalEffect*) effect;
+	MOJOSHADER_effect *effectData = fnaEffect->effect;
+	const MOJOSHADER_effectTechnique *technique = fnaEffect->effect->current_technique;
 	uint32_t whatever;
 
 	/* If a frame isn't already in progress,
@@ -4218,49 +4206,35 @@ static void METAL_ApplyEffect(
 	 */
 	METAL_BeginFrame(driverData);
 
-	mtlEffectData = mtlEffect->mtlEffect;
-	technique = mtlEffect->effect->current_technique;
-	if (mtlEffectData == renderer->currentEffect)
+	if (effectData == renderer->currentEffect)
 	{
 		if (	technique == renderer->currentTechnique &&
-			pass == renderer->currentPass			)
+			pass == renderer->currentPass		)
 		{
-			MOJOSHADER_mtlEffectCommitChanges(
-				renderer->currentEffect,
-				&renderer->currentShaderState
+			MOJOSHADER_effectCommitChanges(
+				renderer->currentEffect
 			);
 			return;
 		}
-		MOJOSHADER_mtlEffectEndPass(renderer->currentEffect);
-		MOJOSHADER_mtlEffectBeginPass(
-			renderer->currentEffect,
-			pass,
-			&renderer->currentShaderState
-		);
+		MOJOSHADER_effectEndPass(renderer->currentEffect);
+		MOJOSHADER_effectBeginPass(renderer->currentEffect, pass);
 		renderer->currentTechnique = technique;
 		renderer->currentPass = pass;
 		return;
 	}
 	else if (renderer->currentEffect != NULL)
 	{
-		MOJOSHADER_mtlEffectEndPass(renderer->currentEffect);
-		MOJOSHADER_mtlEffectEnd(
-			renderer->currentEffect,
-			&renderer->currentShaderState
-		);
+		MOJOSHADER_effectEndPass(renderer->currentEffect);
+		MOJOSHADER_effectEnd(renderer->currentEffect);
 	}
-	MOJOSHADER_mtlEffectBegin(
-		mtlEffectData,
+	MOJOSHADER_effectBegin(
+		effectData,
 		&whatever,
 		0,
 		stateChanges
 	);
-	MOJOSHADER_mtlEffectBeginPass(
-		mtlEffectData,
-		pass,
-		&renderer->currentShaderState
-	);
-	renderer->currentEffect = mtlEffectData;
+	MOJOSHADER_effectBeginPass(effectData, pass);
+	renderer->currentEffect = effectData;
 	renderer->currentTechnique = technique;
 	renderer->currentPass = pass;
 }
@@ -4270,8 +4244,7 @@ static void METAL_BeginPassRestore(
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
-	MetalRenderer *renderer = (MetalRenderer*) driverData;
-	MOJOSHADER_mtlEffect *mtlEffectData;
+	MOJOSHADER_effect *effectData = ((MetalEffect*) effect)->effect;
 	uint32_t whatever;
 
 	/* If a frame isn't already in progress,
@@ -4280,40 +4253,22 @@ static void METAL_BeginPassRestore(
 	 */
 	METAL_BeginFrame(driverData);
 
-	/* Store the current data */
-	renderer->prevEffect = renderer->currentEffect;
-	renderer->prevShaderState = renderer->currentShaderState;
-
-	mtlEffectData = ((MetalEffect*) effect)->mtlEffect;
-	MOJOSHADER_mtlEffectBegin(
-		mtlEffectData,
+	MOJOSHADER_effectBegin(
+		effectData,
 		&whatever,
 		1,
 		stateChanges
 	);
-	MOJOSHADER_mtlEffectBeginPass(
-		mtlEffectData,
-		0,
-		&renderer->currentShaderState
-	);
-	renderer->currentEffect = mtlEffectData;
+	MOJOSHADER_effectBeginPass(effectData, 0);
 }
 
 static void METAL_EndPassRestore(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
-	MetalRenderer *renderer = (MetalRenderer*) driverData;
-	MetalEffect *mtlEffect = (MetalEffect*) effect;
-	MOJOSHADER_mtlEffectEndPass(mtlEffect->mtlEffect);
-	MOJOSHADER_mtlEffectEnd(
-		mtlEffect->mtlEffect,
-		&renderer->currentShaderState
-	);
-
-	/* Restore the old data */
-	renderer->currentShaderState = renderer->prevShaderState;
-	renderer->currentEffect = renderer->prevEffect;
+	MOJOSHADER_effect *effectData = ((MetalEffect*) effect)->effect;
+	MOJOSHADER_effectEndPass(effectData);
+	MOJOSHADER_effectEnd(effectData);
 }
 
 /* Queries */
@@ -4716,6 +4671,15 @@ FNA3D_Device* METAL_CreateDevice(
 	renderer->maxFramesInFlight = 1;
 	renderer->frameSemaphore = SDL_CreateSemaphore(
 		renderer->maxFramesInFlight
+	);
+
+	/* Initialize MojoShader context */
+	MOJOSHADER_mtlCreateContext(
+		renderer->device,
+		renderer->maxFramesInFlight,
+		NULL,
+		NULL,
+		NULL
 	);
 
 	/* Initialize texture and sampler collections */
