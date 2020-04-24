@@ -145,6 +145,11 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	ID3D11RenderTargetView *renderTargetViews[MAX_RENDERTARGET_BINDINGS];
 	ID3D11DepthStencilView *depthStencilView;
 	FNA3D_DepthFormat currentDepthFormat;
+
+	/* MojoShader Interop */
+	MOJOSHADER_effect *currentEffect;
+	const MOJOSHADER_effectTechnique *currentTechnique;
+	uint32_t currentPass;
 } D3D11Renderer;
 
 /* VS2010 / DirectX SDK Fallback Defines */
@@ -2012,9 +2017,43 @@ static void D3D11_CreateEffect(
 	FNA3D_Effect **effect,
 	MOJOSHADER_effect **effectData
 ) {
-	/* TODO */
-	*effect = NULL;
-	*effectData = NULL;
+	int32_t i;
+	MOJOSHADER_effectShaderContext shaderBackend;
+	D3D11Effect *result;
+
+	shaderBackend.compileShader = (MOJOSHADER_compileShaderFunc) MOJOSHADER_d3d11CompileShader;
+	shaderBackend.shaderAddRef = (MOJOSHADER_shaderAddRefFunc) MOJOSHADER_d3d11ShaderAddRef;
+	shaderBackend.deleteShader = (MOJOSHADER_deleteShaderFunc) MOJOSHADER_d3d11DeleteShader;
+	shaderBackend.getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_d3d11GetShaderParseData;
+	shaderBackend.bindShaders = (MOJOSHADER_bindShadersFunc) MOJOSHADER_d3d11BindShaders;
+	shaderBackend.getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_d3d11GetBoundShaders;
+	shaderBackend.mapUniformBufferMemory = MOJOSHADER_d3d11MapUniformBufferMemory;
+	shaderBackend.unmapUniformBufferMemory = MOJOSHADER_d3d11UnmapUniformBufferMemory;
+	shaderBackend.m = NULL;
+	shaderBackend.f = NULL;
+	shaderBackend.malloc_data = NULL;
+
+	*effectData = MOJOSHADER_compileEffect(
+		effectCode,
+		effectCodeLength,
+		NULL,
+		0,
+		NULL,
+		0,
+		&shaderBackend
+	);
+
+	for (i = 0; i < (*effectData)->error_count; i += 1)
+	{
+		FNA3D_LogError(
+			"MOJOSHADER_compileEffect Error: %s",
+			(*effectData)->errors[i].error
+		);
+	}
+
+	result = (D3D11Effect*) SDL_malloc(sizeof(D3D11Effect));
+	result->effect = *effectData;
+	*effect = (FNA3D_Effect*) result;
 }
 
 static void D3D11_CloneEffect(
@@ -2023,16 +2062,38 @@ static void D3D11_CloneEffect(
 	FNA3D_Effect **effect,
 	MOJOSHADER_effect **effectData
 ) {
-	/* TODO */
-	*effect = NULL;
-	*effectData = NULL;
+	D3D11Effect *d3dCloneSource = (D3D11Effect*) cloneSource;
+	D3D11Effect *result;
+
+	*effectData = MOJOSHADER_cloneEffect(d3dCloneSource->effect);
+	if (*effectData == NULL)
+	{
+		FNA3D_LogError(
+			"%s", MOJOSHADER_d3d11GetError()
+		);
+	}
+
+	result = (D3D11Effect*) SDL_malloc(sizeof(D3D11Effect));
+	result->effect = *effectData;
+	*effect = (FNA3D_Effect*) result;
 }
 
 static void D3D11_AddDisposeEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	MOJOSHADER_effect *effectData = ((D3D11Effect*) effect)->effect;
+	if (effectData == renderer->currentEffect)
+	{
+		MOJOSHADER_effectEndPass(renderer->currentEffect);
+		MOJOSHADER_effectEnd(renderer->currentEffect);
+		renderer->currentEffect = NULL;
+		renderer->currentTechnique = NULL;
+		renderer->currentPass = 0;
+	}
+	MOJOSHADER_deleteEffect(effectData);
+	SDL_free(effect);
 }
 
 static void D3D11_SetEffectTechnique(
@@ -2040,7 +2101,9 @@ static void D3D11_SetEffectTechnique(
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectTechnique *technique
 ) {
-	/* TODO */
+	/* FIXME: Why doesn't this function do anything? */
+	D3D11Effect *d3dEffect = (D3D11Effect*) effect;
+	MOJOSHADER_effectSetTechnique(d3dEffect->effect, technique);
 }
 
 static void D3D11_ApplyEffect(
@@ -2049,7 +2112,42 @@ static void D3D11_ApplyEffect(
 	uint32_t pass,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	MOJOSHADER_effect *effectData = ((D3D11Effect*) effect)->effect;
+	const MOJOSHADER_effectTechnique *technique = effectData->current_technique;
+	uint32_t whatever;
+
+	if (effectData == renderer->currentEffect)
+	{
+		if (	technique == renderer->currentTechnique &&
+			pass == renderer->currentPass		)
+		{
+			MOJOSHADER_effectCommitChanges(
+				renderer->currentEffect
+			);
+			return;
+		}
+		MOJOSHADER_effectEndPass(renderer->currentEffect);
+		MOJOSHADER_effectBeginPass(renderer->currentEffect, pass);
+		renderer->currentTechnique = technique;
+		renderer->currentPass = pass;
+		return;
+	}
+	else if (renderer->currentEffect != NULL)
+	{
+		MOJOSHADER_effectEndPass(renderer->currentEffect);
+		MOJOSHADER_effectEnd(renderer->currentEffect);
+	}
+	MOJOSHADER_effectBegin(
+		effectData,
+		&whatever,
+		0,
+		stateChanges
+	);
+	MOJOSHADER_effectBeginPass(effectData, pass);
+	renderer->currentEffect = effectData;
+	renderer->currentTechnique = technique;
+	renderer->currentPass = pass;
 }
 
 static void D3D11_BeginPassRestore(
@@ -2057,14 +2155,24 @@ static void D3D11_BeginPassRestore(
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
-	/* TODO */
+	MOJOSHADER_effect *effectData = ((D3D11Effect*) effect)->effect;
+	uint32_t whatever;
+	MOJOSHADER_effectBegin(
+		effectData,
+		&whatever,
+		1,
+		stateChanges
+	);
+	MOJOSHADER_effectBeginPass(effectData, 0);
 }
 
 static void D3D11_EndPassRestore(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
-	/* TODO */
+	MOJOSHADER_effect *effectData = ((D3D11Effect*) effect)->effect;
+	MOJOSHADER_effectEndPass(effectData);
+	MOJOSHADER_effectEnd(effectData);
 }
 
 /* Queries */
@@ -2466,6 +2574,15 @@ static FNA3D_Device* D3D11_CreateDevice(
 		);
 		return NULL;
 	}
+
+	/* Initialize MojoShader context */
+	MOJOSHADER_d3d11CreateContext(
+		renderer->device,
+		renderer->context,
+		NULL,
+		NULL,
+		NULL
+	);
 
 	/* Create and initialize the faux-backbuffer */
 	renderer->backbuffer = (D3D11Backbuffer*) SDL_malloc(
