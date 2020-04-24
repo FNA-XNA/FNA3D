@@ -74,7 +74,6 @@ struct ModernGLBuffer /* Cast FNA3D_Buffer* to this! */
 struct ModernGLEffect /* Cast FNA3D_Effect* to this! */
 {
 	MOJOSHADER_effect *effect;
-	MOJOSHADER_glEffect *glEffect;
 	ModernGLEffect *next;
 };
 
@@ -205,7 +204,7 @@ typedef struct ModernGLRenderer /* Cast FNA3D_Renderer* to this! */
 	int32_t ldBaseVertex;
 	FNA3D_VertexDeclaration *ldVertexDeclaration;
 	void* ldPointer;
-	MOJOSHADER_glEffect *ldEffect;
+	MOJOSHADER_effect *ldEffect;
 	const MOJOSHADER_effectTechnique *ldTechnique;
 	uint32_t ldPass;
 
@@ -244,7 +243,7 @@ typedef struct ModernGLRenderer /* Cast FNA3D_Renderer* to this! */
 	/* MojoShader Interop */
 	const char *shaderProfile;
 	MOJOSHADER_glContext *shaderContext;
-	MOJOSHADER_glEffect *currentEffect;
+	MOJOSHADER_effect *currentEffect;
 	const MOJOSHADER_effectTechnique *currentTechnique;
 	uint32_t currentPass;
 	uint8_t renderTargetBound;
@@ -4148,6 +4147,25 @@ static void MODERNGL_GetIndexBufferData(
 
 /* Effects */
 
+static void* MOJOSHADERCALL MODERNGL_INTERNAL_CompileShader(
+	const char *mainfn,
+	const unsigned char *tokenbuf,
+	const unsigned int bufsize,
+	const MOJOSHADER_swizzle *swiz,
+	const unsigned int swizcount,
+	const MOJOSHADER_samplerMap *smap,
+	const unsigned int smapcount
+) {
+	return MOJOSHADER_glCompileShader(
+		tokenbuf,
+		bufsize,
+		swiz,
+		swizcount,
+		smap,
+		smapcount
+	);
+}
+
 static void MODERNGL_CreateEffect(
 	FNA3D_Renderer *driverData,
 	uint8_t *effectCode,
@@ -4156,10 +4174,10 @@ static void MODERNGL_CreateEffect(
 	MOJOSHADER_effect **effectData
 ) {
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
-	MOJOSHADER_glEffect *glEffect;
 	ModernGLEffect *result;
 	int32_t i;
 	FNA3D_Command cmd;
+	MOJOSHADER_effectShaderContext shaderBackend;
 
 	if (renderer->threadID != SDL_ThreadID())
 	{
@@ -4172,17 +4190,26 @@ static void MODERNGL_CreateEffect(
 		return;
 	}
 
-	*effectData = MOJOSHADER_parseEffect(
-		renderer->shaderProfile,
+	shaderBackend.compileShader = MODERNGL_INTERNAL_CompileShader;
+	shaderBackend.shaderAddRef = (MOJOSHADER_shaderAddRefFunc) MOJOSHADER_glShaderAddRef;
+	shaderBackend.deleteShader = (MOJOSHADER_deleteShaderFunc) MOJOSHADER_glDeleteShader;
+	shaderBackend.getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_glGetShaderParseData;
+	shaderBackend.bindShaders = (MOJOSHADER_bindShadersFunc) MOJOSHADER_glBindShaders;
+	shaderBackend.getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_glGetBoundShaders;
+	shaderBackend.mapUniformBufferMemory = MOJOSHADER_glMapUniformBufferMemory;
+	shaderBackend.unmapUniformBufferMemory = MOJOSHADER_glUnmapUniformBufferMemory;
+	shaderBackend.m = NULL;
+	shaderBackend.f = NULL;
+	shaderBackend.malloc_data = NULL;
+
+	*effectData = MOJOSHADER_compileEffect(
 		effectCode,
 		effectCodeLength,
 		NULL,
 		0,
 		NULL,
 		0,
-		NULL,
-		NULL,
-		NULL
+		&shaderBackend
 	);
 
 	for (i = 0; i < (*effectData)->error_count; i += 1)
@@ -4193,17 +4220,8 @@ static void MODERNGL_CreateEffect(
 		);
 	}
 
-	glEffect = MOJOSHADER_glCompileEffect(*effectData);
-	if (glEffect == NULL)
-	{
-		FNA3D_LogError(
-			"%s", MOJOSHADER_glGetError()
-		);
-	}
-
 	result = (ModernGLEffect*) SDL_malloc(sizeof(ModernGLEffect));
 	result->effect = *effectData;
-	result->glEffect = glEffect;
 	result->next = NULL;
 	*effect = (FNA3D_Effect*) result;
 }
@@ -4216,7 +4234,6 @@ static void MODERNGL_CloneEffect(
 ) {
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
 	ModernGLEffect *glCloneSource = (ModernGLEffect*) cloneSource;
-	MOJOSHADER_glEffect *glEffect;
 	ModernGLEffect *result;
 	FNA3D_Command cmd;
 
@@ -4231,8 +4248,7 @@ static void MODERNGL_CloneEffect(
 	}
 
 	*effectData = MOJOSHADER_cloneEffect(glCloneSource->effect);
-	glEffect = MOJOSHADER_glCompileEffect(*effectData);
-	if (glEffect == NULL)
+	if (*effectData == NULL)
 	{
 		FNA3D_LogError(
 			"%s", MOJOSHADER_glGetError()
@@ -4241,7 +4257,6 @@ static void MODERNGL_CloneEffect(
 
 	result = (ModernGLEffect*) SDL_malloc(sizeof(ModernGLEffect));
 	result->effect = *effectData;
-	result->glEffect = glEffect;
 	result->next = NULL;
 	*effect = (FNA3D_Effect*) result;
 }
@@ -4250,17 +4265,16 @@ static void MODERNGL_INTERNAL_DestroyEffect(
 	ModernGLRenderer *renderer,
 	ModernGLEffect *effect
 ) {
-	MOJOSHADER_glEffect *glEffect = effect->glEffect;
+	MOJOSHADER_effect *glEffect = effect->effect;
 	if (glEffect == renderer->currentEffect)
 	{
-		MOJOSHADER_glEffectEndPass(renderer->currentEffect);
-		MOJOSHADER_glEffectEnd(renderer->currentEffect);
+		MOJOSHADER_effectEndPass(renderer->currentEffect);
+		MOJOSHADER_effectEnd(renderer->currentEffect);
 		renderer->currentEffect = NULL;
 		renderer->currentTechnique = NULL;
 		renderer->currentPass = 0;
 	}
-	MOJOSHADER_glDeleteEffect(glEffect);
-	MOJOSHADER_freeEffect(effect->effect);
+	MOJOSHADER_deleteEffect(glEffect);
 	SDL_free(effect);
 }
 
@@ -4302,40 +4316,40 @@ static void MODERNGL_ApplyEffect(
 ) {
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
 	ModernGLEffect *fnaEffect = (ModernGLEffect*) effect;
-	MOJOSHADER_glEffect *glEffectData = fnaEffect->glEffect;
+	MOJOSHADER_effect *effectData = fnaEffect->effect;
 	const MOJOSHADER_effectTechnique *technique = fnaEffect->effect->current_technique;
 	uint32_t whatever;
 
 	renderer->effectApplied = 1;
-	if (glEffectData == renderer->currentEffect)
+	if (effectData == renderer->currentEffect)
 	{
 		if (	technique == renderer->currentTechnique &&
 			pass == renderer->currentPass		)
 		{
-			MOJOSHADER_glEffectCommitChanges(
+			MOJOSHADER_effectCommitChanges(
 				renderer->currentEffect
 			);
 			return;
 		}
-		MOJOSHADER_glEffectEndPass(renderer->currentEffect);
-		MOJOSHADER_glEffectBeginPass(renderer->currentEffect, pass);
+		MOJOSHADER_effectEndPass(renderer->currentEffect);
+		MOJOSHADER_effectBeginPass(renderer->currentEffect, pass);
 		renderer->currentTechnique = technique;
 		renderer->currentPass = pass;
 		return;
 	}
 	else if (renderer->currentEffect != NULL)
 	{
-		MOJOSHADER_glEffectEndPass(renderer->currentEffect);
-		MOJOSHADER_glEffectEnd(renderer->currentEffect);
+		MOJOSHADER_effectEndPass(renderer->currentEffect);
+		MOJOSHADER_effectEnd(renderer->currentEffect);
 	}
-	MOJOSHADER_glEffectBegin(
-		glEffectData,
+	MOJOSHADER_effectBegin(
+		effectData,
 		&whatever,
 		0,
 		stateChanges
 	);
-	MOJOSHADER_glEffectBeginPass(glEffectData, pass);
-	renderer->currentEffect = glEffectData;
+	MOJOSHADER_effectBeginPass(effectData, pass);
+	renderer->currentEffect = effectData;
 	renderer->currentTechnique = technique;
 	renderer->currentPass = pass;
 }
@@ -4346,16 +4360,16 @@ static void MODERNGL_BeginPassRestore(
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
-	MOJOSHADER_glEffect *glEffectData = ((ModernGLEffect*) effect)->glEffect;
+	MOJOSHADER_effect *effectData = ((ModernGLEffect*) effect)->effect;
 	uint32_t whatever;
 
-	MOJOSHADER_glEffectBegin(
-		glEffectData,
+	MOJOSHADER_effectBegin(
+		effectData,
 		&whatever,
 		1,
 		stateChanges
 	);
-	MOJOSHADER_glEffectBeginPass(glEffectData, 0);
+	MOJOSHADER_effectBeginPass(effectData, 0);
 	renderer->effectApplied = 1;
 }
 
@@ -4364,10 +4378,10 @@ static void MODERNGL_EndPassRestore(
 	FNA3D_Effect *effect
 ) {
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
-	MOJOSHADER_glEffect *glEffectData = ((ModernGLEffect*) effect)->glEffect;
+	MOJOSHADER_effect *effectData = ((ModernGLEffect*) effect)->effect;
 
-	MOJOSHADER_glEffectEndPass(glEffectData);
-	MOJOSHADER_glEffectEnd(glEffectData);
+	MOJOSHADER_effectEndPass(effectData);
+	MOJOSHADER_effectEnd(effectData);
 	renderer->effectApplied = 1;
 }
 
