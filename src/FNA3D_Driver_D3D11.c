@@ -101,6 +101,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	/* The Faux-Backbuffer */
 	D3D11Backbuffer *backbuffer;
 	uint8_t backbufferSizeChanged;
+	FNA3D_Rect prevDestRect;
 	ID3D11VertexShader *fauxBlitVS;
 	ID3D11PixelShader *fauxBlitPS;
 	ID3D11SamplerState *fauxBlitSampler;
@@ -641,6 +642,68 @@ static void D3D11_BeginFrame(FNA3D_Renderer *driverData)
 	/* TODO */
 }
 
+static void D3D11_GetDrawableSize(void *window, int32_t *x, int32_t *y);
+static void UpdateBackbufferVertexBuffer(
+	D3D11Renderer *renderer,
+	FNA3D_Rect dstRect,
+	int32_t drawableWidth,
+	int32_t drawableHeight
+) {
+	float sx, sy, sw, sh;
+	float data[16];
+	D3D11_MAPPED_SUBRESOURCE mappedBuffer;
+
+	/* Cache the new info */
+	renderer->backbufferSizeChanged = 0;
+	renderer->prevDestRect = dstRect;
+
+	/* Scale the coordinates to (-1, 1) */
+	sx = -1 + (dstRect.x / (float) drawableWidth);
+	sy = -1 + (dstRect.y / (float) drawableHeight);
+	sw = (dstRect.w / (float) drawableWidth) * 2;
+	sh = (dstRect.h / (float) drawableHeight) * 2;
+
+	/* Stuff the data into an array */
+	data[0] = sx;
+	data[1] = sy;
+	data[2] = 0;
+	data[3] = 0;
+
+	data[4] = sx + sw;
+	data[5] = sy;
+	data[6] = 1;
+	data[7] = 0;
+
+	data[8] = sx + sw;
+	data[9] = sy + sh;
+	data[10] = 1;
+	data[11] = 1;
+
+	data[12] = sx;
+	data[13] = sy + sh;
+	data[14] = 0;
+	data[15] = 1;
+
+	/* Copy the data into the buffer */
+	mappedBuffer.pData = NULL;
+	mappedBuffer.DepthPitch = 0;
+	mappedBuffer.RowPitch = 0;
+	ID3D11DeviceContext_Map(
+		renderer->context,
+		(ID3D11Resource*) renderer->fauxBlitVertexBuffer,
+		0,
+		D3D11_MAP_WRITE_DISCARD,
+		0,
+		&mappedBuffer
+	);
+	SDL_memcpy(mappedBuffer.pData, data, sizeof(data));
+	ID3D11DeviceContext_Unmap(
+		renderer->context,
+		(ID3D11Resource*) renderer->fauxBlitVertexBuffer,
+		0
+	);
+}
+
 static void D3D11_SwapBuffers(
 	FNA3D_Renderer *driverData,
 	FNA3D_Rect *sourceRectangle,
@@ -648,9 +711,61 @@ static void D3D11_SwapBuffers(
 	void* overrideWindowHandle
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	int32_t drawableWidth, drawableHeight;
+	FNA3D_Rect srcRect, dstRect;
 	const uint32_t vertexStride = 16;
 	const uint32_t offsets[] = { 0 };
 	float blendFactor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+	/* Determine the regions to present */
+	D3D11_GetDrawableSize(
+		overrideWindowHandle,
+		&drawableWidth,
+		&drawableHeight
+	);
+	if (sourceRectangle != NULL)
+	{
+		srcRect.x = sourceRectangle->x;
+		srcRect.y = sourceRectangle->y;
+		srcRect.w = sourceRectangle->w;
+		srcRect.h = sourceRectangle->h;
+	}
+	else
+	{
+		srcRect.x = 0;
+		srcRect.y = 0;
+		srcRect.w = renderer->backbuffer->width;
+		srcRect.h = renderer->backbuffer->height;
+	}
+	if (destinationRectangle != NULL)
+	{
+		dstRect.x = destinationRectangle->x;
+		dstRect.y = destinationRectangle->y;
+		dstRect.w = destinationRectangle->w;
+		dstRect.h = destinationRectangle->h;
+	}
+	else
+	{
+		dstRect.x = 0;
+		dstRect.y = 0;
+		dstRect.w = drawableWidth;
+		dstRect.h = drawableHeight;
+	}
+
+	/* Update the cached vertex buffer, if needed */
+	if (	renderer->backbufferSizeChanged ||
+		renderer->prevDestRect.x != dstRect.x ||
+		renderer->prevDestRect.y != dstRect.y ||
+		renderer->prevDestRect.w != dstRect.w ||
+		renderer->prevDestRect.h != dstRect.h	)
+	{
+		UpdateBackbufferVertexBuffer(
+			renderer,
+			dstRect,
+			drawableWidth,
+			drawableHeight
+		);
+	}
 
 	/* Bind the backbuffer render target */
 	ID3D11DeviceContext_OMSetRenderTargets(
@@ -720,7 +835,7 @@ static void D3D11_SwapBuffers(
 		D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
 	);
 
-	/* Draw! */
+	/* Draw the faux backbuffer! */
 	ID3D11DeviceContext_DrawIndexed(renderer->context, 6, 0, 0);
 
 	/* Present! */
@@ -1094,6 +1209,33 @@ static void D3D11_SetRenderTargets(
 	FNA3D_Renderbuffer *depthStencilBuffer,
 	FNA3D_DepthFormat depthFormat
 ) {
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	int32_t i;
+
+	/* Reset attachments */
+	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
+	{
+		renderer->renderTargetViews[i] = NULL;
+	}
+	renderer->depthStencilView = NULL;
+	renderer->currentDepthFormat = FNA3D_DEPTHFORMAT_NONE;
+
+	/* Bind the backbuffer, if applicable */
+	if (renderTargets == NULL)
+	{
+		renderer->renderTargetViews[0] = renderer->backbuffer->colorView;
+		renderer->currentDepthFormat = renderer->backbuffer->depthFormat;
+		renderer->depthStencilView = renderer->backbuffer->depthStencilView;
+		renderer->numRenderTargets = 1;
+		ID3D11DeviceContext_OMSetRenderTargets(
+			renderer->context,
+			1,
+			renderer->renderTargetViews,
+			renderer->depthStencilView
+		);
+		return;
+	}
+
 	/* TODO */
 }
 
@@ -2062,7 +2204,7 @@ static void InitializeFauxBackbuffer(
 
 	/* Create the faux backbuffer vertex buffer */
 	vbufDesc.ByteWidth = 16 * sizeof(float);
-	vbufDesc.Usage = D3D11_USAGE_DEFAULT;
+	vbufDesc.Usage = D3D11_USAGE_DYNAMIC;
 	vbufDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 	vbufDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 	vbufDesc.MiscFlags = 0;
