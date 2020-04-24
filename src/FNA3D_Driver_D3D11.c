@@ -43,18 +43,23 @@
 
 typedef struct D3D11Texture /* Cast FNA3D_Texture* to this! */
 {
-	union
-	{
-		ID3D11Texture2D *h2D;
-		ID3D11Texture3D *h3D;
-	} handle;
+	#define TEXTURE_TYPE_2D 0
+	#define TEXTURE_TYPE_3D 1
+	uint8_t type; /* FIXME: Needed? */
+
+	ID3D11Resource *handle; /* ID3D11Texture2D or ID3D11Texture3D */
 	int32_t levelCount;
 	uint8_t isRenderTarget;
+	ID3D11RenderTargetView *rtView;
 } D3D11Texture;
 
 typedef struct D3D11Renderbuffer /* Cast FNA3D_Renderbuffer* to this! */
 {
-	uint8_t filler;
+	ID3D11Texture2D *handle;
+	ID3D11Texture2D *msaaHandle; /* FIXME: Needed? */
+	FNA3D_SurfaceFormat format;
+	int32_t multiSampleCount;
+	ID3D11DepthStencilView *dsView;
 } D3D11Renderbuffer;
 
 typedef struct D3D11Buffer /* Cast FNA3D_Buffer* to this! */
@@ -1210,9 +1215,11 @@ static void D3D11_SetRenderTargets(
 	FNA3D_DepthFormat depthFormat
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Texture *tex;
 	int32_t i;
 
 	/* Reset attachments */
+	/* FIXME: Do we really need all this state shadowing...? */
 	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
 	{
 		renderer->renderTargetViews[i] = NULL;
@@ -1236,7 +1243,44 @@ static void D3D11_SetRenderTargets(
 		return;
 	}
 
-	/* TODO */
+	/* Remember the number of bound render targets */
+	renderer->numRenderTargets = numRenderTargets;
+
+	/* Update color buffers */
+	for (i = 0; i < numRenderTargets; i += 1)
+	{
+		/* TODO: Handle cube RTs */
+
+		if (renderTargets[i].colorBuffer != NULL)
+		{
+			/* TODO: Handle this... */
+		}
+		else
+		{
+			tex = (D3D11Texture*) renderTargets[i].texture;
+			renderer->renderTargetViews[i] = tex->rtView;
+		}
+	}
+
+	/* Update depth stencil buffer */
+	renderer->depthStencilView = (
+		depthStencilBuffer == NULL ?
+			NULL :
+			((D3D11Renderbuffer*) depthStencilBuffer)->dsView
+	);
+	renderer->currentDepthFormat = (
+		depthStencilBuffer == NULL ?
+			FNA3D_DEPTHFORMAT_NONE :
+			depthFormat
+	);
+
+	/* Actually set the render targets! */
+	ID3D11DeviceContext_OMSetRenderTargets(
+		renderer->context,
+		numRenderTargets,
+		renderer->renderTargetViews,
+		renderer->depthStencilView
+	);
 }
 
 static void D3D11_ResolveTarget(
@@ -1446,7 +1490,9 @@ static void CreateFramebuffer(
 		&swapchainViewDesc,
 		&renderer->swapchainRTView
 	);
-	ID3D11Texture2D_Release(swapchainTexture); /* Cleanup is required for any GetBuffer call! */
+
+	/* Cleanup is required for any GetBuffer call! */
+	ID3D11Texture2D_Release(swapchainTexture);
 	swapchainTexture = NULL;
 
 	/* This is the default render target */
@@ -1457,6 +1503,8 @@ static void CreateFramebuffer(
 		NULL,
 		FNA3D_DEPTHFORMAT_NONE
 	);
+
+	#undef BB
 }
 
 static void D3D11_ResetBackbuffer(
@@ -1521,6 +1569,7 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 	D3D11Texture *result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
 	DXGI_SAMPLE_DESC sampleDesc = {1, 0};
 	D3D11_TEXTURE2D_DESC desc;
+	D3D11_RENDER_TARGET_VIEW_DESC viewDesc;
 
 	/* Initialize descriptor */
 	desc.Width = width;
@@ -1547,10 +1596,26 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 		renderer->device,
 		&desc,
 		NULL,
-		&result->handle.h2D
+		(ID3D11Texture2D**) &result->handle
 	);
+	result->type = TEXTURE_TYPE_2D;
 	result->levelCount = levelCount;
 	result->isRenderTarget = isRenderTarget;
+
+	/* Create the render target view, if applicable */
+	if (isRenderTarget)
+	{
+		viewDesc.Format = desc.Format;
+		viewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+		viewDesc.Texture2D.MipSlice = 0;
+		ID3D11Device_CreateRenderTargetView(
+			renderer->device,
+			result->handle,
+			&viewDesc,
+			&result->rtView
+		);
+	}
+
 	return (FNA3D_Texture*) result;
 }
 
@@ -1582,8 +1647,9 @@ static FNA3D_Texture* D3D11_CreateTexture3D(
 		renderer->device,
 		&desc,
 		NULL,
-		&result->handle.h3D
+		(ID3D11Texture3D**) &result->handle
 	);
+	result->type = TEXTURE_TYPE_3D;
 	result->levelCount = levelCount;
 	result->isRenderTarget = 0;
 	return (FNA3D_Texture*) result;
@@ -1600,6 +1666,9 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 	D3D11Texture *result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
 	DXGI_SAMPLE_DESC sampleDesc = {1, 0};
 	D3D11_TEXTURE2D_DESC desc;
+	D3D11_RENDER_TARGET_VIEW_DESC viewDesc;
+
+	/* Initialize descriptor */
 	desc.Width = size;
 	desc.Height = size;
 	desc.MipLevels = levelCount;
@@ -1624,10 +1693,26 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 		renderer->device,
 		&desc,
 		NULL,
-		&result->handle.h2D
+		(ID3D11Texture2D**) &result->handle
 	);
+	result->type = TEXTURE_TYPE_2D; /* FIXME: Cube? */
 	result->levelCount = levelCount;
 	result->isRenderTarget = isRenderTarget;
+
+	/* Create the render target view, if applicable */
+	if (isRenderTarget)
+	{
+		viewDesc.Format = desc.Format;
+		viewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D; /* FIXME: Should this be 2D Array? */
+		viewDesc.Texture2D.MipSlice = 0;
+		ID3D11Device_CreateRenderTargetView(
+			renderer->device,
+			result->handle,
+			&viewDesc,
+			&result->rtView
+		);
+	}
+
 	return (FNA3D_Texture*) result;
 }
 
@@ -1667,7 +1752,7 @@ static void D3D11_SetTextureData2D(
 
 	ID3D11DeviceContext_UpdateSubresource(
 		renderer->context,
-		(ID3D11Resource*) d3dTexture->handle.h2D,
+		d3dTexture->handle,
 		CalcSubresource(level, 0, d3dTexture->levelCount),
 		&dstBox,
 		data,
@@ -1696,7 +1781,7 @@ static void D3D11_SetTextureData3D(
 
 	ID3D11DeviceContext_UpdateSubresource(
 		renderer->context,
-		(ID3D11Resource*) d3dTexture->handle.h3D,
+		d3dTexture->handle,
 		CalcSubresource(level, 0, d3dTexture->levelCount),
 		&dstBox,
 		data,
@@ -1724,7 +1809,7 @@ static void D3D11_SetTextureDataCube(
 
 	ID3D11DeviceContext_UpdateSubresource(
 		renderer->context,
-		(ID3D11Resource*) d3dTexture->handle.h2D,
+		d3dTexture->handle,
 		CalcSubresource(
 			level,
 			cubeMapFace,
