@@ -1109,8 +1109,8 @@ static void D3D11_ResolveTarget(
 static HWND GetHWND(SDL_Window *window)
 {
 	SDL_SysWMinfo info;
-	SDL_GetWindowWMInfo((SDL_Window*) window, &info);
 	SDL_VERSION(&info.version);
+	SDL_GetWindowWMInfo((SDL_Window*) window, &info);
 	return info.info.win.window;
 }
 
@@ -1957,7 +1957,6 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 
 static void D3D11_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 {
-	/* FIXME: This doesn't work at all and just returns 0, 0! */
 	RECT clientRect;
 	GetClientRect(GetHWND((SDL_Window*) window), &clientRect);
 	*x = (clientRect.right - clientRect.left);
