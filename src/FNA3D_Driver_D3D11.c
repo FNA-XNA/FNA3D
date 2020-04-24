@@ -2151,10 +2151,8 @@ static FNA3D_Device* D3D11_CreateDevice(
 	HRESULT ret;
 
 	/* Allocate and zero out the renderer */
-	renderer = (D3D11Renderer*) SDL_malloc(
-		sizeof(D3D11Renderer)
-	);
-	SDL_memset(renderer, '\0', sizeof(renderer));
+	renderer = (D3D11Renderer*) SDL_malloc(sizeof(D3D11Renderer));
+	SDL_memset(renderer, '\0', sizeof(D3D11Renderer));
 
 	/* Load function pointers */
 	module = SDL_LoadObject("dxgi.dll");
@@ -2262,8 +2260,6 @@ static FNA3D_Device* D3D11_CreateDevice(
 	result->driverData = (FNA3D_Renderer*) renderer;
 	ASSIGN_DRIVER(D3D11)
 	return result;
-
-	/* TODO */
 }
 
 FNA3D_Driver D3D11Driver = {
