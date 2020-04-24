@@ -2178,20 +2178,6 @@ static FNA3D_Device* D3D11_CreateDevice(
 	);
 	SDL_assert(D3DCompileFunc != NULL);
 
-	/* Create the DXGIFactory */
-	ret = CreateDXGIFactoryFunc(
-		&D3D_IID_IDXGIFactory1,
-		(void**) &renderer->factory
-	);
-	if (ret < 0)
-	{
-		FNA3D_LogError(
-			"Could not create DXGIFactory! Error code: %x",
-			ret
-		);
-		return NULL;
-	}
-
 	/* Create the D3D11Device */
 	flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
 	if (debugMode)
@@ -2219,6 +2205,9 @@ static FNA3D_Device* D3D11_CreateDevice(
 		return NULL;
 	}
 
+	/* Print driver info */
+	FNA3D_LogInfo("FNA3D Driver: D3D11"); /* FIXME: Print more info! */
+
 	/* Determine DXT/S3TC support */
 	ID3D11Device_CheckFormatSupport(
 		renderer->device,
@@ -2236,6 +2225,20 @@ static FNA3D_Device* D3D11_CreateDevice(
 		&supportsDxt5
 	);
 	renderer->supportsS3tc = (supportsDxt3 || supportsDxt5);
+
+	/* Create the DXGIFactory */
+	ret = CreateDXGIFactoryFunc(
+		&D3D_IID_IDXGIFactory1,
+		(void**) &renderer->factory
+	);
+	if (ret < 0)
+	{
+		FNA3D_LogError(
+			"Could not create DXGIFactory! Error code: %x",
+			ret
+		);
+		return NULL;
+	}
 
 	/* Create and initialize the faux-backbuffer */
 	renderer->backbuffer = (D3D11Backbuffer*) SDL_malloc(
