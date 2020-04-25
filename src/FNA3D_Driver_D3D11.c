@@ -43,15 +43,38 @@
 
 typedef struct D3D11Texture /* Cast FNA3D_Texture* to this! */
 {
-	#define TEXTURE_TYPE_2D 0
-	#define TEXTURE_TYPE_3D 1
-	uint8_t type; /* FIXME: Needed? */
-
 	ID3D11Resource *handle; /* ID3D11Texture2D or ID3D11Texture3D */
 	int32_t levelCount;
 	uint8_t isRenderTarget;
 	ID3D11RenderTargetView *rtView;
+	ID3D11ShaderResourceView *shaderView;
+
+	FNA3D_SurfaceFormat format;
+	FNA3D_TextureAddressMode wrapS;
+	FNA3D_TextureAddressMode wrapT;
+	FNA3D_TextureAddressMode wrapR;
+	FNA3D_TextureFilter filter;
+	float anisotropy;
+	int32_t maxMipmapLevel;
+	float lodBias;
 } D3D11Texture;
+
+static D3D11Texture NullTexture =
+{
+	NULL,
+	1,
+	0,
+	NULL,
+	NULL,
+	FNA3D_SURFACEFORMAT_COLOR,
+	FNA3D_TEXTUREADDRESSMODE_WRAP,
+	FNA3D_TEXTUREADDRESSMODE_WRAP,
+	FNA3D_TEXTUREADDRESSMODE_WRAP,
+	FNA3D_TEXTUREFILTER_LINEAR,
+	0.0f,
+	0,
+	0.0f
+};
 
 typedef struct D3D11Renderbuffer /* Cast FNA3D_Renderbuffer* to this! */
 {
@@ -130,6 +153,12 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	/* Blend State */
 	FNA3D_Color blendFactor;
 	int32_t multiSampleMask;
+
+	/* Textures */
+	D3D11Texture *textures[MAX_TEXTURE_SAMPLERS];
+	ID3D11SamplerState *samplers[MAX_TEXTURE_SAMPLERS];
+	uint8_t textureNeedsUpdate[MAX_TEXTURE_SAMPLERS];
+	uint8_t samplerNeedsUpdate[MAX_TEXTURE_SAMPLERS];
 
 	/* Depth Stencil State */
 	int32_t stencilRef;
@@ -1185,12 +1214,102 @@ static void D3D11_VerifySampler(
 	FNA3D_SamplerState *sampler
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
+	ID3D11SamplerState *d3dSamplerState;
 
-	/* TODO */
-	/* We need to bind all samplers at once !*/
+	if (texture == NULL)
+	{
+		if (renderer->textures[index] != &NullTexture)
+		{
+			renderer->textures[index] = &NullTexture;
+			renderer->textureNeedsUpdate[index] = 1;
+		}
+		if (renderer->samplers[index] == NULL)
+		{
+			/* Some shaders require non-null samplers
+			 * even if they aren't actually used.
+			 * -caleb
+			 */
+			renderer->samplers[index] = FetchSamplerState(
+				renderer,
+				sampler
+			);
+			renderer->samplerNeedsUpdate[index] = 1;
+		}
+		return;
+	}
+
+	if (	d3dTexture == renderer->textures[index] &&
+		sampler->addressU == d3dTexture->wrapS &&
+		sampler->addressV == d3dTexture->wrapT &&
+		sampler->addressW == d3dTexture->wrapR &&
+		sampler->filter == d3dTexture->filter &&
+		sampler->maxAnisotropy == d3dTexture->anisotropy &&
+		sampler->maxMipLevel == d3dTexture->maxMipmapLevel &&
+		sampler->mipMapLevelOfDetailBias == d3dTexture->lodBias	)
+	{
+		/* Nothing's changing, forget it. */
+		return;
+	}
+
+	/* Bind the correct texture */
+	if (d3dTexture != renderer->textures[index])
+	{
+		renderer->textures[index] = d3dTexture;
+		renderer->textureNeedsUpdate[index] = 1;
+	}
+
+	/* Update the texture sampler info */
+	d3dTexture->wrapS = sampler->addressU;
+	d3dTexture->wrapT = sampler->addressV;
+	d3dTexture->wrapR = sampler->addressW;
+	d3dTexture->filter = sampler->filter;
+	d3dTexture->anisotropy = sampler->maxAnisotropy;
+	d3dTexture->maxMipmapLevel = sampler->maxMipLevel;
+	d3dTexture->lodBias = sampler->mipMapLevelOfDetailBias;
+
+	/* Update the sampler state, if needed */
+	d3dSamplerState = FetchSamplerState(
+		renderer,
+		sampler
+	);
+	if (d3dSamplerState != renderer->samplers[index])
+	{
+		renderer->samplers[index] = d3dSamplerState;
+		renderer->samplerNeedsUpdate[index] = 1;
+	}
 }
 
 /* Vertex State */
+
+static void BindResources(D3D11Renderer *renderer)
+{
+	/* Bind textures and their sampler states */
+	int32_t i;
+	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
+	{
+		if (renderer->textureNeedsUpdate[i])
+		{
+			ID3D11DeviceContext_PSSetShaderResources(
+				renderer->context,
+				i,
+				1,
+				&renderer->textures[i]->shaderView
+			);
+			renderer->textureNeedsUpdate[i] = 0;
+		}
+		if (renderer->samplerNeedsUpdate[i])
+		{
+			ID3D11DeviceContext_PSSetSamplers(
+				renderer->context,
+				i,
+				1,
+				&renderer->samplers[i]
+			);
+			renderer->samplerNeedsUpdate[i] = 0;
+		}
+	}
+}
 
 static void D3D11_ApplyVertexBufferBindings(
 	FNA3D_Renderer *driverData,
@@ -1199,7 +1318,9 @@ static void D3D11_ApplyVertexBufferBindings(
 	uint8_t bindingsUpdated,
 	int32_t baseVertex
 ) {
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	/* TODO */
+	BindResources(renderer);
 }
 
 static void D3D11_ApplyVertexDeclaration(
@@ -1572,10 +1693,15 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 	uint8_t isRenderTarget
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11Texture *result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
+	D3D11Texture *result;
 	DXGI_SAMPLE_DESC sampleDesc = {1, 0};
 	D3D11_TEXTURE2D_DESC desc;
-	D3D11_RENDER_TARGET_VIEW_DESC viewDesc;
+	D3D11_SHADER_RESOURCE_VIEW_DESC shaderViewDesc;
+	D3D11_RENDER_TARGET_VIEW_DESC rtViewDesc;
+
+	/* Initialize D3D11Texture */
+	result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
+	SDL_memset(result, '\0', sizeof(D3D11Texture));
 
 	/* Initialize descriptor */
 	desc.Width = width;
@@ -1604,20 +1730,32 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 		NULL,
 		(ID3D11Texture2D**) &result->handle
 	);
-	result->type = TEXTURE_TYPE_2D;
 	result->levelCount = levelCount;
 	result->isRenderTarget = isRenderTarget;
+	result->anisotropy = 4.0f;
+
+	/* Create the shader resource view */
+	shaderViewDesc.Format = XNAToD3D_TextureFormat[result->format];
+	shaderViewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+	shaderViewDesc.Texture2D.MipLevels = levelCount;
+	shaderViewDesc.Texture2D.MostDetailedMip = 0;
+	ID3D11Device_CreateShaderResourceView(
+		renderer->device,
+		result->handle,
+		&shaderViewDesc,
+		&result->shaderView
+	);
 
 	/* Create the render target view, if applicable */
 	if (isRenderTarget)
 	{
-		viewDesc.Format = desc.Format;
-		viewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-		viewDesc.Texture2D.MipSlice = 0;
+		rtViewDesc.Format = desc.Format;
+		rtViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+		rtViewDesc.Texture2D.MipSlice = 0;
 		ID3D11Device_CreateRenderTargetView(
 			renderer->device,
 			result->handle,
-			&viewDesc,
+			&rtViewDesc,
 			&result->rtView
 		);
 	}
@@ -1648,6 +1786,8 @@ static FNA3D_Texture* D3D11_CreateTexture3D(
 	desc.CPUAccessFlags = 0;
 	desc.MiscFlags = 0;
 
+	/* TODO: Shader resource views, initialize D3D11Texture */
+
 	/* Create the texture */
 	ID3D11Device_CreateTexture3D(
 		renderer->device,
@@ -1655,7 +1795,6 @@ static FNA3D_Texture* D3D11_CreateTexture3D(
 		NULL,
 		(ID3D11Texture3D**) &result->handle
 	);
-	result->type = TEXTURE_TYPE_3D;
 	result->levelCount = levelCount;
 	result->isRenderTarget = 0;
 	return (FNA3D_Texture*) result;
@@ -1694,6 +1833,8 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 		desc.BindFlags |= D3D11_BIND_RENDER_TARGET;
 	}
 
+	/* TODO: Shader resource views, initialize D3D11Texture */
+
 	/* Create the texture */
 	ID3D11Device_CreateTexture2D(
 		renderer->device,
@@ -1701,7 +1842,6 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 		NULL,
 		(ID3D11Texture2D**) &result->handle
 	);
-	result->type = TEXTURE_TYPE_2D; /* FIXME: Cube? */
 	result->levelCount = levelCount;
 	result->isRenderTarget = isRenderTarget;
 
