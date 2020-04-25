@@ -1903,11 +1903,48 @@ static void CreateFramebuffer(
 	#undef BB
 }
 
+static void DestroyFramebuffer(D3D11Renderer *renderer)
+{
+	ID3D11RenderTargetView_Release(renderer->backbuffer->colorView);
+	renderer->backbuffer->colorView = NULL;
+	ID3D11Texture2D_Release(renderer->backbuffer->colorBuffer);
+	renderer->backbuffer->colorBuffer = NULL;
+
+	if (renderer->backbuffer->msaaColorView != NULL)
+	{
+		ID3D11RenderTargetView_Release(
+			renderer->backbuffer->msaaColorView
+		);
+		ID3D11Texture2D_Release(
+			renderer->backbuffer->msaaColorBuffer
+		);
+		renderer->backbuffer->msaaColorView = NULL;
+		renderer->backbuffer->msaaColorBuffer = NULL;
+	}
+
+	if (renderer->backbuffer->depthStencilBuffer != NULL)
+	{
+		ID3D11DepthStencilView_Release(
+			renderer->backbuffer->depthStencilView
+		);
+		ID3D11Texture2D_Release(
+			renderer->backbuffer->depthStencilBuffer
+		);
+		renderer->backbuffer->depthStencilView = NULL;
+		renderer->backbuffer->depthStencilBuffer = NULL;
+	}
+}
+
 static void D3D11_ResetBackbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_PresentationParameters *presentationParameters
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	DestroyFramebuffer(renderer);
+	CreateFramebuffer(
+		renderer,
+		presentationParameters
+	);
 }
 
 static void D3D11_ReadBackbuffer(
