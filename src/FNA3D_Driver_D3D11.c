@@ -65,6 +65,7 @@ typedef struct D3D11Renderbuffer /* Cast FNA3D_Renderbuffer* to this! */
 typedef struct D3D11Buffer /* Cast FNA3D_Buffer* to this! */
 {
 	ID3D11Buffer *handle;
+	uint8_t dynamic;
 } D3D11Buffer;
 
 typedef struct D3D11Effect /* Cast FNA3D_Effect* to this! */
@@ -1931,8 +1932,29 @@ static FNA3D_Buffer* D3D11_GenVertexBuffer(
 	int32_t vertexCount,
 	int32_t vertexStride
 ) {
-	/* TODO */
-	return NULL;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Buffer *result = (D3D11Buffer*) SDL_malloc(sizeof(D3D11Buffer));
+	D3D11_BUFFER_DESC desc;
+
+	/* Initialize the descriptor */
+	desc.ByteWidth = vertexStride * vertexCount;
+	desc.Usage = dynamic ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_DEFAULT;
+	desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	desc.CPUAccessFlags = dynamic ? D3D11_CPU_ACCESS_WRITE : 0;
+	desc.MiscFlags = 0;
+	desc.StructureByteStride = 0;
+
+	/* Make the buffer */
+	ID3D11Device_CreateBuffer(
+		renderer->device,
+		&desc,
+		NULL,
+		&result->handle
+	);
+
+	/* Return the result */
+	result->dynamic = dynamic;
+	return (FNA3D_Buffer*) result;
 }
 
 static void D3D11_AddDisposeVertexBuffer(
@@ -1952,7 +1974,47 @@ static void D3D11_SetVertexBufferData(
 	int32_t vertexStride,
 	FNA3D_SetDataOptions options
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Buffer *d3dBuffer = (D3D11Buffer*) buffer;
+	D3D11_MAPPED_SUBRESOURCE subres = {0, 0, 0};
+	int32_t dataLen = vertexStride * elementCount;
+	D3D11_BOX dstBox = {offsetInBytes, 0, 0, offsetInBytes + dataLen, 1, 1};
+
+	if (d3dBuffer->dynamic)
+	{
+		ID3D11DeviceContext_Map(
+			renderer->context,
+			(ID3D11Resource*) d3dBuffer->handle,
+			0,
+			options == FNA3D_SETDATAOPTIONS_NOOVERWRITE ?
+				D3D11_MAP_WRITE_NO_OVERWRITE :
+				D3D11_MAP_WRITE_DISCARD,
+			0,
+			&subres
+		);
+		SDL_memcpy(
+			(unsigned char*) subres.pData + offsetInBytes,
+			data,
+			dataLen
+		);
+		ID3D11DeviceContext_Unmap(
+			renderer->context,
+			(ID3D11Resource*) d3dBuffer->handle,
+			0
+		);
+	}
+	else
+	{
+		ID3D11DeviceContext_UpdateSubresource(
+			renderer->context,
+			(ID3D11Resource*) d3dBuffer->handle,
+			0,
+			&dstBox,
+			data,
+			dataLen,
+			dataLen
+		);
+	}
 }
 
 static void D3D11_GetVertexBufferData(
@@ -1976,8 +2038,29 @@ static FNA3D_Buffer* D3D11_GenIndexBuffer(
 	int32_t indexCount,
 	FNA3D_IndexElementSize indexElementSize
 ) {
-	/* TODO */
-	return NULL;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Buffer *result = (D3D11Buffer*) SDL_malloc(sizeof(D3D11Buffer));
+	D3D11_BUFFER_DESC desc;
+
+	/* Initialize the descriptor */
+	desc.ByteWidth = indexCount * IndexSize(indexElementSize);
+	desc.Usage = dynamic ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_DEFAULT;
+	desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	desc.CPUAccessFlags = dynamic ? D3D11_CPU_ACCESS_WRITE : 0;
+	desc.MiscFlags = 0;
+	desc.StructureByteStride = 0;
+
+	/* Make the buffer */
+	ID3D11Device_CreateBuffer(
+		renderer->device,
+		&desc,
+		NULL,
+		&result->handle
+	);
+
+	/* Return the result */
+	result->dynamic = dynamic;
+	return (FNA3D_Buffer*) result;
 }
 
 static void D3D11_AddDisposeIndexBuffer(
@@ -1995,7 +2078,46 @@ static void D3D11_SetIndexBufferData(
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Buffer *d3dBuffer = (D3D11Buffer*) buffer;
+	D3D11_MAPPED_SUBRESOURCE subres = {0, 0, 0};
+	D3D11_BOX dstBox = {offsetInBytes, 0, 0, offsetInBytes + dataLength, 1, 1};
+
+	if (d3dBuffer->dynamic)
+	{
+		ID3D11DeviceContext_Map(
+			renderer->context,
+			(ID3D11Resource*) d3dBuffer->handle,
+			0,
+			options == FNA3D_SETDATAOPTIONS_NOOVERWRITE ?
+				D3D11_MAP_WRITE_NO_OVERWRITE :
+				D3D11_MAP_WRITE_DISCARD,
+			0,
+			&subres
+		);
+		SDL_memcpy(
+			(unsigned char*) subres.pData + offsetInBytes,
+			data,
+			dataLength
+		);
+		ID3D11DeviceContext_Unmap(
+			renderer->context,
+			(ID3D11Resource*) d3dBuffer->handle,
+			0
+		);
+	}
+	else
+	{
+		ID3D11DeviceContext_UpdateSubresource(
+			renderer->context,
+			(ID3D11Resource*) d3dBuffer->handle,
+			0,
+			&dstBox,
+			data,
+			dataLength,
+			dataLength
+		);
+	}
 }
 
 static void D3D11_GetIndexBufferData(
