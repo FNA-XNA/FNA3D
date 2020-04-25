@@ -151,23 +151,33 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	uint8_t syncInterval;
 
 	/* Blend State */
-	FNA3D_Color blendFactor;
+	ID3D11BlendState *blendState;
+	float blendFactor[4];
 	int32_t multiSampleMask;
+
+	/* Depth Stencil State */
+	ID3D11DepthStencilState *depthStencilState;
+	int32_t stencilRef;
+
+	/* Rasterizer State */
+	ID3D11RasterizerState *rasterizerState;
 
 	/* Textures */
 	D3D11Texture *textures[MAX_TEXTURE_SAMPLERS];
 	ID3D11SamplerState *samplers[MAX_TEXTURE_SAMPLERS];
-	uint8_t textureNeedsUpdate[MAX_TEXTURE_SAMPLERS];
-	uint8_t samplerNeedsUpdate[MAX_TEXTURE_SAMPLERS];
 
-	/* Depth Stencil State */
-	int32_t stencilRef;
+	/* Vertex Buffer Binding Caches */
+	ID3D11InputLayout *inputLayout;
+
+	/* Some vertex declarations may have overlapping attributes :/ */
+	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 
 	/* Resource Caches */
 	StateHashMap *blendStateCache;
 	StateHashMap *depthStencilStateCache;
 	StateHashMap *rasterizerStateCache;
 	StateHashMap *samplerStateCache;
+	UInt64HashMap *inputLayoutCache;
 
 	/* Render Targets */
 	int32_t numRenderTargets;
@@ -230,7 +240,7 @@ static DXGI_FORMAT XNAToD3D_DepthFormat[] =
 static LPCSTR XNAToD3D_VertexAttribSemanticName[] =
 {
 	"SV_POSITION",			/* VertexElementUsage.Position */
-	"SV_TARGET",			/* VertexElementUsage.Color */
+	"COLOR",			/* VertexElementUsage.Color */
 	"TEXCOORD",			/* VertexElementUsage.TextureCoordinate */
 	"NORMAL",			/* VertexElementUsage.Normal */
 	"BINORMAL",			/* VertexElementUsage.Binormal */
@@ -246,7 +256,7 @@ static LPCSTR XNAToD3D_VertexAttribSemanticName[] =
 
 static DXGI_FORMAT XNAToD3D_VertexAttribFormat[] =
 {
-	DXGI_FORMAT_R16G16_FLOAT,	/* VertexElementFormat.Single */
+	DXGI_FORMAT_R32_FLOAT,		/* VertexElementFormat.Single */
 	DXGI_FORMAT_R32G32_FLOAT,	/* VertexElementFormat.Vector2 */
 	DXGI_FORMAT_R32G32B32_FLOAT,	/* VertexElementFormat.Vector3 */
 	DXGI_FORMAT_R32G32B32A32_FLOAT,	/* VertexElementFormat.Vector4 */
@@ -465,32 +475,35 @@ static ID3D11BlendState* FetchBlendState(
 		state->alphaSourceBlend == FNA3D_BLEND_ONE &&
 		state->alphaDestinationBlend == FNA3D_BLEND_ZERO
 	);
-	desc.RenderTarget[0].BlendOp = XNAToD3D_BlendOperation[
-		state->colorBlendFunction
-	];
-	desc.RenderTarget[0].BlendOpAlpha = XNAToD3D_BlendOperation[
-		state->alphaBlendFunction
-	];
-	desc.RenderTarget[0].DestBlend = XNAToD3D_BlendMode[
-		state->colorDestinationBlend
-	];
-	desc.RenderTarget[0].DestBlendAlpha = XNAToD3D_BlendMode[
-		state->alphaDestinationBlend
-	];
-	desc.RenderTarget[0].RenderTargetWriteMask = (
-		(uint32_t) state->colorWriteEnable
-	);
-	/* FIXME: For colorWriteEnable1/2/3, we'll need
-	 * to loop over all render target descriptors
-	 * and apply the same state, except for the mask.
-	 * Ugh. -caleb
-	 */
-	desc.RenderTarget[0].SrcBlend = XNAToD3D_BlendMode[
-		state->colorSourceBlend
-	];
-	desc.RenderTarget[0].SrcBlendAlpha = XNAToD3D_BlendMode[
-		state->alphaSourceBlend
-	];
+	if (desc.RenderTarget[0].BlendEnable)
+	{
+		desc.RenderTarget[0].BlendOp = XNAToD3D_BlendOperation[
+			state->colorBlendFunction
+		];
+		desc.RenderTarget[0].BlendOpAlpha = XNAToD3D_BlendOperation[
+			state->alphaBlendFunction
+		];
+		desc.RenderTarget[0].DestBlend = XNAToD3D_BlendMode[
+			state->colorDestinationBlend
+		];
+		desc.RenderTarget[0].DestBlendAlpha = XNAToD3D_BlendMode[
+			state->alphaDestinationBlend
+		];
+		desc.RenderTarget[0].RenderTargetWriteMask = (
+			(uint32_t) state->colorWriteEnable
+		);
+		desc.RenderTarget[0].SrcBlend = XNAToD3D_BlendMode[
+			state->colorSourceBlend
+		];
+		desc.RenderTarget[0].SrcBlendAlpha = XNAToD3D_BlendMode[
+			state->alphaSourceBlend
+		];
+		/* FIXME: For colorWriteEnable1/2/3, we'll need
+		 * to loop over all render target descriptors
+		 * and apply the same state, except for the mask.
+		 * Ugh. -caleb
+		 */
+	}
 
 	/* Bake the state! */
 	ID3D11Device_CreateBlendState(
@@ -645,7 +658,7 @@ static ID3D11SamplerState* FetchSamplerState(
 	desc.BorderColor[1] = 1.0f;
 	desc.BorderColor[2] = 1.0f;
 	desc.BorderColor[3] = 1.0f;
-	desc.ComparisonFunc = D3D11_COMPARISON_NEVER; /* FIXME: What should this be? */
+	desc.ComparisonFunc = D3D11_COMPARISON_ALWAYS; /* FIXME: What should this be? */
 	desc.Filter = XNAToD3D_Filter[state->filter];
 	desc.MaxAnisotropy = (uint32_t) state->maxAnisotropy;
 	desc.MaxLOD = D3D11_FLOAT32_MAX;
@@ -661,6 +674,141 @@ static ID3D11SamplerState* FetchSamplerState(
 	hmput(renderer->samplerStateCache, hash, result);
 
 	/* Return the state! */
+	return result;
+}
+
+static ID3D11InputLayout* FetchBindingsInputLayout(
+	D3D11Renderer *renderer,
+	FNA3D_VertexBufferBinding *bindings,
+	int32_t numBindings
+) {
+	uint64_t hash;
+	int32_t i, j, k, usage, index, attribLoc;
+	FNA3D_VertexDeclaration vertexDeclaration;
+	FNA3D_VertexElement element;
+	D3D11_INPUT_ELEMENT_DESC *d3dElement;
+	D3D11_INPUT_ELEMENT_DESC *elements;
+	int32_t numElements, elementBufferSize;
+	MOJOSHADER_d3d11Shader *vertexShader, *blah;
+	HRESULT res;
+	ID3D11InputLayout *result;
+
+	/* We need the vertex shader... */
+	MOJOSHADER_d3d11GetBoundShaders(&vertexShader, &blah);
+
+	/* Can we just reuse an existing input layout? */
+	hash = GetVertexBufferBindingsHash(
+		bindings,
+		numBindings,
+		vertexShader
+	);
+	result = hmget(renderer->inputLayoutCache, hash);
+	if (result != NULL)
+	{
+		/* This input layout has already been cached! */
+		return result;
+	}
+
+	/* We have to make a new input layout... */
+
+	/* Allocate an array for the elements */
+	numElements = 0;
+	for (i = 0; i < numBindings; i += 1)
+	{
+		numElements += bindings[i].vertexDeclaration.elementCount;
+	}
+	elementBufferSize = numElements * sizeof(D3D11_INPUT_ELEMENT_DESC);
+	elements = (D3D11_INPUT_ELEMENT_DESC*) SDL_malloc(elementBufferSize);
+	SDL_memset(elements, '\0', elementBufferSize);
+
+	/* There's this weird case where you can have overlapping
+	 * vertex usage/index combinations. It seems like the first
+	 * attrib gets priority, so whenever a duplicate attribute
+	 * exists, give it the next available index. If that fails, we
+	 * have to crash :/
+	 * -flibit
+	 */
+	SDL_memset(renderer->attrUse, '\0', sizeof(renderer->attrUse));
+	for (i = 0; i < numBindings; i += 1)
+	{
+		/* Describe vertex attributes */
+		vertexDeclaration = bindings[i].vertexDeclaration;
+		for (j = 0; j < vertexDeclaration.elementCount; j += 1)
+		{
+			element = vertexDeclaration.elements[j];
+			usage = element.vertexElementUsage;
+			index = element.usageIndex;
+			if (renderer->attrUse[usage][index])
+			{
+				index = -1;
+				for (k = 0; k < 16; k += 1)
+				{
+					if (!renderer->attrUse[usage][k])
+					{
+						index = k;
+						break;
+					}
+				}
+				if (index < 0)
+				{
+					FNA3D_LogError(
+						"Vertex usage collision!"
+					);
+				}
+			}
+			renderer->attrUse[usage][index] = 1;
+			attribLoc = MOJOSHADER_d3d11GetVertexAttribLocation(
+				vertexShader,
+				VertexAttribUsage(usage),
+				index
+			);
+			if (attribLoc == -1)
+			{
+				/* Stream not in use! */
+				continue;
+			}
+			d3dElement = &elements[attribLoc];
+			d3dElement->SemanticName = XNAToD3D_VertexAttribSemanticName[usage];
+			d3dElement->SemanticIndex = index;
+			d3dElement->Format = XNAToD3D_VertexAttribFormat[
+				element.vertexElementFormat
+			];
+			d3dElement->InputSlot = i;
+			d3dElement->AlignedByteOffset = element.offset;
+			d3dElement->InputSlotClass = (
+				bindings[i].instanceFrequency > 0 ?
+					D3D11_INPUT_PER_INSTANCE_DATA :
+					D3D11_INPUT_PER_VERTEX_DATA
+			);
+			d3dElement->InstanceDataStepRate = (
+				bindings[i].instanceFrequency > 0 ?
+					bindings[i].instanceFrequency :
+					0
+			);
+		}
+	}
+
+	res = ID3D11Device_CreateInputLayout(
+		renderer->device,
+		elements,
+		numElements,
+		MOJOSHADER_d3d11GetBytecode(vertexShader),
+		MOJOSHADER_d3d11GetBytecodeLength(vertexShader),
+		&result
+	);
+	if (res < 0)
+	{
+		FNA3D_LogError(
+			"Could not compile input layout! Error: %x",
+			res
+		);
+	}
+
+	/* Clean up */
+	SDL_free(elements);
+
+	/* Return the new input layout! */
+	hmput(renderer->inputLayoutCache, hash, result);
 	return result;
 }
 
@@ -744,6 +892,175 @@ static void UpdateBackbufferVertexBuffer(
 	);
 }
 
+static void D3D11_SetRenderTargets(
+	FNA3D_Renderer *driverData,
+	FNA3D_RenderTargetBinding *renderTargets,
+	int32_t numRenderTargets,
+	FNA3D_Renderbuffer *depthStencilBuffer,
+	FNA3D_DepthFormat depthFormat
+);
+static void BlitFramebuffer(D3D11Renderer *renderer)
+{
+	const uint32_t vertexStride = 16;
+	const uint32_t offsets[] = { 0 };
+	float blendFactor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+	ID3D11VertexShader *oldVertexShader;
+	ID3D11PixelShader *oldPixelShader;
+	uint32_t whatever;
+	int32_t i;
+
+	/* Push the current shader state */
+	ID3D11DeviceContext_VSGetShader(
+		renderer->context,
+		&oldVertexShader,
+		NULL,
+		&whatever
+	);
+	ID3D11DeviceContext_PSGetShader(
+		renderer->context,
+		&oldPixelShader,
+		NULL,
+		&whatever
+	);
+	/* FIXME: Need to call Release on the returned resources */
+
+	/* Bind the swapchain render target */
+	ID3D11DeviceContext_OMSetRenderTargets(
+		renderer->context,
+		1,
+		&renderer->swapchainRTView,
+		NULL
+	);
+
+	/* Bind the vertex and index buffers */
+	ID3D11DeviceContext_IASetVertexBuffers(
+		renderer->context,
+		0,
+		1,
+		&renderer->fauxBlitVertexBuffer,
+		&vertexStride,
+		offsets
+	);
+	ID3D11DeviceContext_IASetIndexBuffer(
+		renderer->context,
+		renderer->fauxBlitIndexBuffer,
+		DXGI_FORMAT_R16_UINT,
+		0
+	);
+
+	/* Set the rest of the pipeline state */
+	ID3D11DeviceContext_OMSetBlendState(
+		renderer->context,
+		renderer->fauxBlendState,
+		blendFactor,
+		0xffffffff
+	);
+	ID3D11DeviceContext_OMSetDepthStencilState(
+		renderer->context,
+		NULL,
+		0
+	);
+	ID3D11DeviceContext_RSSetState(
+		renderer->context,
+		renderer->fauxRasterizer
+	);
+	ID3D11DeviceContext_IASetInputLayout(
+		renderer->context,
+		renderer->fauxBlitLayout
+	);
+	ID3D11DeviceContext_VSSetShader(
+		renderer->context,
+		renderer->fauxBlitVS,
+		NULL,
+		0
+	);
+	ID3D11DeviceContext_PSSetShader(
+		renderer->context,
+		renderer->fauxBlitPS,
+		NULL,
+		0
+	);
+	ID3D11DeviceContext_PSSetShaderResources(
+		renderer->context,
+		0,
+		1,
+		&renderer->fauxBlitShaderResourceView
+	);
+	ID3D11DeviceContext_PSSetSamplers(
+		renderer->context,
+		0,
+		1,
+		&renderer->fauxBlitSampler
+	);
+	ID3D11DeviceContext_IASetPrimitiveTopology(
+		renderer->context,
+		D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
+	);
+
+	/* Draw the faux backbuffer! */
+	ID3D11DeviceContext_DrawIndexed(renderer->context, 6, 0, 0);
+
+	/* Restore the old state */
+	ID3D11DeviceContext_OMSetBlendState(
+		renderer->context,
+		renderer->blendState,
+		renderer->blendFactor,
+		renderer->multiSampleMask
+	);
+	ID3D11DeviceContext_OMSetDepthStencilState(
+		renderer->context,
+		renderer->depthStencilState,
+		renderer->stencilRef
+	);
+	ID3D11DeviceContext_RSSetState(
+		renderer->context,
+		renderer->rasterizerState
+	);
+	ID3D11DeviceContext_IASetInputLayout(
+		renderer->context,
+		renderer->inputLayout
+	);
+	ID3D11DeviceContext_VSSetShader(
+		renderer->context,
+		oldVertexShader,
+		NULL,
+		0
+	);
+	ID3D11DeviceContext_PSSetShader(
+		renderer->context,
+		oldPixelShader,
+		NULL,
+		0
+	);
+	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
+	{
+		if (renderer->textures[i] != &NullTexture)
+		{
+			ID3D11DeviceContext_PSSetShaderResources(
+				renderer->context,
+				i,
+				1,
+				&renderer->textures[i]->shaderView
+			);
+			ID3D11DeviceContext_PSSetSamplers(
+				renderer->context,
+				i,
+				1,
+				&renderer->samplers[i]
+			);
+		}
+	}
+
+	/* Bind the faux-backbuffer */
+	D3D11_SetRenderTargets(
+		(FNA3D_Renderer*) renderer,
+		NULL,
+		0,
+		NULL,
+		FNA3D_DEPTHFORMAT_NONE
+	);
+}
+
 static void D3D11_SwapBuffers(
 	FNA3D_Renderer *driverData,
 	FNA3D_Rect *sourceRectangle,
@@ -753,9 +1070,6 @@ static void D3D11_SwapBuffers(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	int32_t drawableWidth, drawableHeight;
 	FNA3D_Rect srcRect, dstRect;
-	const uint32_t vertexStride = 16;
-	const uint32_t offsets[] = { 0 };
-	float blendFactor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
 
 	/* Determine the regions to present */
 	D3D11_GetDrawableSize(
@@ -807,76 +1121,8 @@ static void D3D11_SwapBuffers(
 		);
 	}
 
-	/* Bind the backbuffer render target */
-	ID3D11DeviceContext_OMSetRenderTargets(
-		renderer->context,
-		1,
-		&renderer->swapchainRTView,
-		NULL
-	);
-
-	/* Bind the vertex and index buffers */
-	ID3D11DeviceContext_IASetVertexBuffers(
-		renderer->context,
-		0,
-		1,
-		&renderer->fauxBlitVertexBuffer,
-		&vertexStride,
-		offsets
-	);
-	ID3D11DeviceContext_IASetIndexBuffer(
-		renderer->context,
-		renderer->fauxBlitIndexBuffer,
-		DXGI_FORMAT_R16_UINT,
-		0
-	);
-
-	/* Set the rest of the pipeline state */
-	ID3D11DeviceContext_OMSetBlendState(
-		renderer->context,
-		renderer->fauxBlendState,
-		blendFactor,
-		0xffffffff
-	);
-	ID3D11DeviceContext_RSSetState(
-		renderer->context,
-		renderer->fauxRasterizer
-	);
-	ID3D11DeviceContext_IASetInputLayout(
-		renderer->context,
-		renderer->fauxBlitLayout
-	);
-	ID3D11DeviceContext_VSSetShader(
-		renderer->context,
-		renderer->fauxBlitVS,
-		NULL,
-		0
-	);
-	ID3D11DeviceContext_PSSetShader(
-		renderer->context,
-		renderer->fauxBlitPS,
-		NULL,
-		0
-	);
-	ID3D11DeviceContext_PSSetShaderResources(
-		renderer->context,
-		0,
-		1,
-		&renderer->fauxBlitShaderResourceView
-	);
-	ID3D11DeviceContext_PSSetSamplers(
-		renderer->context,
-		0,
-		1,
-		&renderer->fauxBlitSampler
-	);
-	ID3D11DeviceContext_IASetPrimitiveTopology(
-		renderer->context,
-		D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
-	);
-
-	/* Draw the faux backbuffer! */
-	ID3D11DeviceContext_DrawIndexed(renderer->context, 6, 0, 0);
+	/* "Blit" the faux-backbuffer to the swapchain image */
+	BlitFramebuffer(renderer);
 
 	/* Present! */
 	IDXGISwapChain_Present(renderer->swapchain, renderer->syncInterval, 0);
@@ -971,7 +1217,6 @@ static void D3D11_DrawIndexedPrimitives(
 	FNA3D_Buffer *indices,
 	FNA3D_IndexElementSize indexElementSize
 ) {
-	/* FIXME: Needs testing! */
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 
 	/* Bind index buffer */
@@ -992,7 +1237,7 @@ static void D3D11_DrawIndexedPrimitives(
 	ID3D11DeviceContext_DrawIndexed(
 		renderer->context,
 		PrimitiveVerts(primitiveType, primitiveCount),
-		(uint32_t) startIndex, /* FIXME: Is this right? */
+		(uint32_t) startIndex,
 		baseVertex
 	);
 }
@@ -1127,7 +1372,10 @@ static void D3D11_GetBlendFactor(
 	FNA3D_Color *blendFactor
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	SDL_memcpy(blendFactor, &renderer->blendFactor, sizeof(FNA3D_Color));
+	blendFactor->r = (uint8_t) (renderer->blendFactor[0] * 255);
+	blendFactor->g = (uint8_t) (renderer->blendFactor[1] * 255);
+	blendFactor->b = (uint8_t) (renderer->blendFactor[2] * 255);
+	blendFactor->a = (uint8_t) (renderer->blendFactor[3] * 255);
 }
 
 static void D3D11_SetBlendFactor(
@@ -1135,7 +1383,10 @@ static void D3D11_SetBlendFactor(
 	FNA3D_Color *blendFactor
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	SDL_memcpy(&renderer->blendFactor, blendFactor, sizeof(FNA3D_Color));
+	renderer->blendFactor[0] = blendFactor->r / 255.0f;
+	renderer->blendFactor[1] = blendFactor->g / 255.0f;
+	renderer->blendFactor[2] = blendFactor->b / 255.0f;
+	renderer->blendFactor[3] = blendFactor->a / 255.0f;
 }
 
 static int32_t D3D11_GetMultiSampleMask(FNA3D_Renderer *driverData)
@@ -1169,19 +1420,14 @@ static void D3D11_SetBlendState(
 	FNA3D_BlendState *blendState
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	float blendFactor[] =
-	{
-		renderer->blendFactor.r / 255.0f,
-		renderer->blendFactor.g / 255.0f,
-		renderer->blendFactor.b / 255.0f,
-		renderer->blendFactor.a / 255.0f
-	};
+	ID3D11BlendState *bs = FetchBlendState(renderer, blendState);
 	ID3D11DeviceContext_OMSetBlendState(
 		renderer->context,
-		FetchBlendState(renderer, blendState),
-		blendFactor,
+		bs,
+		renderer->blendFactor,
 		(uint32_t) renderer->multiSampleMask
 	);
+	renderer->blendState = bs;
 }
 
 static void D3D11_SetDepthStencilState(
@@ -1189,11 +1435,13 @@ static void D3D11_SetDepthStencilState(
 	FNA3D_DepthStencilState *depthStencilState
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	ID3D11DepthStencilState *ds = FetchDepthStencilState(renderer, depthStencilState);
 	ID3D11DeviceContext_OMSetDepthStencilState(
 		renderer->context,
-		FetchDepthStencilState(renderer, depthStencilState),
+		ds,
 		(uint32_t) renderer->stencilRef
 	);
+	renderer->depthStencilState = ds;
 }
 
 static void D3D11_ApplyRasterizerState(
@@ -1201,10 +1449,12 @@ static void D3D11_ApplyRasterizerState(
 	FNA3D_RasterizerState *rasterizerState
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	ID3D11RasterizerState *rs = FetchRasterizerState(renderer, rasterizerState);
 	ID3D11DeviceContext_RSSetState(
 		renderer->context,
-		FetchRasterizerState(renderer, rasterizerState)
+		rs
 	);
+	renderer->rasterizerState = rs;
 }
 
 static void D3D11_VerifySampler(
@@ -1216,25 +1466,25 @@ static void D3D11_VerifySampler(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
 	ID3D11SamplerState *d3dSamplerState;
+	void* nullResource[1] = {NULL};
 
 	if (texture == NULL)
 	{
 		if (renderer->textures[index] != &NullTexture)
 		{
-			renderer->textures[index] = &NullTexture;
-			renderer->textureNeedsUpdate[index] = 1;
-		}
-		if (renderer->samplers[index] == NULL)
-		{
-			/* Some shaders require non-null samplers
-			 * even if they aren't actually used.
-			 * -caleb
-			 */
-			renderer->samplers[index] = FetchSamplerState(
-				renderer,
-				sampler
+			ID3D11DeviceContext_PSSetShaderResources(
+				renderer->context,
+				index,
+				1,
+				(ID3D11ShaderResourceView**) nullResource
 			);
-			renderer->samplerNeedsUpdate[index] = 1;
+			ID3D11DeviceContext_PSSetSamplers(
+				renderer->context,
+				index,
+				1,
+				(ID3D11SamplerState**) nullResource
+			);
+			renderer->textures[index] = &NullTexture;
 		}
 		return;
 	}
@@ -1255,8 +1505,13 @@ static void D3D11_VerifySampler(
 	/* Bind the correct texture */
 	if (d3dTexture != renderer->textures[index])
 	{
+		ID3D11DeviceContext_PSSetShaderResources(
+			renderer->context,
+			index,
+			1,
+			&d3dTexture->shaderView
+		);
 		renderer->textures[index] = d3dTexture;
-		renderer->textureNeedsUpdate[index] = 1;
 	}
 
 	/* Update the texture sampler info */
@@ -1275,41 +1530,17 @@ static void D3D11_VerifySampler(
 	);
 	if (d3dSamplerState != renderer->samplers[index])
 	{
+		ID3D11DeviceContext_PSSetSamplers(
+			renderer->context,
+			index,
+			1,
+			&d3dSamplerState
+		);
 		renderer->samplers[index] = d3dSamplerState;
-		renderer->samplerNeedsUpdate[index] = 1;
 	}
 }
 
 /* Vertex State */
-
-static void BindResources(D3D11Renderer *renderer)
-{
-	/* Bind textures and their sampler states */
-	int32_t i;
-	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
-	{
-		if (renderer->textureNeedsUpdate[i])
-		{
-			ID3D11DeviceContext_PSSetShaderResources(
-				renderer->context,
-				i,
-				1,
-				&renderer->textures[i]->shaderView
-			);
-			renderer->textureNeedsUpdate[i] = 0;
-		}
-		if (renderer->samplerNeedsUpdate[i])
-		{
-			ID3D11DeviceContext_PSSetSamplers(
-				renderer->context,
-				i,
-				1,
-				&renderer->samplers[i]
-			);
-			renderer->samplerNeedsUpdate[i] = 0;
-		}
-	}
-}
 
 static void D3D11_ApplyVertexBufferBindings(
 	FNA3D_Renderer *driverData,
@@ -1319,8 +1550,46 @@ static void D3D11_ApplyVertexBufferBindings(
 	int32_t baseVertex
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	/* TODO */
-	BindResources(renderer);
+	D3D11Buffer *vertexBuffer;
+	ID3D11InputLayout *inputLayout;
+	int32_t i, offset;
+
+	/* Translate the bindings array into an input layout */
+	inputLayout = FetchBindingsInputLayout(
+		renderer,
+		bindings,
+		numBindings
+	);
+	ID3D11DeviceContext_IASetInputLayout(
+		renderer->context,
+		inputLayout
+	);
+	renderer->inputLayout = inputLayout;
+
+	/* Bind the vertex buffers */
+	for (i = 0; i < numBindings; i += 1)
+	{
+		vertexBuffer = (D3D11Buffer*) bindings[i].vertexBuffer;
+		if (vertexBuffer == NULL)
+		{
+			continue;
+		}
+
+		offset = (
+			bindings[i].vertexOffset *
+			bindings[i].vertexDeclaration.vertexStride
+		);
+		ID3D11DeviceContext_IASetVertexBuffers(
+			renderer->context,
+			i,
+			1,
+			&vertexBuffer->handle,
+			(uint32_t*) &bindings[i].vertexDeclaration.vertexStride,
+			(uint32_t*) &offset
+		);
+
+		/* TODO: ldVertexBuffers */
+	}
 }
 
 static void D3D11_ApplyVertexDeclaration(
@@ -2744,6 +3013,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 		D3D_FEATURE_LEVEL_10_0
 	};
 	uint32_t flags, supportsDxt3, supportsDxt5;
+	int32_t i;
 	HRESULT ret;
 
 	/* Allocate and zero out the renderer */
@@ -2845,6 +3115,20 @@ static FNA3D_Device* D3D11_CreateDevice(
 		NULL,
 		NULL
 	);
+
+	/* Initialize texture and sampler collections */
+	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
+	{
+		renderer->textures[i] = &NullTexture;
+		renderer->samplers[i] = NULL;
+	}
+
+	/* Initialize renderer members not covered by SDL_memset('\0') */
+	renderer->blendFactor[0] = 1.0f;
+	renderer->blendFactor[1] = 1.0f;
+	renderer->blendFactor[2] = 1.0f;
+	renderer->blendFactor[3] = 1.0f;
+	renderer->multiSampleMask = -1; /* AKA 0xFFFFFFFF, ugh -flibit */
 
 	/* Create and initialize the faux-backbuffer */
 	renderer->backbuffer = (D3D11Backbuffer*) SDL_malloc(
