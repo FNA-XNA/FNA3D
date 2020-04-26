@@ -232,7 +232,7 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 
 	/* Textures */
 	int32_t numTextureSlots;
-	OpenGLTexture *textures[MAX_TEXTURE_SAMPLERS + MAX_VERTEX_TEXTURE_SAMPLERS];
+	OpenGLTexture *textures[MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS];
 
 	/* Buffer Binding Cache */
 	GLuint currentVertexBuffer;
@@ -5561,7 +5561,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	renderer->glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &numSamplers);
 	numSamplers = SDL_min(
 		numSamplers,
-		MAX_TEXTURE_SAMPLERS + MAX_VERTEX_TEXTURE_SAMPLERS
+		MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS
 	);
 	for (i = 0; i < numSamplers; i += 1)
 	{

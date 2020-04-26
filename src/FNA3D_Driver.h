@@ -195,6 +195,7 @@ static inline int32_t IndexSize(FNA3D_IndexElementSize size)
 /* XNA GraphicsDevice Limits */
 
 #define MAX_TEXTURE_SAMPLERS		16
+#define MAX_VERTEXTEXTURE_SAMPLERS	4
 #define MAX_VERTEX_ATTRIBUTES		16
 #define MAX_BOUND_VERTEX_BUFFERS	16
 #define MAX_RENDERTARGET_BINDINGS	4
