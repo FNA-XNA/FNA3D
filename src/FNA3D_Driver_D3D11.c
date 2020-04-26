@@ -1995,7 +1995,6 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 	D3D11Texture *result;
 	DXGI_SAMPLE_DESC sampleDesc = {1, 0};
 	D3D11_TEXTURE2D_DESC desc;
-	D3D11_SHADER_RESOURCE_VIEW_DESC shaderViewDesc;
 	D3D11_RENDER_TARGET_VIEW_DESC rtViewDesc;
 
 	/* Initialize D3D11Texture */
@@ -2034,14 +2033,10 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 	result->anisotropy = 4.0f;
 
 	/* Create the shader resource view */
-	shaderViewDesc.Format = XNAToD3D_TextureFormat[result->format];
-	shaderViewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-	shaderViewDesc.Texture2D.MipLevels = levelCount;
-	shaderViewDesc.Texture2D.MostDetailedMip = 0;
 	ID3D11Device_CreateShaderResourceView(
 		renderer->device,
 		result->handle,
-		&shaderViewDesc,
+		NULL,
 		&result->shaderView
 	);
 
@@ -2199,7 +2194,7 @@ static void D3D11_SetTextureData2D(
 		&dstBox,
 		data,
 		BytesPerRow(w, format),
-		BytesPerDepthSlice(w, h, format)
+		0
 	);
 }
 
