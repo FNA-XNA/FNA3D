@@ -150,6 +150,20 @@ static VulkanTexture NullTexture =
 	NULL
 };
 
+typedef struct VulkanBuffer
+{
+	VkBuffer *handle;
+	void* contents;
+	int32_t size;
+	int32_t internalOffset;
+	int32_t internalBufferSize;
+	int32_t prevDataLength;
+	int32_t prevInternalOffset;
+	FNA3D_BufferUsage usage;
+	uint8_t boundThisFrame;
+	VulkanBuffer *next; /* linked list */
+} VulkanBuffer;
+
 typedef struct FNAVulkanRenderer
 {
 	FNA3D_Device *parentDevice;
@@ -233,6 +247,7 @@ typedef struct FNAVulkanRenderer
 	uint8_t shouldClearDepth;
 	uint8_t shouldClearStencil;
 	uint8_t needNewRenderPass;
+	uint8_t pipelineBoundThisFrame;
 
 	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
@@ -248,6 +263,10 @@ typedef struct FNAVulkanRenderer
 /* forward declarations */
 
 static void BeginRenderPass(
+	FNAVulkanRenderer *renderer
+);
+
+static void BindPipeline(
 	FNAVulkanRenderer *renderer
 );
 
@@ -337,6 +356,12 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
 #undef VULKAN_GLOBAL_FUNCTION
 
 /* translations arrays go here */
+
+static VkIndexType XNAToVK_IndexType[] = 
+{
+	VK_INDEX_TYPE_UINT16, /* FNA3D_INDEXELEMENTSIZE_16BIT */
+	VK_INDEX_TYPE_UINT32 /* FNA3D_INDEXELEMENTSIZE_32BIT */
+};
 
 static SurfaceFormatMapping XNAToVK_SurfaceFormat[] =
 {
@@ -705,6 +730,16 @@ static void LogVulkanResult(
 }
 
 /* Command Functions */
+
+static void BindPipeline(FNAVulkanRenderer *renderer)
+{
+	renderer->vkCmdBindPipeline(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		FetchPipeline(renderer)
+	);
+	renderer->pipelineBoundThisFrame = 1;
+}
 
 static void SetReferenceStencilValueCommand(FNAVulkanRenderer *renderer)
 {
@@ -1734,6 +1769,7 @@ static void BeginRenderPass(
 	}
 
 	renderer->renderPassInProgress = 1;
+	renderer->pipelineBoundThisFrame = 0;
 
 	VkViewport viewport;
 	viewport.x = renderer->viewport.x;
@@ -2131,6 +2167,41 @@ void VULKAN_DrawInstancedPrimitives(
 	FNA3D_IndexElementSize indexElementSize
 ) {
 	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanBuffer *indexBuffer = (VulkanBuffer*) indices;
+	int32_t totalIndexOffset;
+
+	indexBuffer->boundThisFrame = 1;
+	totalIndexOffset = (
+		(startIndex * IndexSize(indexElementSize)) +
+		indexBuffer->internalOffset
+	);
+
+	if (	!renderer->pipelineBoundThisFrame ||
+			primitiveType != renderer->currentPrimitiveType	)
+	{
+		renderer->currentPrimitiveType = primitiveType;
+
+		/* topology is fixed in the pipeline so we need to
+		 * fetch a new pipeline if it changes -cosmonaut
+		 */
+		BindPipeline(renderer);
+	}
+
+	renderer->vkCmdBindIndexBuffer(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		indexBuffer->handle,
+		totalIndexOffset,
+		XNAToVK_IndexType[indexElementSize]
+	);
+
+	renderer->vkCmdDraw(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		numVertices,
+		instanceCount,
+		minVertexIndex,
+		0
+	);
 }
 
 void VULKAN_DrawPrimitives(
