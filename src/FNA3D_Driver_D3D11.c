@@ -1945,6 +1945,12 @@ static void DestroyFramebuffer(D3D11Renderer *renderer)
 		renderer->backbuffer->depthStencilView = NULL;
 		renderer->backbuffer->depthStencilBuffer = NULL;
 	}
+
+	if (renderer->swapchainRTView != NULL)
+	{
+		ID3D11RenderTargetView_Release(renderer->swapchainRTView);
+		renderer->swapchainRTView = NULL;
+	}
 }
 
 static void D3D11_ResetBackbuffer(
