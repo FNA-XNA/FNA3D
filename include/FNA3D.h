@@ -781,6 +781,21 @@ FNA3DAPI void FNA3D_VerifySampler(
 	FNA3D_SamplerState *sampler
 );
 
+/* Updates a vertex sampler slot with new texture/sampler data for future draw
+ * calls. This should only be called on slots that have modified texture/sampler
+ * state. Redundant calls may negatively affect performance!
+ *
+ * index:	The vertex sampler slot to update.
+ * texture:	The texture bound to this sampler.
+ * sampler:	The new parameters to use for this slot's texture sampling.
+ */
+FNA3DAPI void FNA3D_VerifyVertexSampler(
+	FNA3D_Device *device,
+	int32_t index,
+	FNA3D_Texture *texture,
+	FNA3D_SamplerState *sampler
+);
+
 /* Vertex State */
 
 /* Updates the vertex attribute state to read from a set of vertex buffers. This
@@ -1544,7 +1559,11 @@ FNA3DAPI uint8_t FNA3D_SupportsHardwareInstancing(FNA3D_Device *device);
 FNA3DAPI uint8_t FNA3D_SupportsNoOverwrite(FNA3D_Device *device);
 
 /* Returns the number of sampler slots supported by the renderer. */
-FNA3DAPI int32_t FNA3D_GetMaxTextureSlots(FNA3D_Device *device);
+FNA3DAPI void FNA3D_GetMaxTextureSlots(
+	FNA3D_Device *device,
+	int32_t *textures,
+	int32_t *vertexTextures
+);
 
 /* Return the highest multisample count supported for anti-aliasing. */
 FNA3DAPI int32_t FNA3D_GetMaxMultiSampleCount(FNA3D_Device *device);

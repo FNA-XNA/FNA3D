@@ -185,7 +185,9 @@ typedef struct ModernGLRenderer /* Cast FNA3D_Renderer* to this! */
 
 	/* Textures */
 	int32_t numTextureSlots;
-	ModernGLTexture *textures[MAX_TEXTURE_SAMPLERS];
+	int32_t numVertexTextureSlots;
+	int32_t vertexSamplerStart;
+	ModernGLTexture *textures[MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS];
 	GLuint samplers[MAX_TEXTURE_SAMPLERS];
 	FNA3D_TextureAddressMode samplersU[MAX_TEXTURE_SAMPLERS];
 	FNA3D_TextureAddressMode samplersV[MAX_TEXTURE_SAMPLERS];
@@ -672,7 +674,7 @@ static void MODERNGL_DestroyDevice(FNA3D_Device *device)
 	}
 
 	renderer->glDeleteSamplers(
-		renderer->numTextureSlots,
+		renderer->numTextureSlots + renderer->numVertexTextureSlots,
 		renderer->samplers
 	);
 
@@ -1806,6 +1808,21 @@ static void MODERNGL_VerifySampler(
 			sampler->mipMapLevelOfDetailBias
 		);
 	}
+}
+
+static void MODERNGL_VerifyVertexSampler(
+	FNA3D_Renderer *driverData,
+	int32_t index,
+	FNA3D_Texture *texture,
+	FNA3D_SamplerState *sampler
+) {
+	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
+	MODERNGL_VerifySampler(
+		driverData,
+		index +	renderer->vertexSamplerStart,
+		texture,
+		sampler
+	);
 }
 
 /* Vertex State */
@@ -3078,7 +3095,7 @@ static void MODERNGL_INTERNAL_DestroyTexture(
 			renderer->currentAttachments[i] = UINT32_MAX;
 		}
 	}
-	for (i = 0; i < renderer->numTextureSlots; i += 1)
+	for (i = 0; i < renderer->numTextureSlots + renderer->numVertexTextureSlots; i += 1)
 	{
 		if (renderer->textures[i] == texture)
 		{
@@ -4507,10 +4524,14 @@ static uint8_t MODERNGL_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 	return 1;
 }
 
-static int32_t MODERNGL_GetMaxTextureSlots(FNA3D_Renderer *driverData)
-{
+static void MODERNGL_GetMaxTextureSlots(
+	FNA3D_Renderer *driverData,
+	int32_t *textures,
+	int32_t *vertexTextures
+) {
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
-	return renderer->numTextureSlots;
+	*textures = renderer->numTextureSlots;
+	*vertexTextures = renderer->numVertexTextureSlots;
 }
 
 static int32_t MODERNGL_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
@@ -4948,7 +4969,10 @@ static FNA3D_Device* MODERNGL_CreateDevice(
 
 	/* Initialize texture collection array */
 	renderer->glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS, &numSamplers);
-	numSamplers = SDL_min(numSamplers, MAX_TEXTURE_SAMPLERS);
+	numSamplers = SDL_min(
+		numSamplers,
+		MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS
+	);
 	renderer->glCreateSamplers(numSamplers, renderer->samplers);
 	for (i = 0; i < numSamplers; i += 1)
 	{
@@ -4963,7 +4987,15 @@ static FNA3D_Device* MODERNGL_CreateDevice(
 		renderer->samplersMipped[i] = 0;
 		renderer->glBindSampler(i, renderer->samplers[i]);
 	}
-	renderer->numTextureSlots = numSamplers;
+	renderer->numTextureSlots = SDL_min(
+		numSamplers,
+		MAX_TEXTURE_SAMPLERS
+	);
+	renderer->numVertexTextureSlots = SDL_min(
+		SDL_max(numSamplers - MAX_TEXTURE_SAMPLERS, 0),
+		MAX_VERTEXTEXTURE_SAMPLERS
+	);
+	renderer->vertexSamplerStart = numSamplers - renderer->numVertexTextureSlots;
 
 	/* Initialize vertex attribute state arrays */
 	renderer->ldBaseVertex = -1;

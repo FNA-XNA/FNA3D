@@ -232,6 +232,8 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 
 	/* Textures */
 	int32_t numTextureSlots;
+	int32_t numVertexTextureSlots;
+	int32_t vertexSamplerStart;
 	OpenGLTexture *textures[MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS];
 
 	/* Buffer Binding Cache */
@@ -2034,6 +2036,21 @@ static void OPENGL_VerifySampler(
 	}
 }
 
+static void OPENGL_VerifyVertexSampler(
+	FNA3D_Renderer *driverData,
+	int32_t index,
+	FNA3D_Texture *texture,
+	FNA3D_SamplerState *sampler
+) {
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	OPENGL_VerifySampler(
+		driverData,
+		index +	renderer->vertexSamplerStart,
+		texture,
+		sampler
+	);
+}
+
 /* Vertex State */
 
 static inline void OPENGL_INTERNAL_FlushGLVertexAttributes(OpenGLRenderer *renderer)
@@ -3466,7 +3483,7 @@ static void OPENGL_INTERNAL_DestroyTexture(
 			renderer->currentAttachments[i] = UINT32_MAX;
 		}
 	}
-	for (i = 0; i < renderer->numTextureSlots; i += 1)
+	for (i = 0; i < renderer->numTextureSlots + renderer->numVertexTextureSlots; i += 1)
 	{
 		if (renderer->textures[i] == texture)
 		{
@@ -4907,10 +4924,14 @@ static uint8_t OPENGL_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 	return 0;
 }
 
-static int32_t OPENGL_GetMaxTextureSlots(FNA3D_Renderer *driverData)
-{
+static void OPENGL_GetMaxTextureSlots(
+	FNA3D_Renderer *driverData,
+	int32_t *textures,
+	int32_t *vertexTextures
+) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
-	return renderer->numTextureSlots;
+	*textures = renderer->numTextureSlots;
+	*vertexTextures = renderer->numVertexTextureSlots;
 }
 
 static int32_t OPENGL_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
@@ -5567,7 +5588,15 @@ FNA3D_Device* OPENGL_CreateDevice(
 	{
 		renderer->textures[i] = &NullTexture;
 	}
-	renderer->numTextureSlots = numSamplers;
+	renderer->numTextureSlots = SDL_min(
+		numSamplers,
+		MAX_TEXTURE_SAMPLERS
+	);
+	renderer->numVertexTextureSlots = SDL_min(
+		SDL_max(numSamplers - MAX_TEXTURE_SAMPLERS, 0),
+		MAX_VERTEXTEXTURE_SAMPLERS
+	);
+	renderer->vertexSamplerStart = numSamplers - renderer->numVertexTextureSlots;
 
 	/* Initialize vertex attribute state arrays */
 	renderer->ldBaseVertex = -1;

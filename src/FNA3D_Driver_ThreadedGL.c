@@ -65,58 +65,59 @@ struct GLThreadCommand
 	#define COMMAND_SETDEPTHSTENCILSTATE		19
 	#define COMMAND_APPLYRASTERIZERSTATE		20
 	#define COMMAND_VERIFYSAMPLER			21
-	#define COMMAND_APPLYVERTEXBUFFERBINDINGS	22
-	#define COMMAND_APPLYVERTEXDECLARATION		23
-	#define COMMAND_SETRENDERTARGETS		24
-	#define COMMAND_RESOLVETARGET			25
-	#define COMMAND_RESETBACKBUFFER			26
-	#define COMMAND_READBACKBUFFER			27
-	#define COMMAND_GETBACKBUFFERSIZE		28
-	#define COMMAND_GETBACKBUFFERSURFACEFORMAT	29
-	#define COMMAND_GETBACKBUFFERDEPTHFORMAT	30
-	#define COMMAND_GETBACKBUFFERMULTISAMPLECOUNT	31
-	#define COMMAND_CREATETEXTURE2D			32
-	#define COMMAND_CREATETEXTURE3D			33
-	#define COMMAND_CREATETEXTURECUBE		34
-	#define COMMAND_ADDDISPOSETEXTURE		35
-	#define COMMAND_SETTEXTUREDATA2D		36
-	#define COMMAND_SETTEXTUREDATA3D		37
-	#define COMMAND_SETTEXTUREDATACUBE		38
-	#define COMMAND_SETTEXTUREDATAYUV		39
-	#define COMMAND_GETTEXTUREDATA2D		40
-	#define COMMAND_GETTEXTUREDATA3D		41
-	#define COMMAND_GETTEXTUREDATACUBE		42
-	#define COMMAND_GENCOLORRENDERBUFFER		43
-	#define COMMAND_GENDEPTHSTENCILRENDERBUFFER	44
-	#define COMMAND_ADDDISPOSERENDERBUFFER		45
-	#define COMMAND_GENVERTEXBUFFER			46
-	#define COMMAND_ADDDISPOSEVERTEXBUFFER		47
-	#define COMMAND_SETVERTEXBUFFERDATA		48
-	#define COMMAND_GETVERTEXBUFFERDATA		49
-	#define COMMAND_GENINDEXBUFFER			50
-	#define COMMAND_ADDDISPOSEINDEXBUFFER		51
-	#define COMMAND_SETINDEXBUFFERDATA		52
-	#define COMMAND_GETINDEXBUFFERDATA		53
-	#define COMMAND_CREATEEFFECT			54
-	#define COMMAND_CLONEEFFECT			55
-	#define COMMAND_ADDDISPOSEEFFECT		56
-	#define COMMAND_SETEFFECTTECHNIQUE		57
-	#define COMMAND_APPLYEFFECT			58
-	#define COMMAND_BEGINPASSRESTORE		59
-	#define COMMAND_ENDPASSRESTORE			60
-	#define COMMAND_CREATEQUERY			61
-	#define COMMAND_ADDDISPOSEQUERY			62
-	#define COMMAND_QUERYBEGIN			63
-	#define COMMAND_QUERYEND			64
-	#define COMMAND_QUERYCOMPLETE			65
-	#define COMMAND_QUERYPIXELCOUNT			66
-	#define COMMAND_SUPPORTSDXT1			67
-	#define COMMAND_SUPPORTSS3TC			68
-	#define COMMAND_SUPPORTSHARDWAREINSTANCING	69
-	#define COMMAND_SUPPORTSNOOVERWRITE		70
-	#define COMMAND_GETMAXTEXTURESLOTS		71
-	#define COMMAND_GETMAXMULTISAMPLECOUNT		72
-	#define COMMAND_SETSTRINGMARKER			73
+	#define COMMAND_VERIFYVERTEXSAMPLER		22
+	#define COMMAND_APPLYVERTEXBUFFERBINDINGS	23
+	#define COMMAND_APPLYVERTEXDECLARATION		24
+	#define COMMAND_SETRENDERTARGETS		25
+	#define COMMAND_RESOLVETARGET			26
+	#define COMMAND_RESETBACKBUFFER			27
+	#define COMMAND_READBACKBUFFER			28
+	#define COMMAND_GETBACKBUFFERSIZE		29
+	#define COMMAND_GETBACKBUFFERSURFACEFORMAT	30
+	#define COMMAND_GETBACKBUFFERDEPTHFORMAT	31
+	#define COMMAND_GETBACKBUFFERMULTISAMPLECOUNT	32
+	#define COMMAND_CREATETEXTURE2D			33
+	#define COMMAND_CREATETEXTURE3D			34
+	#define COMMAND_CREATETEXTURECUBE		35
+	#define COMMAND_ADDDISPOSETEXTURE		36
+	#define COMMAND_SETTEXTUREDATA2D		37
+	#define COMMAND_SETTEXTUREDATA3D		38
+	#define COMMAND_SETTEXTUREDATACUBE		39
+	#define COMMAND_SETTEXTUREDATAYUV		40
+	#define COMMAND_GETTEXTUREDATA2D		41
+	#define COMMAND_GETTEXTUREDATA3D		42
+	#define COMMAND_GETTEXTUREDATACUBE		43
+	#define COMMAND_GENCOLORRENDERBUFFER		44
+	#define COMMAND_GENDEPTHSTENCILRENDERBUFFER	45
+	#define COMMAND_ADDDISPOSERENDERBUFFER		46
+	#define COMMAND_GENVERTEXBUFFER			47
+	#define COMMAND_ADDDISPOSEVERTEXBUFFER		48
+	#define COMMAND_SETVERTEXBUFFERDATA		49
+	#define COMMAND_GETVERTEXBUFFERDATA		50
+	#define COMMAND_GENINDEXBUFFER			51
+	#define COMMAND_ADDDISPOSEINDEXBUFFER		52
+	#define COMMAND_SETINDEXBUFFERDATA		53
+	#define COMMAND_GETINDEXBUFFERDATA		54
+	#define COMMAND_CREATEEFFECT			55
+	#define COMMAND_CLONEEFFECT			56
+	#define COMMAND_ADDDISPOSEEFFECT		57
+	#define COMMAND_SETEFFECTTECHNIQUE		58
+	#define COMMAND_APPLYEFFECT			59
+	#define COMMAND_BEGINPASSRESTORE		60
+	#define COMMAND_ENDPASSRESTORE			61
+	#define COMMAND_CREATEQUERY			62
+	#define COMMAND_ADDDISPOSEQUERY			63
+	#define COMMAND_QUERYBEGIN			64
+	#define COMMAND_QUERYEND			65
+	#define COMMAND_QUERYCOMPLETE			66
+	#define COMMAND_QUERYPIXELCOUNT			67
+	#define COMMAND_SUPPORTSDXT1			68
+	#define COMMAND_SUPPORTSS3TC			69
+	#define COMMAND_SUPPORTSHARDWAREINSTANCING	70
+	#define COMMAND_SUPPORTSNOOVERWRITE		71
+	#define COMMAND_GETMAXTEXTURESLOTS		72
+	#define COMMAND_GETMAXMULTISAMPLECOUNT		73
+	#define COMMAND_SETSTRINGMARKER			74
 
 	FNA3DNAMELESS union
 	{
@@ -240,6 +241,12 @@ struct GLThreadCommand
 			FNA3D_Texture *texture;
 			FNA3D_SamplerState *sampler;
 		} verifySampler;
+		struct
+		{
+			int32_t index;
+			FNA3D_Texture *texture;
+			FNA3D_SamplerState *sampler;
+		} verifyVertexSampler;
 		struct
 		{
 			FNA3D_VertexBufferBinding *bindings;
@@ -574,7 +581,8 @@ struct GLThreadCommand
 		} supportsNoOverwrite;
 		struct
 		{
-			int32_t retval;
+			int32_t *textures;
+			int32_t *vertexTextures;
 		} getMaxTextureSlots;
 		struct
 		{
@@ -778,6 +786,14 @@ static int GLRenderThread(void* data)
 					cmd->verifySampler.index,
 					cmd->verifySampler.texture,
 					cmd->verifySampler.sampler
+				);
+				break;
+			case COMMAND_VERIFYVERTEXSAMPLER:
+				renderer->actualDevice->VerifyVertexSampler(
+					renderer->actualDevice->driverData,
+					cmd->verifyVertexSampler.index,
+					cmd->verifyVertexSampler.texture,
+					cmd->verifyVertexSampler.sampler
 				);
 				break;
 			case COMMAND_APPLYVERTEXBUFFERBINDINGS:
@@ -1194,8 +1210,10 @@ static int GLRenderThread(void* data)
 				);
 				break;
 			case COMMAND_GETMAXTEXTURESLOTS:
-				cmd->getMaxTextureSlots.retval = renderer->actualDevice->GetMaxTextureSlots(
-					renderer->actualDevice->driverData
+				renderer->actualDevice->GetMaxTextureSlots(
+					renderer->actualDevice->driverData,
+					cmd->getMaxTextureSlots.textures,
+					cmd->getMaxTextureSlots.vertexTextures
 				);
 				break;
 			case COMMAND_GETMAXMULTISAMPLECOUNT:
@@ -1566,6 +1584,22 @@ static void THREADEDGL_VerifySampler(
 	cmd.verifySampler.index = index;
 	cmd.verifySampler.texture = texture;
 	cmd.verifySampler.sampler = sampler;
+	ForceToRenderThread(renderer, &cmd);
+}
+
+static void THREADEDGL_VerifyVertexSampler(
+	FNA3D_Renderer *driverData,
+	int32_t index,
+	FNA3D_Texture *texture,
+	FNA3D_SamplerState *sampler
+) {
+	GLThreadCommand cmd;
+	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
+
+	cmd.type = COMMAND_VERIFYVERTEXSAMPLER;
+	cmd.verifyVertexSampler.index = index;
+	cmd.verifyVertexSampler.texture = texture;
+	cmd.verifyVertexSampler.sampler = sampler;
 	ForceToRenderThread(renderer, &cmd);
 }
 
@@ -2422,14 +2456,18 @@ static uint8_t THREADEDGL_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 	return cmd.supportsNoOverwrite.retval;
 }
 
-static int32_t THREADEDGL_GetMaxTextureSlots(FNA3D_Renderer *driverData)
-{
+static void THREADEDGL_GetMaxTextureSlots(
+	FNA3D_Renderer *driverData,
+	int32_t *textures,
+	int32_t *vertexTextures
+) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
 
 	cmd.type = COMMAND_GETMAXTEXTURESLOTS;
+	cmd.getMaxTextureSlots.textures = textures;
+	cmd.getMaxTextureSlots.vertexTextures = vertexTextures;
 	ForceToRenderThread(renderer, &cmd);
-	return cmd.getMaxTextureSlots.retval;
 }
 
 static int32_t THREADEDGL_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)

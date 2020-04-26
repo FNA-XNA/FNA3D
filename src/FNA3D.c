@@ -519,6 +519,19 @@ void FNA3D_VerifySampler(
 	device->VerifySampler(device->driverData, index, texture, sampler);
 }
 
+void FNA3D_VerifyVertexSampler(
+	FNA3D_Device *device,
+	int32_t index,
+	FNA3D_Texture *texture,
+	FNA3D_SamplerState *sampler
+) {
+	if (device == NULL)
+	{
+		return;
+	}
+	device->VerifyVertexSampler(device->driverData, index, texture, sampler);
+}
+
 /* Vertex State */
 
 void FNA3D_ApplyVertexBufferBindings(
@@ -1393,13 +1406,20 @@ uint8_t FNA3D_SupportsNoOverwrite(FNA3D_Device *device)
 	return device->SupportsNoOverwrite(device->driverData);
 }
 
-int32_t FNA3D_GetMaxTextureSlots(FNA3D_Device *device)
-{
+void FNA3D_GetMaxTextureSlots(
+	FNA3D_Device *device,
+	int32_t *textures,
+	int32_t *vertexTextures
+) {
 	if (device == NULL)
 	{
-		return 0;
+		return;
 	}
-	return device->GetMaxTextureSlots(device->driverData);
+	device->GetMaxTextureSlots(
+		device->driverData,
+		textures,
+		vertexTextures
+	);
 }
 
 int32_t FNA3D_GetMaxMultiSampleCount(FNA3D_Device *device)

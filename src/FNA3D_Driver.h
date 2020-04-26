@@ -324,6 +324,12 @@ struct FNA3D_Device
 		FNA3D_Texture *texture,
 		FNA3D_SamplerState *sampler
 	);
+	void (*VerifyVertexSampler)(
+		FNA3D_Renderer *driverData,
+		int32_t index,
+		FNA3D_Texture *texture,
+		FNA3D_SamplerState *sampler
+	);
 
 	/* Vertex State */
 
@@ -649,7 +655,11 @@ struct FNA3D_Device
 	uint8_t (*SupportsHardwareInstancing)(FNA3D_Renderer *driverData);
 	uint8_t (*SupportsNoOverwrite)(FNA3D_Renderer *driverData);
 
-	int32_t (*GetMaxTextureSlots)(FNA3D_Renderer *driverData);
+	void (*GetMaxTextureSlots)(
+		FNA3D_Renderer *driverData,
+		int32_t *textures,
+		int32_t *vertexTextures
+	);
 	int32_t (*GetMaxMultiSampleCount)(FNA3D_Renderer *driverData);
 
 	/* Debugging */
@@ -686,6 +696,7 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(SetDepthStencilState, name) \
 	ASSIGN_DRIVER_FUNC(ApplyRasterizerState, name) \
 	ASSIGN_DRIVER_FUNC(VerifySampler, name) \
+	ASSIGN_DRIVER_FUNC(VerifyVertexSampler, name) \
 	ASSIGN_DRIVER_FUNC(ApplyVertexBufferBindings, name) \
 	ASSIGN_DRIVER_FUNC(ApplyVertexDeclaration, name) \
 	ASSIGN_DRIVER_FUNC(SetRenderTargets, name) \

@@ -2747,6 +2747,15 @@ static void METAL_VerifySampler(
 	}
 }
 
+static void METAL_VerifyVertexSampler(
+	FNA3D_Renderer *driverData,
+	int32_t index,
+	FNA3D_Texture *texture,
+	FNA3D_SamplerState *sampler
+) {
+	SDL_assert(0 && "TODO: Metal: VerifyVertexSampler");
+}
+
 /* Vertex State */
 
 static void BindResources(MetalRenderer *renderer)
@@ -4378,9 +4387,13 @@ static uint8_t METAL_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 	return 1;
 }
 
-static int32_t METAL_GetMaxTextureSlots(FNA3D_Renderer *driverData)
-{
-	return 16;
+static void METAL_GetMaxTextureSlots(
+	FNA3D_Renderer *driverData,
+	int32_t *textures,
+	int32_t *vertexTextures
+) {
+	*textures = 16;
+	*vertexTextures = 4;
 }
 
 static int32_t METAL_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
