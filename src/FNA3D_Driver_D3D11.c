@@ -1700,7 +1700,7 @@ static void CreateFramebuffer(
 	D3D11Renderer *renderer,
 	FNA3D_PresentationParameters *presentationParameters
 ) {
-	int32_t newWidth, newHeight;
+	int32_t w, h;
 	D3D11_TEXTURE2D_DESC colorBufferDesc;
 	D3D11_RENDER_TARGET_VIEW_DESC colorViewDesc;
 	D3D11_SHADER_RESOURCE_VIEW_DESC shaderViewDesc;
@@ -1716,14 +1716,14 @@ static void CreateFramebuffer(
 	#define BB renderer->backbuffer
 
 	/* Update the backbuffer size */
-	newWidth = presentationParameters->backBufferWidth;
-	newHeight = presentationParameters->backBufferHeight;
-	if (BB->width != newWidth || BB->height != newHeight)
+	w = presentationParameters->backBufferWidth;
+	h = presentationParameters->backBufferHeight;
+	if (BB->width != w || BB->height != h)
 	{
 		renderer->backbufferSizeChanged = 1;
 	}
-	BB->width = newWidth;
-	BB->height = newHeight;
+	BB->width = w;
+	BB->height = h;
 
 	/* Update other presentation parameters */
 	BB->surfaceFormat = presentationParameters->backBufferFormat;
@@ -1832,8 +1832,13 @@ static void CreateFramebuffer(
 	if (renderer->swapchain == NULL)
 	{
 		/* Initialize swapchain buffer descriptor */
-		swapchainBufferDesc.Width = BB->width;
-		swapchainBufferDesc.Height = BB->height;
+		D3D11_GetDrawableSize(
+			presentationParameters->deviceWindowHandle,
+			&w,
+			&h
+		);
+		swapchainBufferDesc.Width = w;
+		swapchainBufferDesc.Height = h;
 		swapchainBufferDesc.RefreshRate = refreshRate;
 		swapchainBufferDesc.Format = colorBufferDesc.Format;
 		swapchainBufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
@@ -1905,10 +1910,17 @@ static void CreateFramebuffer(
 
 static void DestroyFramebuffer(D3D11Renderer *renderer)
 {
-	ID3D11RenderTargetView_Release(renderer->backbuffer->colorView);
-	renderer->backbuffer->colorView = NULL;
-	ID3D11Texture2D_Release(renderer->backbuffer->colorBuffer);
-	renderer->backbuffer->colorBuffer = NULL;
+	if (renderer->backbuffer->colorBuffer != NULL)
+	{
+		ID3D11RenderTargetView_Release(
+			renderer->backbuffer->colorView
+		);
+		renderer->backbuffer->colorView = NULL;
+		ID3D11Texture2D_Release(
+			renderer->backbuffer->colorBuffer
+		);
+		renderer->backbuffer->colorBuffer = NULL;
+	}
 
 	if (renderer->backbuffer->msaaColorView != NULL)
 	{
