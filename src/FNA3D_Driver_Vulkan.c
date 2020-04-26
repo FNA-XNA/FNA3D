@@ -266,7 +266,12 @@ static void BeginRenderPass(
 	FNAVulkanRenderer *renderer
 );
 
+/* FIXME: fold this into BindResources? */
 static void BindPipeline(
+	FNAVulkanRenderer *renderer
+);
+
+static void BindResources(
 	FNAVulkanRenderer *renderer
 );
 
@@ -739,6 +744,13 @@ static void BindPipeline(FNAVulkanRenderer *renderer)
 		FetchPipeline(renderer)
 	);
 	renderer->pipelineBoundThisFrame = 1;
+}
+
+/* TODO: use this to bind sampler/vertex/shader state */
+/* FIXME: does this involve the pipeline? */
+static void BindResources(FNAVulkanRenderer *renderer)
+{
+	/* TODO */
 }
 
 static void SetReferenceStencilValueCommand(FNAVulkanRenderer *renderer)
@@ -2151,7 +2163,18 @@ void VULKAN_DrawIndexedPrimitives(
 	FNA3D_Buffer *indices,
 	FNA3D_IndexElementSize indexElementSize
 ) {
-	/* TODO */
+	VULKAN_DrawInstancedPrimitives(
+		driverData,
+		primitiveType,
+		baseVertex,
+		minVertexIndex,
+		numVertices,
+		startIndex,
+		primitiveCount,
+		1,
+		indices,
+		indexElementSize
+	);
 }
 
 void VULKAN_DrawInstancedPrimitives(
@@ -2166,7 +2189,6 @@ void VULKAN_DrawInstancedPrimitives(
 	FNA3D_Buffer *indices,
 	FNA3D_IndexElementSize indexElementSize
 ) {
-	/* TODO */
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	VulkanBuffer *indexBuffer = (VulkanBuffer*) indices;
 	int32_t totalIndexOffset;
