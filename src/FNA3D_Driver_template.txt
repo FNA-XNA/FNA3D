@@ -412,6 +412,14 @@ static void TEMPLATE_VerifySampler(
 ) {
 }
 
+static void TEMPLATE_VerifyVertexSampler(
+	FNA3D_Renderer *driverData,
+	int32_t index,
+	FNA3D_Texture *texture,
+	FNA3D_SamplerState *sampler
+) {
+}
+
 /* Vertex State */
 
 static void TEMPLATE_ApplyVertexBufferBindings(
@@ -857,9 +865,11 @@ static uint8_t TEMPLATE_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 	return 0;
 }
 
-static int32_t TEMPLATE_GetMaxTextureSlots(FNA3D_Renderer *driverData)
-{
-	return 0;
+static void TEMPLATE_GetMaxTextureSlots(
+	FNA3D_Renderer *driverData,
+	int32_t *textures,
+	int32_t *vertexTextures
+) {
 }
 
 static int32_t TEMPLATE_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
