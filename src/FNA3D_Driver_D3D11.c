@@ -1510,6 +1510,15 @@ static void D3D11_VerifySampler(
 	}
 }
 
+static void D3D11_VerifyVertexSampler(
+	FNA3D_Renderer *driverData,
+	int32_t index,
+	FNA3D_Texture *texture,
+	FNA3D_SamplerState *sampler
+) {
+	/* TODO */
+}
+
 /* Vertex State */
 
 static void D3D11_ApplyVertexBufferBindings(
@@ -2793,9 +2802,13 @@ static uint8_t D3D11_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 	return 1;
 }
 
-static int32_t D3D11_GetMaxTextureSlots(FNA3D_Renderer *driverData)
-{
-	return D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT;
+static void D3D11_GetMaxTextureSlots(
+	FNA3D_Renderer *driverData,
+	int32_t *textures,
+	int32_t *vertexTextures
+) {
+	*textures = D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT;
+	*vertexTextures = D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT;
 }
 
 static int32_t D3D11_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
