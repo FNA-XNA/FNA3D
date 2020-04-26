@@ -44,6 +44,7 @@ const int PRIMITIVE_TYPES_COUNT = 5;
 /* Internal Structures */
 
 typedef struct VulkanTexture VulkanTexture;
+typedef struct VulkanBuffer VulkanBuffer;
 typedef struct PipelineHashMap PipelineHashMap;
 typedef struct RenderPassHashMap RenderPassHashMap;
 typedef struct FramebufferHashMap FramebufferHashMap;
@@ -150,7 +151,7 @@ static VulkanTexture NullTexture =
 	NULL
 };
 
-typedef struct VulkanBuffer
+struct VulkanBuffer
 {
 	VkBuffer *handle;
 	void* contents;
@@ -162,7 +163,7 @@ typedef struct VulkanBuffer
 	FNA3D_BufferUsage usage;
 	uint8_t boundThisFrame;
 	VulkanBuffer *next; /* linked list */
-} VulkanBuffer;
+};
 
 typedef struct FNAVulkanRenderer
 {
@@ -273,6 +274,11 @@ static void BindPipeline(
 
 static void BindResources(
 	FNAVulkanRenderer *renderer
+);
+
+static void CheckPrimitiveTypeAndBindPipeline(
+	FNAVulkanRenderer *renderer,
+	FNA3D_PrimitiveType primitiveType
 );
 
 static uint8_t CreateImage(
@@ -751,6 +757,23 @@ static void BindPipeline(FNAVulkanRenderer *renderer)
 static void BindResources(FNAVulkanRenderer *renderer)
 {
 	/* TODO */
+}
+
+static void CheckPrimitiveTypeAndBindPipeline(
+	FNAVulkanRenderer *renderer,
+	FNA3D_PrimitiveType primitiveType
+)
+{
+	if (	!renderer->pipelineBoundThisFrame ||
+			primitiveType != renderer->currentPrimitiveType	)
+	{
+		renderer->currentPrimitiveType = primitiveType;
+
+		/* topology is fixed in the pipeline so we need to
+		 * fetch a new pipeline if it changes -cosmonaut
+		 */
+		BindPipeline(renderer);
+	}
 }
 
 static void SetReferenceStencilValueCommand(FNAVulkanRenderer *renderer)
@@ -2152,6 +2175,49 @@ void VULKAN_Clear(
 	}
 }
 
+void VULKAN_DrawInstancedPrimitives(
+	FNA3D_Renderer *driverData,
+	FNA3D_PrimitiveType primitiveType,
+	int32_t baseVertex,
+	int32_t minVertexIndex,
+	int32_t numVertices,
+	int32_t startIndex,
+	int32_t primitiveCount,
+	int32_t instanceCount,
+	FNA3D_Buffer *indices,
+	FNA3D_IndexElementSize indexElementSize
+) {
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanBuffer *indexBuffer = (VulkanBuffer*) indices;
+	int32_t totalIndexOffset;
+
+	indexBuffer->boundThisFrame = 1;
+	totalIndexOffset = (
+		(startIndex * IndexSize(indexElementSize)) +
+		indexBuffer->internalOffset
+	);
+
+	CheckPrimitiveTypeAndBindPipeline(
+		renderer, primitiveType
+	);
+
+	renderer->vkCmdBindIndexBuffer(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		*indexBuffer->handle,
+		totalIndexOffset,
+		XNAToVK_IndexType[indexElementSize]
+	);
+
+	renderer->vkCmdDrawIndexed(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		PrimitiveVerts(primitiveType, primitiveCount),
+		instanceCount,
+		minVertexIndex,
+		totalIndexOffset,
+		0
+	);
+}
+
 void VULKAN_DrawIndexedPrimitives(
 	FNA3D_Renderer *driverData,
 	FNA3D_PrimitiveType primitiveType,
@@ -2177,62 +2243,25 @@ void VULKAN_DrawIndexedPrimitives(
 	);
 }
 
-void VULKAN_DrawInstancedPrimitives(
-	FNA3D_Renderer *driverData,
-	FNA3D_PrimitiveType primitiveType,
-	int32_t baseVertex,
-	int32_t minVertexIndex,
-	int32_t numVertices,
-	int32_t startIndex,
-	int32_t primitiveCount,
-	int32_t instanceCount,
-	FNA3D_Buffer *indices,
-	FNA3D_IndexElementSize indexElementSize
-) {
-	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
-	VulkanBuffer *indexBuffer = (VulkanBuffer*) indices;
-	int32_t totalIndexOffset;
-
-	indexBuffer->boundThisFrame = 1;
-	totalIndexOffset = (
-		(startIndex * IndexSize(indexElementSize)) +
-		indexBuffer->internalOffset
-	);
-
-	if (	!renderer->pipelineBoundThisFrame ||
-			primitiveType != renderer->currentPrimitiveType	)
-	{
-		renderer->currentPrimitiveType = primitiveType;
-
-		/* topology is fixed in the pipeline so we need to
-		 * fetch a new pipeline if it changes -cosmonaut
-		 */
-		BindPipeline(renderer);
-	}
-
-	renderer->vkCmdBindIndexBuffer(
-		renderer->commandBuffers[renderer->commandBufferCount - 1],
-		indexBuffer->handle,
-		totalIndexOffset,
-		XNAToVK_IndexType[indexElementSize]
-	);
-
-	renderer->vkCmdDraw(
-		renderer->commandBuffers[renderer->commandBufferCount - 1],
-		numVertices,
-		instanceCount,
-		minVertexIndex,
-		0
-	);
-}
-
 void VULKAN_DrawPrimitives(
 	FNA3D_Renderer *driverData,
 	FNA3D_PrimitiveType primitiveType,
 	int32_t vertexStart,
 	int32_t primitiveCount
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+
+	CheckPrimitiveTypeAndBindPipeline(
+		renderer, primitiveType
+	);
+
+	renderer->vkCmdDraw(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		PrimitiveVerts(primitiveType, primitiveCount),
+		1,
+		vertexStart,
+		0
+	);
 }
 
 void VULKAN_DrawUserIndexedPrimitives(
@@ -2429,6 +2458,15 @@ void VULKAN_ApplyRasterizerState(
 }
 
 void VULKAN_VerifySampler(
+	FNA3D_Renderer *driverData,
+	int32_t index,
+	FNA3D_Texture *texture,
+	FNA3D_SamplerState *sampler
+) {
+	/* TODO */
+}
+
+void VULKAN_VerifyVertexSampler(
 	FNA3D_Renderer *driverData,
 	int32_t index,
 	FNA3D_Texture *texture,
@@ -3039,8 +3077,11 @@ uint8_t VULKAN_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 	/* TODO */
 }
 
-int32_t VULKAN_GetMaxTextureSlots(FNA3D_Renderer *driverData)
-{
+void VULKAN_GetMaxTextureSlots(
+	FNA3D_Renderer *driverData,
+	int32_t *textures,
+	int32_t *vertexTextures
+) {
 	/* TODO */
 }
 
