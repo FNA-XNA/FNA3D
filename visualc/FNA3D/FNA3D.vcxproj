@@ -128,6 +128,7 @@
     <ClInclude Include="..\..\include\FNA3D_Image.h" />
     <ClInclude Include="..\..\src\FNA3D_CommandStream.h" />
     <ClInclude Include="..\..\src\FNA3D_Driver.h" />
+    <ClInclude Include="..\..\src\FNA3D_Driver_D3D11.h" />
     <ClInclude Include="..\..\src\FNA3D_Driver_OpenGL.h" />
     <ClInclude Include="..\..\src\FNA3D_Driver_OpenGL_glfuncs.h" />
     <ClInclude Include="..\..\src\FNA3D_Driver_ModernGL.h" />

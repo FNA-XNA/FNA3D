@@ -53,6 +53,7 @@
     <ClInclude Include="..\..\src\FNA3D_Driver_ModernGL.h" />
     <ClInclude Include="..\..\src\FNA3D_Driver_ModernGL_glfuncs.h" />
     <ClInclude Include="..\..\src\FNA3D_PipelineCache.h" />
+    <ClInclude Include="..\..\src\FNA3D_Driver_D3D11.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="mojoshader">

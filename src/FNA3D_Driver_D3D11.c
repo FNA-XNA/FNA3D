@@ -28,16 +28,11 @@
 
 #include "FNA3D_Driver.h"
 #include "FNA3D_PipelineCache.h"
+#include "FNA3D_Driver_D3D11.h"
 #include "stb_ds.h"
 
 #include <SDL.h>
 #include <SDL_syswm.h>
-
-#define D3D11_NO_HELPERS
-#define CINTERFACE
-#define COBJMACROS
-#include <d3d11.h>
-#include <dxgi.h>
 
 /* Internal Structures */
 
@@ -126,6 +121,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	ID3D11DeviceContext *context;
 	IDXGIFactory1 *factory;
 	IDXGISwapChain *swapchain;
+	ID3DUserDefinedAnnotation *annotation;
 
 	/* The Faux-Backbuffer */
 	D3D11Backbuffer *backbuffer;
@@ -191,16 +187,6 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	const MOJOSHADER_effectTechnique *currentTechnique;
 	uint32_t currentPass;
 } D3D11Renderer;
-
-/* VS2010 / DirectX SDK Fallback Defines */
-
-#ifndef DXGI_FORMAT_B4G4R4A4_UNORM
-#define DXGI_FORMAT_B4G4R4A4_UNORM (DXGI_FORMAT) 115
-#endif
-
-#ifndef D3D_FEATURE_LEVEL_11_1
-#define D3D_FEATURE_LEVEL_11_1 (D3D_FEATURE_LEVEL) 0xb100
-#endif
 
 /* XNA->D3D11 Translation Arrays */
 
@@ -376,26 +362,10 @@ static D3D_PRIMITIVE_TOPOLOGY XNAToD3D_Primitive[] =
 	D3D_PRIMITIVE_TOPOLOGY_POINTLIST	/* PrimitiveType.PointListEXT */
 };
 
-/* IID Imports from https://www.magnumdb.com/ */
-
-static const IID D3D_IID_IDXGIFactory1 = {0x770aae78,0xf26f,0x4dba,{0xa8,0x29,0x25,0x3c,0x83,0xd1,0xb3,0x87}};
-static const IID D3D_IID_ID3D11Texture2D = { 0x6f15aaf2, 0xd208, 0x4e89, { 0x9a,0xb4,0x48,0x95,0x35,0xd3,0x4f,0x9c } };
-
 /* Function Pointers */
-
-typedef HRESULT(WINAPI *PFN_D3DCOMPILE)(
-    LPCVOID pSrcData,
-    SIZE_T SrcDataSize,
-    LPCSTR pSourceName,
-    const D3D_SHADER_MACRO *pDefines,
-    ID3DInclude *pInclude,
-    LPCSTR pEntrypoint,
-    LPCSTR pTarget,
-    UINT Flags1,
-    UINT Flags2,
-    ID3DBlob **ppCode,
-    ID3DBlob **ppErrorMsgs
-);
+/* FIXME: Move this into InitializeFauxBackbuffer since that's the
+ * only function that uses it anyway...
+ */
 static PFN_D3DCOMPILE D3DCompileFunc;
 
 /* Faux-Backbuffer Blit Shader Sources */
@@ -2198,9 +2168,6 @@ static void D3D11_AddDisposeTexture(
 	/* TODO */
 }
 
-/* FIXME: Supposedly this is already included
- * in d3d11.h, but I'm not seeing it. -caleb
- */
 static inline uint32_t CalcSubresource(
 	uint32_t mipLevel,
 	uint32_t arraySlice,
@@ -2849,17 +2816,13 @@ static int32_t D3D11_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
 
 static void D3D11_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 {
-	/* TODO: Something like this? */
-/*
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	wchar_t wString[1024];
-
-	MultiByteToWideChar(CP_ACP, 0, text, -1, &wString[0], 1024);
-	renderer->debugAnnotation->lpVtbl->SetMarker(
-		renderer->debugAnnotation,
-		wString
+	wchar_t wstr[256];
+	MultiByteToWideChar(CP_ACP, 0, text, -1, wstr, 256);
+	ID3DUserDefinedAnnotation_SetMarker(
+		renderer->annotation,
+		wstr
 	);
-*/
 }
 
 /* Driver */
@@ -3181,6 +3144,24 @@ static FNA3D_Device* D3D11_CreateDevice(
 	{
 		renderer->textures[i] = &NullTexture;
 		renderer->samplers[i] = NULL;
+	}
+
+	/* Initialize SetStringMarker support, if available */
+	if (renderer->featureLevel == D3D_FEATURE_LEVEL_11_1)
+	{
+		FNA3D_LogInfo("SetStringMarker is supported!");
+		ret = ID3D11DeviceContext_QueryInterface(
+			renderer->context,
+			&D3D_IID_ID3DUserDefinedAnnotation,
+			(void**) &renderer->annotation
+		);
+		if (ret < 0)
+		{
+			FNA3D_LogError(
+				"Could not get UserDefinedAnnotation! Error: %x",
+				ret
+			);
+		}
 	}
 
 	/* Initialize renderer members not covered by SDL_memset('\0') */
