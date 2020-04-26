@@ -478,6 +478,8 @@ static SEL selSetVertexBuffer;
 static SEL selSetVertexBufferOffset;
 static SEL selSetVertexDescriptor;
 static SEL selSetVertexFunction;
+static SEL selSetVertexSamplerState;
+static SEL selSetVertexTexture;
 static SEL selSetViewport;
 static SEL selSetVisibilityResultBuffer;
 static SEL selSetVisibilityResultMode;
@@ -624,6 +626,8 @@ static inline void InitObjC()
 	selSetVertexBufferOffset		= sel_registerName("setVertexBufferOffset:atIndex:");
 	selSetVertexDescriptor			= sel_registerName("setVertexDescriptor:");
 	selSetVertexFunction			= sel_registerName("setVertexFunction:");
+	selSetVertexSamplerState		= sel_registerName("setVertexSamplerState:atIndex:");
+	selSetVertexTexture			= sel_registerName("setVertexTexture:atIndex:");
 	selSetViewport				= sel_registerName("setViewport:");
 	selSetVisibilityResultBuffer		= sel_registerName("setVisibilityResultBuffer:");
 	selSetVisibilityResultMode		= sel_registerName("setVisibilityResultMode:offset:");
@@ -1317,6 +1321,32 @@ static inline void mtlSetVertexBufferOffset(
 	);
 }
 
+static inline void mtlSetVertexSamplerState(
+	MTLRenderCommandEncoder *renderCommandEncoder,
+	MTLSamplerState *samplerState,
+	int32_t index
+) {
+	msg_vpi(
+		renderCommandEncoder,
+		selSetVertexSamplerState,
+		samplerState,
+		index
+	);
+}
+
+static inline void mtlSetVertexTexture(
+	MTLRenderCommandEncoder *renderCommandEncoder,
+	MTLTexture *vertexTexture,
+	int32_t index
+) {
+	msg_vpi(
+		renderCommandEncoder,
+		selSetVertexTexture,
+		vertexTexture,
+		index
+	);
+}
+
 static inline void mtlSetFragmentBuffer(
 	MTLRenderCommandEncoder *renderCommandEncoder,
 	MTLBuffer *fragmentBuffer,
@@ -1345,19 +1375,6 @@ static inline void mtlSetFragmentBufferOffset(
 	);
 }
 
-static inline void mtlSetFragmentTexture(
-	MTLRenderCommandEncoder *renderCommandEncoder,
-	MTLTexture *fragmentTexture,
-	int32_t index
-) {
-	msg_vpi(
-		renderCommandEncoder,
-		selSetFragmentTexture,
-		fragmentTexture,
-		index
-	);
-}
-
 static inline void mtlSetFragmentSamplerState(
 	MTLRenderCommandEncoder *renderCommandEncoder,
 	MTLSamplerState *samplerState,
@@ -1367,6 +1384,19 @@ static inline void mtlSetFragmentSamplerState(
 		renderCommandEncoder,
 		selSetFragmentSamplerState,
 		samplerState,
+		index
+	);
+}
+
+static inline void mtlSetFragmentTexture(
+	MTLRenderCommandEncoder *renderCommandEncoder,
+	MTLTexture *fragmentTexture,
+	int32_t index
+) {
+	msg_vpi(
+		renderCommandEncoder,
+		selSetFragmentTexture,
+		fragmentTexture,
 		index
 	);
 }

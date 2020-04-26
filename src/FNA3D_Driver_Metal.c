@@ -121,6 +121,8 @@ typedef struct MetalBackbuffer
 	MTLTexture *depthStencilBuffer;
 } MetalBackbuffer;
 
+#define MAX_TOTAL_SAMPLERS MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS
+
 typedef struct MetalRenderer /* Cast from FNA3D_Renderer* */
 {
 	/* Associated FNA3D_Device */
@@ -204,10 +206,10 @@ typedef struct MetalRenderer /* Cast from FNA3D_Renderer* */
 	int32_t currentAttachmentHeight;
 
 	/* Textures */
-	MetalTexture *textures[MAX_TEXTURE_SAMPLERS];
-	MTLSamplerState *samplers[MAX_TEXTURE_SAMPLERS];
-	uint8_t textureNeedsUpdate[MAX_TEXTURE_SAMPLERS];
-	uint8_t samplerNeedsUpdate[MAX_TEXTURE_SAMPLERS];
+	MetalTexture *textures[MAX_TOTAL_SAMPLERS];
+	MTLSamplerState *samplers[MAX_TOTAL_SAMPLERS];
+	uint8_t textureNeedsUpdate[MAX_TOTAL_SAMPLERS];
+	uint8_t samplerNeedsUpdate[MAX_TOTAL_SAMPLERS];
 	MetalTexture *transientTextures;
 
 	/* Depth Stencil State */
@@ -943,7 +945,7 @@ static void UpdateRenderPass(MetalRenderer *renderer)
 	}
 
 	/* Reset the bindings */
-	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
+	for (i = 0; i < MAX_TOTAL_SAMPLERS; i += 1)
 	{
 		if (renderer->textures[i] != &NullTexture)
 		{
@@ -2753,7 +2755,12 @@ static void METAL_VerifyVertexSampler(
 	FNA3D_Texture *texture,
 	FNA3D_SamplerState *sampler
 ) {
-	SDL_assert(0 && "TODO: Metal: VerifyVertexSampler");
+	METAL_VerifySampler(
+		driverData,
+		MAX_TEXTURE_SAMPLERS + index,
+		texture,
+		sampler
+	);
 }
 
 /* Vertex State */
@@ -2767,24 +2774,46 @@ static void BindResources(MetalRenderer *renderer)
 	MTLRenderPipelineState *pipelineState;
 
 	/* Bind textures and their sampler states */
-	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
+	for (i = 0; i < MAX_TOTAL_SAMPLERS; i += 1)
 	{
 		if (renderer->textureNeedsUpdate[i])
 		{
-			mtlSetFragmentTexture(
-				renderer->renderCommandEncoder,
-				renderer->textures[i]->handle,
-				i
-			);
+			if (i < MAX_TEXTURE_SAMPLERS)
+			{
+				mtlSetFragmentTexture(
+					renderer->renderCommandEncoder,
+					renderer->textures[i]->handle,
+					i
+				);
+			}
+			else
+			{
+				mtlSetVertexTexture(
+					renderer->renderCommandEncoder,
+					renderer->textures[i]->handle,
+					i - MAX_TEXTURE_SAMPLERS
+				);
+			}
 			renderer->textureNeedsUpdate[i] = 0;
 		}
 		if (renderer->samplerNeedsUpdate[i])
 		{
-			mtlSetFragmentSamplerState(
-				renderer->renderCommandEncoder,
-				renderer->samplers[i],
-				i
-			);
+			if (i < MAX_TEXTURE_SAMPLERS)
+			{
+				mtlSetFragmentSamplerState(
+					renderer->renderCommandEncoder,
+					renderer->samplers[i],
+					i
+				);
+			}
+			else
+			{
+				mtlSetVertexSamplerState(
+					renderer->renderCommandEncoder,
+					renderer->samplers[i],
+					i - MAX_TEXTURE_SAMPLERS
+				);
+			}
 			renderer->samplerNeedsUpdate[i] = 0;
 		}
 	}
@@ -3382,7 +3411,7 @@ static void METAL_AddDisposeTexture(
 			renderer->currentAttachments[i] = NULL;
 		}
 	}
-	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
+	for (i = 0; i < MAX_TOTAL_SAMPLERS; i += 1)
 	{
 		if (mtlTexture->handle == renderer->textures[i]->handle)
 		{
@@ -4392,8 +4421,8 @@ static void METAL_GetMaxTextureSlots(
 	int32_t *textures,
 	int32_t *vertexTextures
 ) {
-	*textures = 16;
-	*vertexTextures = 4;
+	*textures = MAX_TEXTURE_SAMPLERS;
+	*vertexTextures = MAX_VERTEXTEXTURE_SAMPLERS;
 }
 
 static int32_t METAL_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
@@ -4696,7 +4725,7 @@ FNA3D_Device* METAL_CreateDevice(
 	);
 
 	/* Initialize texture and sampler collections */
-	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
+	for (i = 0; i < MAX_TOTAL_SAMPLERS; i += 1)
 	{
 		renderer->textures[i] = &NullTexture;
 		renderer->samplers[i] = NULL;
