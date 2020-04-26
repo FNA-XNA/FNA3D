@@ -1701,6 +1701,7 @@ static void CreateFramebuffer(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
 	int32_t w, h;
+	HRESULT ret;
 	D3D11_TEXTURE2D_DESC colorBufferDesc;
 	D3D11_RENDER_TARGET_VIEW_DESC colorViewDesc;
 	D3D11_SHADER_RESOURCE_VIEW_DESC shaderViewDesc;
@@ -1865,7 +1866,7 @@ static void CreateFramebuffer(
 	else
 	{
 		/* Resize the swapchain to the new window size */
-		IDXGISwapChain_ResizeBuffers(
+		ret = IDXGISwapChain_ResizeBuffers(
 			renderer->swapchain,
 			0,			/* keep # of buffers the same */
 			0,			/* get width from window */
@@ -1873,6 +1874,10 @@ static void CreateFramebuffer(
 			DXGI_FORMAT_UNKNOWN,	/* keep the old format */
 			0
 		);
+		if (ret < 0)
+		{
+			FNA3D_LogError("Error resizing swapchain! %x", ret);
+		}
 	}
 
 	/* Create a render target view for the swapchain */
