@@ -38,6 +38,7 @@ VULKAN_DEVICE_FUNCTION(BaseVK, void, vkCmdBlitImage, (VkCommandBuffer commandBuf
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkCmdClearAttachments, (VkCommandBuffer commandBuffer, uint32_t attachmentCount, const VkClearAttachment *pAttachments, uint32_t rectCount, const VkClearRect *pRects))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkCmdClearColorImage, (VkCommandBuffer commandBuffer, VkImage image, VkImageLayout imageLayout, const VkClearColorValue *pColor, uint32_t rangeCount, const VkImageSubresourceRange *pRanges))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkCmdDraw, (VkCommandBuffer commandBuffer, uint32_t vertexCount, uint32_t instanceCount, uint32_t firstVertex, uint32_t firstInstance))
+VULKAN_DEVICE_FUNCTION(BaseVK, void, vkCmdDrawIndexed, (VkCommandBuffer commandBuffer, uint32_t indexCount, uint32_t instanceCount, uint32_t firstIndex, int32_t vertexOffset, uint32_t firstInstance))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkCmdEndRenderPass, (VkCommandBuffer commandBuffer))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkCmdPipelineBarrier, (VkCommandBuffer commandBuffer, VkPipelineStageFlags srcStageMask, VkPipelineStageFlags dstStageMask, VkDependencyFlags dependencyFlags, uint32_t memoryBarrierCount, const VkMemoryBarrier *pMemoryBarriers, uint32_t bufferMemoryBarrierCount, const VkBufferMemoryBarrier *pBufferMemoryBarriers, uint32_t imageMemoryBarrierCount, const VkImageMemoryBarrier *pImageMemoryBarriers))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkCmdSetBlendConstants, (VkCommandBuffer commandBuffer, const float blendConstants[4]))
