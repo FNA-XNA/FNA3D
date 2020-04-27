@@ -114,6 +114,8 @@ typedef struct D3D11Backbuffer
 	ID3D11DepthStencilView *depthStencilView;
 } D3D11Backbuffer;
 
+#define MAX_TOTAL_SAMPLERS MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS
+
 typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 {
 	/* Persistent D3D11 Objects */
@@ -159,8 +161,8 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	ID3D11RasterizerState *rasterizerState;
 
 	/* Textures */
-	D3D11Texture *textures[MAX_TEXTURE_SAMPLERS];
-	ID3D11SamplerState *samplers[MAX_TEXTURE_SAMPLERS];
+	D3D11Texture *textures[MAX_TOTAL_SAMPLERS];
+	ID3D11SamplerState *samplers[MAX_TOTAL_SAMPLERS];
 
 	/* Vertex Buffer Binding Caches */
 	ID3D11InputLayout *inputLayout;
@@ -1442,18 +1444,36 @@ static void D3D11_VerifySampler(
 	{
 		if (renderer->textures[index] != &NullTexture)
 		{
-			ID3D11DeviceContext_PSSetShaderResources(
-				renderer->context,
-				index,
-				1,
-				(ID3D11ShaderResourceView**) nullResource
-			);
-			ID3D11DeviceContext_PSSetSamplers(
-				renderer->context,
-				index,
-				1,
-				(ID3D11SamplerState**) nullResource
-			);
+			if (index < MAX_TEXTURE_SAMPLERS)
+			{
+				ID3D11DeviceContext_PSSetShaderResources(
+					renderer->context,
+					index,
+					1,
+					(ID3D11ShaderResourceView**) nullResource
+				);
+				ID3D11DeviceContext_PSSetSamplers(
+					renderer->context,
+					index,
+					1,
+					(ID3D11SamplerState**) nullResource
+				);
+			}
+			else
+			{
+				ID3D11DeviceContext_VSSetShaderResources(
+					renderer->context,
+					index - MAX_TEXTURE_SAMPLERS,
+					1,
+					(ID3D11ShaderResourceView**) nullResource
+				);
+				ID3D11DeviceContext_VSSetSamplers(
+					renderer->context,
+					index - MAX_TEXTURE_SAMPLERS,
+					1,
+					(ID3D11SamplerState**) nullResource
+				);
+			}
 			renderer->textures[index] = &NullTexture;
 		}
 		return;
@@ -1475,12 +1495,24 @@ static void D3D11_VerifySampler(
 	/* Bind the correct texture */
 	if (d3dTexture != renderer->textures[index])
 	{
-		ID3D11DeviceContext_PSSetShaderResources(
-			renderer->context,
-			index,
-			1,
-			&d3dTexture->shaderView
-		);
+		if (index < MAX_TEXTURE_SAMPLERS)
+		{
+			ID3D11DeviceContext_PSSetShaderResources(
+				renderer->context,
+				index,
+				1,
+				&d3dTexture->shaderView
+			);
+		}
+		else
+		{
+			ID3D11DeviceContext_VSSetShaderResources(
+				renderer->context,
+				index - MAX_TEXTURE_SAMPLERS,
+				1,
+				&d3dTexture->shaderView
+			);
+		}
 		renderer->textures[index] = d3dTexture;
 	}
 
@@ -1500,12 +1532,24 @@ static void D3D11_VerifySampler(
 	);
 	if (d3dSamplerState != renderer->samplers[index])
 	{
-		ID3D11DeviceContext_PSSetSamplers(
-			renderer->context,
-			index,
-			1,
-			&d3dSamplerState
-		);
+		if (index < MAX_TEXTURE_SAMPLERS)
+		{
+			ID3D11DeviceContext_PSSetSamplers(
+				renderer->context,
+				index,
+				1,
+				&d3dSamplerState
+			);
+		}
+		else
+		{
+			ID3D11DeviceContext_VSSetSamplers(
+				renderer->context,
+				index - MAX_TEXTURE_SAMPLERS,
+				1,
+				&d3dSamplerState
+			);
+		}
 		renderer->samplers[index] = d3dSamplerState;
 	}
 }
@@ -1516,7 +1560,12 @@ static void D3D11_VerifyVertexSampler(
 	FNA3D_Texture *texture,
 	FNA3D_SamplerState *sampler
 ) {
-	/* TODO */
+	D3D11_VerifySampler(
+		driverData,
+		MAX_TEXTURE_SAMPLERS + index,
+		texture,
+		sampler
+	);
 }
 
 /* Vertex State */
@@ -3148,7 +3197,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 	);
 
 	/* Initialize texture and sampler collections */
-	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
+	for (i = 0; i < MAX_TOTAL_SAMPLERS; i += 1)
 	{
 		renderer->textures[i] = &NullTexture;
 		renderer->samplers[i] = NULL;
