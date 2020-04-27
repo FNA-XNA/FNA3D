@@ -44,9 +44,6 @@
 #define floorf SDL_floorf
 #define ldexp SDL_scalbn
 #define pow SDL_pow
-#define strcmp SDL_strcmp
-#define strlen SDL_strlen
-#define strncmp SDL_strncmp
 #define strtol SDL_strtol
 
 #ifdef memcmp
@@ -65,6 +62,18 @@
 #undef memset
 #endif
 #define memset SDL_memset
+#ifdef strcmp
+#undef strcmp
+#endif
+#define strcmp SDL_strcmp
+#ifdef strlen
+#undef strlen
+#endif
+#define strlen SDL_strlen
+#ifdef strncmp
+#undef strncmp
+#endif
+#define strncmp SDL_strncmp
 
 /* These are per the Texture2D.FromStream spec */
 #define STBI_ONLY_GIF
