@@ -4973,6 +4973,15 @@ static FNA3D_Device* MODERNGL_CreateDevice(
 		numSamplers,
 		MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS
 	);
+	renderer->numTextureSlots = SDL_min(
+		numSamplers,
+		MAX_TEXTURE_SAMPLERS
+	);
+	renderer->numVertexTextureSlots = SDL_min(
+		SDL_max(numSamplers - MAX_TEXTURE_SAMPLERS, 0),
+		MAX_VERTEXTEXTURE_SAMPLERS
+	);
+	renderer->vertexSamplerStart = numSamplers - renderer->numVertexTextureSlots;
 	renderer->glCreateSamplers(numSamplers, renderer->samplers);
 	for (i = 0; i < numSamplers; i += 1)
 	{
@@ -4987,15 +4996,6 @@ static FNA3D_Device* MODERNGL_CreateDevice(
 		renderer->samplersMipped[i] = 0;
 		renderer->glBindSampler(i, renderer->samplers[i]);
 	}
-	renderer->numTextureSlots = SDL_min(
-		numSamplers,
-		MAX_TEXTURE_SAMPLERS
-	);
-	renderer->numVertexTextureSlots = SDL_min(
-		SDL_max(numSamplers - MAX_TEXTURE_SAMPLERS, 0),
-		MAX_VERTEXTEXTURE_SAMPLERS
-	);
-	renderer->vertexSamplerStart = numSamplers - renderer->numVertexTextureSlots;
 
 	/* Initialize vertex attribute state arrays */
 	renderer->ldBaseVertex = -1;

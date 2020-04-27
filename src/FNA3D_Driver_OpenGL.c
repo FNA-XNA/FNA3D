@@ -5584,10 +5584,6 @@ FNA3D_Device* OPENGL_CreateDevice(
 		numSamplers,
 		MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS
 	);
-	for (i = 0; i < numSamplers; i += 1)
-	{
-		renderer->textures[i] = &NullTexture;
-	}
 	renderer->numTextureSlots = SDL_min(
 		numSamplers,
 		MAX_TEXTURE_SAMPLERS
@@ -5597,6 +5593,10 @@ FNA3D_Device* OPENGL_CreateDevice(
 		MAX_VERTEXTEXTURE_SAMPLERS
 	);
 	renderer->vertexSamplerStart = numSamplers - renderer->numVertexTextureSlots;
+	for (i = 0; i < numSamplers; i += 1)
+	{
+		renderer->textures[i] = &NullTexture;
+	}
 
 	/* Initialize vertex attribute state arrays */
 	renderer->ldBaseVertex = -1;
