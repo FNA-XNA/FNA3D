@@ -59,6 +59,7 @@ VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkCreateRenderPass, (VkDevice device, c
 VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkCreateSemaphore, (VkDevice device, const VkSemaphoreCreateInfo *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkSemaphore *pSemaphore))
 VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkCreateShaderModule, (VkDevice device, const VkShaderModuleCreateInfo *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkShaderModule *pShaderModule))
 VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkCreateSwapchainKHR, (VkDevice device, const VkSwapchainCreateInfoKHR *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkSwapchainKHR *pSwapchain))
+VULKAN_DEVICE_FUNCTION(BaseVK, void, vkDestroyBuffer, (VkDevice device, VkBuffer buffer, const VkAllocationCallbacks *pAllocator))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkDestroyCommandPool, (VkDevice device, VkCommandPool commandPool, const VkAllocationCallbacks *pAllocator))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkDestroyDevice, (VkDevice device, const VkAllocationCallbacks *pAllocator))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkDestroyFence, (VkDevice device, VkFence fence, const VkAllocationCallbacks *pAllocator))
