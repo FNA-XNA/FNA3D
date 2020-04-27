@@ -1328,8 +1328,8 @@ static void D3D11_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor
 	D3D11_RECT rect =
 	{
 		scissor->x,
-		scissor->x + scissor->w,
 		scissor->y,
+		scissor->x + scissor->w,
 		scissor->y + scissor->h
 	};
 	ID3D11DeviceContext_RSSetScissorRects(
