@@ -121,8 +121,6 @@ typedef struct MetalBackbuffer
 	MTLTexture *depthStencilBuffer;
 } MetalBackbuffer;
 
-#define MAX_TOTAL_SAMPLERS MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS
-
 typedef struct MetalRenderer /* Cast from FNA3D_Renderer* */
 {
 	/* Associated FNA3D_Device */

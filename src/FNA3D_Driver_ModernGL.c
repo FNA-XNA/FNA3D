@@ -187,16 +187,16 @@ typedef struct ModernGLRenderer /* Cast FNA3D_Renderer* to this! */
 	int32_t numTextureSlots;
 	int32_t numVertexTextureSlots;
 	int32_t vertexSamplerStart;
-	ModernGLTexture *textures[MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS];
-	GLuint samplers[MAX_TEXTURE_SAMPLERS];
-	FNA3D_TextureAddressMode samplersU[MAX_TEXTURE_SAMPLERS];
-	FNA3D_TextureAddressMode samplersV[MAX_TEXTURE_SAMPLERS];
-	FNA3D_TextureAddressMode samplersW[MAX_TEXTURE_SAMPLERS];
-	FNA3D_TextureFilter samplersFilter[MAX_TEXTURE_SAMPLERS];
-	float samplersAnisotropy[MAX_TEXTURE_SAMPLERS];
-	int32_t samplersMaxLevel[MAX_TEXTURE_SAMPLERS];
-	float samplersLODBias[MAX_TEXTURE_SAMPLERS];
-	uint8_t samplersMipped[MAX_TEXTURE_SAMPLERS];
+	ModernGLTexture *textures[MAX_TOTAL_SAMPLERS];
+	GLuint samplers[MAX_TOTAL_SAMPLERS];
+	FNA3D_TextureAddressMode samplersU[MAX_TOTAL_SAMPLERS];
+	FNA3D_TextureAddressMode samplersV[MAX_TOTAL_SAMPLERS];
+	FNA3D_TextureAddressMode samplersW[MAX_TOTAL_SAMPLERS];
+	FNA3D_TextureFilter samplersFilter[MAX_TOTAL_SAMPLERS];
+	float samplersAnisotropy[MAX_TOTAL_SAMPLERS];
+	int32_t samplersMaxLevel[MAX_TOTAL_SAMPLERS];
+	float samplersLODBias[MAX_TOTAL_SAMPLERS];
+	uint8_t samplersMipped[MAX_TOTAL_SAMPLERS];
 
 	/* Buffer Binding Cache */
 	GLuint currentVertexBuffer;
