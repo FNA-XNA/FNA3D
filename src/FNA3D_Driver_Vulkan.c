@@ -155,11 +155,11 @@ struct VulkanBuffer
 {
 	VkBuffer *handle;
 	void* contents;
-	int32_t size;
-	int32_t internalOffset;
-	int32_t internalBufferSize;
-	int32_t prevDataLength;
-	int32_t prevInternalOffset;
+	VkDeviceSize size;
+	VkDeviceSize internalOffset;
+	VkDeviceSize internalBufferSize;
+	VkDeviceSize prevDataLength;
+	VkDeviceSize prevInternalOffset;
 	FNA3D_BufferUsage usage;
 	uint8_t boundThisFrame;
 	VulkanBuffer *next; /* linked list */
@@ -223,6 +223,18 @@ typedef struct FNAVulkanRenderer
 	FNA3D_RasterizerState rasterizerState;
 	FNA3D_PrimitiveType currentPrimitiveType;
 
+	VulkanBuffer *buffers;
+	VulkanBuffer *userVertexBuffer;
+	VulkanBuffer *userIndexBuffer;
+	int32_t userVertexStride;
+
+	VkBuffer *ldVertUniformBuffer;
+	VkBuffer *ldFragUniformBuffer;
+	int32_t ldVertUniformOffset;
+	int32_t ldFragUniformOffset;
+	VkBuffer *ldVertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
+	int32_t ldVertexBufferOffsets[MAX_BOUND_VERTEX_BUFFERS];
+
 	int32_t stencilRef;
 
 	VulkanTexture *textures[MAX_TEXTURE_SAMPLERS];
@@ -276,10 +288,32 @@ static void BindResources(
 	FNAVulkanRenderer *renderer
 );
 
+static void BindUserVertexBuffer(
+	FNAVulkanRenderer *renderer,
+	void *vertexData,
+	int32_t vertexCount,
+	int32_t vertexOffset
+);
+
 static void CheckPrimitiveTypeAndBindPipeline(
 	FNAVulkanRenderer *renderer,
 	FNA3D_PrimitiveType primitiveType
 );
+
+static void CreateBackingBuffer(
+	FNAVulkanRenderer *renderer,
+	VulkanBuffer *buffer,
+	VkDeviceSize previousSize,
+	VkBufferUsageFlagBits usageFlagBits
+);
+
+/* FIXME: do we even have a write only buffer concept in vulkan? */
+static VulkanBuffer* CreateBuffer(
+	FNA3D_Renderer *driverData,
+	FNA3D_BufferUsage usage, 
+	VkDeviceSize size,
+	VkBufferUsageFlagBits usageFlagBits
+); 
 
 static uint8_t CreateImage(
 	FNAVulkanRenderer *renderer,
@@ -350,13 +384,22 @@ static void UpdateRenderPass(
 	FNA3D_Renderer *driverData
 );
 
+static void SetUserBufferData(
+	FNAVulkanRenderer *renderer,
+	VulkanBuffer *buffer,
+	int32_t offsetInBytes,
+	void* data,
+	int32_t dataLength,
+	VkBufferUsageFlagBits usageFlagBits
+);
+
 void VULKAN_SetRenderTargets(
 	FNA3D_Renderer *driverData,
 	FNA3D_RenderTargetBinding *renderTargets,
 	int32_t numRenderTargets,
 	FNA3D_Renderbuffer *renderbuffer,
 	FNA3D_DepthFormat depthFormat
-);
+); 
 
 /* static vars */
 
@@ -759,6 +802,54 @@ static void BindResources(FNAVulkanRenderer *renderer)
 	/* TODO */
 }
 
+static void BindUserVertexBuffer(
+	FNAVulkanRenderer *renderer,
+	void *vertexData,
+	int32_t vertexCount,
+	int32_t vertexOffset
+) {
+	VkDeviceSize len, offset;
+	VkBuffer *handle;
+
+	len = vertexCount * renderer->userVertexStride;
+	if (renderer->userVertexBuffer == NULL)
+	{
+		renderer->userVertexBuffer = CreateBuffer(
+			(FNA3D_Renderer*) renderer,
+			FNA3D_BUFFERUSAGE_WRITEONLY,
+			len,
+			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+		);
+	}
+
+	SetUserBufferData(
+		renderer,
+		renderer->userVertexBuffer,
+		vertexOffset * renderer->userVertexStride,
+		vertexData,
+		len,
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+	);
+
+	offset = renderer->userVertexBuffer->internalOffset;
+	handle = renderer->userVertexBuffer->handle;
+	VkBuffer buffers[1] = { *handle };
+
+	if (	renderer->ldVertexBuffers[0] != handle ||
+			renderer->ldVertexBufferOffsets[0] != offset	)
+	{
+		renderer->vkCmdBindVertexBuffers(
+			renderer->commandBuffers[renderer->commandBufferCount - 1],
+			0,
+			1,
+			buffers, /* this is wrong type */
+			&offset
+		);
+		renderer->ldVertexBuffers[0] = handle;
+		renderer->ldVertexBufferOffsets[0] = offset;
+	}
+}
+
 static void CheckPrimitiveTypeAndBindPipeline(
 	FNAVulkanRenderer *renderer,
 	FNA3D_PrimitiveType primitiveType
@@ -774,6 +865,110 @@ static void CheckPrimitiveTypeAndBindPipeline(
 		 */
 		BindPipeline(renderer);
 	}
+}
+
+static void CreateBackingBuffer(
+	FNAVulkanRenderer *renderer,
+	VulkanBuffer *buffer,
+	VkDeviceSize previousSize,
+	VkBufferUsageFlagBits usageFlagBits
+) {
+	VkBuffer *oldBuffer = buffer->handle;
+	VkBuffer *oldContents = buffer->contents;
+
+	VkBufferCreateInfo buffer_create_info = {
+		VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO
+	};
+
+	buffer_create_info.size = buffer->internalBufferSize;
+	buffer_create_info.usage = usageFlagBits;
+	buffer_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	buffer_create_info.queueFamilyIndexCount = 1;
+	buffer_create_info.pQueueFamilyIndices = &renderer->queueFamilyIndices.graphicsFamily;
+
+	buffer->handle = SDL_malloc(sizeof(VkBuffer));
+	if (!buffer->handle)
+	{
+		SDL_OutOfMemory();
+		return;
+	}
+
+	renderer->vkCreateBuffer(
+		renderer->logicalDevice,
+		&buffer_create_info,
+		NULL,
+		buffer->handle
+	);
+	buffer->contents = SDL_malloc(sizeof(buffer->internalBufferSize));
+
+	if (oldBuffer != NULL)
+	{
+		SDL_memcpy(
+			buffer->contents,
+			oldContents,
+			sizeof(previousSize)
+		);
+
+		renderer->vkDestroyBuffer(
+			renderer->logicalDevice,
+			*oldBuffer,
+			NULL
+		);
+
+		SDL_free(oldBuffer);
+	}
+}
+
+static VulkanBuffer* CreateBuffer(
+	FNA3D_Renderer *driverData,
+	FNA3D_BufferUsage usage,
+	VkDeviceSize size,
+	VkBufferUsageFlagBits usageFlagBits
+) {
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanBuffer *result, *curr;
+
+	result = SDL_malloc(sizeof(VulkanBuffer));
+	SDL_memset(result, '\0', sizeof(VulkanBuffer));
+
+	result->usage = usage;
+	result->size = size;
+	result->internalBufferSize = size;
+	CreateBackingBuffer(renderer, result, -1, usageFlagBits);
+
+	LinkedList_Add(renderer->buffers, result, curr);
+	return result;
+}
+
+static void SetUserBufferData(
+	FNAVulkanRenderer *renderer,
+	VulkanBuffer *buffer,
+	int32_t offsetInBytes,
+	void* data,
+	int32_t dataLength,
+	VkBufferUsageFlagBits usageFlagBits
+) {
+	int32_t sizeRequired, previousSize;
+
+	buffer->internalOffset += buffer->prevDataLength;
+	sizeRequired = buffer->internalOffset + dataLength;
+	if (sizeRequired > buffer->internalBufferSize)
+	{
+		previousSize = buffer->internalBufferSize;
+		buffer->internalBufferSize = SDL_max(
+			buffer->internalBufferSize * 2,
+			buffer->internalBufferSize + dataLength
+		);
+		CreateBackingBuffer(renderer, buffer, previousSize, usageFlagBits);
+	}
+
+	SDL_memcpy(
+		(uint8_t*) buffer->contents + buffer->internalOffset,
+		(uint8_t*) data + offsetInBytes,
+		dataLength
+	);
+
+	buffer->prevDataLength = dataLength;
 }
 
 static void SetReferenceStencilValueCommand(FNAVulkanRenderer *renderer)
@@ -2275,7 +2470,60 @@ void VULKAN_DrawUserIndexedPrimitives(
 	FNA3D_IndexElementSize indexElementSize,
 	int32_t primitiveCount
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	int32_t numIndices, indexSize;
+	uint32_t firstIndex;
+	VkDeviceSize len;
+
+	BindUserVertexBuffer(
+		renderer,
+		vertexData,
+		numVertices,
+		vertexOffset
+	);
+
+	numIndices = PrimitiveVerts(primitiveType, primitiveCount);
+	indexSize = IndexSize(indexElementSize);
+	len = numIndices * indexSize;
+
+	if (renderer->userIndexBuffer == NULL)
+	{
+		renderer->userIndexBuffer = CreateBuffer(
+			driverData,
+			FNA3D_BUFFERUSAGE_WRITEONLY,
+			len,
+			VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+		);
+	}
+
+	SetUserBufferData(
+		renderer,
+		renderer->userIndexBuffer,
+		indexOffset * indexSize,
+		indexData,
+		len,
+		VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+	);
+
+	CheckPrimitiveTypeAndBindPipeline(renderer, primitiveType);
+
+	renderer->vkCmdBindIndexBuffer(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		*renderer->userIndexBuffer->handle,
+		renderer->userIndexBuffer->internalOffset,
+		XNAToVK_IndexType[indexElementSize]
+	);
+
+	firstIndex = indexOffset / indexSize;
+	
+	renderer->vkCmdDrawIndexed(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		numIndices,
+		1,
+		firstIndex,
+		vertexOffset,
+		0
+	);
 }
 
 void VULKAN_DrawUserPrimitives(
