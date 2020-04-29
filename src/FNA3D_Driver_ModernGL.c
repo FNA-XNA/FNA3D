@@ -202,13 +202,10 @@ typedef struct ModernGLRenderer /* Cast FNA3D_Renderer* to this! */
 	GLuint currentVertexBuffer;
 	GLuint currentIndexBuffer;
 
-	/* ld, or LastDrawn, effect/vertex attributes */
+	/* ld, or LastDrawn, vertex attributes */
 	int32_t ldBaseVertex;
 	FNA3D_VertexDeclaration *ldVertexDeclaration;
 	void* ldPointer;
-	MOJOSHADER_effect *ldEffect;
-	const MOJOSHADER_effectTechnique *ldTechnique;
-	uint32_t ldPass;
 
 	/* Some vertex declarations may have overlapping attributes :/ */
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
@@ -1876,9 +1873,6 @@ static void MODERNGL_ApplyVertexBufferBindings(
 
 	if (	bindingsUpdated ||
 		baseVertex != renderer->ldBaseVertex ||
-		renderer->currentEffect != renderer->ldEffect ||
-		renderer->currentTechnique != renderer->ldTechnique ||
-		renderer->currentPass != renderer->ldPass ||
 		renderer->effectApplied	)
 	{
 		/* There's this weird case where you can have overlapping
@@ -1961,9 +1955,6 @@ static void MODERNGL_ApplyVertexBufferBindings(
 		MODERNGL_INTERNAL_FlushGLVertexAttributes(renderer);
 
 		renderer->ldBaseVertex = baseVertex;
-		renderer->ldEffect = renderer->currentEffect;
-		renderer->ldTechnique = renderer->currentTechnique;
-		renderer->ldPass = renderer->currentPass;
 		renderer->effectApplied = 0;
 		renderer->ldVertexDeclaration = NULL;
 		renderer->ldPointer = NULL;
@@ -1996,9 +1987,6 @@ static void MODERNGL_ApplyVertexDeclaration(
 
 	if (	vertexDeclaration != renderer->ldVertexDeclaration ||
 		basePtr != renderer->ldPointer ||
-		renderer->currentEffect != renderer->ldEffect ||
-		renderer->currentTechnique != renderer->ldTechnique ||
-		renderer->currentPass != renderer->ldPass ||
 		renderer->effectApplied	)
 	{
 		/* There's this weird case where you can have overlapping
@@ -2072,9 +2060,6 @@ static void MODERNGL_ApplyVertexDeclaration(
 
 		renderer->ldVertexDeclaration = vertexDeclaration;
 		renderer->ldPointer = vertexData;
-		renderer->ldEffect = renderer->currentEffect;
-		renderer->ldTechnique = renderer->currentTechnique;
-		renderer->ldPass = renderer->currentPass;
 		renderer->effectApplied = 0;
 		renderer->ldBaseVertex = -1;
 	}
@@ -4290,6 +4275,7 @@ static void MODERNGL_INTERNAL_DestroyEffect(
 		renderer->currentEffect = NULL;
 		renderer->currentTechnique = NULL;
 		renderer->currentPass = 0;
+		renderer->effectApplied = 1;
 	}
 	MOJOSHADER_deleteEffect(glEffect);
 	SDL_free(effect);
