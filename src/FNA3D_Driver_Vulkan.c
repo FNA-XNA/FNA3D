@@ -2533,7 +2533,29 @@ void VULKAN_DrawUserPrimitives(
 	int32_t vertexOffset,
 	int32_t primitiveCount
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+
+	int32_t numVerts = PrimitiveVerts(
+		primitiveType,
+		primitiveCount
+	);
+
+	BindUserVertexBuffer(
+		renderer,
+		vertexData,
+		numVerts,
+		vertexOffset
+	);
+
+	CheckPrimitiveTypeAndBindPipeline(renderer, primitiveType);
+
+	renderer->vkCmdDraw(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		numVerts,
+		1,
+		vertexOffset,
+		0
+	);
 }
 
 /* Mutable Render States */
@@ -3206,10 +3228,6 @@ void VULKAN_GetIndexBufferData(
 }
 
 /* Effects */
-
-typedef struct MOJOSHADER_effect MOJOSHADER_effect;
-typedef struct MOJOSHADER_effectTechnique MOJOSHADER_effectTechnique;
-typedef struct MOJOSHADER_effectStateChanges MOJOSHADER_effectStateChanges;
 
 void VULKAN_CreateEffect(
 	FNA3D_Renderer *driverData,
