@@ -3196,7 +3196,12 @@ FNA3D_Buffer* VULKAN_GenIndexBuffer(
 	int32_t indexCount,
 	FNA3D_IndexElementSize indexElementSize
 ) {
-	/* TODO */
+	return (FNA3D_Buffer*) CreateBuffer(
+		driverData,
+		usage,
+		indexCount * IndexSize(indexElementSize),
+		VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+	);
 }
 
 FNA3DAPI void VULKAN_AddDisposeIndexBuffer(
@@ -3595,11 +3600,6 @@ static uint8_t IsDeviceIdeal(
 	uint32_t queueFamilyCount;
 	renderer->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, NULL);
 
-	if (queueFamilyCount == 0)
-	{
-		return 0;
-	}
-
 	/* FIXME: need better structure for checking vs storing support details */
 	SwapChainSupportDetails swapChainSupportDetails;
 	if (!QuerySwapChainSupport(renderer, physicalDevice, surface, &swapChainSupportDetails))
@@ -3655,11 +3655,6 @@ static uint8_t IsDeviceSuitable(
 
 	uint32_t queueFamilyCount;
 	renderer->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, NULL);
-
-	if (queueFamilyCount == 0)
-	{
-		return 0;
-	}
 
 	SwapChainSupportDetails swapChainSupportDetails;
 	if (!QuerySwapChainSupport(renderer, physicalDevice, surface, &swapChainSupportDetails))
