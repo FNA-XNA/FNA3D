@@ -207,9 +207,6 @@ typedef struct ModernGLRenderer /* Cast FNA3D_Renderer* to this! */
 	FNA3D_VertexDeclaration *ldVertexDeclaration;
 	void* ldPointer;
 
-	/* Some vertex declarations may have overlapping attributes :/ */
-	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
-
 	/* Render Targets */
 	int32_t numAttachments;
 	GLuint currentReadFramebuffer;
@@ -1865,6 +1862,7 @@ static void MODERNGL_ApplyVertexBufferBindings(
 	uint8_t normalized;
 	int32_t i, j, k;
 	int32_t usage, index, attribLoc;
+	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 	FNA3D_VertexElement *element;
 	FNA3D_VertexDeclaration *vertexDeclaration;
 	ModernGLVertexAttribute *attr;
@@ -1882,7 +1880,7 @@ static void MODERNGL_ApplyVertexBufferBindings(
 		 * have to crash :/
 		 * -flibit
 		 */
-		SDL_memset(renderer->attrUse, '\0', sizeof(renderer->attrUse));
+		SDL_memset(attrUse, '\0', sizeof(attrUse));
 		for (i = 0; i < numBindings; i += 1)
 		{
 			buffer = (ModernGLBuffer*) bindings[i].vertexBuffer;
@@ -1897,12 +1895,12 @@ static void MODERNGL_ApplyVertexBufferBindings(
 				element = &vertexDeclaration->elements[j];
 				usage = element->vertexElementUsage;
 				index = element->usageIndex;
-				if (renderer->attrUse[usage][index])
+				if (attrUse[usage][index])
 				{
 					index = -1;
 					for (k = 0; k < 16; k += 1)
 					{
-						if (!renderer->attrUse[usage][k])
+						if (!attrUse[usage][k])
 						{
 							index = k;
 							break;
@@ -1915,7 +1913,7 @@ static void MODERNGL_ApplyVertexBufferBindings(
 						);
 					}
 				}
-				renderer->attrUse[usage][index] = 1;
+				attrUse[usage][index] = 1;
 				attribLoc = MOJOSHADER_glGetVertexAttribLocation(
 					VertexAttribUsage(usage),
 					index
@@ -1975,6 +1973,7 @@ static void MODERNGL_ApplyVertexDeclaration(
 	int32_t vertexOffset
 ) {
 	int32_t usage, index, attribLoc, i, j;
+	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 	FNA3D_VertexElement *element;
 	ModernGLVertexAttribute *attr;
 	uint8_t normalized;
@@ -1996,18 +1995,18 @@ static void MODERNGL_ApplyVertexDeclaration(
 		 * have to crash :/
 		 * -flibit
 		 */
-		SDL_memset(renderer->attrUse, '\0', sizeof(renderer->attrUse));
+		SDL_memset(attrUse, '\0', sizeof(attrUse));
 		for (i = 0; i < vertexDeclaration->elementCount; i += 1)
 		{
 			element = &vertexDeclaration->elements[i];
 			usage = element->vertexElementUsage;
 			index = element->usageIndex;
-			if (renderer->attrUse[usage][index])
+			if (attrUse[usage][index])
 			{
 				index = -1;
 				for (j = 0; j < 16; j += 1)
 				{
-					if (!renderer->attrUse[usage][j])
+					if (!attrUse[usage][j])
 					{
 						index = j;
 						break;
@@ -2020,7 +2019,7 @@ static void MODERNGL_ApplyVertexDeclaration(
 					);
 				}
 			}
-			renderer->attrUse[usage][index] = 1;
+			attrUse[usage][index] = 1;
 			attribLoc = MOJOSHADER_glGetVertexAttribLocation(
 				VertexAttribUsage(usage),
 				index
