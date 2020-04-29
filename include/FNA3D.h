@@ -324,6 +324,20 @@ typedef struct FNA3D_Viewport
 	float maxDepth;
 } FNA3D_Viewport;
 
+typedef struct FNA3D_PresentationParameters
+{
+	int32_t backBufferWidth;
+	int32_t backBufferHeight;
+	FNA3D_SurfaceFormat backBufferFormat;
+	int32_t multiSampleCount;
+	void* deviceWindowHandle;
+	uint8_t isFullScreen;
+	FNA3D_DepthFormat depthStencilFormat;
+	FNA3D_PresentInterval presentationInterval;
+	FNA3D_DisplayOrientation displayOrientation;
+	FNA3D_RenderTargetUsage renderTargetUsage;
+} FNA3D_PresentationParameters;
+
 typedef struct FNA3D_BlendState
 {
 	FNA3D_Blend colorSourceBlend;
@@ -403,20 +417,6 @@ typedef struct FNA3D_VertexBufferBinding
 	int32_t vertexOffset;
 	int32_t instanceFrequency;
 } FNA3D_VertexBufferBinding;
-
-typedef struct FNA3D_PresentationParameters
-{
-	int32_t backBufferWidth;
-	int32_t backBufferHeight;
-	FNA3D_SurfaceFormat backBufferFormat;
-	int32_t multiSampleCount;
-	void* deviceWindowHandle;
-	uint8_t isFullScreen;
-	FNA3D_DepthFormat depthStencilFormat;
-	FNA3D_PresentInterval presentationInterval;
-	FNA3D_DisplayOrientation displayOrientation;
-	FNA3D_RenderTargetUsage renderTargetUsage;
-} FNA3D_PresentationParameters;
 
 typedef struct FNA3D_RenderTargetBinding
 {
