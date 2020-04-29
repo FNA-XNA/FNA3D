@@ -3190,7 +3190,41 @@ void VULKAN_GetVertexBufferData(
 	int32_t elementSizeInBytes,
 	int32_t vertexStride
 ) {
-	/* TODO */
+	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
+	uint8_t *dataBytes, *cpy, *src, *dst;
+	uint8_t useStagingBuffer;
+	int32_t i;
+
+	dataBytes = (uint8_t*) data;
+	useStagingBuffer = elementSizeInBytes < vertexStride;
+
+	if (useStagingBuffer)
+	{
+		cpy = (uint8_t*) SDL_malloc(elementCount * vertexStride);
+	}
+	else
+	{
+		cpy = dataBytes;
+	}
+
+	SDL_memcpy(
+		cpy,
+		(uint8_t*) vulkanBuffer->contents + offsetInBytes,
+		elementCount * vertexStride
+	);
+
+	if (useStagingBuffer)
+	{
+		src = cpy;
+		dst = dataBytes;
+		for (i = 0; i < elementCount; i++)
+		{
+			SDL_memcpy(dst, src, elementSizeInBytes);
+			dst += elementSizeInBytes;
+			src += vertexStride;
+		}
+		SDL_free(cpy);
+	}
 }
 
 /* Index Buffers */
