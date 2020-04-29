@@ -227,7 +227,7 @@ static DXGI_FORMAT XNAToD3D_DepthFormat[] =
 
 static LPCSTR XNAToD3D_VertexAttribSemanticName[] =
 {
-	"SV_POSITION",			/* VertexElementUsage.Position */
+	"POSITION",			/* VertexElementUsage.Position */
 	"COLOR",			/* VertexElementUsage.Color */
 	"TEXCOORD",			/* VertexElementUsage.TextureCoordinate */
 	"NORMAL",			/* VertexElementUsage.Normal */
