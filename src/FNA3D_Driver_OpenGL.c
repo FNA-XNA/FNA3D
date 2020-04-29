@@ -157,6 +157,8 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	GLenum backbufferScaleMode;
 	GLuint realBackbufferFBO;
 	GLuint realBackbufferRBO;
+
+	/* VAO for Core Profile */
 	GLuint vao;
 
 	/* Capabilities */
