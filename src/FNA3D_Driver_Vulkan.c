@@ -3153,8 +3153,14 @@ FNA3D_Buffer* VULKAN_GenVertexBuffer(
 	int32_t vertexCount,
 	int32_t vertexStride
 ) {
-	/* TODO */
+	return (FNA3D_Buffer*) CreateBuffer(
+		driverData,
+		usage,
+		vertexCount * vertexStride,
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+	);
 }
+
 void VULKAN_AddDisposeVertexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
