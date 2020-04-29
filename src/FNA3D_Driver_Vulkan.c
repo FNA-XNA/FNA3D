@@ -3235,7 +3235,13 @@ void VULKAN_GetIndexBufferData(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
+	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
+	uint8_t *contentsPtr = (uint8_t*) vulkanBuffer->contents;
+	SDL_memcpy(
+		data,
+		contentsPtr + offsetInBytes,
+		dataLength
+	);
 }
 
 /* Effects */
