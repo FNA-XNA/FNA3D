@@ -342,6 +342,32 @@ static VulkanTexture* CreateTexture(
 	uint8_t isRenderTarget
 );
 
+static void DestroyBuffer(
+	FNA3D_Renderer *driverData,
+	FNA3D_Buffer *buffer
+) {
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanBuffer *vulkanBuffer, *curr, *prev;
+
+	vulkanBuffer = (VulkanBuffer*) buffer;
+
+	LinkedList_Remove(
+		renderer->buffers,
+		vulkanBuffer,
+		curr,
+		prev
+	);
+
+	renderer->vkDestroyBuffer(
+		renderer->logicalDevice,
+		*vulkanBuffer->handle,
+		NULL
+	);
+
+	vulkanBuffer->handle = NULL;
+	SDL_free(vulkanBuffer);
+}
+
 static void EndPass(
 	FNAVulkanRenderer *renderer
 );
@@ -3310,7 +3336,7 @@ void VULKAN_AddDisposeVertexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
-	/* TODO */
+	DestroyBuffer(driverData, buffer);
 }
 
 void VULKAN_SetVertexBufferData(
