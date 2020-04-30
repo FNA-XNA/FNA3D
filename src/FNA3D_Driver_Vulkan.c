@@ -275,6 +275,10 @@ typedef struct FNAVulkanRenderer
 
 /* forward declarations */
 
+static uint8_t AllocateAndBeginCommandBuffer(
+	FNAVulkanRenderer *renderer
+);
+
 static void BeginRenderPass(
 	FNAVulkanRenderer *renderer
 );
@@ -312,7 +316,7 @@ static VulkanBuffer* CreateBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_BufferUsage usage, 
 	VkDeviceSize size,
-	VkBufferUsageFlagBits usageFlagBits
+	VkBufferUsageFlags usageFlags
 ); 
 
 static uint8_t CreateImage(
@@ -384,6 +388,16 @@ static void UpdateRenderPass(
 	FNA3D_Renderer *driverData
 );
 
+static void SetBufferData(
+	FNA3D_Renderer *driverData,
+	FNA3D_Buffer *buffer,
+	int32_t offsetInBytes,
+	void* data,
+	int32_t dataLength,
+	FNA3D_SetDataOptions options,
+	VkBufferUsageFlags usage
+);
+
 static void SetUserBufferData(
 	FNAVulkanRenderer *renderer,
 	VulkanBuffer *buffer,
@@ -400,6 +414,8 @@ void VULKAN_SetRenderTargets(
 	FNA3D_Renderbuffer *renderbuffer,
 	FNA3D_DepthFormat depthFormat
 ); 
+
+static void Stall(FNAVulkanRenderer *renderer);
 
 /* static vars */
 
@@ -871,7 +887,7 @@ static void CreateBackingBuffer(
 	FNAVulkanRenderer *renderer,
 	VulkanBuffer *buffer,
 	VkDeviceSize previousSize,
-	VkBufferUsageFlagBits usageFlagBits
+	VkBufferUsageFlags usageFlags
 ) {
 	VkBuffer *oldBuffer = buffer->handle;
 	VkBuffer *oldContents = buffer->contents;
@@ -881,7 +897,7 @@ static void CreateBackingBuffer(
 	};
 
 	buffer_create_info.size = buffer->internalBufferSize;
-	buffer_create_info.usage = usageFlagBits;
+	buffer_create_info.usage = usageFlags;
 	buffer_create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	buffer_create_info.queueFamilyIndexCount = 1;
 	buffer_create_info.pQueueFamilyIndices = &renderer->queueFamilyIndices.graphicsFamily;
@@ -923,7 +939,7 @@ static VulkanBuffer* CreateBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_BufferUsage usage,
 	VkDeviceSize size,
-	VkBufferUsageFlagBits usageFlagBits
+	VkBufferUsageFlags usageFlags
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	VulkanBuffer *result, *curr;
@@ -934,10 +950,78 @@ static VulkanBuffer* CreateBuffer(
 	result->usage = usage;
 	result->size = size;
 	result->internalBufferSize = size;
-	CreateBackingBuffer(renderer, result, -1, usageFlagBits);
+	CreateBackingBuffer(renderer, result, -1, usageFlags);
 
 	LinkedList_Add(renderer->buffers, result, curr);
 	return result;
+}
+
+static void SetBufferData(
+	FNA3D_Renderer *driverData,
+	FNA3D_Buffer *buffer,
+	int32_t offsetInBytes,
+	void* data,
+	int32_t dataLength,
+	FNA3D_SetDataOptions options,
+	VkBufferUsageFlags usage
+) {
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
+	uint8_t *contentsPtr;
+	int32_t sizeRequired, previousSize;
+
+	if (vulkanBuffer->boundThisFrame)
+	{
+		if (options == FNA3D_SETDATAOPTIONS_NONE)
+		{
+			SDL_LogWarn(
+				SDL_LOG_CATEGORY_APPLICATION,
+				"%s\n%s\n",
+				"Pipeline stall triggered by binding buffer with FNA3D_SETDATAOPTIONS_NONE multiple times in a frame",
+				"This is discouraged and will cause performance degradation"
+			);
+
+			Stall(renderer);
+			vulkanBuffer->boundThisFrame = 1;
+		}
+		else if (options == FNA3D_SETDATAOPTIONS_DISCARD)
+		{
+			vulkanBuffer->internalOffset += vulkanBuffer->size;
+			sizeRequired = vulkanBuffer->internalOffset + dataLength;
+			if (sizeRequired > vulkanBuffer->internalBufferSize)
+			{
+				previousSize = vulkanBuffer->internalBufferSize;
+				vulkanBuffer->internalBufferSize *= 2;
+				CreateBackingBuffer(
+					renderer,
+					vulkanBuffer,
+					previousSize,
+					usage
+				);
+			}
+		}
+	}
+
+	/* Copy previous contents if necessary */
+	contentsPtr = (uint8_t*) vulkanBuffer->contents;
+	if (	dataLength < vulkanBuffer->size &&
+			vulkanBuffer->prevInternalOffset != vulkanBuffer->internalOffset)
+	{
+		SDL_memcpy(
+			contentsPtr + vulkanBuffer->internalOffset,
+			contentsPtr + vulkanBuffer->prevInternalOffset,
+			vulkanBuffer->size
+		);
+	}
+
+	/* Copy data into buffer */
+	SDL_memcpy(
+		contentsPtr + vulkanBuffer->internalOffset + offsetInBytes,
+		data,
+		dataLength
+	);
+
+	vulkanBuffer->prevInternalOffset = vulkanBuffer->internalOffset;
 }
 
 static void SetUserBufferData(
@@ -1493,49 +1577,7 @@ static uint8_t BlitFramebuffer(
 ) {
 	VkResult vulkanResult;
 
-	renderer->commandBufferCount++;
-
-	if (renderer->commandBufferCount > renderer->commandBufferCapacity)
-	{
-		renderer->commandBufferCapacity *= 2;
-
-		renderer->commandBuffers = SDL_realloc(
-			renderer->commandBuffers,
-			sizeof(VkCommandBuffer) * renderer->commandBufferCapacity
-		);
-
-		VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-		commandBufferAllocateInfo.commandPool = renderer->commandPool;
-		commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-		commandBufferAllocateInfo.commandBufferCount = 1; /* TODO: change for frames in flight */
-
-		vulkanResult = renderer->vkAllocateCommandBuffers(
-			renderer->logicalDevice,
-			&commandBufferAllocateInfo,
-			&renderer->commandBuffers[renderer->commandBufferCount - 1]
-		);
-
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
-			return 0;
-		}
-	}
-
-	VkCommandBufferBeginInfo beginInfo = {
-		VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
-	};
-
-	vulkanResult = renderer->vkBeginCommandBuffer(
-		renderer->commandBuffers[renderer->commandBufferCount - 1],
-		&beginInfo
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkBeginCommandBuffer", vulkanResult);
-		return 0;
-	}
+	AllocateAndBeginCommandBuffer(renderer);
 
 	VkImageBlit blit;
 
@@ -1943,6 +1985,58 @@ static RenderPassHash GetRenderPassHash(
 	RenderPassHash hash;
 	hash.attachmentCount = renderer->colorAttachmentCount + renderer->depthStencilAttachmentActive;
 	return hash;
+}
+
+static uint8_t AllocateAndBeginCommandBuffer(
+	FNAVulkanRenderer *renderer
+) {
+	VkResult vulkanResult;
+
+	renderer->commandBufferCount++;
+
+	if (renderer->commandBufferCount > renderer->commandBufferCapacity)
+	{
+		renderer->commandBufferCapacity *= 2;
+
+		renderer->commandBuffers = SDL_realloc(
+			renderer->commandBuffers,
+			sizeof(VkCommandBuffer) * renderer->commandBufferCapacity
+		);
+
+		VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+		commandBufferAllocateInfo.commandPool = renderer->commandPool;
+		commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		commandBufferAllocateInfo.commandBufferCount = 1; /* TODO: change for frames in flight */
+
+		vulkanResult = renderer->vkAllocateCommandBuffers(
+			renderer->logicalDevice,
+			&commandBufferAllocateInfo,
+			&renderer->commandBuffers[renderer->commandBufferCount - 1]
+		);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
+			return 0;
+		}
+	}
+
+	VkCommandBufferBeginInfo beginInfo = {
+		VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
+	};
+
+	vulkanResult = renderer->vkBeginCommandBuffer(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		&beginInfo
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkBeginCommandBuffer", vulkanResult);
+		return 0;
+	}
+
+	return 1;
 }
 
 static void BeginRenderPass(
@@ -2867,6 +2961,57 @@ void VULKAN_SetRenderTargets(
 	/* TODO: update attachments */
 }
 
+static void Stall(FNAVulkanRenderer *renderer)
+{
+	VkResult result;
+	VulkanBuffer *buf;
+
+	EndPass(renderer);
+
+	VkSubmitInfo submitInfo = { VK_STRUCTURE_TYPE_SUBMIT_INFO };
+	submitInfo.waitSemaphoreCount = 0;
+	submitInfo.pWaitSemaphores = NULL;
+	submitInfo.pWaitDstStageMask = NULL;
+	submitInfo.signalSemaphoreCount = 0;
+	submitInfo.pSignalSemaphores = NULL;
+	submitInfo.commandBufferCount = renderer->commandBufferCount;
+	submitInfo.pCommandBuffers = renderer->commandBuffers;
+
+	result = renderer->vkQueueSubmit(
+		renderer->graphicsQueue,
+		1,
+		&submitInfo,
+		renderer->renderQueueFence
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkQueueSubmit", result);
+		return;
+	}
+
+	result = renderer->vkQueueWaitIdle(renderer->graphicsQueue);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkQueueWaitIdle", result);
+		return;
+	}
+
+	renderer->commandBufferCount = 0;
+	AllocateAndBeginCommandBuffer(renderer);
+	renderer->needNewRenderPass = 1;
+
+	buf = renderer->buffers;
+	while (buf != NULL)
+	{
+		buf->internalOffset = 0;
+		buf->boundThisFrame = 0;
+		buf->prevDataLength = 0;
+		buf = buf->next;
+	}
+}
+
 void VULKAN_ResolveTarget(
 	FNA3D_Renderer *driverData,
 	FNA3D_RenderTargetBinding *target
@@ -3259,7 +3404,15 @@ void VULKAN_SetIndexBufferData(
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
 ) {
-	/* TODO */
+	SetBufferData(
+		driverData,
+		buffer,
+		offsetInBytes,
+		data,
+		dataLength,
+		options,
+		VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+	);
 }
 
 void VULKAN_GetIndexBufferData(

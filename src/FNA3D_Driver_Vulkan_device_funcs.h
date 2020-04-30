@@ -84,6 +84,7 @@ VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkGetSwapchainImagesKHR, (VkDevice devi
 VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkMapMemory, (VkDevice device, VkDeviceMemory memory, VkDeviceSize offset, VkDeviceSize size, VkMemoryMapFlags flags, void **ppData))
 VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkQueuePresentKHR, (VkQueue queue, const VkPresentInfoKHR *pPresentInfo))
 VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkQueueSubmit, (VkQueue queue, uint32_t submitCount, const VkSubmitInfo *pSubmits, VkFence fence))
+VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkQueueWaitIdle, (VkQueue queue))
 VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkResetCommandBuffer, (VkCommandBuffer commandBuffer, VkCommandBufferResetFlags flags))
 VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkResetCommandPool, (VkDevice device, VkCommandPool commandPool, VkCommandPoolResetFlags flags))
 VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkResetFences, (VkDevice device, uint32_t fenceCount, const VkFence *pFences))
