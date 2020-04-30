@@ -3323,7 +3323,16 @@ void VULKAN_SetVertexBufferData(
 	int32_t vertexStride,
 	FNA3D_SetDataOptions options
 ) {
-	/* TODO */
+	/* FIXME: use staging buffer for elementSizeInBytes < vertexStride */
+	SetBufferData(
+		driverData,
+		buffer,
+		offsetInBytes,
+		data,
+		elementCount * vertexStride,
+		options,
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+	);
 }
 
 void VULKAN_GetVertexBufferData(
