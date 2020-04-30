@@ -516,7 +516,11 @@ static ID3D11DepthStencilState* FetchDepthStencilState(
 
 	/* We have to make a new depth stencil state... */
 	desc.DepthEnable = state->depthBufferEnable;
-	desc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+	desc.DepthWriteMask = (
+		state->depthBufferWriteEnable ?
+			D3D11_DEPTH_WRITE_MASK_ALL :
+			D3D11_DEPTH_WRITE_MASK_ZERO
+	);
 	desc.DepthFunc = XNAToD3D_CompareFunc[
 		state->depthBufferFunction
 	];
