@@ -1540,7 +1540,6 @@ static void D3D11_VerifySampler(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
 	ID3D11SamplerState *d3dSamplerState;
-	void* nullResource[1] = {NULL};
 
 	if (texture == NULL)
 	{
@@ -1554,13 +1553,13 @@ static void D3D11_VerifySampler(
 					renderer->context,
 					index,
 					1,
-					(ID3D11ShaderResourceView**) nullResource
+					&NullTexture.shaderView
 				);
 				ID3D11DeviceContext_PSSetSamplers(
 					renderer->context,
 					index,
 					1,
-					(ID3D11SamplerState**) nullResource
+					&renderer->samplers[index]
 				);
 			}
 			else
@@ -1569,13 +1568,13 @@ static void D3D11_VerifySampler(
 					renderer->context,
 					index - MAX_TEXTURE_SAMPLERS,
 					1,
-					(ID3D11ShaderResourceView**) nullResource
+					&NullTexture.shaderView
 				);
 				ID3D11DeviceContext_VSSetSamplers(
 					renderer->context,
 					index - MAX_TEXTURE_SAMPLERS,
 					1,
-					(ID3D11SamplerState**) nullResource
+					&renderer->samplers[index]
 				);
 			}
 		}
@@ -1747,10 +1746,9 @@ static void D3D11_SetRenderTargets(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *tex;
-	int32_t i;
+	int32_t i, j;
 
 	/* Reset attachments */
-	/* FIXME: Do we really need all this state shadowing...? */
 	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
 	{
 		renderer->renderTargetViews[i] = NULL;
@@ -1804,6 +1802,31 @@ static void D3D11_SetRenderTargets(
 			FNA3D_DEPTHFORMAT_NONE :
 			depthFormat
 	);
+
+	/* Unbind any render targets from pixel shader input */
+	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
+	{
+		for (j = 0; j < numRenderTargets; j += 1)
+		{
+			if (renderer->textures[i] == (D3D11Texture*) renderTargets[j].texture)
+			{
+				renderer->textures[i] = &NullTexture;
+				renderer->samplers[i] = NULL;
+				ID3D11DeviceContext_PSSetShaderResources(
+					renderer->context,
+					i,
+					1,
+					&NullTexture.shaderView
+				);
+				ID3D11DeviceContext_PSSetSamplers(
+					renderer->context,
+					i,
+					1,
+					&renderer->samplers[i]
+				);
+			}
+		}
+	}
 
 	/* Actually set the render targets! */
 	ID3D11DeviceContext_OMSetRenderTargets(
