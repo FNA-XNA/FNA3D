@@ -158,16 +158,22 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	int32_t stencilRef;
 
 	/* Rasterizer State */
+	FNA3D_Viewport viewport;
+	FNA3D_Rect scissorRect;
 	ID3D11RasterizerState *rasterizerState;
 
 	/* Textures */
 	D3D11Texture *textures[MAX_TOTAL_SAMPLERS];
 	ID3D11SamplerState *samplers[MAX_TOTAL_SAMPLERS];
 
-	/* Vertex Buffer Binding Caches */
+	/* Input Assembly */
 	ID3D11InputLayout *inputLayout;
+	FNA3D_PrimitiveType topology;
+	D3D11Buffer *vertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
+	D3D11Buffer *indexBuffer;
 
 	/* Some vertex declarations may have overlapping attributes :/ */
+	/* FIXME: Move this to ApplyVertex* */
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 
 	/* Resource Caches */
@@ -878,7 +884,14 @@ static void BlitFramebuffer(D3D11Renderer *renderer)
 	float blendFactor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	ID3D11VertexShader *oldVertexShader;
 	ID3D11PixelShader *oldPixelShader;
+	ID3D11Buffer *oldVertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
+	uint32_t oldStrides[MAX_BOUND_VERTEX_BUFFERS];
+	uint32_t oldOffsets[MAX_BOUND_VERTEX_BUFFERS];
+	ID3D11Buffer *oldIndexBuffer;
+	uint32_t oldIndexOffset;
+	DXGI_FORMAT oldFormat;
 	uint32_t whatever;
+	void *nullResource = NULL;
 	int32_t i;
 
 	/* Push the current shader state */
@@ -893,6 +906,20 @@ static void BlitFramebuffer(D3D11Renderer *renderer)
 		&oldPixelShader,
 		NULL,
 		&whatever
+	);
+	ID3D11DeviceContext_IAGetVertexBuffers(
+		renderer->context,
+		0,
+		MAX_BOUND_VERTEX_BUFFERS,
+		oldVertexBuffers,
+		oldStrides,
+		oldOffsets
+	);
+	ID3D11DeviceContext_IAGetIndexBuffer(
+		renderer->context,
+		&oldIndexBuffer,
+		&oldFormat,
+		&oldIndexOffset
 	);
 	/* FIXME: Need to call Release on the returned resources */
 
@@ -964,10 +991,14 @@ static void BlitFramebuffer(D3D11Renderer *renderer)
 		1,
 		&renderer->fauxBlitSampler
 	);
-	ID3D11DeviceContext_IASetPrimitiveTopology(
-		renderer->context,
-		D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
-	);
+	if (renderer->topology != FNA3D_PRIMITIVETYPE_TRIANGLELIST)
+	{
+		renderer->topology = FNA3D_PRIMITIVETYPE_TRIANGLELIST;
+		ID3D11DeviceContext_IASetPrimitiveTopology(
+			renderer->context,
+			D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST
+		);
+	}
 
 	/* Draw the faux backbuffer! */
 	ID3D11DeviceContext_DrawIndexed(renderer->context, 6, 0, 0);
@@ -1004,21 +1035,40 @@ static void BlitFramebuffer(D3D11Renderer *renderer)
 		NULL,
 		0
 	);
+	ID3D11DeviceContext_IASetVertexBuffers(
+		renderer->context,
+		0,
+		MAX_BOUND_VERTEX_BUFFERS,
+		oldVertexBuffers,
+		oldStrides,
+		oldOffsets
+	);
+	ID3D11DeviceContext_IASetIndexBuffer(
+		renderer->context,
+		oldIndexBuffer,
+		oldFormat,
+		oldIndexOffset
+	);
+
+	/* Unbind all textures and samplers */
 	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
 	{
 		if (renderer->textures[i] != &NullTexture)
 		{
+			renderer->textures[i] = &NullTexture;
+			renderer->samplers[i] = NULL;
+
 			ID3D11DeviceContext_PSSetShaderResources(
 				renderer->context,
 				i,
 				1,
-				&renderer->textures[i]->shaderView
+				(ID3D11ShaderResourceView**) &nullResource
 			);
 			ID3D11DeviceContext_PSSetSamplers(
 				renderer->context,
 				i,
 				1,
-				&renderer->samplers[i]
+				(ID3D11SamplerState**) &nullResource
 			);
 		}
 	}
@@ -1190,20 +1240,29 @@ static void D3D11_DrawIndexedPrimitives(
 	FNA3D_IndexElementSize indexElementSize
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Buffer *d3dIndices = (D3D11Buffer*) indices;
 
 	/* Bind index buffer */
-	ID3D11DeviceContext_IASetIndexBuffer(
-		renderer->context,
-		((D3D11Buffer*) indices)->handle,
-		XNAToD3D_IndexType[indexElementSize],
-		startIndex * IndexSize(indexElementSize)
-	);
+	if (renderer->indexBuffer != d3dIndices)
+	{
+		renderer->indexBuffer = d3dIndices;
+		ID3D11DeviceContext_IASetIndexBuffer(
+			renderer->context,
+			d3dIndices->handle,
+			XNAToD3D_IndexType[indexElementSize],
+			startIndex * IndexSize(indexElementSize)
+		);
+	}
 
 	/* Set up draw state */
-	ID3D11DeviceContext_IASetPrimitiveTopology(
-		renderer->context,
-		XNAToD3D_Primitive[primitiveType]
-	);
+	if (renderer->topology != primitiveType)
+	{
+		renderer->topology = primitiveType;
+		ID3D11DeviceContext_IASetPrimitiveTopology(
+			renderer->context,
+			XNAToD3D_Primitive[primitiveType]
+		);
+	}
 
 	/* Draw! */
 	ID3D11DeviceContext_DrawIndexed(
@@ -1228,27 +1287,36 @@ static void D3D11_DrawInstancedPrimitives(
 ) {
 	/* FIXME: Needs testing! */
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Buffer *d3dIndices = (D3D11Buffer*) indices;
 
 	/* Bind index buffer */
-	ID3D11DeviceContext_IASetIndexBuffer(
-		renderer->context,
-		((D3D11Buffer*) indices)->handle,
-		XNAToD3D_IndexType[indexElementSize],
-		startIndex * IndexSize(indexElementSize)
-	);
+	if (renderer->indexBuffer != d3dIndices)
+	{
+		renderer->indexBuffer = d3dIndices;
+		ID3D11DeviceContext_IASetIndexBuffer(
+			renderer->context,
+			d3dIndices->handle,
+			XNAToD3D_IndexType[indexElementSize],
+			startIndex * IndexSize(indexElementSize)
+		);
+	}
 
 	/* Set up draw state */
-	ID3D11DeviceContext_IASetPrimitiveTopology(
-		renderer->context,
-		XNAToD3D_Primitive[primitiveType]
-	);
+	if (renderer->topology != primitiveType)
+	{
+		renderer->topology = primitiveType;
+		ID3D11DeviceContext_IASetPrimitiveTopology(
+			renderer->context,
+			XNAToD3D_Primitive[primitiveType]
+		);
+	}
 
 	/* Draw! */
 	ID3D11DeviceContext_DrawIndexedInstanced(
 		renderer->context,
 		PrimitiveVerts(primitiveType, primitiveCount),
 		instanceCount,
-		(uint32_t) startIndex, /* FIXME: Is this right? */
+		(uint32_t) startIndex,
 		baseVertex,
 		0
 	);
@@ -1264,10 +1332,14 @@ static void D3D11_DrawPrimitives(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 
 	/* Bind draw state */
-	ID3D11DeviceContext_IASetPrimitiveTopology(
-		renderer->context,
-		XNAToD3D_Primitive[primitiveType]
-	);
+	if (renderer->topology != primitiveType)
+	{
+		renderer->topology = primitiveType;
+		ID3D11DeviceContext_IASetPrimitiveTopology(
+			renderer->context,
+			XNAToD3D_Primitive[primitiveType]
+		);
+	}
 
 	/* Draw! */
 	ID3D11DeviceContext_Draw(
@@ -1315,11 +1387,21 @@ static void D3D11_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewpo
 		viewport->minDepth,
 		viewport->maxDepth
 	};
-	ID3D11DeviceContext_RSSetViewports(
-		renderer->context,
-		1,
-		&vp
-	);
+
+	if (	renderer->viewport.x != viewport->x ||
+		renderer->viewport.y != viewport->y ||
+		renderer->viewport.w != viewport->w ||
+		renderer->viewport.h != viewport->h ||
+		renderer->viewport.minDepth != viewport->minDepth ||
+		renderer->viewport.maxDepth != viewport->maxDepth	)
+	{
+		SDL_memcpy(&renderer->viewport, viewport, sizeof(FNA3D_Viewport));
+		ID3D11DeviceContext_RSSetViewports(
+			renderer->context,
+			1,
+			&vp
+		);
+	}
 }
 
 static void D3D11_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor)
@@ -1332,11 +1414,19 @@ static void D3D11_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor
 		scissor->x + scissor->w,
 		scissor->y + scissor->h
 	};
-	ID3D11DeviceContext_RSSetScissorRects(
-		renderer->context,
-		1,
-		&rect
-	);
+
+	if (	renderer->scissorRect.x != scissor->x ||
+		renderer->scissorRect.y != scissor->y ||
+		renderer->scissorRect.w != scissor->w ||
+		renderer->scissorRect.h != scissor->h	)
+	{
+		SDL_memcpy(&renderer->scissorRect, scissor, sizeof(FNA3D_Rect));
+		ID3D11DeviceContext_RSSetScissorRects(
+			renderer->context,
+			1,
+			&rect
+		);
+	}
 }
 
 static void D3D11_GetBlendFactor(
@@ -1393,13 +1483,17 @@ static void D3D11_SetBlendState(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	ID3D11BlendState *bs = FetchBlendState(renderer, blendState);
-	ID3D11DeviceContext_OMSetBlendState(
-		renderer->context,
-		bs,
-		renderer->blendFactor,
-		(uint32_t) renderer->multiSampleMask
-	);
-	renderer->blendState = bs;
+
+	if (renderer->blendState != bs)
+	{
+		renderer->blendState = bs;
+		ID3D11DeviceContext_OMSetBlendState(
+			renderer->context,
+			bs,
+			renderer->blendFactor,
+			(uint32_t) renderer->multiSampleMask
+		);
+	}
 }
 
 static void D3D11_SetDepthStencilState(
@@ -1408,12 +1502,16 @@ static void D3D11_SetDepthStencilState(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	ID3D11DepthStencilState *ds = FetchDepthStencilState(renderer, depthStencilState);
-	ID3D11DeviceContext_OMSetDepthStencilState(
-		renderer->context,
-		ds,
-		(uint32_t) renderer->stencilRef
-	);
-	renderer->depthStencilState = ds;
+
+	if (renderer->depthStencilState != ds)
+	{
+		renderer->depthStencilState = ds;
+		ID3D11DeviceContext_OMSetDepthStencilState(
+			renderer->context,
+			ds,
+			(uint32_t) renderer->stencilRef
+		);
+	}
 }
 
 static void D3D11_ApplyRasterizerState(
@@ -1422,11 +1520,15 @@ static void D3D11_ApplyRasterizerState(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	ID3D11RasterizerState *rs = FetchRasterizerState(renderer, rasterizerState);
-	ID3D11DeviceContext_RSSetState(
-		renderer->context,
-		rs
-	);
-	renderer->rasterizerState = rs;
+
+	if (renderer->rasterizerState != rs)
+	{
+		renderer->rasterizerState = rs;
+		ID3D11DeviceContext_RSSetState(
+			renderer->context,
+			rs
+		);
+	}
 }
 
 static void D3D11_VerifySampler(
@@ -1444,6 +1546,8 @@ static void D3D11_VerifySampler(
 	{
 		if (renderer->textures[index] != &NullTexture)
 		{
+			renderer->textures[index] = &NullTexture;
+			renderer->samplers[index] = NULL;
 			if (index < MAX_TEXTURE_SAMPLERS)
 			{
 				ID3D11DeviceContext_PSSetShaderResources(
@@ -1474,7 +1578,6 @@ static void D3D11_VerifySampler(
 					(ID3D11SamplerState**) nullResource
 				);
 			}
-			renderer->textures[index] = &NullTexture;
 		}
 		return;
 	}
@@ -1495,6 +1598,7 @@ static void D3D11_VerifySampler(
 	/* Bind the correct texture */
 	if (d3dTexture != renderer->textures[index])
 	{
+		renderer->textures[index] = d3dTexture;
 		if (index < MAX_TEXTURE_SAMPLERS)
 		{
 			ID3D11DeviceContext_PSSetShaderResources(
@@ -1513,7 +1617,6 @@ static void D3D11_VerifySampler(
 				&d3dTexture->shaderView
 			);
 		}
-		renderer->textures[index] = d3dTexture;
 	}
 
 	/* Update the texture sampler info */
@@ -1532,6 +1635,7 @@ static void D3D11_VerifySampler(
 	);
 	if (d3dSamplerState != renderer->samplers[index])
 	{
+		renderer->samplers[index] = d3dSamplerState;
 		if (index < MAX_TEXTURE_SAMPLERS)
 		{
 			ID3D11DeviceContext_PSSetSamplers(
@@ -1550,7 +1654,6 @@ static void D3D11_VerifySampler(
 				&d3dSamplerState
 			);
 		}
-		renderer->samplers[index] = d3dSamplerState;
 	}
 }
 
@@ -1588,11 +1691,15 @@ static void D3D11_ApplyVertexBufferBindings(
 		bindings,
 		numBindings
 	);
-	ID3D11DeviceContext_IASetInputLayout(
-		renderer->context,
-		inputLayout
-	);
-	renderer->inputLayout = inputLayout;
+
+	if (renderer->inputLayout != inputLayout)
+	{
+		renderer->inputLayout = inputLayout;
+		ID3D11DeviceContext_IASetInputLayout(
+			renderer->context,
+			inputLayout
+		);
+	}
 
 	/* Bind the vertex buffers */
 	for (i = 0; i < numBindings; i += 1)
@@ -3227,6 +3334,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 	renderer->blendFactor[2] = 1.0f;
 	renderer->blendFactor[3] = 1.0f;
 	renderer->multiSampleMask = -1; /* AKA 0xFFFFFFFF, ugh -flibit */
+	renderer->topology = (FNA3D_PrimitiveType) -1; /* Force an update */
 
 	/* Create and initialize the faux-backbuffer */
 	renderer->backbuffer = (D3D11Backbuffer*) SDL_malloc(
