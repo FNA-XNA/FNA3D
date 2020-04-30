@@ -467,21 +467,22 @@ static ID3D11BlendState* FetchBlendState(
 		desc.RenderTarget[0].DestBlendAlpha = XNAToD3D_BlendMode[
 			state->alphaDestinationBlend
 		];
-		desc.RenderTarget[0].RenderTargetWriteMask = (
-			(uint32_t) state->colorWriteEnable
-		);
 		desc.RenderTarget[0].SrcBlend = XNAToD3D_BlendMode[
 			state->colorSourceBlend
 		];
 		desc.RenderTarget[0].SrcBlendAlpha = XNAToD3D_BlendMode[
 			state->alphaSourceBlend
 		];
-		/* FIXME: For colorWriteEnable1/2/3, we'll need
-		 * to loop over all render target descriptors
-		 * and apply the same state, except for the mask.
-		 * Ugh. -caleb
-		 */
 	}
+
+	/* FIXME: For colorWriteEnable1/2/3, we'll need
+	* to loop over all render target descriptors
+	* and apply the same state, except for the mask.
+	* Ugh. -caleb
+	*/
+	desc.RenderTarget[0].RenderTargetWriteMask = (
+		(uint32_t) state->colorWriteEnable
+	);
 
 	/* Bake the state! */
 	ID3D11Device_CreateBlendState(
