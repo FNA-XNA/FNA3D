@@ -1215,7 +1215,7 @@ FNA3DAPI FNA3D_Renderbuffer* FNA3D_GenColorRenderbuffer(
 	FNA3D_Texture *texture
 );
 
-/* Creates a depth/stencil buffer to be used by SetRenderTargets/ResolveTarget.
+/* Creates a depth/stencil buffer to be used by SetRenderTargets.
  *
  * width:		The width of the depth/stencil buffer.
  * height:		The height of the depth/stencil buffer.
