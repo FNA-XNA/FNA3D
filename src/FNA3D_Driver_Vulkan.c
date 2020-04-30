@@ -262,6 +262,8 @@ typedef struct FNAVulkanRenderer
 	uint8_t needNewRenderPass;
 	uint8_t pipelineBoundThisFrame;
 
+	uint8_t debugMode;
+
 	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
 	#include "FNA3D_Driver_Vulkan_instance_funcs.h"
@@ -1000,12 +1002,15 @@ static void SetBufferData(
 	{
 		if (options == FNA3D_SETDATAOPTIONS_NONE)
 		{
-			SDL_LogWarn(
-				SDL_LOG_CATEGORY_APPLICATION,
-				"%s\n%s\n",
-				"Pipeline stall triggered by binding buffer with FNA3D_SETDATAOPTIONS_NONE multiple times in a frame",
-				"This is discouraged and will cause performance degradation"
-			);
+			if (renderer->debugMode)
+			{
+				SDL_LogWarn(
+					SDL_LOG_CATEGORY_APPLICATION,
+					"%s\n%s\n",
+					"Pipeline stall triggered by binding buffer with FNA3D_SETDATAOPTIONS_NONE multiple times in a frame",
+					"This is discouraged and will cause performance degradation"
+				);
+			}
 
 			Stall(renderer);
 			vulkanBuffer->boundThisFrame = 1;
@@ -4134,6 +4139,8 @@ FNA3D_Device* VULKAN_CreateDevice(
 	{
 		return NULL;
 	}
+
+	renderer->debugMode = debugMode;
 
 	/* The FNA3D_Device and FNAVulkanRenderer need to reference each other */
 	renderer->parentDevice = result;
