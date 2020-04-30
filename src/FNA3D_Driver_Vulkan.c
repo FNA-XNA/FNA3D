@@ -117,7 +117,7 @@ struct FramebufferHashMap
 };
 
 struct VulkanTexture {
-	VkImage *handle;
+	VkImage handle;
 	uint8_t hasMipmaps;
 	int32_t width;
 	int32_t height;
@@ -336,7 +336,7 @@ static uint8_t CreateImage(
 
 static VulkanTexture* CreateTexture(
 	FNAVulkanRenderer *renderer,
-	VkImage *texture,
+	VkImageCreateInfo textureCreateInfo,
 	FNA3D_SurfaceFormat format,
 	int32_t width,
 	int32_t height,
@@ -1424,7 +1424,7 @@ static uint8_t CreateImage(
 
 static VulkanTexture* CreateTexture(
 	FNAVulkanRenderer *renderer,
-	VkImage *texture,
+	VkImageCreateInfo textureCreateInfo,
 	FNA3D_SurfaceFormat format,
 	int32_t width,
 	int32_t height,
@@ -1432,7 +1432,14 @@ static VulkanTexture* CreateTexture(
 	uint8_t isRenderTarget
 ) {
 	VulkanTexture *result = SDL_malloc(sizeof(VulkanTexture));
-	result->handle = texture;
+
+	renderer->vkCreateImage(
+		renderer->logicalDevice,
+		&textureCreateInfo,
+		NULL,
+		&result->handle
+	);
+	
 	result->width = width;
 	result->height = height;
 	result->format = format;
@@ -3112,7 +3119,6 @@ FNA3D_Texture* VULKAN_CreateTexture2D(
 	/* TODO: incomplete */
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 
-	/* TODO: store swizzle on VulkanTexture */
 	SurfaceFormatMapping surfaceFormatMapping = XNAToVK_SurfaceFormat[format];
 	VkExtent3D extent;
 	extent.width = width;
@@ -3132,17 +3138,9 @@ FNA3D_Texture* VULKAN_CreateTexture2D(
 							VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
 	}
 
-	VkImage texture;
-	renderer->vkCreateImage(
-		renderer->logicalDevice,
-		&createInfo,
-		NULL,
-		&texture
-	);
-
 	return (FNA3D_Texture*) CreateTexture(
 		renderer,
-		&texture,
+		createInfo,
 		format,
 		width,
 		height,
