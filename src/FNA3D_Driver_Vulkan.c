@@ -45,6 +45,7 @@ const int PRIMITIVE_TYPES_COUNT = 5;
 
 typedef struct VulkanTexture VulkanTexture;
 typedef struct VulkanBuffer VulkanBuffer;
+typedef struct VulkanEffect VulkanEffect;
 typedef struct PipelineHashMap PipelineHashMap;
 typedef struct RenderPassHashMap RenderPassHashMap;
 typedef struct FramebufferHashMap FramebufferHashMap;
@@ -114,6 +115,10 @@ struct FramebufferHashMap
 {
 	RenderPassHash key;
 	VkFramebuffer value;
+};
+
+struct VulkanEffect {
+	MOJOSHADER_effect *effect;
 };
 
 struct VulkanTexture {
@@ -253,6 +258,11 @@ typedef struct FNAVulkanRenderer
 	VkFence renderQueueFence;
 	VkSemaphore imageAvailableSemaphore;
 	VkSemaphore renderFinishedSemaphore;
+
+	/* MojoShader Interop */
+	MOJOSHADER_effect *currentEffect;
+	const MOJOSHADER_effectTechnique *currentTechnique;
+	uint32_t currentPass;
 
 	uint8_t frameInProgress;
 	uint8_t renderPassInProgress;
@@ -1439,7 +1449,7 @@ static VulkanTexture* CreateTexture(
 		NULL,
 		&result->handle
 	);
-	
+
 	result->width = width;
 	result->height = height;
 	result->format = format;
@@ -3511,7 +3521,47 @@ void VULKAN_ApplyEffect(
 	uint32_t pass,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanEffect *fnaEffect = (VulkanEffect*) effect;
+	MOJOSHADER_effect *effectData = fnaEffect->effect;
+	const MOJOSHADER_effectTechnique *technique = fnaEffect->effect->current_technique;
+	uint32_t numPasses;
+
+	VULKAN_BeginFrame(driverData);
+
+	if (effectData == renderer->currentEffect)
+	{
+		if (	technique == renderer->currentTechnique &&
+				pass == renderer->currentPass		)
+		{
+			MOJOSHADER_effectCommitChanges(
+				renderer->currentEffect
+			);
+			return;
+		}
+		MOJOSHADER_effectEndPass(renderer->currentEffect);
+		MOJOSHADER_effectBeginPass(renderer->currentEffect, pass);
+		renderer->currentTechnique = technique;
+		renderer->currentPass = pass;
+		return;
+	}
+	else if (renderer->currentEffect != NULL)
+	{
+		MOJOSHADER_effectEndPass(renderer->currentEffect);
+		MOJOSHADER_effectEnd(renderer->currentEffect);
+	}
+
+	MOJOSHADER_effectBegin(
+		effectData,
+		&numPasses,
+		0,
+		stateChanges
+	);
+	
+	MOJOSHADER_effectBeginPass(effectData, pass);
+	renderer->currentEffect = effectData;
+	renderer->currentTechnique = technique;
+	renderer->currentPass = pass;
 }
 
 void VULKAN_BeginPassRestore(
