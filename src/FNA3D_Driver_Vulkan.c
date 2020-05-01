@@ -357,28 +357,7 @@ static VulkanTexture* CreateTexture(
 static void DestroyBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
-) {
-	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
-	VulkanBuffer *vulkanBuffer, *curr, *prev;
-
-	vulkanBuffer = (VulkanBuffer*) buffer;
-
-	LinkedList_Remove(
-		renderer->buffers,
-		vulkanBuffer,
-		curr,
-		prev
-	);
-
-	renderer->vkDestroyBuffer(
-		renderer->logicalDevice,
-		*vulkanBuffer->handle,
-		NULL
-	);
-
-	vulkanBuffer->handle = NULL;
-	SDL_free(vulkanBuffer);
-}
+);
 
 static void EndPass(
 	FNAVulkanRenderer *renderer
@@ -453,6 +432,10 @@ void VULKAN_SetRenderTargets(
 	FNA3D_DepthFormat depthFormat
 ); 
 
+static void SetDepthBiasCommand(FNAVulkanRenderer *renderer);
+static void SetScissorRectCommand(FNAVulkanRenderer *renderer);
+static void SetStencilReferenceValueCommand(FNAVulkanRenderer *renderer);
+
 static void Stall(FNAVulkanRenderer *renderer);
 
 /* static vars */
@@ -470,6 +453,43 @@ static VkIndexType XNAToVK_IndexType[] =
 	VK_INDEX_TYPE_UINT16, /* FNA3D_INDEXELEMENTSIZE_16BIT */
 	VK_INDEX_TYPE_UINT32 /* FNA3D_INDEXELEMENTSIZE_32BIT */
 };
+
+static VkSampleCountFlags XNAToVK_SampleCount(uint8_t sampleCount)
+{
+	if (sampleCount <= 1)
+	{
+		return VK_SAMPLE_COUNT_1_BIT;
+	}
+	else if (sampleCount == 2)
+	{
+		return VK_SAMPLE_COUNT_2_BIT;
+	}
+	else if (sampleCount <= 4)
+	{
+		return VK_SAMPLE_COUNT_4_BIT;
+	}
+	else if (sampleCount <= 8)
+	{
+		return VK_SAMPLE_COUNT_8_BIT;
+	}
+	else if (sampleCount <= 16)
+	{
+		return VK_SAMPLE_COUNT_16_BIT;
+	}
+	else if (sampleCount <= 32)
+	{
+		return VK_SAMPLE_COUNT_32_BIT;
+	}
+	else if (sampleCount <= 64)
+	{
+		return VK_SAMPLE_COUNT_64_BIT;
+	}
+	else
+	{
+		/* FIXME: emit warning here? */
+		return VK_SAMPLE_COUNT_1_BIT;
+	}
+}
 
 static SurfaceFormatMapping XNAToVK_SurfaceFormat[] =
 {
@@ -610,7 +630,7 @@ static SurfaceFormatMapping XNAToVK_SurfaceFormat[] =
 static VkFormat XNAToVK_DepthFormat(
 	FNA3D_DepthFormat format
 ) {
-	/* TODO: check device compatibility with renderer */
+	/* FIXME: check device compatibility with renderer */
 	switch(format)
 	{
 		case FNA3D_DEPTHFORMAT_D16: return VK_FORMAT_D16_UNORM;
@@ -626,6 +646,23 @@ static VkFormat XNAToVK_DepthFormat(
 			return VK_FORMAT_UNDEFINED;
 		}
 	}
+}
+
+static float XNAToVK_DepthBiasScale(VkFormat format)
+{
+	switch(format)
+	{
+		case VK_FORMAT_D16_UNORM:
+			return (float) ((1 << 16) - 1);
+
+		case VK_FORMAT_D24_UNORM_S8_UINT:
+			return (float) ((1 << 24) - 1);
+
+		default:
+			return 0.0f;
+	}
+
+	SDL_assert(0 && "Invalid depth pixel format!");
 }
 
 static VkBlendFactor XNAToVK_BlendFactor[] =
@@ -1094,18 +1131,6 @@ static void SetUserBufferData(
 	);
 
 	buffer->prevDataLength = dataLength;
-}
-
-static void SetReferenceStencilValueCommand(FNAVulkanRenderer *renderer)
-{
-	if (renderer->renderPassInProgress)
-	{
-		renderer->vkCmdSetStencilReference(
-			renderer->commandBuffers[renderer->commandBufferCount - 1],
-			VK_STENCIL_FACE_FRONT_AND_BACK,
-			renderer->stencilRef
-		);
-	}
 }
 
 /* Init/Quit */
@@ -1744,12 +1769,11 @@ static VkPipeline FetchPipeline(
 	rasterizerInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
 	rasterizerInfo.depthBiasEnable = VK_TRUE;
 
-	/* TODO: actually implement multisampling */
 	VkPipelineMultisampleStateCreateInfo multisamplingInfo = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
 	multisamplingInfo.sampleShadingEnable = VK_FALSE;
 	multisamplingInfo.minSampleShading = 1.0f;
-	multisamplingInfo.pSampleMask = NULL; /* FIXME: comes from FNA3D_BLENDSTATE? */
-	multisamplingInfo.rasterizationSamples = VK_SAMPLE_COUNT_1_BIT; /* FIXME: comes from FNA3D_PresentationParameters? */
+	multisamplingInfo.pSampleMask = (VkSampleMask*)&renderer->blendState.multiSampleMask;
+	multisamplingInfo.rasterizationSamples = XNAToVK_SampleCount(renderer->rasterizerState.multiSampleAntiAlias);
 	multisamplingInfo.alphaToCoverageEnable = VK_FALSE;
 	multisamplingInfo.alphaToOneEnable = VK_FALSE;
 
@@ -2158,16 +2182,8 @@ static void BeginRenderPass(
 		&viewport
 	);
 
-	VkOffset2D scissorOffset = { renderer->scissorRect.x, renderer->scissorRect.y };
-	VkExtent2D scissorExtent = { renderer->scissorRect.w, renderer->scissorRect.h };
-	VkRect2D scissor = { scissorOffset, scissorExtent };
-
-	renderer->vkCmdSetScissor(
-		renderer->commandBuffers[renderer->commandBufferCount - 1],
-		0,
-		1,
-		&scissor
-	);
+	SetScissorRectCommand(renderer);
+	SetStencilReferenceValueCommand(renderer);
 
 	const float blendConstants[] =
 	{
@@ -2188,8 +2204,6 @@ static void BeginRenderPass(
 		0, /* unused */
 		renderer->rasterizerState.slopeScaleDepthBias
 	);
-
-	SetReferenceStencilValueCommand(renderer);
 
 	/* TODO: visibility buffer */
 
@@ -2750,35 +2764,7 @@ void VULKAN_SetScissorRect(
 			scissor->h != renderer->scissorRect.h	)
 	{
 		renderer->scissorRect = *scissor;
-
-		VkOffset2D offset;
-		VkExtent2D extent;
-
-		if (renderer->frameInProgress)
-		{
-			if (!renderer->rasterizerState.scissorTestEnable)
-			{
-				offset.x = 0;
-				offset.y = 0;
-				extent = renderer->colorAttachments[0]->dimensions;
-			}
-			else
-			{
-				offset.x = scissor->x;
-				offset.y = scissor->y;
-				extent.width = scissor->w;
-				extent.height = scissor->h;
-			}
-
-			VkRect2D vulkanScissorRect = { offset, extent };
-
-			renderer->vkCmdSetScissor(
-				renderer->commandBuffers[renderer->commandBufferCount - 1],
-				0,
-				1,
-				&vulkanScissorRect
-			);
-		}
+		SetScissorRectCommand(renderer);
 	}
 }
 
@@ -2842,7 +2828,7 @@ void VULKAN_SetReferenceStencil(FNA3D_Renderer *driverData, int32_t ref)
 	if (renderer->stencilRef != ref)
 	{
 		renderer->stencilRef = ref;
-		SetReferenceStencilValueCommand(renderer);
+		SetStencilReferenceValueCommand(renderer);
 	}
 }
 
@@ -2866,7 +2852,74 @@ void VULKAN_ApplyRasterizerState(
 	FNA3D_Renderer *driverData,
 	FNA3D_RasterizerState *rasterizerState
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	float realDepthBias;
+
+	if (rasterizerState->scissorTestEnable != renderer->rasterizerState.scissorTestEnable)
+	{
+		renderer->rasterizerState.scissorTestEnable = rasterizerState->scissorTestEnable;
+		SetScissorRectCommand(renderer);
+	}
+
+	realDepthBias = rasterizerState->depthBias * XNAToVK_DepthBiasScale(
+		XNAToVK_DepthFormat(renderer->currentDepthFormat)
+	);
+	if (	realDepthBias != renderer->rasterizerState.depthBias ||
+			rasterizerState->slopeScaleDepthBias != renderer->rasterizerState.slopeScaleDepthBias	)
+	{
+		renderer->rasterizerState.depthBias = realDepthBias;
+		renderer->rasterizerState.slopeScaleDepthBias = rasterizerState->slopeScaleDepthBias;
+		SetDepthBiasCommand(renderer);
+	}
+
+	if (rasterizerState->multiSampleAntiAlias != renderer->rasterizerState.multiSampleAntiAlias)
+	{
+		renderer->rasterizerState.multiSampleAntiAlias = rasterizerState->multiSampleAntiAlias;
+	}
+
+		if (	rasterizerState->cullMode != renderer->rasterizerState.cullMode ||
+				rasterizerState->fillMode != renderer->rasterizerState.fillMode ||
+				rasterizerState->multiSampleAntiAlias != renderer->rasterizerState.multiSampleAntiAlias		)
+	{
+		if (renderer->debugMode && renderer->renderPassInProgress)
+		{
+			if (rasterizerState->cullMode != renderer->rasterizerState.cullMode)
+			{
+				SDL_LogWarn(
+					SDL_LOG_CATEGORY_APPLICATION,
+					"%s\n%s\n",
+					"Binding new pipeline to change cull mode mid-frame",
+					"This may cause performance degradation"
+				);
+			}
+
+			if (rasterizerState->fillMode != renderer->rasterizerState.fillMode)
+			{
+				SDL_LogWarn(
+					SDL_LOG_CATEGORY_APPLICATION,
+					"%s\n%s\n",
+					"Binding new pipeline to change fill mode mid-frame",
+					"This may cause performance degradation"
+				);
+			}
+
+			if (rasterizerState->multiSampleAntiAlias != renderer->rasterizerState.multiSampleAntiAlias)
+			{
+				SDL_LogWarn(
+					SDL_LOG_CATEGORY_APPLICATION,
+					"%s\n%s\n",
+					"Binding new pipeline to change multisample count mid-frame",
+					"This may cause performance degradation"
+				);
+			}
+		}
+
+		renderer->rasterizerState.cullMode = rasterizerState->cullMode;
+		renderer->rasterizerState.fillMode = rasterizerState->fillMode;
+		renderer->rasterizerState.multiSampleAntiAlias = rasterizerState->multiSampleAntiAlias;
+		
+		BindPipeline(renderer);
+	}
 }
 
 void VULKAN_VerifySampler(
@@ -2945,6 +2998,32 @@ static void UpdateRenderPass(
 	renderer->shouldClearStencil = 0;
 }
 
+static void DestroyBuffer(
+	FNA3D_Renderer *driverData,
+	FNA3D_Buffer *buffer
+) {
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanBuffer *vulkanBuffer, *curr, *prev;
+
+	vulkanBuffer = (VulkanBuffer*) buffer;
+
+	LinkedList_Remove(
+		renderer->buffers,
+		vulkanBuffer,
+		curr,
+		prev
+	);
+
+	renderer->vkDestroyBuffer(
+		renderer->logicalDevice,
+		*vulkanBuffer->handle,
+		NULL
+	);
+
+	vulkanBuffer->handle = NULL;
+	SDL_free(vulkanBuffer);
+}
+
 static void EndPass(
 	FNAVulkanRenderer *renderer
 ) {
@@ -3008,6 +3087,66 @@ void VULKAN_SetRenderTargets(
 
 	/* TODO: update attachments */
 }
+
+/* Dynamic State Functions */
+
+static void SetDepthBiasCommand(FNAVulkanRenderer *renderer)
+{
+	if (renderer->renderPassInProgress)
+	{
+		renderer->vkCmdSetDepthBias(
+			renderer->commandBuffers[renderer->commandBufferCount - 1],
+			renderer->rasterizerState.depthBias,
+			0.0, /* no clamp */
+			renderer->rasterizerState.slopeScaleDepthBias
+		);
+	}
+}
+
+static void SetScissorRectCommand(FNAVulkanRenderer *renderer)
+{
+	VkOffset2D offset;
+	VkExtent2D extent;
+
+	if (renderer->renderPassInProgress)
+	{
+		if (!renderer->rasterizerState.scissorTestEnable)
+		{
+			offset.x = 0;
+			offset.y = 0;
+			extent = renderer->colorAttachments[0]->dimensions;
+		}
+		else
+		{
+			offset.x = renderer->scissorRect.x;
+			offset.y = renderer->scissorRect.y;
+			extent.width = renderer->scissorRect.w;
+			extent.height = renderer->scissorRect.h;
+		}
+
+		VkRect2D vulkanScissorRect = { offset, extent };
+
+		renderer->vkCmdSetScissor(
+			renderer->commandBuffers[renderer->commandBufferCount - 1],
+			0,
+			1,
+			&vulkanScissorRect
+		);
+	}
+}
+
+static void SetStencilReferenceValueCommand(FNAVulkanRenderer *renderer)
+{
+	if (renderer->renderPassInProgress)
+	{
+		renderer->vkCmdSetStencilReference(
+			renderer->commandBuffers[renderer->commandBufferCount - 1],
+			VK_STENCIL_FACE_FRONT_AND_BACK,
+			renderer->stencilRef
+		);
+	}
+}
+
 
 static void Stall(FNAVulkanRenderer *renderer)
 {
@@ -3557,7 +3696,7 @@ void VULKAN_ApplyEffect(
 		0,
 		stateChanges
 	);
-	
+
 	MOJOSHADER_effectBeginPass(effectData, pass);
 	renderer->currentEffect = effectData;
 	renderer->currentTechnique = technique;
