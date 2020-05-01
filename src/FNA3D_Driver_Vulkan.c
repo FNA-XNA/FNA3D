@@ -242,9 +242,9 @@ typedef struct FNAVulkanRenderer
 
 	int32_t stencilRef;
 
-	uint32_t numSamplers;
-	uint32_t numTextureSlots;
-	uint32_t numVertexTextureSlots;
+	int32_t numSamplers;
+	int32_t numTextureSlots;
+	int32_t numVertexTextureSlots;
 
 	VulkanTexture *textures[MAX_TEXTURE_SAMPLERS];
 	VkSampler *samplers[MAX_TEXTURE_SAMPLERS];
