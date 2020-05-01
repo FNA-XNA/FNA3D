@@ -242,6 +242,10 @@ typedef struct FNAVulkanRenderer
 
 	int32_t stencilRef;
 
+	uint32_t numSamplers;
+	uint32_t numTextureSlots;
+	uint32_t numVertexTextureSlots;
+
 	VulkanTexture *textures[MAX_TEXTURE_SAMPLERS];
 	VkSampler *samplers[MAX_TEXTURE_SAMPLERS];
 	uint8_t textureNeedsUpdate[MAX_TEXTURE_SAMPLERS];
@@ -3779,7 +3783,9 @@ void VULKAN_GetMaxTextureSlots(
 	int32_t *textures,
 	int32_t *vertexTextures
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	*textures = renderer->numTextureSlots;
+	*vertexTextures = renderer->numVertexTextureSlots;
 }
 
 int32_t VULKAN_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
@@ -4537,6 +4543,28 @@ FNA3D_Device* VULKAN_CreateDevice(
 
 	renderer->physicalDevice = physicalDevice;
 
+	VkPhysicalDeviceProperties deviceProperties;
+
+	renderer->vkGetPhysicalDeviceProperties(
+		renderer->physicalDevice,
+		&deviceProperties
+	);
+
+	renderer->numSamplers = SDL_min(
+		deviceProperties.limits.maxSamplerAllocationCount,
+		MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS
+	);
+
+	renderer->numTextureSlots = SDL_min(
+		renderer->numSamplers,
+		MAX_TEXTURE_SAMPLERS
+	);
+
+	renderer->numVertexTextureSlots = SDL_min(
+		SDL_max(renderer->numSamplers - MAX_TEXTURE_SAMPLERS, 0),
+		MAX_VERTEXTEXTURE_SAMPLERS
+	);
+	
 	/* Setting up Queue Info */
 	int queueInfoCount = 1;
 	VkDeviceQueueCreateInfo queueCreateInfos[2];
