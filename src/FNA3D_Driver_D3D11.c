@@ -114,8 +114,6 @@ typedef struct D3D11Backbuffer
 	ID3D11DepthStencilView *depthStencilView;
 } D3D11Backbuffer;
 
-#define MAX_TOTAL_SAMPLERS MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS
-
 typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 {
 	/* Persistent D3D11 Objects */
