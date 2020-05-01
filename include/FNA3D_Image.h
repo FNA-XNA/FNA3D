@@ -118,6 +118,7 @@ FNA3DAPI void FNA3D_Image_SavePNG(
 );
 
 /* Encodes RGBA8 image data into JPG data, discarding the alpha channel.
+ *
  * writeFunc:	Callback used to write data to a stream.
  * context:	User pointer passed back to the above callback.
  * srcW:	The original width of the image data.
