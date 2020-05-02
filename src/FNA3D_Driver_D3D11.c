@@ -84,6 +84,8 @@ typedef struct D3D11Buffer /* Cast FNA3D_Buffer* to this! */
 {
 	ID3D11Buffer *handle;
 	uint8_t dynamic;
+	int32_t size;
+	ID3D11Buffer *staging;
 } D3D11Buffer;
 
 typedef struct D3D11Effect /* Cast FNA3D_Effect* to this! */
@@ -2611,6 +2613,8 @@ static FNA3D_Buffer* D3D11_GenVertexBuffer(
 
 	/* Return the result */
 	result->dynamic = dynamic;
+	result->size = desc.ByteWidth;
+	result->staging = NULL;
 	return (FNA3D_Buffer*) result;
 }
 
@@ -2619,14 +2623,14 @@ static void D3D11_AddDisposeVertexBuffer(
 	FNA3D_Buffer *buffer
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11Buffer *buf = (D3D11Buffer*) buffer;
+	D3D11Buffer *d3dBuffer = (D3D11Buffer*) buffer;
 	ID3D11Buffer *nullVertexBuffers[] = {NULL};
 	uint32_t whatever[1] = {0};
 	int32_t i;
 
 	for (i = 0; i < MAX_BOUND_VERTEX_BUFFERS; i += 1)
 	{
-		if (renderer->vertexBuffers[i] == buf->handle)
+		if (renderer->vertexBuffers[i] == d3dBuffer->handle)
 		{
 			renderer->vertexBuffers[i] = NULL;
 			ID3D11DeviceContext_IASetVertexBuffers(
@@ -2640,7 +2644,11 @@ static void D3D11_AddDisposeVertexBuffer(
 		}
 	}
 
-	ID3D11Buffer_Release(buf->handle);
+	if (d3dBuffer->staging != NULL)
+	{
+		ID3D11Buffer_Release(d3dBuffer->staging);
+	}
+	ID3D11Buffer_Release(d3dBuffer->handle);
 	SDL_free(buffer);
 }
 
@@ -2706,7 +2714,64 @@ static void D3D11_GetVertexBufferData(
 	int32_t elementSizeInBytes,
 	int32_t vertexStride
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Buffer *d3dBuffer = (D3D11Buffer*) buffer;
+	D3D11_BUFFER_DESC desc;
+	int32_t dataLength = vertexStride * elementCount;
+	D3D11_MAPPED_SUBRESOURCE subres;
+	D3D11_BOX srcBox = {offsetInBytes, 0, 0, offsetInBytes + dataLength, 1, 1};
+
+	/* FIXME: Staging buffer for elementSizeInBytes < vertexStride! */
+
+	/* Create staging buffer if needed */
+	if (d3dBuffer->staging == NULL)
+	{
+		desc.ByteWidth = d3dBuffer->size;
+		desc.Usage = D3D11_USAGE_STAGING;
+		desc.BindFlags = 0;
+		desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+		desc.MiscFlags = 0;
+		desc.StructureByteStride = 0;
+		ID3D11Device_CreateBuffer(
+			renderer->device,
+			&desc,
+			NULL,
+			&d3dBuffer->staging
+		);
+	}
+
+	/* Copy data into staging buffer */
+	ID3D11DeviceContext_CopySubresourceRegion(
+		renderer->context,
+		(ID3D11Resource*) d3dBuffer->staging,
+		0,
+		0,
+		0,
+		0,
+		(ID3D11Resource*) d3dBuffer->handle,
+		0,
+		&srcBox
+	);
+
+	/* Read from the staging buffer */
+	ID3D11DeviceContext_Map(
+		renderer->context,
+		(ID3D11Resource*) d3dBuffer->staging,
+		0,
+		D3D11_MAP_READ,
+		0,
+		&subres
+	);
+	SDL_memcpy(
+		data,
+		subres.pData,
+		dataLength
+	);
+	ID3D11DeviceContext_Unmap(
+		renderer->context,
+		(ID3D11Resource*) d3dBuffer->staging,
+		0
+	);
 }
 
 /* Index Buffers */
@@ -2740,6 +2805,8 @@ static FNA3D_Buffer* D3D11_GenIndexBuffer(
 
 	/* Return the result */
 	result->dynamic = dynamic;
+	result->size = desc.ByteWidth;
+	result->staging = NULL;
 	return (FNA3D_Buffer*) result;
 }
 
@@ -2748,9 +2815,9 @@ static void D3D11_AddDisposeIndexBuffer(
 	FNA3D_Buffer *buffer
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11Buffer *buf = (D3D11Buffer*) buffer;
+	D3D11Buffer *d3dBuffer = (D3D11Buffer*) buffer;
 
-	if (buf->handle == renderer->indexBuffer)
+	if (d3dBuffer->handle == renderer->indexBuffer)
 	{
 		renderer->indexBuffer = NULL;
 		ID3D11DeviceContext_IASetIndexBuffer(
@@ -2761,7 +2828,11 @@ static void D3D11_AddDisposeIndexBuffer(
 		);
 	}
 
-	ID3D11Buffer_Release(buf->handle);
+	if (d3dBuffer->staging != NULL)
+	{
+		ID3D11Buffer_Release(d3dBuffer->staging);
+	}
+	ID3D11Buffer_Release(d3dBuffer->handle);
 	SDL_free(buffer);
 }
 
@@ -2822,7 +2893,61 @@ static void D3D11_GetIndexBufferData(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Buffer *d3dBuffer = (D3D11Buffer*) buffer;
+	D3D11_BUFFER_DESC desc;
+	D3D11_MAPPED_SUBRESOURCE subres;
+	D3D11_BOX srcBox = {offsetInBytes, 0, 0, offsetInBytes + dataLength, 1, 1};
+
+	/* Create staging buffer if needed */
+	if (d3dBuffer->staging == NULL)
+	{
+		desc.ByteWidth = d3dBuffer->size;
+		desc.Usage = D3D11_USAGE_STAGING;
+		desc.BindFlags = 0;
+		desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+		desc.MiscFlags = 0;
+		desc.StructureByteStride = 0;
+		ID3D11Device_CreateBuffer(
+			renderer->device,
+			&desc,
+			NULL,
+			&d3dBuffer->staging
+		);
+	}
+
+	/* Copy data into staging buffer */
+	ID3D11DeviceContext_CopySubresourceRegion(
+		renderer->context,
+		(ID3D11Resource*) d3dBuffer->staging,
+		0,
+		0,
+		0,
+		0,
+		(ID3D11Resource*) d3dBuffer->handle,
+		0,
+		&srcBox
+	);
+
+	/* Read from the staging buffer */
+	ID3D11DeviceContext_Map(
+		renderer->context,
+		(ID3D11Resource*) d3dBuffer->staging,
+		0,
+		D3D11_MAP_READ,
+		0,
+		&subres
+	);
+	SDL_memcpy(
+		data,
+		subres.pData,
+		dataLength
+	);
+	ID3D11DeviceContext_Unmap(
+		renderer->context,
+		(ID3D11Resource*) d3dBuffer->staging,
+		0
+	);
 }
 
 /* Effects */
