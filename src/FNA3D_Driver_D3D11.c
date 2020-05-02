@@ -1953,7 +1953,7 @@ static void CreateFramebuffer(
 		depthStencilDesc.MipLevels = 1;
 		depthStencilDesc.ArraySize = 1;
 		depthStencilDesc.Format = XNAToD3D_DepthFormat[BB->depthFormat];
-		depthStencilDesc.SampleDesc.Count = BB->multiSampleCount;
+		depthStencilDesc.SampleDesc.Count = BB->multiSampleCount ? BB->multiSampleCount : 1;
 		depthStencilDesc.SampleDesc.Quality = 0; /* FIXME: This should probably be different... */
 		depthStencilDesc.Usage = D3D11_USAGE_DEFAULT;
 		depthStencilDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
