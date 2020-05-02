@@ -841,6 +841,11 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 static void D3D11_DestroyDevice(FNA3D_Device *device)
 {
 	D3D11Renderer* renderer = (D3D11Renderer*) device->driverData;
+
+	/* TODO: Destroy faux backbuffer resources */
+
+	MOJOSHADER_d3d11DestroyContext();
+
 	SDL_free(renderer);
 	SDL_free(device);
 }
