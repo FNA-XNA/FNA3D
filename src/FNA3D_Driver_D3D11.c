@@ -167,12 +167,12 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	/* Input Assembly */
 	ID3D11InputLayout *inputLayout;
 	FNA3D_PrimitiveType topology;
-	D3D11Buffer *vertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
-	D3D11Buffer *indexBuffer;
-
-	/* Some vertex declarations may have overlapping attributes :/ */
-	/* FIXME: Move this to ApplyVertex* */
-	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
+	ID3D11Buffer *vertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
+	uint32_t vertexBufferOffsets[MAX_BOUND_VERTEX_BUFFERS];
+	uint32_t vertexBufferStrides[MAX_BOUND_VERTEX_BUFFERS];
+	ID3D11Buffer *indexBuffer;
+	FNA3D_IndexElementSize indexElementSize;
+	uint32_t indexBufferOffset;
 
 	/* Resource Caches */
 	StateHashMap *blendStateCache;
@@ -192,6 +192,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	MOJOSHADER_effect *currentEffect;
 	const MOJOSHADER_effectTechnique *currentTechnique;
 	uint32_t currentPass;
+	uint8_t effectApplied;
 } D3D11Renderer;
 
 /* XNA->D3D11 Translation Arrays */
@@ -665,6 +666,7 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 ) {
 	uint64_t hash;
 	int32_t i, j, k, usage, index, attribLoc;
+	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 	FNA3D_VertexDeclaration vertexDeclaration;
 	FNA3D_VertexElement element;
 	D3D11_INPUT_ELEMENT_DESC *d3dElement;
@@ -709,7 +711,7 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 	 * have to crash :/
 	 * -flibit
 	 */
-	SDL_memset(renderer->attrUse, '\0', sizeof(renderer->attrUse));
+	SDL_memset(attrUse, '\0', sizeof(attrUse));
 	for (i = 0; i < numBindings; i += 1)
 	{
 		/* Describe vertex attributes */
@@ -719,12 +721,12 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 			element = vertexDeclaration.elements[j];
 			usage = element.vertexElementUsage;
 			index = element.usageIndex;
-			if (renderer->attrUse[usage][index])
+			if (attrUse[usage][index])
 			{
 				index = -1;
 				for (k = 0; k < 16; k += 1)
 				{
-					if (!renderer->attrUse[usage][k])
+					if (!attrUse[usage][k])
 					{
 						index = k;
 						break;
@@ -737,7 +739,7 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 					);
 				}
 			}
-			renderer->attrUse[usage][index] = 1;
+			attrUse[usage][index] = 1;
 			attribLoc = MOJOSHADER_d3d11GetVertexAttribLocation(
 				vertexShader,
 				VertexAttribUsage(usage),
@@ -887,15 +889,7 @@ static void BlitFramebuffer(D3D11Renderer *renderer)
 	float blendFactor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	ID3D11VertexShader *oldVertexShader;
 	ID3D11PixelShader *oldPixelShader;
-	ID3D11Buffer *oldVertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
-	uint32_t oldStrides[MAX_BOUND_VERTEX_BUFFERS];
-	uint32_t oldOffsets[MAX_BOUND_VERTEX_BUFFERS];
-	ID3D11Buffer *oldIndexBuffer;
-	uint32_t oldIndexOffset;
-	DXGI_FORMAT oldFormat;
 	uint32_t whatever;
-	void *nullResource = NULL;
-	int32_t i;
 
 	/* Push the current shader state */
 	ID3D11DeviceContext_VSGetShader(
@@ -909,20 +903,6 @@ static void BlitFramebuffer(D3D11Renderer *renderer)
 		&oldPixelShader,
 		NULL,
 		&whatever
-	);
-	ID3D11DeviceContext_IAGetVertexBuffers(
-		renderer->context,
-		0,
-		MAX_BOUND_VERTEX_BUFFERS,
-		oldVertexBuffers,
-		oldStrides,
-		oldOffsets
-	);
-	ID3D11DeviceContext_IAGetIndexBuffer(
-		renderer->context,
-		&oldIndexBuffer,
-		&oldFormat,
-		&oldIndexOffset
 	);
 	/* FIXME: Need to call Release on the returned resources */
 
@@ -1042,39 +1022,28 @@ static void BlitFramebuffer(D3D11Renderer *renderer)
 		renderer->context,
 		0,
 		MAX_BOUND_VERTEX_BUFFERS,
-		oldVertexBuffers,
-		oldStrides,
-		oldOffsets
+		renderer->vertexBuffers,
+		renderer->vertexBufferStrides,
+		renderer->vertexBufferOffsets
 	);
 	ID3D11DeviceContext_IASetIndexBuffer(
 		renderer->context,
-		oldIndexBuffer,
-		oldFormat,
-		oldIndexOffset
+		renderer->indexBuffer,
+		XNAToD3D_IndexType[renderer->indexElementSize],
+		renderer->indexBufferOffset
 	);
-
-	/* Unbind all textures and samplers */
-	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
-	{
-		if (renderer->textures[i] != &NullTexture)
-		{
-			renderer->textures[i] = &NullTexture;
-			renderer->samplers[i] = NULL;
-
-			ID3D11DeviceContext_PSSetShaderResources(
-				renderer->context,
-				i,
-				1,
-				(ID3D11ShaderResourceView**) &nullResource
-			);
-			ID3D11DeviceContext_PSSetSamplers(
-				renderer->context,
-				i,
-				1,
-				(ID3D11SamplerState**) &nullResource
-			);
-		}
-	}
+	ID3D11DeviceContext_PSSetShaderResources(
+		renderer->context,
+		0,
+		1,
+		&renderer->textures[0]->shaderView
+	);
+	ID3D11DeviceContext_PSSetSamplers(
+		renderer->context,
+		0,
+		1,
+		&renderer->samplers[0]
+	);
 
 	/* Bind the faux-backbuffer */
 	D3D11_SetRenderTargets(
@@ -1244,16 +1213,21 @@ static void D3D11_DrawIndexedPrimitives(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *d3dIndices = (D3D11Buffer*) indices;
+	int32_t indexOffset = startIndex * IndexSize(indexElementSize);
 
 	/* Bind index buffer */
-	if (renderer->indexBuffer != d3dIndices)
+	if (	renderer->indexBuffer != d3dIndices->handle ||
+		renderer->indexBufferOffset != indexOffset	)
 	{
-		renderer->indexBuffer = d3dIndices;
+		renderer->indexBuffer = d3dIndices->handle;
+		renderer->indexElementSize = indexElementSize;
+		renderer->indexBufferOffset = indexOffset;
+
 		ID3D11DeviceContext_IASetIndexBuffer(
 			renderer->context,
 			d3dIndices->handle,
 			XNAToD3D_IndexType[indexElementSize],
-			startIndex * IndexSize(indexElementSize)
+			indexOffset
 		);
 	}
 
@@ -1291,16 +1265,21 @@ static void D3D11_DrawInstancedPrimitives(
 	/* FIXME: Needs testing! */
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *d3dIndices = (D3D11Buffer*) indices;
+	int32_t indexOffset = startIndex * IndexSize(indexElementSize);
 
 	/* Bind index buffer */
-	if (renderer->indexBuffer != d3dIndices)
+	if (	renderer->indexBuffer != d3dIndices->handle ||
+		renderer->indexBufferOffset != indexOffset	)
 	{
-		renderer->indexBuffer = d3dIndices;
+		renderer->indexBuffer = d3dIndices->handle;
+		renderer->indexElementSize = indexElementSize;
+		renderer->indexBufferOffset = indexOffset;
+
 		ID3D11DeviceContext_IASetIndexBuffer(
 			renderer->context,
 			d3dIndices->handle,
 			XNAToD3D_IndexType[indexElementSize],
-			startIndex * IndexSize(indexElementSize)
+			indexOffset
 		);
 	}
 
@@ -1687,6 +1666,11 @@ static void D3D11_ApplyVertexBufferBindings(
 	ID3D11InputLayout *inputLayout;
 	int32_t i, offset;
 
+	if (!bindingsUpdated && !renderer->effectApplied)
+	{
+		return;
+	}
+
 	/* Translate the bindings array into an input layout */
 	inputLayout = FetchBindingsInputLayout(
 		renderer,
@@ -1707,26 +1691,35 @@ static void D3D11_ApplyVertexBufferBindings(
 	for (i = 0; i < numBindings; i += 1)
 	{
 		vertexBuffer = (D3D11Buffer*) bindings[i].vertexBuffer;
-		if (vertexBuffer == NULL)
+		if (renderer->vertexBuffers[i] != vertexBuffer->handle)
 		{
-			continue;
+			renderer->vertexBuffers[i] = vertexBuffer->handle;
+			if (vertexBuffer == NULL)
+			{
+				renderer->vertexBufferStrides[i] = 0;
+				renderer->vertexBufferOffsets[i] = 0;
+				continue;
+			}
+
+			offset = (
+				bindings[i].vertexOffset *
+				bindings[i].vertexDeclaration.vertexStride
+			);
+			ID3D11DeviceContext_IASetVertexBuffers(
+				renderer->context,
+				i,
+				1,
+				&vertexBuffer->handle,
+				(uint32_t*) &bindings[i].vertexDeclaration.vertexStride,
+				(uint32_t*) &offset
+			);
+
+			renderer->vertexBufferOffsets[i] = offset;
+			renderer->vertexBufferStrides[i] = bindings[i].vertexDeclaration.vertexStride;
 		}
-
-		offset = (
-			bindings[i].vertexOffset *
-			bindings[i].vertexDeclaration.vertexStride
-		);
-		ID3D11DeviceContext_IASetVertexBuffers(
-			renderer->context,
-			i,
-			1,
-			&vertexBuffer->handle,
-			(uint32_t*) &bindings[i].vertexDeclaration.vertexStride,
-			(uint32_t*) &offset
-		);
-
-		/* TODO: ldVertexBuffers */
 	}
+
+	renderer->effectApplied = 0;
 }
 
 static void D3D11_ApplyVertexDeclaration(
@@ -2835,6 +2828,7 @@ static void D3D11_AddDisposeEffect(
 		renderer->currentEffect = NULL;
 		renderer->currentTechnique = NULL;
 		renderer->currentPass = 0;
+		renderer->effectApplied = 1;
 	}
 	MOJOSHADER_deleteEffect(effectData);
 	SDL_free(effect);
@@ -2861,6 +2855,7 @@ static void D3D11_ApplyEffect(
 	const MOJOSHADER_effectTechnique *technique = effectData->current_technique;
 	uint32_t whatever;
 
+	renderer->effectApplied = 1;
 	if (effectData == renderer->currentEffect)
 	{
 		if (	technique == renderer->currentTechnique &&
@@ -2899,6 +2894,7 @@ static void D3D11_BeginPassRestore(
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	MOJOSHADER_effect *effectData = ((D3D11Effect*) effect)->effect;
 	uint32_t whatever;
 	MOJOSHADER_effectBegin(
@@ -2908,15 +2904,18 @@ static void D3D11_BeginPassRestore(
 		stateChanges
 	);
 	MOJOSHADER_effectBeginPass(effectData, 0);
+	renderer->effectApplied = 1;
 }
 
 static void D3D11_EndPassRestore(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	MOJOSHADER_effect *effectData = ((D3D11Effect*) effect)->effect;
 	MOJOSHADER_effectEndPass(effectData);
 	MOJOSHADER_effectEnd(effectData);
+	renderer->effectApplied = 1;
 }
 
 /* Queries */
