@@ -369,12 +369,6 @@ static D3D_PRIMITIVE_TOPOLOGY XNAToD3D_Primitive[] =
 	D3D_PRIMITIVE_TOPOLOGY_POINTLIST	/* PrimitiveType.PointListEXT */
 };
 
-/* Function Pointers */
-/* FIXME: Move this into InitializeFauxBackbuffer since that's the
- * only function that uses it anyway...
- */
-static PFN_D3DCOMPILE D3DCompileFunc;
-
 /* Faux-Backbuffer Blit Shader Sources */
 
 static const char* FAUX_BLIT_VERTEX_SHADER =
@@ -3045,6 +3039,8 @@ static void InitializeFauxBackbuffer(
 	D3D11Renderer *renderer,
 	uint8_t scaleNearest
 ) {
+	void* d3dCompilerModule;
+	PFN_D3DCOMPILE D3DCompileFunc;
 	ID3DBlob *blob;
 	D3D11_INPUT_ELEMENT_DESC ePosition;
 	D3D11_INPUT_ELEMENT_DESC eTexcoord;
@@ -3061,6 +3057,21 @@ static void InitializeFauxBackbuffer(
 	D3D11_RASTERIZER_DESC rastDesc;
 	D3D11_BLEND_DESC blendDesc;
 	HRESULT res;
+
+	/* Load the D3DCompile function */
+	d3dCompilerModule = SDL_LoadObject("d3dcompiler_47.dll");
+	if (d3dCompilerModule == NULL)
+	{
+		FNA3D_LogError("Could not find d3dcompiler_47.dll!");
+	}
+	D3DCompileFunc = (PFN_D3DCOMPILE) SDL_LoadFunction(
+		d3dCompilerModule,
+		"D3DCompile"
+	);
+	if (D3DCompileFunc == NULL)
+	{
+		FNA3D_LogError("Could not load function D3DCompile!");
+	}
 
 	/* Create and compile the vertex shader */
 	res = D3DCompileFunc(
@@ -3232,30 +3243,22 @@ static FNA3D_Device* D3D11_CreateDevice(
 	renderer = (D3D11Renderer*) SDL_malloc(sizeof(D3D11Renderer));
 	SDL_memset(renderer, '\0', sizeof(D3D11Renderer));
 
-	/* Load function pointers */
-	module = SDL_LoadObject("dxgi.dll");
-	SDL_assert(module != NULL);
-	CreateDXGIFactoryFunc = (PFN_CREATE_DXGI_FACTORY) SDL_LoadFunction(
-		module,
-		"CreateDXGIFactory1"
-	);
-	SDL_assert(CreateDXGIFactoryFunc != NULL);
-
+	/* Load D3D11CreateDevice */
 	module = SDL_LoadObject("d3d11.dll");
-	SDL_assert(module != NULL);
+	if (module == NULL)
+	{
+		FNA3D_LogError("Could not find d3d11.dll!");
+		return NULL;
+	}
 	D3D11CreateDeviceFunc = (PFN_D3D11_CREATE_DEVICE) SDL_LoadFunction(
 		module,
 		"D3D11CreateDevice"
 	);
-	SDL_assert(D3D11CreateDeviceFunc != NULL);
-
-	module = SDL_LoadObject("d3dcompiler_47.dll");
-	SDL_assert(module != NULL);
-	D3DCompileFunc = (PFN_D3DCOMPILE) SDL_LoadFunction(
-		module,
-		"D3DCompile"
-	);
-	SDL_assert(D3DCompileFunc != NULL);
+	if (D3D11CreateDeviceFunc == NULL)
+	{
+		FNA3D_LogError("Could not load function D3D11CreateDevice!");
+		return NULL;
+	}
 
 	/* Create the D3D11Device */
 	flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
@@ -3304,6 +3307,23 @@ static FNA3D_Device* D3D11_CreateDevice(
 		&supportsDxt5
 	);
 	renderer->supportsS3tc = (supportsDxt3 || supportsDxt5);
+
+	/* Load CreateDXGIFactory1 */
+	module = SDL_LoadObject("dxgi.dll");
+	if (module == NULL)
+	{
+		FNA3D_LogError("Could not find dxgi.dll!");
+		return NULL;
+	}
+	CreateDXGIFactoryFunc = (PFN_CREATE_DXGI_FACTORY) SDL_LoadFunction(
+		module,
+		"CreateDXGIFactory1"
+	);
+	if (CreateDXGIFactoryFunc == NULL)
+	{
+		FNA3D_LogError("Could not load function CreateDXGIFactory1!");
+		return NULL;
+	}
 
 	/* Create the DXGIFactory */
 	ret = CreateDXGIFactoryFunc(
