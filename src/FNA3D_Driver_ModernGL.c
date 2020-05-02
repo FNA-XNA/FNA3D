@@ -3753,6 +3753,8 @@ static FNA3D_Buffer* MODERNGL_GenVertexBuffer(
 			NULL,
 			GL_STATIC_DRAW
 		);
+
+		result->pin = NULL;
 	}
 
 	return (FNA3D_Buffer*) result;
@@ -4006,6 +4008,8 @@ static FNA3D_Buffer* MODERNGL_GenIndexBuffer(
 			NULL,
 			GL_STATIC_DRAW
 		);
+
+		result->pin = NULL;
 	}
 
 	return (FNA3D_Buffer*) result;
