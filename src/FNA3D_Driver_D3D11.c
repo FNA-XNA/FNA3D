@@ -2338,7 +2338,33 @@ static void D3D11_AddDisposeTexture(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Texture *tex = (D3D11Texture*) texture;
+	int32_t i;
+
+	for (i = 0; i < renderer->numRenderTargets; i += 1)
+	{
+		if (tex->rtView == renderer->renderTargetViews[i])
+		{
+			renderer->renderTargetViews[i] = NULL;
+		}
+	}
+	for (i = 0; i < MAX_TOTAL_SAMPLERS; i += 1)
+	{
+		if (renderer->textures[i] == tex)
+		{
+			renderer->textures[i] = &NullTexture;
+		}
+	}
+
+	if (tex->rtView != NULL)
+	{
+		ID3D11RenderTargetView_Release(tex->rtView);
+	}
+	ID3D11ShaderResourceView_Release(tex->shaderView);
+	ID3D11Texture2D_Release(tex->handle);
+
+	SDL_free(texture);
 }
 
 static inline uint32_t CalcSubresource(
@@ -2570,7 +2596,30 @@ static void D3D11_AddDisposeVertexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Buffer *buf = (D3D11Buffer*) buffer;
+	ID3D11Buffer *nullVertexBuffers[] = {NULL};
+	uint32_t whatever[1] = {0};
+	int32_t i;
+
+	for (i = 0; i < MAX_BOUND_VERTEX_BUFFERS; i += 1)
+	{
+		if (renderer->vertexBuffers[i] == buf->handle)
+		{
+			renderer->vertexBuffers[i] = NULL;
+			ID3D11DeviceContext_IASetVertexBuffers(
+				renderer->context,
+				i,
+				1,
+				nullVertexBuffers,
+				whatever,
+				whatever
+			);
+		}
+	}
+
+	ID3D11Buffer_Release(buf->handle);
+	SDL_free(buffer);
 }
 
 static void D3D11_SetVertexBufferData(
@@ -2676,7 +2725,22 @@ static void D3D11_AddDisposeIndexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Buffer *buf = (D3D11Buffer*) buffer;
+
+	if (buf->handle == renderer->indexBuffer)
+	{
+		renderer->indexBuffer = NULL;
+		ID3D11DeviceContext_IASetIndexBuffer(
+			renderer->context,
+			NULL,
+			DXGI_FORMAT_R16_UINT,
+			0
+		);
+	}
+
+	ID3D11Buffer_Release(buf->handle);
+	SDL_free(buffer);
 }
 
 static void D3D11_SetIndexBufferData(
