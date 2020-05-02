@@ -38,12 +38,15 @@
 
 typedef struct D3D11Texture /* Cast FNA3D_Texture* to this! */
 {
+	/* D3D Handles */
 	ID3D11Resource *handle; /* ID3D11Texture2D or ID3D11Texture3D */
-	int32_t levelCount;
-	uint8_t isRenderTarget;
 	ID3D11RenderTargetView *rtView;
 	ID3D11ShaderResourceView *shaderView;
+	ID3D11Resource *staging; /* ID3D11Texture2D or ID3D11Texture3D */
 
+	/* Sampler Info */
+	int32_t levelCount;
+	uint8_t isRenderTarget;
 	FNA3D_SurfaceFormat format;
 	FNA3D_TextureAddressMode wrapS;
 	FNA3D_TextureAddressMode wrapT;
@@ -52,15 +55,36 @@ typedef struct D3D11Texture /* Cast FNA3D_Texture* to this! */
 	float anisotropy;
 	int32_t maxMipmapLevel;
 	float lodBias;
+
+	/* Dimensions */
+	FNA3DNAMELESS union
+	{
+		struct
+		{
+			int32_t width;
+			int32_t height;
+		} twod;
+		struct
+		{
+			int32_t width;
+			int32_t height;
+			int32_t depth;
+		} threed;
+		struct
+		{
+			int32_t size;
+		} cube;
+	};
 } D3D11Texture;
 
 static D3D11Texture NullTexture =
 {
 	NULL,
+	NULL,
+	NULL,
+	NULL,
 	1,
 	0,
-	NULL,
-	NULL,
 	FNA3D_SURFACEFORMAT_COLOR,
 	FNA3D_TEXTUREADDRESSMODE_WRAP,
 	FNA3D_TEXTUREADDRESSMODE_WRAP,
@@ -68,7 +92,10 @@ static D3D11Texture NullTexture =
 	FNA3D_TEXTUREFILTER_LINEAR,
 	0.0f,
 	0,
-	0.0f
+	0.0f,
+	{
+		{ 0, 0 }
+	}
 };
 
 typedef struct D3D11Renderbuffer /* Cast FNA3D_Renderbuffer* to this! */
@@ -86,7 +113,6 @@ typedef struct D3D11Renderbuffer /* Cast FNA3D_Renderbuffer* to this! */
 			FNA3D_SurfaceFormat format;
 			ID3D11RenderTargetView *rtView;
 		} color;
-
 		struct
 		{
 			FNA3D_DepthFormat format;
@@ -2289,6 +2315,8 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 	result->levelCount = levelCount;
 	result->isRenderTarget = isRenderTarget;
 	result->anisotropy = 4.0f;
+	result->twod.width = width;
+	result->twod.height = height;
 
 	/* Create the shader resource view */
 	ID3D11Device_CreateShaderResourceView(
@@ -2352,6 +2380,9 @@ static FNA3D_Texture* D3D11_CreateTexture3D(
 	result->levelCount = levelCount;
 	result->isRenderTarget = 0;
 	result->anisotropy = 4.0f;
+	result->threed.width = width;
+	result->threed.height = height;
+	result->threed.depth = depth;
 
 	/* Create the shader resource view */
 	ID3D11Device_CreateShaderResourceView(
@@ -2412,6 +2443,7 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 	result->levelCount = levelCount;
 	result->isRenderTarget = isRenderTarget;
 	result->anisotropy = 4.0f;
+	result->cube.size = size;
 
 	/* Create the shader resource view */
 	ID3D11Device_CreateShaderResourceView(
@@ -2594,7 +2626,68 @@ static void D3D11_GetTextureData2D(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Texture *tex = (D3D11Texture*) texture;
+	D3D11_TEXTURE2D_DESC stagingDesc;
+	uint32_t subresourceIndex = CalcSubresource(level, 0, tex->levelCount);
+	D3D11_BOX srcBox = {x, y, 0, x + w, y + h, 1};
+	D3D11_MAPPED_SUBRESOURCE subresource;
+
+	/* Create staging texture if needed */
+	if (tex->staging == NULL)
+	{
+		stagingDesc.Width = tex->twod.width;
+		stagingDesc.Height = tex->twod.height;
+		stagingDesc.MipLevels = tex->levelCount;
+		stagingDesc.ArraySize = 1;
+		stagingDesc.Format = XNAToD3D_TextureFormat[tex->format];
+		stagingDesc.SampleDesc.Count = 1;
+		stagingDesc.SampleDesc.Quality = 0;
+		stagingDesc.Usage = D3D11_USAGE_STAGING;
+		stagingDesc.BindFlags = 0;
+		stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+		stagingDesc.MiscFlags = 0;
+
+		ID3D11Device_CreateTexture2D(
+			renderer->device,
+			&stagingDesc,
+			NULL,
+			(ID3D11Texture2D**) &tex->staging
+		);
+	}
+
+	/* Copy data into staging texture */
+	ID3D11DeviceContext_CopySubresourceRegion(
+		renderer->context,
+		tex->staging,
+		subresourceIndex,
+		0,
+		0,
+		0,
+		tex->handle,
+		subresourceIndex,
+		&srcBox
+	);
+
+	/* Read from the staging texture */
+	ID3D11DeviceContext_Map(
+		renderer->context,
+		tex->staging,
+		subresourceIndex,
+		D3D11_MAP_READ,
+		0,
+		&subresource
+	);
+	SDL_memcpy(
+		data,
+		subresource.pData,
+		dataLength
+	);
+	ID3D11DeviceContext_Unmap(
+		renderer->context,
+		tex->staging,
+		subresourceIndex
+	);
 }
 
 static void D3D11_GetTextureData3D(
@@ -2611,7 +2704,66 @@ static void D3D11_GetTextureData3D(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Texture *tex = (D3D11Texture*) texture;
+	D3D11_TEXTURE3D_DESC stagingDesc;
+	uint32_t subresourceIndex = CalcSubresource(level, 0, tex->levelCount);
+	D3D11_BOX srcBox = {x, y, z, x + w, y + h, z + d};
+	D3D11_MAPPED_SUBRESOURCE subresource;
+
+	/* Create staging texture if needed */
+	if (tex->staging == NULL)
+	{
+		stagingDesc.Width = tex->threed.width;
+		stagingDesc.Height = tex->threed.height;
+		stagingDesc.Depth = tex->threed.depth;
+		stagingDesc.MipLevels = tex->levelCount;
+		stagingDesc.Format = XNAToD3D_TextureFormat[tex->format];
+		stagingDesc.Usage = D3D11_USAGE_STAGING;
+		stagingDesc.BindFlags = 0;
+		stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+		stagingDesc.MiscFlags = 0;
+
+		ID3D11Device_CreateTexture3D(
+			renderer->device,
+			&stagingDesc,
+			NULL,
+			(ID3D11Texture3D**) &tex->staging
+		);
+	}
+
+	/* Copy data into staging texture */
+	ID3D11DeviceContext_CopySubresourceRegion(
+		renderer->context,
+		tex->staging,
+		subresourceIndex,
+		0,
+		0,
+		0,
+		tex->handle,
+		subresourceIndex,
+		&srcBox
+	);
+
+	/* Read from the staging texture */
+	ID3D11DeviceContext_Map(
+		renderer->context,
+		tex->staging,
+		subresourceIndex,
+		D3D11_MAP_READ,
+		0,
+		&subresource
+	);
+	SDL_memcpy(
+		data,
+		subresource.pData,
+		dataLength
+	);
+	ID3D11DeviceContext_Unmap(
+		renderer->context,
+		tex->staging,
+		subresourceIndex
+	);
 }
 
 static void D3D11_GetTextureDataCube(
@@ -2627,7 +2779,72 @@ static void D3D11_GetTextureDataCube(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Texture *tex = (D3D11Texture*) texture;
+	D3D11_TEXTURE2D_DESC stagingDesc;
+	uint32_t subresourceIndex = CalcSubresource(
+		level,
+		cubeMapFace,
+		tex->levelCount
+	);
+	D3D11_BOX srcBox = {x, y, 0, x + w, y + h, 1};
+	D3D11_MAPPED_SUBRESOURCE subresource;
+
+	/* Create staging texture if needed */
+	if (tex->staging == NULL)
+	{
+		stagingDesc.Width = tex->cube.size;
+		stagingDesc.Height = tex->cube.size;
+		stagingDesc.MipLevels = tex->levelCount;
+		stagingDesc.ArraySize = 1;
+		stagingDesc.Format = XNAToD3D_TextureFormat[tex->format];
+		stagingDesc.SampleDesc.Count = 1;
+		stagingDesc.SampleDesc.Quality = 0;
+		stagingDesc.Usage = D3D11_USAGE_STAGING;
+		stagingDesc.BindFlags = 0;
+		stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+		stagingDesc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
+
+		ID3D11Device_CreateTexture2D(
+			renderer->device,
+			&stagingDesc,
+			NULL,
+			(ID3D11Texture2D**) &tex->staging
+		);
+	}
+
+	/* Copy data into staging texture */
+	ID3D11DeviceContext_CopySubresourceRegion(
+		renderer->context,
+		tex->staging,
+		subresourceIndex,
+		0,
+		0,
+		0,
+		tex->handle,
+		subresourceIndex,
+		&srcBox
+	);
+
+	/* Read from the staging texture */
+	ID3D11DeviceContext_Map(
+		renderer->context,
+		tex->staging,
+		subresourceIndex,
+		D3D11_MAP_READ,
+		0,
+		&subresource
+	);
+	SDL_memcpy(
+		data,
+		subresource.pData,
+		dataLength
+	);
+	ID3D11DeviceContext_Unmap(
+		renderer->context,
+		tex->staging,
+		subresourceIndex
+	);
 }
 
 /* Renderbuffers */
