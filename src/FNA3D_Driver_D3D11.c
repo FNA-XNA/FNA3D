@@ -804,7 +804,7 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 
 static void D3D11_BeginFrame(FNA3D_Renderer *driverData)
 {
-	/* TODO */
+	/* No-op */
 }
 
 static void D3D11_GetDrawableSize(void *window, int32_t *x, int32_t *y);
@@ -2135,28 +2135,27 @@ static void D3D11_GetBackbufferSize(
 	int32_t *w,
 	int32_t *h
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	*w = renderer->backbuffer->width;
+	*h = renderer->backbuffer->height;
 }
 
 static FNA3D_SurfaceFormat D3D11_GetBackbufferSurfaceFormat(
 	FNA3D_Renderer *driverData
 ) {
-	/* TODO */
-	return FNA3D_SURFACEFORMAT_COLOR;
+	return ((D3D11Renderer*) driverData)->backbuffer->surfaceFormat;
 }
 
 static FNA3D_DepthFormat D3D11_GetBackbufferDepthFormat(
 	FNA3D_Renderer *driverData
 ) {
-	/* TODO */
-	return FNA3D_DEPTHFORMAT_NONE;
+	return ((D3D11Renderer*) driverData)->backbuffer->depthFormat;
 }
 
 static int32_t D3D11_GetBackbufferMultiSampleCount(
 	FNA3D_Renderer *driverData
 ) {
-	/* TODO */
-	return 0;
+	return ((D3D11Renderer*) driverData)->backbuffer->multiSampleCount;
 }
 
 /* Textures */
