@@ -2243,8 +2243,12 @@ static FNA3D_Texture* D3D11_CreateTexture3D(
 	int32_t levelCount
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11Texture *result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
+	D3D11Texture *result;
 	D3D11_TEXTURE3D_DESC desc;
+
+	/* Initialize D3D11Texture */
+	result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
+	SDL_memset(result, '\0', sizeof(D3D11Texture));
 
 	/* Initialize descriptor */
 	desc.Width = width;
@@ -2257,8 +2261,6 @@ static FNA3D_Texture* D3D11_CreateTexture3D(
 	desc.CPUAccessFlags = 0;
 	desc.MiscFlags = 0;
 
-	/* TODO: Shader resource views, initialize D3D11Texture */
-
 	/* Create the texture */
 	ID3D11Device_CreateTexture3D(
 		renderer->device,
@@ -2268,6 +2270,16 @@ static FNA3D_Texture* D3D11_CreateTexture3D(
 	);
 	result->levelCount = levelCount;
 	result->isRenderTarget = 0;
+	result->anisotropy = 4.0f;
+
+	/* Create the shader resource view */
+	ID3D11Device_CreateShaderResourceView(
+		renderer->device,
+		result->handle,
+		NULL,
+		&result->shaderView
+	);
+
 	return (FNA3D_Texture*) result;
 }
 
@@ -2279,10 +2291,14 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 	uint8_t isRenderTarget
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11Texture *result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
+	D3D11Texture *result;
 	DXGI_SAMPLE_DESC sampleDesc = {1, 0};
 	D3D11_TEXTURE2D_DESC desc;
-	D3D11_RENDER_TARGET_VIEW_DESC viewDesc;
+	D3D11_RENDER_TARGET_VIEW_DESC rtViewDesc;
+
+	/* Initialize D3D11Texture */
+	result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
+	SDL_memset(result, '\0', sizeof(D3D11Texture));
 
 	/* Initialize descriptor */
 	desc.Width = size;
@@ -2304,8 +2320,6 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 		desc.BindFlags |= D3D11_BIND_RENDER_TARGET;
 	}
 
-	/* TODO: Shader resource views, initialize D3D11Texture */
-
 	/* Create the texture */
 	ID3D11Device_CreateTexture2D(
 		renderer->device,
@@ -2315,17 +2329,26 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 	);
 	result->levelCount = levelCount;
 	result->isRenderTarget = isRenderTarget;
+	result->anisotropy = 4.0f;
+
+	/* Create the shader resource view */
+	ID3D11Device_CreateShaderResourceView(
+		renderer->device,
+		result->handle,
+		NULL,
+		&result->shaderView
+	);
 
 	/* Create the render target view, if applicable */
 	if (isRenderTarget)
 	{
-		viewDesc.Format = desc.Format;
-		viewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D; /* FIXME: Should this be 2D Array? */
-		viewDesc.Texture2D.MipSlice = 0;
+		rtViewDesc.Format = desc.Format;
+		rtViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D; /* FIXME: Should this be 2D Array? */
+		rtViewDesc.Texture2D.MipSlice = 0;
 		ID3D11Device_CreateRenderTargetView(
 			renderer->device,
 			result->handle,
-			&viewDesc,
+			&rtViewDesc,
 			&result->rtView
 		);
 	}
