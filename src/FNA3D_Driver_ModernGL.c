@@ -3918,7 +3918,7 @@ static void MODERNGL_GetVertexBufferData(
 		SDL_memcpy(
 			cpy,
 			buf->pin + offsetInBytes,
-			elementCount * elementSizeInBytes
+			elementCount * vertexStride
 		);
 	}
 	else
