@@ -74,10 +74,25 @@ static D3D11Texture NullTexture =
 typedef struct D3D11Renderbuffer /* Cast FNA3D_Renderbuffer* to this! */
 {
 	ID3D11Texture2D *handle;
-	ID3D11Texture2D *msaaHandle; /* FIXME: Needed? */
-	FNA3D_SurfaceFormat format;
 	int32_t multiSampleCount;
-	ID3D11DepthStencilView *dsView;
+
+	#define RENDERBUFFER_COLOR 0
+	#define RENDERBUFFER_DEPTH 1
+	uint8_t type;
+	FNA3DNAMELESS union
+	{
+		struct
+		{
+			FNA3D_SurfaceFormat format;
+			ID3D11RenderTargetView *rtView;
+		} color;
+
+		struct
+		{
+			FNA3D_DepthFormat format;
+			ID3D11DepthStencilView *dsView;
+		} depth;
+	};
 } D3D11Renderbuffer;
 
 typedef struct D3D11Buffer /* Cast FNA3D_Buffer* to this! */
@@ -102,18 +117,21 @@ typedef struct D3D11Backbuffer
 {
 	int32_t width;
 	int32_t height;
-	FNA3D_SurfaceFormat surfaceFormat;
-	FNA3D_DepthFormat depthFormat;
-	int32_t multiSampleCount;
 
+	/* Color */
+	FNA3D_SurfaceFormat surfaceFormat;
 	ID3D11Texture2D *colorBuffer;
 	ID3D11RenderTargetView *colorView;
+	ID3D11ShaderResourceView *shaderView;
 
-	ID3D11Texture2D *msaaColorBuffer;
-	ID3D11RenderTargetView *msaaColorView;
-
+	/* Depth Stencil */
+	FNA3D_DepthFormat depthFormat;
 	ID3D11Texture2D *depthStencilBuffer;
 	ID3D11DepthStencilView *depthStencilView;
+
+	/* Multisample */
+	int32_t multiSampleCount;
+	ID3D11Texture2D *resolveBuffer;
 } D3D11Backbuffer;
 
 typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
@@ -132,7 +150,6 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	ID3D11VertexShader *fauxBlitVS;
 	ID3D11PixelShader *fauxBlitPS;
 	ID3D11SamplerState *fauxBlitSampler;
-	ID3D11ShaderResourceView *fauxBlitShaderResourceView;
 	ID3D11Buffer *fauxBlitVertexBuffer;
 	ID3D11Buffer *fauxBlitIndexBuffer;
 	ID3D11InputLayout *fauxBlitLayout;
@@ -962,7 +979,7 @@ static void BlitFramebuffer(D3D11Renderer *renderer)
 		renderer->context,
 		0,
 		1,
-		&renderer->fauxBlitShaderResourceView
+		&renderer->backbuffer->shaderView
 	);
 	ID3D11DeviceContext_PSSetSamplers(
 		renderer->context,
@@ -1108,6 +1125,19 @@ static void D3D11_SwapBuffers(
 			dstRect,
 			drawableWidth,
 			drawableHeight
+		);
+	}
+
+	/* Resolve the faux-backbuffer if needed */
+	if (renderer->backbuffer->multiSampleCount > 1)
+	{
+		ID3D11DeviceContext_ResolveSubresource(
+			renderer->context,
+			(ID3D11Resource*) renderer->backbuffer->resolveBuffer,
+			0,
+			(ID3D11Resource*) renderer->backbuffer->colorBuffer,
+			0,
+			XNAToD3D_TextureFormat[renderer->backbuffer->surfaceFormat]
 		);
 	}
 
@@ -1738,6 +1768,7 @@ static void D3D11_SetRenderTargets(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *tex;
+	D3D11Renderbuffer *rb;
 	int32_t i, j;
 
 	/* Reset attachments */
@@ -1774,7 +1805,8 @@ static void D3D11_SetRenderTargets(
 
 		if (renderTargets[i].colorBuffer != NULL)
 		{
-			/* TODO: Handle this... */
+			rb = (D3D11Renderbuffer*) renderTargets[i].colorBuffer;
+			renderer->renderTargetViews[i] = rb->color.rtView;
 		}
 		else
 		{
@@ -1787,7 +1819,7 @@ static void D3D11_SetRenderTargets(
 	renderer->depthStencilView = (
 		depthStencilBuffer == NULL ?
 			NULL :
-			((D3D11Renderbuffer*) depthStencilBuffer)->dsView
+			((D3D11Renderbuffer*) depthStencilBuffer)->depth.dsView
 	);
 	renderer->currentDepthFormat = (
 		depthStencilBuffer == NULL ?
@@ -1833,7 +1865,30 @@ static void D3D11_ResolveTarget(
 	FNA3D_Renderer *driverData,
 	FNA3D_RenderTargetBinding *target
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Texture *tex = (D3D11Texture*) target->texture;
+	D3D11Renderbuffer *rb = (D3D11Renderbuffer*) target->colorBuffer;
+
+	if (target->multiSampleCount > 0)
+	{
+		ID3D11DeviceContext_ResolveSubresource(
+			renderer->context,
+			(ID3D11Resource*) tex->handle,
+			0,
+			(ID3D11Resource*) rb->handle,
+			0,
+			XNAToD3D_TextureFormat[tex->format]
+		);
+	}
+
+	/* If the target has mipmaps, regenerate them now */
+	if (target->levelCount > 1)
+	{
+		ID3D11DeviceContext_GenerateMips(
+			renderer->context,
+			tex->shaderView
+		);
+	}
 }
 
 /* Backbuffer Functions */
@@ -1859,7 +1914,7 @@ static void CreateFramebuffer(
 	D3D11_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc;
 	DXGI_RATIONAL refreshRate = { 1, 60 }; /* FIXME: Get this from display mode. */
 	DXGI_MODE_DESC swapchainBufferDesc;
-	DXGI_SAMPLE_DESC swapchainSampleDesc = { 1, 0 }; /* FIXME: What should this be? */
+	DXGI_SAMPLE_DESC swapchainSampleDesc = { 1, 0 };
 	DXGI_SWAP_CHAIN_DESC swapchainDesc;
 	D3D11_RENDER_TARGET_VIEW_DESC swapchainViewDesc;
 	ID3D11Texture2D *swapchainTexture;
@@ -1887,11 +1942,15 @@ static void CreateFramebuffer(
 	colorBufferDesc.MipLevels = 1;
 	colorBufferDesc.ArraySize = 1;
 	colorBufferDesc.Format = XNAToD3D_TextureFormat[BB->surfaceFormat];
-	colorBufferDesc.SampleDesc.Count = 1;
+	colorBufferDesc.SampleDesc.Count = (BB->multiSampleCount > 1 ? BB->multiSampleCount : 1);
 	colorBufferDesc.SampleDesc.Quality = 0; /* FIXME: This should probably be different... */
 	colorBufferDesc.Usage = D3D11_USAGE_DEFAULT;
-	colorBufferDesc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
-	colorBufferDesc.CPUAccessFlags = 0; /* GPU-private */
+	colorBufferDesc.BindFlags = D3D11_BIND_RENDER_TARGET;
+	if (BB->multiSampleCount <= 1)
+	{
+		colorBufferDesc.BindFlags |= D3D11_BIND_SHADER_RESOURCE;
+	}
+	colorBufferDesc.CPUAccessFlags = 0;
 	colorBufferDesc.MiscFlags = 0;
 	ID3D11Device_CreateTexture2D(
 		renderer->device,
@@ -1902,8 +1961,15 @@ static void CreateFramebuffer(
 
 	/* Update color buffer view */
 	colorViewDesc.Format = colorBufferDesc.Format;
-	colorViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-	colorViewDesc.Texture2D.MipSlice = 0;
+	if (BB->multiSampleCount > 1)
+	{
+		colorViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DMS;
+	}
+	else
+	{
+		colorViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+		colorViewDesc.Texture2D.MipSlice = 0;
+	}
 	ID3D11Device_CreateRenderTargetView(
 		renderer->device,
 		(ID3D11Resource*) BB->colorBuffer,
@@ -1916,34 +1982,35 @@ static void CreateFramebuffer(
 	shaderViewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
 	shaderViewDesc.Texture2D.MipLevels = 1;
 	shaderViewDesc.Texture2D.MostDetailedMip = 0;
-	ID3D11Device_CreateShaderResourceView(
-		renderer->device,
-		(ID3D11Resource*) BB->colorBuffer,
-		&shaderViewDesc,
-		&renderer->fauxBlitShaderResourceView
-	);
 
-	/* Update the multisample color buffer, if applicable */
-	if (BB->multiSampleCount > 0)
+	if (BB->multiSampleCount > 1)
 	{
-		/* FIXME: No idea if this works. */
-
-		colorBufferDesc.SampleDesc.Count = BB->multiSampleCount;
+		/* Make a resolve texture */
+		colorBufferDesc.Width = BB->width;
+		colorBufferDesc.Height = BB->height;
+		colorBufferDesc.MipLevels = 1;
+		colorBufferDesc.ArraySize = 1;
+		colorBufferDesc.Format = XNAToD3D_TextureFormat[BB->surfaceFormat];
+		colorBufferDesc.SampleDesc.Count = 1;
+		colorBufferDesc.SampleDesc.Quality = 0; /* FIXME: This should probably be different... */
+		colorBufferDesc.Usage = D3D11_USAGE_DEFAULT;
+		colorBufferDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
+		colorBufferDesc.CPUAccessFlags = 0;
+		colorBufferDesc.MiscFlags = 0;
 		ID3D11Device_CreateTexture2D(
 			renderer->device,
 			&colorBufferDesc,
 			NULL,
-			&BB->msaaColorBuffer
-		);
-
-		/* Update the MSAA view */
-		ID3D11Device_CreateRenderTargetView(
-			renderer->device,
-			(ID3D11Resource*) BB->msaaColorBuffer,
-			&colorViewDesc,
-			&BB->msaaColorView
+			&BB->resolveBuffer
 		);
 	}
+
+	ID3D11Device_CreateShaderResourceView(
+		renderer->device,
+		(ID3D11Resource*) ((BB->multiSampleCount > 1) ? BB->resolveBuffer : BB->colorBuffer),
+		&shaderViewDesc,
+		&renderer->backbuffer->shaderView
+	);
 
 	/* Update the depth/stencil buffer, if applicable */
 	if (BB->depthFormat != FNA3D_DEPTHFORMAT_NONE)
@@ -1953,11 +2020,11 @@ static void CreateFramebuffer(
 		depthStencilDesc.MipLevels = 1;
 		depthStencilDesc.ArraySize = 1;
 		depthStencilDesc.Format = XNAToD3D_DepthFormat[BB->depthFormat];
-		depthStencilDesc.SampleDesc.Count = BB->multiSampleCount ? BB->multiSampleCount : 1;
+		depthStencilDesc.SampleDesc.Count = (BB->multiSampleCount > 1 ? BB->multiSampleCount : 1);
 		depthStencilDesc.SampleDesc.Quality = 0; /* FIXME: This should probably be different... */
 		depthStencilDesc.Usage = D3D11_USAGE_DEFAULT;
 		depthStencilDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
-		depthStencilDesc.CPUAccessFlags = 0; /* GPU-private */
+		depthStencilDesc.CPUAccessFlags = 0;
 		depthStencilDesc.MiscFlags = 0;
 		ID3D11Device_CreateTexture2D(
 			renderer->device,
@@ -1968,9 +2035,17 @@ static void CreateFramebuffer(
 
 		/* Update the depth-stencil view */
 		depthStencilViewDesc.Format = depthStencilDesc.Format;
-		depthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
-		depthStencilViewDesc.Flags = 0; /* read/write capable */
-		depthStencilViewDesc.Texture2D.MipSlice = 0;
+		depthStencilViewDesc.Flags = 0;
+		if (BB->multiSampleCount > 1)
+		{
+			depthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS;
+		}
+		else
+		{
+			depthStencilViewDesc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2D;
+			depthStencilViewDesc.Texture2D.MipSlice = 0;
+
+		}
 		ID3D11Device_CreateDepthStencilView(
 			renderer->device,
 			(ID3D11Resource*) BB->depthStencilBuffer,
@@ -2071,22 +2146,24 @@ static void DestroyFramebuffer(D3D11Renderer *renderer)
 			renderer->backbuffer->colorView
 		);
 		renderer->backbuffer->colorView = NULL;
+
+		ID3D11ShaderResourceView_Release(
+			renderer->backbuffer->shaderView
+		);
+		renderer->backbuffer->shaderView = NULL;
+
 		ID3D11Texture2D_Release(
 			renderer->backbuffer->colorBuffer
 		);
 		renderer->backbuffer->colorBuffer = NULL;
 	}
 
-	if (renderer->backbuffer->msaaColorView != NULL)
+	if (renderer->backbuffer->resolveBuffer != NULL)
 	{
-		ID3D11RenderTargetView_Release(
-			renderer->backbuffer->msaaColorView
-		);
 		ID3D11Texture2D_Release(
-			renderer->backbuffer->msaaColorBuffer
+			renderer->backbuffer->resolveBuffer
 		);
-		renderer->backbuffer->msaaColorView = NULL;
-		renderer->backbuffer->msaaColorBuffer = NULL;
+		renderer->backbuffer->resolveBuffer = NULL;
 	}
 
 	if (renderer->backbuffer->depthStencilBuffer != NULL)
@@ -2094,10 +2171,11 @@ static void DestroyFramebuffer(D3D11Renderer *renderer)
 		ID3D11DepthStencilView_Release(
 			renderer->backbuffer->depthStencilView
 		);
+		renderer->backbuffer->depthStencilView = NULL;
+
 		ID3D11Texture2D_Release(
 			renderer->backbuffer->depthStencilBuffer
 		);
-		renderer->backbuffer->depthStencilView = NULL;
 		renderer->backbuffer->depthStencilBuffer = NULL;
 	}
 
@@ -2198,6 +2276,7 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 		 * a single bind flag. What can we do here?
 		 */
 		desc.BindFlags |= D3D11_BIND_RENDER_TARGET;
+		desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
 	}
 
 	/* Create the texture */
@@ -2320,6 +2399,7 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 		 * a single bind flag. What can we do here?
 		 */
 		desc.BindFlags |= D3D11_BIND_RENDER_TARGET;
+		desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
 	}
 
 	/* Create the texture */
@@ -2560,8 +2640,46 @@ static FNA3D_Renderbuffer* D3D11_GenColorRenderbuffer(
 	int32_t multiSampleCount,
 	FNA3D_Texture *texture
 ) {
-	/* TODO */
-	return NULL;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11_TEXTURE2D_DESC desc;
+	D3D11Renderbuffer *result;
+
+	/* Initialize the renderbuffer */
+	result = (D3D11Renderbuffer*) SDL_malloc(sizeof(D3D11Renderbuffer));
+	SDL_memset(result, '\0', sizeof(D3D11Renderbuffer));
+	result->multiSampleCount = multiSampleCount;
+	result->type = RENDERBUFFER_COLOR;
+	result->color.format = format;
+
+	/* Create the backing texture */
+	desc.Width = width;
+	desc.Height = height;
+	desc.MipLevels = 1;
+	desc.ArraySize = 1;
+	desc.Format = XNAToD3D_TextureFormat[format];
+	desc.SampleDesc.Count = multiSampleCount;
+	desc.SampleDesc.Quality = 0; /* FIXME: What should this be? */
+	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.BindFlags = D3D11_BIND_RENDER_TARGET;
+	desc.CPUAccessFlags = 0;
+	desc.MiscFlags = 0;
+
+	ID3D11Device_CreateTexture2D(
+		renderer->device,
+		&desc,
+		NULL,
+		&result->handle
+	);
+
+	/* Create the render target view */
+	ID3D11Device_CreateRenderTargetView(
+		renderer->device,
+		(ID3D11Resource*) result->handle,
+		NULL,
+		&result->color.rtView
+	);
+
+	return (FNA3D_Renderbuffer*) result;
 }
 
 static FNA3D_Renderbuffer* D3D11_GenDepthStencilRenderbuffer(
@@ -2571,15 +2689,81 @@ static FNA3D_Renderbuffer* D3D11_GenDepthStencilRenderbuffer(
 	FNA3D_DepthFormat format,
 	int32_t multiSampleCount
 ) {
-	/* TODO */
-	return NULL;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11_TEXTURE2D_DESC desc;
+	D3D11Renderbuffer *result;
+
+	/* Initialize the renderbuffer */
+	result = (D3D11Renderbuffer*) SDL_malloc(sizeof(D3D11Renderbuffer));
+	SDL_memset(result, '\0', sizeof(D3D11Renderbuffer));
+	result->multiSampleCount = multiSampleCount;
+	result->type = RENDERBUFFER_DEPTH;
+	result->depth.format = format;
+
+	/* Create the backing texture */
+	desc.Width = width;
+	desc.Height = height;
+	desc.MipLevels = 1;
+	desc.ArraySize = 1;
+	desc.Format = XNAToD3D_DepthFormat[format];
+	desc.SampleDesc.Count = multiSampleCount;
+	desc.SampleDesc.Quality = 0; /* FIXME: What should this be? */
+	desc.Usage = D3D11_USAGE_DEFAULT;
+	desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
+	desc.CPUAccessFlags = 0;
+	desc.MiscFlags = 0;
+
+	ID3D11Device_CreateTexture2D(
+		renderer->device,
+		&desc,
+		NULL,
+		&result->handle
+	);
+
+	/* Create the render target view */
+	ID3D11Device_CreateDepthStencilView(
+		renderer->device,
+		(ID3D11Resource*) result->handle,
+		NULL,
+		&result->depth.dsView
+	);
+
+	return (FNA3D_Renderbuffer*) result;
 }
 
 static void D3D11_AddDisposeRenderbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Renderbuffer *renderbuffer
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Renderbuffer *d3dRenderbuffer = (D3D11Renderbuffer*) renderbuffer;
+	int32_t i;
+
+	if (d3dRenderbuffer->type == RENDERBUFFER_DEPTH)
+	{
+		if (d3dRenderbuffer->depth.dsView == renderer->depthStencilView)
+		{
+			renderer->depthStencilView = NULL;
+		}
+		ID3D11DepthStencilView_Release(d3dRenderbuffer->depth.dsView);
+		d3dRenderbuffer->depth.dsView = NULL;
+	}
+	else
+	{
+		for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
+		{
+			if (d3dRenderbuffer->color.rtView == renderer->renderTargetViews[i])
+			{
+				renderer->renderTargetViews[i] = NULL;
+			}
+		}
+		ID3D11RenderTargetView_Release(d3dRenderbuffer->color.rtView);
+	}
+
+	ID3D11Texture2D_Release(d3dRenderbuffer->handle);
+	d3dRenderbuffer->handle = NULL;
+
+	SDL_free(renderbuffer);
 }
 
 /* Vertex Buffers */
