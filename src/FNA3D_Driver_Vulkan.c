@@ -211,6 +211,7 @@ typedef struct FNAVulkanRenderer
 	uint32_t fauxBackbufferWidth;
 	uint32_t fauxBackbufferHeight;
 	FNA3D_DepthFormat fauxBackbufferDepthFormat;
+	VkSampleCountFlagBits fauxBackbufferMultisampleCount;
 
 	FNAVulkanImageData *colorAttachments[MAX_RENDERTARGET_BINDINGS];
 	uint32_t colorAttachmentCount;
@@ -458,7 +459,7 @@ static VkIndexType XNAToVK_IndexType[] =
 	VK_INDEX_TYPE_UINT32 /* FNA3D_INDEXELEMENTSIZE_32BIT */
 };
 
-static VkSampleCountFlags XNAToVK_SampleCount(uint8_t sampleCount)
+static VkSampleCountFlagBits XNAToVK_SampleCount(uint8_t sampleCount)
 {
 	if (sampleCount <= 1)
 	{
@@ -2876,14 +2877,9 @@ void VULKAN_ApplyRasterizerState(
 		SetDepthBiasCommand(renderer);
 	}
 
-	if (rasterizerState->multiSampleAntiAlias != renderer->rasterizerState.multiSampleAntiAlias)
-	{
-		renderer->rasterizerState.multiSampleAntiAlias = rasterizerState->multiSampleAntiAlias;
-	}
-
-		if (	rasterizerState->cullMode != renderer->rasterizerState.cullMode ||
+	if (rasterizerState->cullMode != renderer->rasterizerState.cullMode ||
 				rasterizerState->fillMode != renderer->rasterizerState.fillMode ||
-				rasterizerState->multiSampleAntiAlias != renderer->rasterizerState.multiSampleAntiAlias		)
+				rasterizerState->multiSampleAntiAlias != renderer->rasterizerState.multiSampleAntiAlias)
 	{
 		if (renderer->debugMode && renderer->renderPassInProgress)
 		{
@@ -3256,7 +3252,8 @@ FNA3D_DepthFormat VULKAN_GetBackbufferDepthFormat(FNA3D_Renderer *driverData)
 
 int32_t VULKAN_GetBackbufferMultiSampleCount(FNA3D_Renderer *driverData)
 {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	return renderer->fauxBackbufferMultisampleCount;
 }
 
 /* Textures */
@@ -4788,6 +4785,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 	renderer->colorAttachmentCount = 1;
 
 	renderer->fauxBackbufferSurfaceFormat = presentationParameters->backBufferFormat;
+	renderer->fauxBackbufferMultisampleCount = XNAToVK_SampleCount(presentationParameters->multiSampleCount);
 
 	/* create faux backbuffer depth stencil image */
 
