@@ -90,6 +90,7 @@ typedef struct PipelineHash
 	StateHash blendState;
 	StateHash rasterizerState;
 	FNA3D_PrimitiveType primitiveType;
+	VkSampleMask sampleMask;
 	/* pipelines have to be compatible with a render pass */
 	VkRenderPass renderPass;
 } PipelineHash;
@@ -223,6 +224,7 @@ typedef struct FNAVulkanRenderer
 	FNA3D_Viewport viewport;
 	FNA3D_Rect scissorRect;
 
+	VkSampleMask multiSampleMask[MAX_MULTISAMPLE_MASK_SIZE];
 	FNA3D_BlendState blendState;
 
 	FNA3D_DepthStencilState depthStencilState;
@@ -1777,7 +1779,7 @@ static VkPipeline FetchPipeline(
 	VkPipelineMultisampleStateCreateInfo multisamplingInfo = { VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO };
 	multisamplingInfo.sampleShadingEnable = VK_FALSE;
 	multisamplingInfo.minSampleShading = 1.0f;
-	multisamplingInfo.pSampleMask = (VkSampleMask*)&renderer->blendState.multiSampleMask;
+	multisamplingInfo.pSampleMask = renderer->multiSampleMask;
 	multisamplingInfo.rasterizationSamples = XNAToVK_SampleCount(renderer->rasterizerState.multiSampleAntiAlias);
 	multisamplingInfo.alphaToCoverageEnable = VK_FALSE;
 	multisamplingInfo.alphaToOneEnable = VK_FALSE;
@@ -2053,6 +2055,7 @@ static PipelineHash GetPipelineHash(
 	hash.rasterizerState = GetRasterizerStateHash(renderer->rasterizerState);
 	hash.primitiveType = renderer->currentPrimitiveType;
 	hash.renderPass = renderer->renderPass;
+	hash.sampleMask = renderer->multiSampleMask[0];
 	return hash;
 }
 
@@ -2813,12 +2816,35 @@ void VULKAN_SetBlendFactor(
 
 int32_t VULKAN_GetMultiSampleMask(FNA3D_Renderer *driverData)
 {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	return renderer->multiSampleMask[0];
 }
 
 void VULKAN_SetMultiSampleMask(FNA3D_Renderer *driverData, int32_t mask)
 {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	if (renderer->debugMode && renderer->rasterizerState.multiSampleAntiAlias > 32) {
+		SDL_LogWarn(
+				SDL_LOG_CATEGORY_APPLICATION,
+				"%s\n%s\n",
+				"Using a 32-bit multisample mask for a 64-sample rasterizer",
+				"Last 32 bits of the mask will all be 1"
+		);
+	}
+	if (renderer->multiSampleMask[0] != mask)
+	{
+		if (renderer->debugMode && renderer->renderPassInProgress)
+		{
+			SDL_LogWarn(
+					SDL_LOG_CATEGORY_APPLICATION,
+					"%s\n%s\n",
+					"Binding new pipeline to change multisample mask mid-frame",
+					"This may cause performance degradation"
+			);
+		}
+		renderer->multiSampleMask[0] = mask;
+		BindPipeline(renderer);
+	}
 }
 
 int32_t VULKAN_GetReferenceStencil(FNA3D_Renderer *driverData)
@@ -4947,6 +4973,9 @@ FNA3D_Device* VULKAN_CreateDevice(
 
 	renderer->needNewRenderPass = 1;
 	renderer->frameInProgress = 0;
+
+	/* Initialize renderer members not covered by SDL_memset('\0') */
+	SDL_memset(renderer->multiSampleMask, -1, sizeof(renderer->multiSampleMask)); /* AKA 0xFFFFFFFF */
 
 	return result;
 }
