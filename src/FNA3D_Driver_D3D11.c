@@ -136,7 +136,7 @@ typedef struct D3D11Effect /* Cast FNA3D_Effect* to this! */
 
 typedef struct D3D11Query /* Cast FNA3D_Query* to this! */
 {
-	uint8_t filler;
+	ID3D11Query *handle;
 } D3D11Query;
 
 typedef struct D3D11Backbuffer
@@ -3533,41 +3533,81 @@ static void D3D11_EndPassRestore(
 
 static FNA3D_Query* D3D11_CreateQuery(FNA3D_Renderer *driverData)
 {
-	/* TODO */
-	return NULL;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Query *query = (D3D11Query*) SDL_malloc(sizeof(D3D11Query));
+	D3D11_QUERY_DESC desc;
+
+	desc.Query = D3D11_QUERY_OCCLUSION;
+	desc.MiscFlags = 0;
+
+	ID3D11Device_CreateQuery(
+		renderer->device,
+		&desc,
+		&query->handle
+	);
+
+	return (FNA3D_Query*) query;
 }
 
 static void D3D11_AddDisposeQuery(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
 ) {
-	/* TODO */
+	D3D11Query *d3dQuery = (D3D11Query*) query;
+	ID3D11Query_Release(d3dQuery->handle);
+	SDL_free(query);
 }
 
 static void D3D11_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Query *d3dQuery = (D3D11Query*) query;
+	ID3D11DeviceContext_Begin(
+		renderer->context,
+		(ID3D11Asynchronous*) d3dQuery->handle
+	);
 }
 
 static void D3D11_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Query *d3dQuery = (D3D11Query*) query;
+	ID3D11DeviceContext_End(
+		renderer->context,
+		(ID3D11Asynchronous*) d3dQuery->handle
+	);
 }
 
 static uint8_t D3D11_QueryComplete(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
 ) {
-	/* TODO */
-	return 1;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Query *d3dQuery = (D3D11Query*) query;
+	return ID3D11DeviceContext_GetData(
+		renderer->context,
+		(ID3D11Asynchronous*) d3dQuery->handle,
+		NULL,
+		0,
+		0
+	) == S_OK;
 }
 
 static int32_t D3D11_QueryPixelCount(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
 ) {
-	/* TODO */
-	return 0;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Query *d3dQuery = (D3D11Query*) query;
+	uint64_t result;
+	ID3D11DeviceContext_GetData(
+		renderer->context,
+		(ID3D11Asynchronous*) d3dQuery->handle,
+		&result,
+		sizeof(result),
+		0
+	);
+	return (int32_t) result;
 }
 
 /* Feature Queries */
