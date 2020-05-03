@@ -37,6 +37,8 @@
 #define VKAPIENTRY
 #endif
 
+#define MAX_MULTISAMPLE_MASK_SIZE 2
+
 /* Instance Function typedefs */
 #define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 	typedef ret (VKAPIENTRY *vkfntype_##func) params;
