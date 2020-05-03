@@ -226,6 +226,13 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	StateHashMap *samplerStateCache;
 	UInt64HashMap *inputLayoutCache;
 
+	/* User Buffers */
+	ID3D11Buffer *userVertexBuffer;
+	ID3D11Buffer *userIndexBuffer;
+	FNA3D_VertexDeclaration *userVertexDeclaration;
+	int32_t userVertexBufferSize;
+	int32_t userIndexBufferSize;
+
 	/* Render Targets */
 	int32_t numRenderTargets;
 	ID3D11RenderTargetView *swapchainRTView;
@@ -708,8 +715,7 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 	FNA3D_VertexDeclaration vertexDeclaration;
 	FNA3D_VertexElement element;
-	D3D11_INPUT_ELEMENT_DESC *d3dElement;
-	D3D11_INPUT_ELEMENT_DESC *elements;
+	D3D11_INPUT_ELEMENT_DESC *d3dElement, *elements;
 	int32_t numElements, elementBufferSize;
 	MOJOSHADER_d3d11Shader *vertexShader, *blah;
 	HRESULT res;
@@ -814,6 +820,121 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 		renderer->device,
 		elements,
 		numElements,
+		MOJOSHADER_d3d11GetBytecode(vertexShader),
+		MOJOSHADER_d3d11GetBytecodeLength(vertexShader),
+		&result
+	);
+	if (res < 0)
+	{
+		FNA3D_LogError(
+			"Could not compile input layout! Error: %x",
+			res
+		);
+	}
+
+	/* Clean up */
+	SDL_free(elements);
+
+	/* Return the new input layout! */
+	hmput(renderer->inputLayoutCache, hash, result);
+	return result;
+}
+
+static ID3D11InputLayout* FetchDeclarationInputLayout(
+	D3D11Renderer *renderer,
+	FNA3D_VertexDeclaration *vertexDeclaration
+) {
+	uint64_t hash;
+	int32_t bufsize, i, j, usage, index, attribLoc;
+	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
+	FNA3D_VertexElement element;
+	D3D11_INPUT_ELEMENT_DESC *elements, *d3dElement;
+	MOJOSHADER_d3d11Shader *vertexShader, *blah;
+	HRESULT res;
+	ID3D11InputLayout *result;
+
+	/* We need the vertex shader... */
+	MOJOSHADER_d3d11GetBoundShaders(&vertexShader, &blah);
+
+	/* Can we just reuse an existing input layout? */
+	hash = GetVertexDeclarationHash(
+		*vertexDeclaration,
+		vertexShader
+	);
+	result = hmget(renderer->inputLayoutCache, hash);
+	if (result != NULL)
+	{
+		/* This input layout has already been cached! */
+		return result;
+	}
+
+	/* We have to make a new input layout... */
+
+	/* Allocate an array for the elements */
+	bufsize = vertexDeclaration->elementCount * sizeof(D3D11_INPUT_ELEMENT_DESC);
+	elements = (D3D11_INPUT_ELEMENT_DESC*) SDL_malloc(bufsize);
+	SDL_memset(elements, '\0', bufsize);
+
+	/* There's this weird case where you can have overlapping
+	 * vertex usage/index combinations. It seems like the first
+	 * attrib gets priority, so whenever a duplicate attribute
+	 * exists, give it the next available index. If that fails, we
+	 * have to crash :/
+	 * -flibit
+	 */
+	SDL_memset(attrUse, '\0', sizeof(attrUse));
+
+	/* Describe vertex attributes */
+	for (i = 0; i < vertexDeclaration->elementCount; i += 1)
+	{
+		element = vertexDeclaration->elements[i];
+		usage = element.vertexElementUsage;
+		index = element.usageIndex;
+		if (attrUse[usage][index])
+		{
+			index = -1;
+			for (j = 0; j < 16; j += 1)
+			{
+				if (!attrUse[usage][j])
+				{
+					index = j;
+					break;
+				}
+			}
+			if (index < 0)
+			{
+				FNA3D_LogError(
+					"Vertex usage collision!"
+				);
+			}
+		}
+		attrUse[usage][index] = 1;
+		attribLoc = MOJOSHADER_d3d11GetVertexAttribLocation(
+			vertexShader,
+			VertexAttribUsage(usage),
+			index
+		);
+		if (attribLoc == -1)
+		{
+			/* Stream not in use! */
+			continue;
+		}
+		d3dElement = &elements[attribLoc];
+		d3dElement->SemanticName = XNAToD3D_VertexAttribSemanticName[usage];
+		d3dElement->SemanticIndex = index;
+		d3dElement->Format = XNAToD3D_VertexAttribFormat[
+			element.vertexElementFormat
+		];
+		d3dElement->InputSlot = i;
+		d3dElement->AlignedByteOffset = element.offset;
+		d3dElement->InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
+		d3dElement->InstanceDataStepRate = 0;
+	}
+
+	res = ID3D11Device_CreateInputLayout(
+		renderer->device,
+		elements,
+		vertexDeclaration->elementCount,
 		MOJOSHADER_d3d11GetBytecode(vertexShader),
 		MOJOSHADER_d3d11GetBytecodeLength(vertexShader),
 		&result
@@ -1367,7 +1488,6 @@ static void D3D11_DrawPrimitives(
 	int32_t vertexStart,
 	int32_t primitiveCount
 ) {
-	/* FIXME: Needs testing! */
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 
 	/* Bind draw state */
@@ -1388,6 +1508,93 @@ static void D3D11_DrawPrimitives(
 	);
 }
 
+static void BindUserVertexBuffer(
+	D3D11Renderer *renderer,
+	void* vertexData,
+	int32_t vertexCount,
+	int32_t vertexOffset
+) {
+	int32_t len, offset, stride;
+	D3D11_BUFFER_DESC desc;
+	D3D11_MAPPED_SUBRESOURCE subres;
+	uint32_t nullOffset[1] = {0};
+
+	stride = renderer->userVertexDeclaration->vertexStride;
+	len = vertexCount * stride;
+	offset = vertexOffset * stride;
+
+	/* (Re-)create the user vertex buffer, if needed */
+	if (	renderer->userVertexBuffer == NULL ||
+		len > renderer->userVertexBufferSize	)
+	{
+		/* Destroy the old buffer */
+		if (renderer->userVertexBuffer != NULL)
+		{
+			if (renderer->vertexBuffers[0] == renderer->userVertexBuffer)
+			{
+				renderer->vertexBuffers[0] = NULL;
+			}
+			ID3D11Buffer_Release(renderer->userVertexBuffer);
+			renderer->userVertexBuffer = NULL;
+		}
+
+		/* Initialize the descriptor with 2x the needed size.
+		 * This helps avoid unnecessary buffer recreation.
+		 * -caleb
+		 */
+		desc.ByteWidth = len * 2;
+		desc.Usage = D3D11_USAGE_DYNAMIC;
+		desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+		desc.MiscFlags = 0;
+		desc.StructureByteStride = 0;
+
+		/* Create the new buffer */
+		ID3D11Device_CreateBuffer(
+			renderer->device,
+			&desc,
+			NULL,
+			&renderer->userVertexBuffer
+		);
+		renderer->userVertexBufferSize = len;
+	}
+
+	/* Set the buffer data */
+	ID3D11DeviceContext_Map(
+		renderer->context,
+		(ID3D11Resource*) renderer->userVertexBuffer,
+		0,
+		D3D11_MAP_WRITE_DISCARD,
+		0,
+		&subres
+	);
+	SDL_memcpy(
+		subres.pData,
+		(uint8_t*) vertexData + offset,
+		len
+	);
+	ID3D11DeviceContext_Unmap(
+		renderer->context,
+		(ID3D11Resource*) renderer->userVertexBuffer,
+		0
+	);
+
+	/* Bind the buffer */
+	if (renderer->vertexBuffers[0] != renderer->userVertexBuffer)
+	{
+		renderer->vertexBuffers[0] = renderer->userVertexBuffer;
+		ID3D11DeviceContext_IASetVertexBuffers(
+			renderer->context,
+			0,
+			1,
+			&renderer->vertexBuffers[0],
+			(uint32_t*) &stride,
+			nullOffset
+		);
+	}
+}
+
+
 static void D3D11_DrawUserIndexedPrimitives(
 	FNA3D_Renderer *driverData,
 	FNA3D_PrimitiveType primitiveType,
@@ -1399,7 +1606,109 @@ static void D3D11_DrawUserIndexedPrimitives(
 	FNA3D_IndexElementSize indexElementSize,
 	int32_t primitiveCount
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	int32_t numIndices, indexSize, len;
+	D3D11_BUFFER_DESC desc;
+	D3D11_MAPPED_SUBRESOURCE subres;
+	uint32_t nullOffset[1] = {0};
+
+	numIndices = PrimitiveVerts(primitiveType, primitiveCount);
+	indexSize = IndexSize(indexElementSize);
+	len = numIndices * indexSize;
+
+	/* Bind the vertex buffer */
+	BindUserVertexBuffer(
+		renderer,
+		vertexData,
+		numVertices,
+		vertexOffset
+	);
+
+	/* (Re-)create the user index buffer, if needed */
+	if (	renderer->userIndexBuffer == NULL ||
+		len > renderer->userIndexBufferSize	)
+	{
+		/* Destroy the old buffer */
+		if (renderer->userIndexBuffer != NULL)
+		{
+			if (renderer->indexBuffer == renderer->userIndexBuffer)
+			{
+				renderer->indexBuffer = NULL;
+			}
+			ID3D11Buffer_Release(renderer->userIndexBuffer);
+			renderer->userIndexBuffer = NULL;
+		}
+
+		/* Initialize the descriptor with 2x the needed size.
+		 * This helps avoid unnecessary buffer recreation.
+		 * -caleb
+		 */
+		desc.ByteWidth = len * 2;
+		desc.Usage = D3D11_USAGE_DYNAMIC;
+		desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+		desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+		desc.MiscFlags = 0;
+		desc.StructureByteStride = 0;
+
+		/* Create the new buffer */
+		ID3D11Device_CreateBuffer(
+			renderer->device,
+			&desc,
+			NULL,
+			&renderer->userIndexBuffer
+		);
+		renderer->userIndexBufferSize = len;
+	}
+
+	/* Set the buffer data */
+	ID3D11DeviceContext_Map(
+		renderer->context,
+		(ID3D11Resource*) renderer->userIndexBuffer,
+		0,
+		D3D11_MAP_WRITE_DISCARD,
+		0,
+		&subres
+	);
+	SDL_memcpy(
+		subres.pData,
+		(uint8_t*) indexData + (indexOffset * indexSize),
+		len
+	);
+	ID3D11DeviceContext_Unmap(
+		renderer->context,
+		(ID3D11Resource*) renderer->userIndexBuffer,
+		0
+	);
+
+	/* Bind the index buffer */
+	if (renderer->indexBuffer != renderer->userIndexBuffer)
+	{
+		renderer->indexBuffer = renderer->userIndexBuffer;
+		ID3D11DeviceContext_IASetIndexBuffer(
+			renderer->context,
+			renderer->indexBuffer,
+			XNAToD3D_IndexType[indexElementSize],
+			0
+		);
+	}
+
+	/* Bind draw state */
+	if (renderer->topology != primitiveType)
+	{
+		renderer->topology = primitiveType;
+		ID3D11DeviceContext_IASetPrimitiveTopology(
+			renderer->context,
+			XNAToD3D_Primitive[primitiveType]
+		);
+	}
+
+	/* Draw! */
+	ID3D11DeviceContext_DrawIndexed(
+		renderer->context,
+		numIndices,
+		0,
+		0
+	);
 }
 
 static void D3D11_DrawUserPrimitives(
@@ -1409,7 +1718,36 @@ static void D3D11_DrawUserPrimitives(
 	int32_t vertexOffset,
 	int32_t primitiveCount
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+
+	/* Bind the vertex buffer */
+	int32_t numVerts = PrimitiveVerts(
+		primitiveType,
+		primitiveCount
+	);
+	BindUserVertexBuffer(
+		renderer,
+		vertexData,
+		numVerts,
+		vertexOffset
+	);
+
+	/* Bind draw state */
+	if (renderer->topology != primitiveType)
+	{
+		renderer->topology = primitiveType;
+		ID3D11DeviceContext_IASetPrimitiveTopology(
+			renderer->context,
+			XNAToD3D_Primitive[primitiveType]
+		);
+	}
+
+	/* Draw! */
+	ID3D11DeviceContext_Draw(
+		renderer->context,
+		numVerts,
+		0
+	);
 }
 
 /* Mutable Render States */
@@ -1785,7 +2123,32 @@ static void D3D11_ApplyVertexDeclaration(
 	void* vertexData,
 	int32_t vertexOffset
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	ID3D11InputLayout *inputLayout;
+
+	if (	renderer->userVertexDeclaration == vertexDeclaration &&
+		!renderer->effectApplied				)
+	{
+		return;
+	}
+
+	/* Store this for future DrawUser* calls */
+	renderer->userVertexDeclaration = vertexDeclaration;
+
+	/* Translate the bindings array into an input layout */
+	inputLayout = FetchDeclarationInputLayout(
+		renderer,
+		vertexDeclaration
+	);
+
+	if (renderer->inputLayout != inputLayout)
+	{
+		renderer->inputLayout = inputLayout;
+		ID3D11DeviceContext_IASetInputLayout(
+			renderer->context,
+			inputLayout
+		);
+	}
 }
 
 /* Render Targets */
@@ -3087,7 +3450,7 @@ static void D3D11_SetVertexBufferData(
 			&subres
 		);
 		SDL_memcpy(
-			(unsigned char*) subres.pData + offsetInBytes,
+			(uint8_t*) subres.pData + offsetInBytes,
 			data,
 			dataLen
 		);
@@ -3268,7 +3631,7 @@ static void D3D11_SetIndexBufferData(
 			&subres
 		);
 		SDL_memcpy(
-			(unsigned char*) subres.pData + offsetInBytes,
+			(uint8_t*) subres.pData + offsetInBytes,
 			data,
 			dataLength
 		);
