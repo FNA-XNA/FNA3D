@@ -3735,14 +3735,27 @@ void VULKAN_BeginPassRestore(
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
-	/* TODO */
+	MOJOSHADER_effect *effectData = ((VulkanEffect *) effect)->effect;
+	uint32_t whatever;
+
+	VULKAN_BeginFrame(driverData);
+
+	MOJOSHADER_effectBegin(
+			effectData,
+			&whatever,
+			1,
+			stateChanges
+	);
+	MOJOSHADER_effectBeginPass(effectData, 0);
 }
 
 void VULKAN_EndPassRestore(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
-	/* TODO */
+	MOJOSHADER_effect *effectData = ((VulkanEffect *) effect)->effect;
+	MOJOSHADER_effectEndPass(effectData);
+	MOJOSHADER_effectEnd(effectData);
 }
 
 /* Queries */
