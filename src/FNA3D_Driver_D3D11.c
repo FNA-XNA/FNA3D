@@ -711,12 +711,11 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 	int32_t numBindings
 ) {
 	uint64_t hash;
-	int32_t i, j, k, usage, index, attribLoc;
+	int32_t numElements, bufsize, i, j, k, usage, index, attribLoc;
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 	FNA3D_VertexDeclaration vertexDeclaration;
 	FNA3D_VertexElement element;
 	D3D11_INPUT_ELEMENT_DESC *d3dElement, *elements;
-	int32_t numElements, elementBufferSize;
 	MOJOSHADER_d3d11Shader *vertexShader, *blah;
 	HRESULT res;
 	ID3D11InputLayout *result;
@@ -739,16 +738,6 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 
 	/* We have to make a new input layout... */
 
-	/* Allocate an array for the elements */
-	numElements = 0;
-	for (i = 0; i < numBindings; i += 1)
-	{
-		numElements += bindings[i].vertexDeclaration.elementCount;
-	}
-	elementBufferSize = numElements * sizeof(D3D11_INPUT_ELEMENT_DESC);
-	elements = (D3D11_INPUT_ELEMENT_DESC*) SDL_malloc(elementBufferSize);
-	SDL_memset(elements, '\0', elementBufferSize);
-
 	/* There's this weird case where you can have overlapping
 	 * vertex usage/index combinations. It seems like the first
 	 * attrib gets priority, so whenever a duplicate attribute
@@ -757,15 +746,18 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 	 * -flibit
 	 */
 	SDL_memset(attrUse, '\0', sizeof(attrUse));
+
+	/* Determine how many elements are actually in use */
+	numElements = 0;
 	for (i = 0; i < numBindings; i += 1)
 	{
-		/* Describe vertex attributes */
 		vertexDeclaration = bindings[i].vertexDeclaration;
 		for (j = 0; j < vertexDeclaration.elementCount; j += 1)
 		{
 			element = vertexDeclaration.elements[j];
 			usage = element.vertexElementUsage;
 			index = element.usageIndex;
+
 			if (attrUse[usage][index])
 			{
 				index = -1;
@@ -795,6 +787,38 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 				/* Stream not in use! */
 				continue;
 			}
+
+			numElements += 1;
+		}
+	}
+
+	/* Allocate an array for the elements */
+	bufsize = numElements * sizeof(D3D11_INPUT_ELEMENT_DESC);
+	elements = (D3D11_INPUT_ELEMENT_DESC*) SDL_malloc(bufsize);
+	SDL_memset(elements, '\0', bufsize);
+
+	/* Describe the elements */
+	for (i = 0; i < numBindings; i += 1)
+	{
+		/* Describe vertex attributes */
+		vertexDeclaration = bindings[i].vertexDeclaration;
+		for (j = 0; j < vertexDeclaration.elementCount; j += 1)
+		{
+			element = vertexDeclaration.elements[j];
+			usage = element.vertexElementUsage;
+			index = element.usageIndex;
+
+			attribLoc = MOJOSHADER_d3d11GetVertexAttribLocation(
+				vertexShader,
+				VertexAttribUsage(usage),
+				index
+			);
+			if (attribLoc == -1)
+			{
+				/* Stream not in use! */
+				continue;
+			}
+
 			d3dElement = &elements[attribLoc];
 			d3dElement->SemanticName = XNAToD3D_VertexAttribSemanticName[usage];
 			d3dElement->SemanticIndex = index;
@@ -845,7 +869,7 @@ static ID3D11InputLayout* FetchDeclarationInputLayout(
 	FNA3D_VertexDeclaration *vertexDeclaration
 ) {
 	uint64_t hash;
-	int32_t bufsize, i, j, usage, index, attribLoc;
+	int32_t numElements, bufsize, i, j, usage, index, attribLoc;
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 	FNA3D_VertexElement element;
 	D3D11_INPUT_ELEMENT_DESC *elements, *d3dElement;
@@ -870,11 +894,6 @@ static ID3D11InputLayout* FetchDeclarationInputLayout(
 
 	/* We have to make a new input layout... */
 
-	/* Allocate an array for the elements */
-	bufsize = vertexDeclaration->elementCount * sizeof(D3D11_INPUT_ELEMENT_DESC);
-	elements = (D3D11_INPUT_ELEMENT_DESC*) SDL_malloc(bufsize);
-	SDL_memset(elements, '\0', bufsize);
-
 	/* There's this weird case where you can have overlapping
 	 * vertex usage/index combinations. It seems like the first
 	 * attrib gets priority, so whenever a duplicate attribute
@@ -884,12 +903,14 @@ static ID3D11InputLayout* FetchDeclarationInputLayout(
 	 */
 	SDL_memset(attrUse, '\0', sizeof(attrUse));
 
-	/* Describe vertex attributes */
+	/* Determine how many elements are actually in use */
+	numElements = 0;
 	for (i = 0; i < vertexDeclaration->elementCount; i += 1)
 	{
 		element = vertexDeclaration->elements[i];
 		usage = element.vertexElementUsage;
 		index = element.usageIndex;
+
 		if (attrUse[usage][index])
 		{
 			index = -1;
@@ -919,6 +940,33 @@ static ID3D11InputLayout* FetchDeclarationInputLayout(
 			/* Stream not in use! */
 			continue;
 		}
+
+		numElements += 1;
+	}
+
+	/* Allocate an array for the elements */
+	bufsize = numElements * sizeof(D3D11_INPUT_ELEMENT_DESC);
+	elements = (D3D11_INPUT_ELEMENT_DESC*) SDL_malloc(bufsize);
+	SDL_memset(elements, '\0', bufsize);
+
+	/* Describe vertex attributes */
+	for (i = 0; i < vertexDeclaration->elementCount; i += 1)
+	{
+		element = vertexDeclaration->elements[i];
+		usage = element.vertexElementUsage;
+		index = element.usageIndex;
+
+		attribLoc = MOJOSHADER_d3d11GetVertexAttribLocation(
+			vertexShader,
+			VertexAttribUsage(usage),
+			index
+		);
+		if (attribLoc == -1)
+		{
+			/* Stream not in use! */
+			continue;
+		}
+
 		d3dElement = &elements[attribLoc];
 		d3dElement->SemanticName = XNAToD3D_VertexAttribSemanticName[usage];
 		d3dElement->SemanticIndex = index;
@@ -934,7 +982,7 @@ static ID3D11InputLayout* FetchDeclarationInputLayout(
 	res = ID3D11Device_CreateInputLayout(
 		renderer->device,
 		elements,
-		vertexDeclaration->elementCount,
+		numElements,
 		MOJOSHADER_d3d11GetBytecode(vertexShader),
 		MOJOSHADER_d3d11GetBytecodeLength(vertexShader),
 		&result
