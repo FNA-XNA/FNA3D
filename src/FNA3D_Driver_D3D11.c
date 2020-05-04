@@ -34,6 +34,22 @@
 #include <SDL.h>
 #include <SDL_syswm.h>
 
+/* D3D11 Libraries */
+
+#if defined(_WIN32)
+#define D3DCOMPILER_DLL	"d3dcompiler_47.dll"
+#define D3D11_DLL	"d3d11.dll"
+#define DXGI_DLL	"dxgi.dll"
+#elif defined(__APPLE__)
+#define D3DCOMPILER_DLL	"libd3dcompiler.dylib"
+#define D3D11_DLL	"libd3d11.dylib"
+#define DXGI_DLL	"libdxgi.dylib"
+#else
+#define D3DCOMPILER_DLL	"libd3dcompiler.so"
+#define D3D11_DLL	"libd3d11.so"
+#define DXGI_DLL	"libdxgi.so"
+#endif
+
 /* Internal Structures */
 
 typedef struct D3D11Texture /* Cast FNA3D_Texture* to this! */
@@ -4180,10 +4196,10 @@ static void InitializeFauxBackbuffer(
 	HRESULT res;
 
 	/* Load the D3DCompile function */
-	d3dCompilerModule = SDL_LoadObject("d3dcompiler_47.dll");
+	d3dCompilerModule = SDL_LoadObject(D3DCOMPILER_DLL);
 	if (d3dCompilerModule == NULL)
 	{
-		FNA3D_LogError("Could not find d3dcompiler_47.dll!");
+		FNA3D_LogError("Could not find " D3DCOMPILER_DLL);
 	}
 	D3DCompileFunc = (PFN_D3DCOMPILE) SDL_LoadFunction(
 		d3dCompilerModule,
@@ -4365,10 +4381,10 @@ static FNA3D_Device* D3D11_CreateDevice(
 	SDL_memset(renderer, '\0', sizeof(D3D11Renderer));
 
 	/* Load D3D11CreateDevice */
-	module = SDL_LoadObject("d3d11.dll");
+	module = SDL_LoadObject(D3D11_DLL);
 	if (module == NULL)
 	{
-		FNA3D_LogError("Could not find d3d11.dll!");
+		FNA3D_LogError("Could not find " D3D11_DLL);
 		return NULL;
 	}
 	D3D11CreateDeviceFunc = (PFN_D3D11_CREATE_DEVICE) SDL_LoadFunction(
@@ -4430,10 +4446,10 @@ static FNA3D_Device* D3D11_CreateDevice(
 	renderer->supportsS3tc = (supportsDxt3 || supportsDxt5);
 
 	/* Load CreateDXGIFactory1 */
-	module = SDL_LoadObject("dxgi.dll");
+	module = SDL_LoadObject(DXGI_DLL);
 	if (module == NULL)
 	{
-		FNA3D_LogError("Could not find dxgi.dll!");
+		FNA3D_LogError("Could not find " DXGI_DLL);
 		return NULL;
 	}
 	CreateDXGIFactoryFunc = (PFN_CREATE_DXGI_FACTORY) SDL_LoadFunction(
