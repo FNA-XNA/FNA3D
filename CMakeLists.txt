@@ -5,6 +5,7 @@ project(FNA3D)
 
 # Options
 option(BUILD_SHARED_LIBS "Build shared library" ON)
+option(BUILD_DXVK_NATIVE "Build D3D11 with DXVK-Native" OFF)
 
 # Version
 SET(LIB_MAJOR_VERSION "0")
@@ -65,7 +66,7 @@ else()
 	)
 endif()
 
-if (WIN32)
+if(WIN32 OR BUILD_DXVK_NATIVE)
 	add_definitions(
 		-DFNA3D_DRIVER_D3D11
 		-DSUPPORT_PROFILE_HLSL=1
@@ -74,6 +75,10 @@ else()
 	add_definitions(
 		-DSUPPORT_PROFILE_HLSL=0
 	)
+endif()
+if(BUILD_DXVK_NATIVE)
+	add_definitions(-DFNA3D_DXVK_NATIVE)
+	include_directories(${CMAKE_SOURCE_DIR}/../dxvk-native/include/native)
 endif()
 
 # Source lists

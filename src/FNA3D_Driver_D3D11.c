@@ -2337,10 +2337,14 @@ static void D3D11_ResolveTarget(
 
 static HWND GetHWND(SDL_Window *window)
 {
+#ifdef FNA3D_DXVK_NATIVE
+	return (HWND) window;
+#else
 	SDL_SysWMinfo info;
 	SDL_VERSION(&info.version);
 	SDL_GetWindowWMInfo((SDL_Window*) window, &info);
 	return info.info.win.window;
+#endif
 }
 
 static void CreateFramebuffer(
@@ -4119,6 +4123,11 @@ static void D3D11_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 
 static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 {
+#ifdef FNA3D_DXVK_NATIVE
+	/* FIXME: Rip off FNA3D_Driver_Vulkan here... */
+	*flags = SDL_WINDOW_VULKAN;
+	return 1;
+#else
 	const char *osVersion = SDL_GetPlatform();
 	if (	(strcmp(osVersion, "Windows") != 0) &&
 		(strcmp(osVersion, "WinRT") != 0)	)
@@ -4132,14 +4141,19 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 	/* No window flags required */
 	SDL_SetHint(SDL_HINT_VIDEO_EXTERNAL_CONTEXT, "1");
 	return 1;
+#endif
 }
 
 static void D3D11_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 {
+#ifdef FNA3D_DXVK_NATIVE
+	SDL_Vulkan_GetDrawableSize((SDL_Window*) window, x, y);
+#else
 	RECT clientRect;
 	GetClientRect(GetHWND((SDL_Window*) window), &clientRect);
 	*x = (clientRect.right - clientRect.left);
 	*y = (clientRect.bottom - clientRect.top);
+#endif
 }
 
 static void InitializeFauxBackbuffer(
