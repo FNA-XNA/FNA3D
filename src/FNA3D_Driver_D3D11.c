@@ -2979,7 +2979,46 @@ static void D3D11_SetTextureDataYUV(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Texture *d3dY = (D3D11Texture*) y;
+	D3D11Texture *d3dU = (D3D11Texture*) u;
+	D3D11Texture *d3dV = (D3D11Texture*) v;
+	D3D11_BOX yBox = {0, 0, 0, yWidth, yHeight, 1};
+	D3D11_BOX uvBox = {0, 0, 0, uvWidth, uvHeight, 1};
+	int32_t yRow, uvRow;
+	uint8_t *dataPtr = (uint8_t*) data;
+
+	yRow = BytesPerRow(yWidth, FNA3D_SURFACEFORMAT_ALPHA8);
+	uvRow = BytesPerRow(uvWidth, FNA3D_SURFACEFORMAT_ALPHA8);
+	ID3D11DeviceContext_UpdateSubresource(
+		renderer->context,
+		d3dY->handle,
+		0,
+		&yBox,
+		data,
+		yRow,
+		0
+	);
+	dataPtr += yWidth * yHeight;
+	ID3D11DeviceContext_UpdateSubresource(
+		renderer->context,
+		d3dU->handle,
+		0,
+		&uvBox,
+		data,
+		uvRow,
+		0
+	);
+	dataPtr += uvWidth * uvHeight;
+	ID3D11DeviceContext_UpdateSubresource(
+		renderer->context,
+		d3dV->handle,
+		0,
+		&uvBox,
+		data,
+		uvRow,
+		0
+	);
 }
 
 static void D3D11_GetTextureData2D(
