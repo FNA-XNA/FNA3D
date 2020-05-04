@@ -3490,7 +3490,7 @@ static FNA3D_Renderbuffer* D3D11_GenDepthStencilRenderbuffer(
 	desc.MipLevels = 1;
 	desc.ArraySize = 1;
 	desc.Format = XNAToD3D_DepthFormat[format];
-	desc.SampleDesc.Count = multiSampleCount;
+	desc.SampleDesc.Count = (multiSampleCount > 1 ? multiSampleCount : 1);
 	desc.SampleDesc.Quality = 0; /* FIXME: What should this be? */
 	desc.Usage = D3D11_USAGE_DEFAULT;
 	desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
@@ -3546,7 +3546,6 @@ static void D3D11_AddDisposeRenderbuffer(
 
 	ID3D11Texture2D_Release(d3dRenderbuffer->handle);
 	d3dRenderbuffer->handle = NULL;
-
 	SDL_free(renderbuffer);
 }
 
