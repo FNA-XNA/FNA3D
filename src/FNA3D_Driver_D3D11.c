@@ -184,6 +184,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	IDXGIFactory1 *factory;
 	IDXGISwapChain *swapchain;
 	ID3DUserDefinedAnnotation *annotation;
+	SDL_mutex *ctxLock;
 
 	/* The Faux-Backbuffer */
 	D3D11Backbuffer *backbuffer;
@@ -1031,6 +1032,7 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 
 	MOJOSHADER_d3d11DestroyContext();
 
+	SDL_DestroyMutex(renderer->ctxLock);
 	SDL_free(renderer);
 	SDL_free(device);
 }
@@ -1088,6 +1090,7 @@ static void UpdateBackbufferVertexBuffer(
 	mappedBuffer.pData = NULL;
 	mappedBuffer.DepthPitch = 0;
 	mappedBuffer.RowPitch = 0;
+	SDL_LockMutex(renderer->ctxLock);
 	ID3D11DeviceContext_Map(
 		renderer->context,
 		(ID3D11Resource*) renderer->fauxBlitVertexBuffer,
@@ -1102,6 +1105,7 @@ static void UpdateBackbufferVertexBuffer(
 		(ID3D11Resource*) renderer->fauxBlitVertexBuffer,
 		0
 	);
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_SetRenderTargets(
@@ -1119,6 +1123,8 @@ static void BlitFramebuffer(D3D11Renderer *renderer)
 	ID3D11VertexShader *oldVertexShader;
 	ID3D11PixelShader *oldPixelShader;
 	uint32_t whatever;
+
+	SDL_LockMutex(renderer->ctxLock);
 
 	/* Push the current shader state */
 	ID3D11DeviceContext_VSGetShader(
@@ -1282,6 +1288,8 @@ static void BlitFramebuffer(D3D11Renderer *renderer)
 		NULL,
 		FNA3D_DEPTHFORMAT_NONE
 	);
+
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_SwapBuffers(
@@ -1344,6 +1352,8 @@ static void D3D11_SwapBuffers(
 		);
 	}
 
+	SDL_LockMutex(renderer->ctxLock);
+
 	/* Resolve the faux-backbuffer if needed */
 	if (renderer->backbuffer->multiSampleCount > 1)
 	{
@@ -1359,6 +1369,8 @@ static void D3D11_SwapBuffers(
 
 	/* "Blit" the faux-backbuffer to the swapchain image */
 	BlitFramebuffer(renderer);
+
+	SDL_UnlockMutex(renderer->ctxLock);
 
 	/* Present! */
 	IDXGISwapChain_Present(renderer->swapchain, renderer->syncInterval, 0);
@@ -1405,6 +1417,8 @@ static void D3D11_Clear(
 	uint32_t dsClearFlags;
 	float clearColor[4] = {color->x, color->y, color->z, color->w};
 
+	SDL_LockMutex(renderer->ctxLock);
+
 	/* Clear color? */
 	if (options & FNA3D_CLEAROPTIONS_TARGET)
 	{
@@ -1440,6 +1454,8 @@ static void D3D11_Clear(
 			(uint8_t) stencil
 		);
 	}
+
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_DrawIndexedPrimitives(
@@ -1456,6 +1472,8 @@ static void D3D11_DrawIndexedPrimitives(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *d3dIndices = (D3D11Buffer*) indices;
 	int32_t indexOffset = startIndex * IndexSize(indexElementSize);
+
+	SDL_LockMutex(renderer->ctxLock);
 
 	/* Bind index buffer */
 	if (	renderer->indexBuffer != d3dIndices->handle ||
@@ -1490,6 +1508,8 @@ static void D3D11_DrawIndexedPrimitives(
 		(uint32_t) startIndex,
 		baseVertex
 	);
+
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_DrawInstancedPrimitives(
@@ -1508,6 +1528,8 @@ static void D3D11_DrawInstancedPrimitives(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *d3dIndices = (D3D11Buffer*) indices;
 	int32_t indexOffset = startIndex * IndexSize(indexElementSize);
+
+	SDL_LockMutex(renderer->ctxLock);
 
 	/* Bind index buffer */
 	if (	renderer->indexBuffer != d3dIndices->handle ||
@@ -1544,6 +1566,8 @@ static void D3D11_DrawInstancedPrimitives(
 		baseVertex,
 		0
 	);
+
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_DrawPrimitives(
@@ -1553,6 +1577,8 @@ static void D3D11_DrawPrimitives(
 	int32_t primitiveCount
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+
+	SDL_LockMutex(renderer->ctxLock);
 
 	/* Bind draw state */
 	if (renderer->topology != primitiveType)
@@ -1570,6 +1596,8 @@ static void D3D11_DrawPrimitives(
 		(uint32_t) PrimitiveVerts(primitiveType, primitiveCount),
 		(uint32_t) vertexStart
 	);
+
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void BindUserVertexBuffer(
@@ -1623,6 +1651,8 @@ static void BindUserVertexBuffer(
 		renderer->userVertexBufferSize = len;
 	}
 
+	SDL_LockMutex(renderer->ctxLock);
+
 	/* Set the buffer data */
 	ID3D11DeviceContext_Map(
 		renderer->context,
@@ -1656,6 +1686,8 @@ static void BindUserVertexBuffer(
 			nullOffset
 		);
 	}
+
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 
@@ -1724,6 +1756,8 @@ static void D3D11_DrawUserIndexedPrimitives(
 		renderer->userIndexBufferSize = len;
 	}
 
+	SDL_LockMutex(renderer->ctxLock);
+
 	/* Set the buffer data */
 	ID3D11DeviceContext_Map(
 		renderer->context,
@@ -1773,6 +1807,8 @@ static void D3D11_DrawUserIndexedPrimitives(
 		0,
 		0
 	);
+
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_DrawUserPrimitives(
@@ -1796,6 +1832,8 @@ static void D3D11_DrawUserPrimitives(
 		vertexOffset
 	);
 
+	SDL_LockMutex(renderer->ctxLock);
+
 	/* Bind draw state */
 	if (renderer->topology != primitiveType)
 	{
@@ -1812,6 +1850,8 @@ static void D3D11_DrawUserPrimitives(
 		numVerts,
 		0
 	);
+
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 /* Mutable Render States */
@@ -1836,12 +1876,14 @@ static void D3D11_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewpo
 		renderer->viewport.minDepth != viewport->minDepth ||
 		renderer->viewport.maxDepth != viewport->maxDepth	)
 	{
+		SDL_LockMutex(renderer->ctxLock);
 		SDL_memcpy(&renderer->viewport, viewport, sizeof(FNA3D_Viewport));
 		ID3D11DeviceContext_RSSetViewports(
 			renderer->context,
 			1,
 			&vp
 		);
+		SDL_UnlockMutex(renderer->ctxLock);
 	}
 }
 
@@ -1861,12 +1903,14 @@ static void D3D11_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor
 		renderer->scissorRect.w != scissor->w ||
 		renderer->scissorRect.h != scissor->h	)
 	{
+		SDL_LockMutex(renderer->ctxLock);
 		SDL_memcpy(&renderer->scissorRect, scissor, sizeof(FNA3D_Rect));
 		ID3D11DeviceContext_RSSetScissorRects(
 			renderer->context,
 			1,
 			&rect
 		);
+		SDL_UnlockMutex(renderer->ctxLock);
 	}
 }
 
@@ -1928,12 +1972,14 @@ static void D3D11_SetBlendState(
 	if (renderer->blendState != bs)
 	{
 		renderer->blendState = bs;
+		SDL_LockMutex(renderer->ctxLock);
 		ID3D11DeviceContext_OMSetBlendState(
 			renderer->context,
 			bs,
 			renderer->blendFactor,
 			(uint32_t) renderer->multiSampleMask
 		);
+		SDL_UnlockMutex(renderer->ctxLock);
 	}
 }
 
@@ -1947,11 +1993,13 @@ static void D3D11_SetDepthStencilState(
 	if (renderer->depthStencilState != ds)
 	{
 		renderer->depthStencilState = ds;
+		SDL_LockMutex(renderer->ctxLock);
 		ID3D11DeviceContext_OMSetDepthStencilState(
 			renderer->context,
 			ds,
 			(uint32_t) renderer->stencilRef
 		);
+		SDL_UnlockMutex(renderer->ctxLock);
 	}
 }
 
@@ -1965,10 +2013,12 @@ static void D3D11_ApplyRasterizerState(
 	if (renderer->rasterizerState != rs)
 	{
 		renderer->rasterizerState = rs;
+		SDL_LockMutex(renderer->ctxLock);
 		ID3D11DeviceContext_RSSetState(
 			renderer->context,
 			rs
 		);
+		SDL_UnlockMutex(renderer->ctxLock);
 	}
 }
 
@@ -1988,6 +2038,7 @@ static void D3D11_VerifySampler(
 		{
 			renderer->textures[index] = &NullTexture;
 			renderer->samplers[index] = NULL;
+			SDL_LockMutex(renderer->ctxLock);
 			if (index < MAX_TEXTURE_SAMPLERS)
 			{
 				ID3D11DeviceContext_PSSetShaderResources(
@@ -2018,6 +2069,7 @@ static void D3D11_VerifySampler(
 					&renderer->samplers[index]
 				);
 			}
+			SDL_UnlockMutex(renderer->ctxLock);
 		}
 		return;
 	}
@@ -2039,6 +2091,7 @@ static void D3D11_VerifySampler(
 	if (d3dTexture != renderer->textures[index])
 	{
 		renderer->textures[index] = d3dTexture;
+		SDL_LockMutex(renderer->ctxLock);
 		if (index < MAX_TEXTURE_SAMPLERS)
 		{
 			ID3D11DeviceContext_PSSetShaderResources(
@@ -2057,6 +2110,7 @@ static void D3D11_VerifySampler(
 				&d3dTexture->shaderView
 			);
 		}
+		SDL_UnlockMutex(renderer->ctxLock);
 	}
 
 	/* Update the texture sampler info */
@@ -2076,6 +2130,7 @@ static void D3D11_VerifySampler(
 	if (d3dSamplerState != renderer->samplers[index])
 	{
 		renderer->samplers[index] = d3dSamplerState;
+		SDL_LockMutex(renderer->ctxLock);
 		if (index < MAX_TEXTURE_SAMPLERS)
 		{
 			ID3D11DeviceContext_PSSetSamplers(
@@ -2094,6 +2149,7 @@ static void D3D11_VerifySampler(
 				&d3dSamplerState
 			);
 		}
+		SDL_UnlockMutex(renderer->ctxLock);
 	}
 }
 
@@ -2137,6 +2193,8 @@ static void D3D11_ApplyVertexBufferBindings(
 		numBindings
 	);
 
+	SDL_LockMutex(renderer->ctxLock);
+
 	if (renderer->inputLayout != inputLayout)
 	{
 		renderer->inputLayout = inputLayout;
@@ -2178,6 +2236,8 @@ static void D3D11_ApplyVertexBufferBindings(
 		}
 	}
 
+	SDL_UnlockMutex(renderer->ctxLock);
+
 	renderer->effectApplied = 0;
 }
 
@@ -2208,10 +2268,12 @@ static void D3D11_ApplyVertexDeclaration(
 	if (renderer->inputLayout != inputLayout)
 	{
 		renderer->inputLayout = inputLayout;
+		SDL_LockMutex(renderer->ctxLock);
 		ID3D11DeviceContext_IASetInputLayout(
 			renderer->context,
 			inputLayout
 		);
+		SDL_UnlockMutex(renderer->ctxLock);
 	}
 }
 
@@ -2244,12 +2306,14 @@ static void D3D11_SetRenderTargets(
 		renderer->currentDepthFormat = renderer->backbuffer->depthFormat;
 		renderer->depthStencilView = renderer->backbuffer->depthStencilView;
 		renderer->numRenderTargets = 1;
+		SDL_LockMutex(renderer->ctxLock);
 		ID3D11DeviceContext_OMSetRenderTargets(
 			renderer->context,
 			1,
 			renderer->renderTargetViews,
 			renderer->depthStencilView
 		);
+		SDL_UnlockMutex(renderer->ctxLock);
 		return;
 	}
 
@@ -2285,6 +2349,8 @@ static void D3D11_SetRenderTargets(
 			depthFormat
 	);
 
+	SDL_LockMutex(renderer->ctxLock);
+
 	/* Unbind any render targets from pixel shader input */
 	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
 	{
@@ -2317,6 +2383,8 @@ static void D3D11_SetRenderTargets(
 		renderer->renderTargetViews,
 		renderer->depthStencilView
 	);
+
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_ResolveTarget(
@@ -2326,6 +2394,8 @@ static void D3D11_ResolveTarget(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *tex = (D3D11Texture*) target->texture;
 	D3D11Renderbuffer *rb = (D3D11Renderbuffer*) target->colorBuffer;
+
+	SDL_LockMutex(renderer->ctxLock);
 
 	if (target->multiSampleCount > 0)
 	{
@@ -2347,6 +2417,8 @@ static void D3D11_ResolveTarget(
 			tex->shaderView
 		);
 	}
+
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 /* Backbuffer Functions */
@@ -2963,6 +3035,7 @@ static void D3D11_SetTextureData2D(
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
 	D3D11_BOX dstBox = {x, y, 0, x + w, y + h, 1};
 
+	SDL_LockMutex(renderer->ctxLock);
 	ID3D11DeviceContext_UpdateSubresource(
 		renderer->context,
 		d3dTexture->handle,
@@ -2972,6 +3045,7 @@ static void D3D11_SetTextureData2D(
 		BytesPerRow(w, format),
 		0
 	);
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_SetTextureData3D(
@@ -2992,6 +3066,7 @@ static void D3D11_SetTextureData3D(
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
 	D3D11_BOX dstBox = {x, y, z, x + w, y + h, z + d};
 
+	SDL_LockMutex(renderer->ctxLock);
 	ID3D11DeviceContext_UpdateSubresource(
 		renderer->context,
 		d3dTexture->handle,
@@ -3001,6 +3076,7 @@ static void D3D11_SetTextureData3D(
 		BytesPerRow(w, format),
 		BytesPerDepthSlice(w, h, format)
 	);
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_SetTextureDataCube(
@@ -3020,6 +3096,7 @@ static void D3D11_SetTextureDataCube(
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
 	D3D11_BOX dstBox = {x, y, 0, x + w, y + h, 1};
 
+	SDL_LockMutex(renderer->ctxLock);
 	ID3D11DeviceContext_UpdateSubresource(
 		renderer->context,
 		d3dTexture->handle,
@@ -3033,6 +3110,7 @@ static void D3D11_SetTextureDataCube(
 		BytesPerRow(w, format),
 		BytesPerDepthSlice(w, h, format)
 	);
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_SetTextureDataYUV(
@@ -3058,6 +3136,7 @@ static void D3D11_SetTextureDataYUV(
 
 	yRow = BytesPerRow(yWidth, FNA3D_SURFACEFORMAT_ALPHA8);
 	uvRow = BytesPerRow(uvWidth, FNA3D_SURFACEFORMAT_ALPHA8);
+	SDL_LockMutex(renderer->ctxLock);
 	ID3D11DeviceContext_UpdateSubresource(
 		renderer->context,
 		d3dY->handle,
@@ -3087,6 +3166,7 @@ static void D3D11_SetTextureDataYUV(
 		uvRow,
 		0
 	);
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_GetTextureData2D(
@@ -3131,6 +3211,8 @@ static void D3D11_GetTextureData2D(
 		);
 	}
 
+	SDL_LockMutex(renderer->ctxLock);
+
 	/* Copy data into staging texture */
 	ID3D11DeviceContext_CopySubresourceRegion(
 		renderer->context,
@@ -3163,6 +3245,8 @@ static void D3D11_GetTextureData2D(
 		tex->staging,
 		subresourceIndex
 	);
+
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_GetTextureData3D(
@@ -3207,6 +3291,8 @@ static void D3D11_GetTextureData3D(
 		);
 	}
 
+	SDL_LockMutex(renderer->ctxLock);
+
 	/* Copy data into staging texture */
 	ID3D11DeviceContext_CopySubresourceRegion(
 		renderer->context,
@@ -3239,6 +3325,8 @@ static void D3D11_GetTextureData3D(
 		tex->staging,
 		subresourceIndex
 	);
+
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_GetTextureDataCube(
@@ -3288,6 +3376,8 @@ static void D3D11_GetTextureDataCube(
 		);
 	}
 
+	SDL_LockMutex(renderer->ctxLock);
+
 	/* Copy data into staging texture */
 	ID3D11DeviceContext_CopySubresourceRegion(
 		renderer->context,
@@ -3320,6 +3410,8 @@ static void D3D11_GetTextureDataCube(
 		tex->staging,
 		subresourceIndex
 	);
+
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 /* Renderbuffers */
@@ -3509,6 +3601,7 @@ static void D3D11_AddDisposeVertexBuffer(
 		if (renderer->vertexBuffers[i] == d3dBuffer->handle)
 		{
 			renderer->vertexBuffers[i] = NULL;
+			SDL_LockMutex(renderer->ctxLock);
 			ID3D11DeviceContext_IASetVertexBuffers(
 				renderer->context,
 				i,
@@ -3517,6 +3610,7 @@ static void D3D11_AddDisposeVertexBuffer(
 				whatever,
 				whatever
 			);
+			SDL_UnlockMutex(renderer->ctxLock);
 		}
 	}
 
@@ -3544,6 +3638,7 @@ static void D3D11_SetVertexBufferData(
 	int32_t dataLen = vertexStride * elementCount;
 	D3D11_BOX dstBox = {offsetInBytes, 0, 0, offsetInBytes + dataLen, 1, 1};
 
+	SDL_LockMutex(renderer->ctxLock);
 	if (d3dBuffer->dynamic)
 	{
 		ID3D11DeviceContext_Map(
@@ -3579,6 +3674,7 @@ static void D3D11_SetVertexBufferData(
 			dataLen
 		);
 	}
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_GetVertexBufferData(
@@ -3616,6 +3712,8 @@ static void D3D11_GetVertexBufferData(
 		);
 	}
 
+	SDL_LockMutex(renderer->ctxLock);
+
 	/* Copy data into staging buffer */
 	ID3D11DeviceContext_CopySubresourceRegion(
 		renderer->context,
@@ -3648,6 +3746,8 @@ static void D3D11_GetVertexBufferData(
 		(ID3D11Resource*) d3dBuffer->staging,
 		0
 	);
+
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 /* Index Buffers */
@@ -3696,12 +3796,14 @@ static void D3D11_AddDisposeIndexBuffer(
 	if (d3dBuffer->handle == renderer->indexBuffer)
 	{
 		renderer->indexBuffer = NULL;
+		SDL_LockMutex(renderer->ctxLock);
 		ID3D11DeviceContext_IASetIndexBuffer(
 			renderer->context,
 			NULL,
 			DXGI_FORMAT_R16_UINT,
 			0
 		);
+		SDL_UnlockMutex(renderer->ctxLock);
 	}
 
 	if (d3dBuffer->staging != NULL)
@@ -3725,6 +3827,7 @@ static void D3D11_SetIndexBufferData(
 	D3D11_MAPPED_SUBRESOURCE subres = {0, 0, 0};
 	D3D11_BOX dstBox = {offsetInBytes, 0, 0, offsetInBytes + dataLength, 1, 1};
 
+	SDL_LockMutex(renderer->ctxLock);
 	if (d3dBuffer->dynamic)
 	{
 		ID3D11DeviceContext_Map(
@@ -3760,6 +3863,7 @@ static void D3D11_SetIndexBufferData(
 			dataLength
 		);
 	}
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_GetIndexBufferData(
@@ -3791,6 +3895,8 @@ static void D3D11_GetIndexBufferData(
 			&d3dBuffer->staging
 		);
 	}
+
+	SDL_LockMutex(renderer->ctxLock);
 
 	/* Copy data into staging buffer */
 	ID3D11DeviceContext_CopySubresourceRegion(
@@ -3824,6 +3930,8 @@ static void D3D11_GetIndexBufferData(
 		(ID3D11Resource*) d3dBuffer->staging,
 		0
 	);
+
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 /* Effects */
@@ -4032,20 +4140,24 @@ static void D3D11_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Query *d3dQuery = (D3D11Query*) query;
+	SDL_LockMutex(renderer->ctxLock);
 	ID3D11DeviceContext_Begin(
 		renderer->context,
 		(ID3D11Asynchronous*) d3dQuery->handle
 	);
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Query *d3dQuery = (D3D11Query*) query;
+	SDL_LockMutex(renderer->ctxLock);
 	ID3D11DeviceContext_End(
 		renderer->context,
 		(ID3D11Asynchronous*) d3dQuery->handle
 	);
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static uint8_t D3D11_QueryComplete(
@@ -4054,13 +4166,17 @@ static uint8_t D3D11_QueryComplete(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Query *d3dQuery = (D3D11Query*) query;
-	return ID3D11DeviceContext_GetData(
+	uint8_t result;
+	SDL_LockMutex(renderer->ctxLock);
+	result = ID3D11DeviceContext_GetData(
 		renderer->context,
 		(ID3D11Asynchronous*) d3dQuery->handle,
 		NULL,
 		0,
 		0
 	) == S_OK;
+	SDL_UnlockMutex(renderer->ctxLock);
+	return result;
 }
 
 static int32_t D3D11_QueryPixelCount(
@@ -4070,6 +4186,7 @@ static int32_t D3D11_QueryPixelCount(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Query *d3dQuery = (D3D11Query*) query;
 	uint64_t result;
+	SDL_LockMutex(renderer->ctxLock);
 	ID3D11DeviceContext_GetData(
 		renderer->context,
 		(ID3D11Asynchronous*) d3dQuery->handle,
@@ -4077,6 +4194,7 @@ static int32_t D3D11_QueryPixelCount(
 		sizeof(result),
 		0
 	);
+	SDL_UnlockMutex(renderer->ctxLock);
 	return (int32_t) result;
 }
 
@@ -4528,6 +4646,9 @@ static FNA3D_Device* D3D11_CreateDevice(
 		renderer,
 		SDL_GetHintBoolean("FNA3D_BACKBUFFER_SCALE_NEAREST", SDL_FALSE)
 	);
+
+	/* A mutex, for ID3D11Context */
+	renderer->ctxLock = SDL_CreateMutex();
 
 	/* Initialize state object caches */
 	hmdefault(renderer->blendStateCache, NULL);
