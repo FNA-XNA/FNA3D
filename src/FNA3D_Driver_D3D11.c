@@ -4044,6 +4044,7 @@ static void D3D11_ApplyEffect(
 	uint32_t whatever;
 
 	renderer->effectApplied = 1;
+	SDL_LockMutex(renderer->ctxLock);
 	if (effectData == renderer->currentEffect)
 	{
 		if (	technique == renderer->currentTechnique &&
@@ -4052,12 +4053,14 @@ static void D3D11_ApplyEffect(
 			MOJOSHADER_effectCommitChanges(
 				renderer->currentEffect
 			);
+			SDL_UnlockMutex(renderer->ctxLock);
 			return;
 		}
 		MOJOSHADER_effectEndPass(renderer->currentEffect);
 		MOJOSHADER_effectBeginPass(renderer->currentEffect, pass);
 		renderer->currentTechnique = technique;
 		renderer->currentPass = pass;
+		SDL_UnlockMutex(renderer->ctxLock);
 		return;
 	}
 	else if (renderer->currentEffect != NULL)
@@ -4072,6 +4075,7 @@ static void D3D11_ApplyEffect(
 		stateChanges
 	);
 	MOJOSHADER_effectBeginPass(effectData, pass);
+	SDL_UnlockMutex(renderer->ctxLock);
 	renderer->currentEffect = effectData;
 	renderer->currentTechnique = technique;
 	renderer->currentPass = pass;
@@ -4085,6 +4089,7 @@ static void D3D11_BeginPassRestore(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	MOJOSHADER_effect *effectData = ((D3D11Effect*) effect)->effect;
 	uint32_t whatever;
+	SDL_LockMutex(renderer->ctxLock);
 	MOJOSHADER_effectBegin(
 		effectData,
 		&whatever,
@@ -4092,6 +4097,7 @@ static void D3D11_BeginPassRestore(
 		stateChanges
 	);
 	MOJOSHADER_effectBeginPass(effectData, 0);
+	SDL_UnlockMutex(renderer->ctxLock);
 	renderer->effectApplied = 1;
 }
 
@@ -4101,8 +4107,10 @@ static void D3D11_EndPassRestore(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	MOJOSHADER_effect *effectData = ((D3D11Effect*) effect)->effect;
+	SDL_LockMutex(renderer->ctxLock);
 	MOJOSHADER_effectEndPass(effectData);
 	MOJOSHADER_effectEnd(effectData);
+	SDL_UnlockMutex(renderer->ctxLock);
 	renderer->effectApplied = 1;
 }
 
