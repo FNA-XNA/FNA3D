@@ -78,7 +78,10 @@ else()
 endif()
 if(BUILD_DXVK_NATIVE)
 	add_definitions(-DFNA3D_DXVK_NATIVE)
-	include_directories(${CMAKE_SOURCE_DIR}/../dxvk-native/include/native)
+	include_directories(
+		${CMAKE_SOURCE_DIR}/../dxvk-native/include/native/directx
+		${CMAKE_SOURCE_DIR}/../dxvk-native/include/native/windows
+	)
 endif()
 
 # Source lists
