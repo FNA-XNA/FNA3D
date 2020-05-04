@@ -2995,7 +2995,7 @@ static void D3D11_SetTextureDataYUV(
 		d3dY->handle,
 		0,
 		&yBox,
-		data,
+		dataPtr,
 		yRow,
 		0
 	);
@@ -3005,7 +3005,7 @@ static void D3D11_SetTextureDataYUV(
 		d3dU->handle,
 		0,
 		&uvBox,
-		data,
+		dataPtr,
 		uvRow,
 		0
 	);
@@ -3015,7 +3015,7 @@ static void D3D11_SetTextureDataYUV(
 		d3dV->handle,
 		0,
 		&uvBox,
-		data,
+		dataPtr,
 		uvRow,
 		0
 	);
