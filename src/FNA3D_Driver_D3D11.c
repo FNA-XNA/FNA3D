@@ -257,6 +257,11 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	ID3D11DepthStencilView *depthStencilView;
 	FNA3D_DepthFormat currentDepthFormat;
 
+	/* Debug Info Queue */
+	ID3D11InfoQueue *infoQueue;
+	int64_t infoQueueNumMessages;
+	int32_t infoQueueMessageIndex;
+
 	/* MojoShader Interop */
 	MOJOSHADER_effect *currentEffect;
 	const MOJOSHADER_effectTechnique *currentTechnique;
@@ -1030,6 +1035,12 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 
 	/* TODO: Destroy faux backbuffer resources */
 
+	if (renderer->infoQueue != NULL)
+	{
+		ID3D11InfoQueue_Release(renderer->infoQueue);
+		renderer->infoQueue = NULL;
+	}
+
 	MOJOSHADER_d3d11DestroyContext();
 
 	SDL_DestroyMutex(renderer->ctxLock);
@@ -1041,7 +1052,37 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 
 static void D3D11_BeginFrame(FNA3D_Renderer *driverData)
 {
-	/* No-op */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	SIZE_T msgLen;
+	D3D11_MESSAGE *msg;
+
+	if (renderer->infoQueue != NULL)
+	{
+		renderer->infoQueueNumMessages = ID3D11InfoQueue_GetNumStoredMessages(
+			renderer->infoQueue
+		);
+		while (renderer->infoQueueMessageIndex < renderer->infoQueueNumMessages)
+		{
+			ID3D11InfoQueue_GetMessage(
+				renderer->infoQueue,
+				renderer->infoQueueMessageIndex,
+				NULL,
+				&msgLen
+			);
+			msg = (D3D11_MESSAGE*) SDL_malloc(msgLen);
+			ID3D11InfoQueue_GetMessage(
+				renderer->infoQueue,
+				renderer->infoQueueMessageIndex,
+				msg,
+				&msgLen
+			);
+
+			FNA3D_LogInfo("[D3D11 Debug] %s", msg->pDescription);
+
+			SDL_free(msg);
+			renderer->infoQueueMessageIndex += 1;
+		}
+	}
 }
 
 static void D3D11_GetDrawableSize(void *window, int32_t *x, int32_t *y);
@@ -4498,6 +4539,11 @@ static FNA3D_Device* D3D11_CreateDevice(
 		D3D_FEATURE_LEVEL_10_0
 	};
 	uint32_t flags, supportsDxt3, supportsDxt5;
+	D3D11_INFO_QUEUE_FILTER infoQueueFilter;
+	D3D11_MESSAGE_CATEGORY infoQueueCategories[] =
+	{
+		D3D11_MESSAGE_CATEGORY_EXECUTION
+	};
 	int32_t i;
 	HRESULT ret;
 
@@ -4599,6 +4645,30 @@ static FNA3D_Device* D3D11_CreateDevice(
 			ret
 		);
 		return NULL;
+	}
+
+	/* Set up info queue */
+	if (debugMode)
+	{
+		ret = ID3D11Device_QueryInterface(
+			renderer->device,
+			&D3D_IID_ID3D11InfoQueue,
+			&renderer->infoQueue
+		);
+
+		if (ret < 0)
+		{
+			FNA3D_LogInfo("D3D11InfoQueue not supported!");
+		}
+		else
+		{
+			/* Filter out a ton of unnecessary information */
+			SDL_memset(&infoQueueFilter, '\0', sizeof(infoQueueFilter));
+			infoQueueFilter.AllowList.NumCategories = SDL_arraysize(infoQueueCategories);
+			infoQueueFilter.AllowList.pCategoryList = infoQueueCategories;
+			ID3D11InfoQueue_PushStorageFilter(renderer->infoQueue, &infoQueueFilter);
+			ID3D11InfoQueue_PushEmptyRetrievalFilter(renderer->infoQueue);
+		}
 	}
 
 	/* Initialize MojoShader context */
