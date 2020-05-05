@@ -1070,13 +1070,13 @@ static void D3D11_BeginFrame(FNA3D_Renderer *driverData)
 				&msgLen
 			);
 			msg = (D3D11_MESSAGE*) SDL_malloc(msgLen);
+
 			ID3D11InfoQueue_GetMessage(
 				renderer->infoQueue,
 				renderer->infoQueueMessageIndex,
 				msg,
 				&msgLen
 			);
-
 			FNA3D_LogInfo("[D3D11 Debug] %s", msg->pDescription);
 
 			SDL_free(msg);
