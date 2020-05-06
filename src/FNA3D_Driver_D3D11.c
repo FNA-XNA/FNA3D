@@ -2017,6 +2017,11 @@ static void D3D11_SetBlendState(
 	if (renderer->blendState != bs)
 	{
 		renderer->blendState = bs;
+		renderer->blendFactor[0] = blendState->blendFactor.r / 255.0f;
+		renderer->blendFactor[1] = blendState->blendFactor.g / 255.0f;
+		renderer->blendFactor[2] = blendState->blendFactor.b / 255.0f;
+		renderer->blendFactor[3] = blendState->blendFactor.a / 255.0f;
+		renderer->multiSampleMask = blendState->multiSampleMask;
 		SDL_LockMutex(renderer->ctxLock);
 		ID3D11DeviceContext_OMSetBlendState(
 			renderer->context,
