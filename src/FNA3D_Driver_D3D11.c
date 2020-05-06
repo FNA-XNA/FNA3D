@@ -2508,7 +2508,7 @@ static HWND GetHWND(SDL_Window *window)
 static void CreateFramebuffer(
 	D3D11Renderer *renderer,
 	FNA3D_PresentationParameters *presentationParameters
-) {
+) { D3D_BEGIN {
 	int32_t w, h;
 	HRESULT ret;
 	D3D11_TEXTURE2D_DESC colorBufferDesc;
@@ -2740,7 +2740,7 @@ static void CreateFramebuffer(
 	);
 
 	#undef BB
-}
+} D3D_END((FNA3D_Renderer*) renderer) }
 
 static void DestroyFramebuffer(D3D11Renderer *renderer)
 {
@@ -4571,14 +4571,6 @@ static FNA3D_Device* D3D11_CreateDevice(
 		D3D_FEATURE_LEVEL_10_0
 	};
 	uint32_t flags, supportsDxt3, supportsDxt5;
-	D3D11_INFO_QUEUE_FILTER infoQueueFilter;
-	D3D11_MESSAGE_CATEGORY infoQueueCategories[] =
-	{
-		D3D11_MESSAGE_CATEGORY_MISCELLANEOUS,
-		D3D11_MESSAGE_CATEGORY_CLEANUP,
-		D3D11_MESSAGE_CATEGORY_STATE_SETTING,
-		D3D11_MESSAGE_CATEGORY_EXECUTION
-	};
 	int32_t i;
 	HRESULT ret;
 
@@ -4690,18 +4682,13 @@ static FNA3D_Device* D3D11_CreateDevice(
 			&D3D_IID_ID3D11InfoQueue,
 			&renderer->infoQueue
 		);
-
 		if (ret < 0)
 		{
 			FNA3D_LogInfo("D3D11InfoQueue not supported!");
 		}
 		else
 		{
-			/* Filter out a ton of unnecessary information */
-			SDL_memset(&infoQueueFilter, '\0', sizeof(infoQueueFilter));
-			infoQueueFilter.AllowList.NumCategories = SDL_arraysize(infoQueueCategories);
-			infoQueueFilter.AllowList.pCategoryList = infoQueueCategories;
-			ID3D11InfoQueue_PushStorageFilter(renderer->infoQueue, &infoQueueFilter);
+			ID3D11InfoQueue_PushEmptyStorageFilter(renderer->infoQueue);
 			ID3D11InfoQueue_PushEmptyRetrievalFilter(renderer->infoQueue);
 		}
 	}
@@ -4725,7 +4712,6 @@ static FNA3D_Device* D3D11_CreateDevice(
 	/* Initialize SetStringMarker support, if available */
 	if (renderer->featureLevel == D3D_FEATURE_LEVEL_11_1)
 	{
-		FNA3D_LogInfo("SetStringMarker is supported!");
 		ret = ID3D11DeviceContext_QueryInterface(
 			renderer->context,
 			&D3D_IID_ID3DUserDefinedAnnotation,
@@ -4738,6 +4724,10 @@ static FNA3D_Device* D3D11_CreateDevice(
 				ret
 			);
 		}
+	}
+	else
+	{
+		FNA3D_LogInfo("SetStringMarker not supported!");
 	}
 
 	/* Initialize renderer members not covered by SDL_memset('\0') */
