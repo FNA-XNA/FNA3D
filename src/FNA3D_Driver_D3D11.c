@@ -995,7 +995,7 @@ static ID3D11InputLayout* FetchDeclarationInputLayout(
 		d3dElement->Format = XNAToD3D_VertexAttribFormat[
 			element.vertexElementFormat
 		];
-		d3dElement->InputSlot = i;
+		d3dElement->InputSlot = 0;
 		d3dElement->AlignedByteOffset = element.offset;
 		d3dElement->InputSlotClass = D3D11_INPUT_PER_VERTEX_DATA;
 		d3dElement->InstanceDataStepRate = 0;
