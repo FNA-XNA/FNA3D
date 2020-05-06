@@ -2027,7 +2027,17 @@ static int32_t D3D11_GetReferenceStencil(FNA3D_Renderer *driverData)
 static void D3D11_SetReferenceStencil(FNA3D_Renderer *driverData, int32_t ref)
 {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	renderer->stencilRef = ref;
+	if (renderer->stencilRef != ref)
+	{
+		renderer->stencilRef = ref;
+		SDL_LockMutex(renderer->ctxLock);
+		ID3D11DeviceContext_OMSetDepthStencilState(
+			renderer->context,
+			renderer->depthStencilState,
+			(uint32_t) renderer->stencilRef
+		);
+		SDL_UnlockMutex(renderer->ctxLock);
+	}
 }
 
 /* Immutable Render States */
@@ -2063,6 +2073,7 @@ static void D3D11_SetDepthStencilState(
 	if (renderer->depthStencilState != ds)
 	{
 		renderer->depthStencilState = ds;
+		renderer->stencilRef = depthStencilState->referenceStencil;
 		SDL_LockMutex(renderer->ctxLock);
 		ID3D11DeviceContext_OMSetDepthStencilState(
 			renderer->context,
