@@ -1939,10 +1939,25 @@ static void D3D11_SetBlendFactor(
 	FNA3D_Color *blendFactor
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	renderer->blendFactor[0] = blendFactor->r / 255.0f;
-	renderer->blendFactor[1] = blendFactor->g / 255.0f;
-	renderer->blendFactor[2] = blendFactor->b / 255.0f;
-	renderer->blendFactor[3] = blendFactor->a / 255.0f;
+	/* FIXME: Floating point comparisons... */
+	if (	renderer->blendFactor[0] != blendFactor->r / 255.0f ||
+		renderer->blendFactor[1] != blendFactor->g / 255.0f ||
+		renderer->blendFactor[2] != blendFactor->b / 255.0f ||
+		renderer->blendFactor[3] != blendFactor->a / 255.0f	)
+	{
+		renderer->blendFactor[0] = blendFactor->r / 255.0f;
+		renderer->blendFactor[1] = blendFactor->g / 255.0f;
+		renderer->blendFactor[2] = blendFactor->b / 255.0f;
+		renderer->blendFactor[3] = blendFactor->a / 255.0f;
+		SDL_LockMutex(renderer->ctxLock);
+		ID3D11DeviceContext_OMSetBlendState(
+			renderer->context,
+			renderer->blendState,
+			renderer->blendFactor,
+			renderer->multiSampleMask
+		);
+		SDL_UnlockMutex(renderer->ctxLock);
+	}
 }
 
 static int32_t D3D11_GetMultiSampleMask(FNA3D_Renderer *driverData)
@@ -1954,7 +1969,18 @@ static int32_t D3D11_GetMultiSampleMask(FNA3D_Renderer *driverData)
 static void D3D11_SetMultiSampleMask(FNA3D_Renderer *driverData, int32_t mask)
 {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	renderer->multiSampleMask = mask;
+	if (renderer->multiSampleMask != mask)
+	{
+		renderer->multiSampleMask = mask;
+		SDL_LockMutex(renderer->ctxLock);
+		ID3D11DeviceContext_OMSetBlendState(
+			renderer->context,
+			renderer->blendState,
+			renderer->blendFactor,
+			renderer->multiSampleMask
+		);
+		SDL_UnlockMutex(renderer->ctxLock);
+	}
 }
 
 static int32_t D3D11_GetReferenceStencil(FNA3D_Renderer *driverData)
