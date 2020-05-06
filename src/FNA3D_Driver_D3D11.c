@@ -257,11 +257,6 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	ID3D11DepthStencilView *depthStencilView;
 	FNA3D_DepthFormat currentDepthFormat;
 
-	/* Debug Info Queue */
-	ID3D11InfoQueue *infoQueue;
-	int64_t infoQueueNumMessages;
-	int32_t infoQueueMessageIndex;
-
 	/* MojoShader Interop */
 	MOJOSHADER_effect *currentEffect;
 	const MOJOSHADER_effectTechnique *currentTechnique;
@@ -491,56 +486,6 @@ static inline int32_t BytesPerDepthSlice(
 
 	return blocksPerRow * blocksPerColumn * Texture_GetFormatSize(format);
 }
-
-/* D3D11 Debug Logging */
-
-static void FlushInfoQueue(FNA3D_Renderer *driverData)
-{
-	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	SIZE_T msgLen;
-	D3D11_MESSAGE *msg;
-
-	if (renderer->infoQueue != NULL)
-	{
-		SDL_LockMutex(renderer->ctxLock);
-		renderer->infoQueueNumMessages = ID3D11InfoQueue_GetNumStoredMessages(
-			renderer->infoQueue
-		);
-		while (renderer->infoQueueMessageIndex < renderer->infoQueueNumMessages)
-		{
-			ID3D11InfoQueue_GetMessage(
-				renderer->infoQueue,
-				renderer->infoQueueMessageIndex,
-				NULL,
-				&msgLen
-			);
-			msg = (D3D11_MESSAGE*) SDL_malloc(msgLen);
-
-			ID3D11InfoQueue_GetMessage(
-				renderer->infoQueue,
-				renderer->infoQueueMessageIndex,
-				msg,
-				&msgLen
-			);
-			if (	msg->Severity == D3D11_MESSAGE_SEVERITY_ERROR ||
-				msg->Severity == D3D11_MESSAGE_SEVERITY_CORRUPTION	)
-			{
-				FNA3D_LogError("[D3D11 Debug] %s", msg->pDescription);
-			}
-			else
-			{
-				FNA3D_LogInfo("[D3D11 Debug] %s", msg->pDescription);
-			}
-
-			SDL_free(msg);
-			renderer->infoQueueMessageIndex += 1;
-		}
-		SDL_UnlockMutex(renderer->ctxLock);
-	}
-}
-
-#define D3D_BEGIN __try
-#define D3D_END(driverData) __except(EXCEPTION_EXECUTE_HANDLER) { FlushInfoQueue(driverData); }
 
 /* Pipeline State Object Caching */
 
@@ -1085,12 +1030,6 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 
 	/* TODO: Destroy faux backbuffer resources */
 
-	if (renderer->infoQueue != NULL)
-	{
-		ID3D11InfoQueue_Release(renderer->infoQueue);
-		renderer->infoQueue = NULL;
-	}
-
 	MOJOSHADER_d3d11DestroyContext();
 
 	SDL_DestroyMutex(renderer->ctxLock);
@@ -1102,7 +1041,7 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 
 static void D3D11_BeginFrame(FNA3D_Renderer *driverData)
 {
-	FlushInfoQueue(driverData);
+	/* No-op */
 }
 
 static void D3D11_GetDrawableSize(void *window, int32_t *x, int32_t *y);
@@ -1358,7 +1297,7 @@ static void D3D11_SwapBuffers(
 	FNA3D_Rect *sourceRectangle,
 	FNA3D_Rect *destinationRectangle,
 	void* overrideWindowHandle
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	int32_t drawableWidth, drawableHeight;
 	FNA3D_Rect srcRect, dstRect;
@@ -1436,12 +1375,12 @@ static void D3D11_SwapBuffers(
 	/* Present! */
 	IDXGISwapChain_Present(renderer->swapchain, renderer->syncInterval, 0);
 
-} D3D_END(driverData) }
+}
 
 static void D3D11_SetPresentationInterval(
 	FNA3D_Renderer *driverData,
 	FNA3D_PresentInterval presentInterval
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	if (	presentInterval == FNA3D_PRESENTINTERVAL_DEFAULT ||
 		presentInterval == FNA3D_PRESENTINTERVAL_ONE	)
@@ -1463,7 +1402,7 @@ static void D3D11_SetPresentationInterval(
 			presentInterval
 		);
 	}
-} D3D_END(driverData) }
+}
 
 /* Drawing */
 
@@ -1473,7 +1412,7 @@ static void D3D11_Clear(
 	FNA3D_Vec4 *color,
 	float depth,
 	int32_t stencil
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	int32_t i;
 	uint32_t dsClearFlags;
@@ -1519,7 +1458,7 @@ static void D3D11_Clear(
 
 	SDL_UnlockMutex(renderer->ctxLock);
 
-} D3D_END(driverData) }
+}
 
 static void D3D11_DrawIndexedPrimitives(
 	FNA3D_Renderer *driverData,
@@ -1531,7 +1470,7 @@ static void D3D11_DrawIndexedPrimitives(
 	int32_t primitiveCount,
 	FNA3D_Buffer *indices,
 	FNA3D_IndexElementSize indexElementSize
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *d3dIndices = (D3D11Buffer*) indices;
 	int32_t indexOffset = startIndex * IndexSize(indexElementSize);
@@ -1574,7 +1513,7 @@ static void D3D11_DrawIndexedPrimitives(
 
 	SDL_UnlockMutex(renderer->ctxLock);
 
-} D3D_END(driverData) }
+}
 
 static void D3D11_DrawInstancedPrimitives(
 	FNA3D_Renderer *driverData,
@@ -1587,7 +1526,7 @@ static void D3D11_DrawInstancedPrimitives(
 	int32_t instanceCount,
 	FNA3D_Buffer *indices,
 	FNA3D_IndexElementSize indexElementSize
-) { D3D_BEGIN {
+) {
 	/* FIXME: Needs testing! */
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *d3dIndices = (D3D11Buffer*) indices;
@@ -1633,14 +1572,14 @@ static void D3D11_DrawInstancedPrimitives(
 
 	SDL_UnlockMutex(renderer->ctxLock);
 
-} D3D_END(driverData) }
+}
 
 static void D3D11_DrawPrimitives(
 	FNA3D_Renderer *driverData,
 	FNA3D_PrimitiveType primitiveType,
 	int32_t vertexStart,
 	int32_t primitiveCount
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 
 	SDL_LockMutex(renderer->ctxLock);
@@ -1664,7 +1603,7 @@ static void D3D11_DrawPrimitives(
 
 	SDL_UnlockMutex(renderer->ctxLock);
 
-} D3D_END(driverData) }
+}
 
 static void BindUserVertexBuffer(
 	D3D11Renderer *renderer,
@@ -1767,7 +1706,7 @@ static void D3D11_DrawUserIndexedPrimitives(
 	int32_t indexOffset,
 	FNA3D_IndexElementSize indexElementSize,
 	int32_t primitiveCount
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	int32_t numIndices, indexSize, len;
 	D3D11_BUFFER_DESC desc;
@@ -1876,7 +1815,7 @@ static void D3D11_DrawUserIndexedPrimitives(
 
 	SDL_UnlockMutex(renderer->ctxLock);
 
-} D3D_END(driverData) }
+}
 
 static void D3D11_DrawUserPrimitives(
 	FNA3D_Renderer *driverData,
@@ -1884,7 +1823,7 @@ static void D3D11_DrawUserPrimitives(
 	void* vertexData,
 	int32_t vertexOffset,
 	int32_t primitiveCount
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 
 	/* Bind the vertex buffer */
@@ -1920,12 +1859,12 @@ static void D3D11_DrawUserPrimitives(
 
 	SDL_UnlockMutex(renderer->ctxLock);
 
-} D3D_END(driverData) }
+}
 
 /* Mutable Render States */
 
 static void D3D11_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewport)
-{ D3D_BEGIN {
+{
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11_VIEWPORT vp =
 	{
@@ -1954,10 +1893,10 @@ static void D3D11_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewpo
 		SDL_UnlockMutex(renderer->ctxLock);
 	}
 
-} D3D_END(driverData) }
+}
 
 static void D3D11_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor)
-{ D3D_BEGIN {
+{
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11_RECT rect =
 	{
@@ -1982,7 +1921,7 @@ static void D3D11_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor
 		SDL_UnlockMutex(renderer->ctxLock);
 	}
 
-} D3D_END(driverData) }
+}
 
 static void D3D11_GetBlendFactor(
 	FNA3D_Renderer *driverData,
@@ -2045,7 +1984,7 @@ static void D3D11_SetReferenceStencil(FNA3D_Renderer *driverData, int32_t ref)
 static void D3D11_SetBlendState(
 	FNA3D_Renderer *driverData,
 	FNA3D_BlendState *blendState
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	ID3D11BlendState *bs = FetchBlendState(renderer, blendState);
 
@@ -2061,12 +2000,12 @@ static void D3D11_SetBlendState(
 		);
 		SDL_UnlockMutex(renderer->ctxLock);
 	}
-} D3D_END(driverData) }
+}
 
 static void D3D11_SetDepthStencilState(
 	FNA3D_Renderer *driverData,
 	FNA3D_DepthStencilState *depthStencilState
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	ID3D11DepthStencilState *ds = FetchDepthStencilState(renderer, depthStencilState);
 
@@ -2082,12 +2021,12 @@ static void D3D11_SetDepthStencilState(
 		);
 		SDL_UnlockMutex(renderer->ctxLock);
 	}
-} D3D_END(driverData) }
+}
 
 static void D3D11_ApplyRasterizerState(
 	FNA3D_Renderer *driverData,
 	FNA3D_RasterizerState *rasterizerState
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	ID3D11RasterizerState *rs = FetchRasterizerState(renderer, rasterizerState);
 
@@ -2101,14 +2040,14 @@ static void D3D11_ApplyRasterizerState(
 		);
 		SDL_UnlockMutex(renderer->ctxLock);
 	}
-} D3D_END(driverData) }
+}
 
 static void D3D11_VerifySampler(
 	FNA3D_Renderer *driverData,
 	int32_t index,
 	FNA3D_Texture *texture,
 	FNA3D_SamplerState *sampler
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
 	ID3D11SamplerState *d3dSamplerState;
@@ -2232,7 +2171,7 @@ static void D3D11_VerifySampler(
 		}
 		SDL_UnlockMutex(renderer->ctxLock);
 	}
-} D3D_END(driverData) }
+}
 
 static void D3D11_VerifyVertexSampler(
 	FNA3D_Renderer *driverData,
@@ -2256,7 +2195,7 @@ static void D3D11_ApplyVertexBufferBindings(
 	int32_t numBindings,
 	uint8_t bindingsUpdated,
 	int32_t baseVertex
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *vertexBuffer;
 	ID3D11InputLayout *inputLayout;
@@ -2320,14 +2259,14 @@ static void D3D11_ApplyVertexBufferBindings(
 	SDL_UnlockMutex(renderer->ctxLock);
 
 	renderer->effectApplied = 0;
-} D3D_END(driverData) }
+}
 
 static void D3D11_ApplyVertexDeclaration(
 	FNA3D_Renderer *driverData,
 	FNA3D_VertexDeclaration *vertexDeclaration,
 	void* vertexData,
 	int32_t vertexOffset
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	ID3D11InputLayout *inputLayout;
 
@@ -2356,7 +2295,7 @@ static void D3D11_ApplyVertexDeclaration(
 		);
 		SDL_UnlockMutex(renderer->ctxLock);
 	}
-} D3D_END(driverData) }
+}
 
 /* Render Targets */
 
@@ -2366,7 +2305,7 @@ static void D3D11_SetRenderTargets(
 	int32_t numRenderTargets,
 	FNA3D_Renderbuffer *depthStencilBuffer,
 	FNA3D_DepthFormat depthFormat
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *tex;
 	D3D11Renderbuffer *rb;
@@ -2466,12 +2405,12 @@ static void D3D11_SetRenderTargets(
 	);
 
 	SDL_UnlockMutex(renderer->ctxLock);
-} D3D_END(driverData) }
+}
 
 static void D3D11_ResolveTarget(
 	FNA3D_Renderer *driverData,
 	FNA3D_RenderTargetBinding *target
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *tex = (D3D11Texture*) target->texture;
 	D3D11Renderbuffer *rb = (D3D11Renderbuffer*) target->colorBuffer;
@@ -2500,7 +2439,7 @@ static void D3D11_ResolveTarget(
 	}
 
 	SDL_UnlockMutex(renderer->ctxLock);
-} D3D_END(driverData) }
+}
 
 /* Backbuffer Functions */
 
@@ -2519,7 +2458,7 @@ static HWND GetHWND(SDL_Window *window)
 static void CreateFramebuffer(
 	D3D11Renderer *renderer,
 	FNA3D_PresentationParameters *presentationParameters
-) { D3D_BEGIN {
+) {
 	int32_t w, h;
 	HRESULT ret;
 	D3D11_TEXTURE2D_DESC colorBufferDesc;
@@ -2751,7 +2690,7 @@ static void CreateFramebuffer(
 	);
 
 	#undef BB
-} D3D_END((FNA3D_Renderer*) renderer) }
+}
 
 static void DestroyFramebuffer(D3D11Renderer *renderer)
 {
@@ -2804,7 +2743,7 @@ static void DestroyFramebuffer(D3D11Renderer *renderer)
 static void D3D11_ResetBackbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_PresentationParameters *presentationParameters
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 
 	DestroyFramebuffer(renderer);
@@ -2813,7 +2752,7 @@ static void D3D11_ResetBackbuffer(
 		presentationParameters
 	);
 
-} D3D_END(driverData) }
+}
 
 static void D3D11_ReadBackbuffer(
 	FNA3D_Renderer *driverData,
@@ -2823,9 +2762,9 @@ static void D3D11_ReadBackbuffer(
 	int32_t h,
 	void* data,
 	int32_t dataLength
-) { D3D_BEGIN {
+) {
 	/* TODO */
-} D3D_END(driverData) }
+}
 
 static void D3D11_GetBackbufferSize(
 	FNA3D_Renderer *driverData,
@@ -2864,7 +2803,7 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 	int32_t height,
 	int32_t levelCount,
 	uint8_t isRenderTarget
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *result;
 	DXGI_SAMPLE_DESC sampleDesc = {1, 0};
@@ -2932,7 +2871,7 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 	}
 
 	return (FNA3D_Texture*) result;
-} D3D_END(driverData) }
+}
 
 static FNA3D_Texture* D3D11_CreateTexture3D(
 	FNA3D_Renderer *driverData,
@@ -2941,7 +2880,7 @@ static FNA3D_Texture* D3D11_CreateTexture3D(
 	int32_t height,
 	int32_t depth,
 	int32_t levelCount
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *result;
 	D3D11_TEXTURE3D_DESC desc;
@@ -2984,7 +2923,7 @@ static FNA3D_Texture* D3D11_CreateTexture3D(
 	);
 
 	return (FNA3D_Texture*) result;
-} D3D_END(driverData) }
+}
 
 static FNA3D_Texture* D3D11_CreateTextureCube(
 	FNA3D_Renderer *driverData,
@@ -2992,7 +2931,7 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 	int32_t size,
 	int32_t levelCount,
 	uint8_t isRenderTarget
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *result;
 	DXGI_SAMPLE_DESC sampleDesc = {1, 0};
@@ -3060,12 +2999,12 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 
 	return (FNA3D_Texture*) result;
 
-} D3D_END(driverData) }
+}
 
 static void D3D11_AddDisposeTexture(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *tex = (D3D11Texture*) texture;
 	int32_t i;
@@ -3093,7 +3032,7 @@ static void D3D11_AddDisposeTexture(
 	ID3D11Texture2D_Release(tex->handle);
 
 	SDL_free(texture);
-} D3D_END(driverData) }
+}
 
 static inline uint32_t CalcSubresource(
 	uint32_t mipLevel,
@@ -3114,7 +3053,7 @@ static void D3D11_SetTextureData2D(
 	int32_t level,
 	void* data,
 	int32_t dataLength
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
 	D3D11_BOX dstBox = {x, y, 0, x + w, y + h, 1};
@@ -3130,7 +3069,7 @@ static void D3D11_SetTextureData2D(
 		0
 	);
 	SDL_UnlockMutex(renderer->ctxLock);
-} D3D_END(driverData) }
+}
 
 static void D3D11_SetTextureData3D(
 	FNA3D_Renderer *driverData,
@@ -3145,7 +3084,7 @@ static void D3D11_SetTextureData3D(
 	int32_t level,
 	void* data,
 	int32_t dataLength
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
 	D3D11_BOX dstBox = {x, y, z, x + w, y + h, z + d};
@@ -3161,7 +3100,7 @@ static void D3D11_SetTextureData3D(
 		BytesPerDepthSlice(w, h, format)
 	);
 	SDL_UnlockMutex(renderer->ctxLock);
-} D3D_END(driverData) }
+}
 
 static void D3D11_SetTextureDataCube(
 	FNA3D_Renderer *driverData,
@@ -3175,7 +3114,7 @@ static void D3D11_SetTextureDataCube(
 	int32_t level,
 	void* data,
 	int32_t dataLength
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
 	D3D11_BOX dstBox = {x, y, 0, x + w, y + h, 1};
@@ -3195,7 +3134,7 @@ static void D3D11_SetTextureDataCube(
 		BytesPerDepthSlice(w, h, format)
 	);
 	SDL_UnlockMutex(renderer->ctxLock);
-} D3D_END(driverData) }
+}
 
 static void D3D11_SetTextureDataYUV(
 	FNA3D_Renderer *driverData,
@@ -3208,7 +3147,7 @@ static void D3D11_SetTextureDataYUV(
 	int32_t uvHeight,
 	void* data,
 	int32_t dataLength
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *d3dY = (D3D11Texture*) y;
 	D3D11Texture *d3dU = (D3D11Texture*) u;
@@ -3251,7 +3190,7 @@ static void D3D11_SetTextureDataYUV(
 		0
 	);
 	SDL_UnlockMutex(renderer->ctxLock);
-} D3D_END(driverData) }
+}
 
 static void D3D11_GetTextureData2D(
 	FNA3D_Renderer *driverData,
@@ -3264,7 +3203,7 @@ static void D3D11_GetTextureData2D(
 	int32_t level,
 	void* data,
 	int32_t dataLength
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *tex = (D3D11Texture*) texture;
 	D3D11_TEXTURE2D_DESC stagingDesc;
@@ -3331,7 +3270,7 @@ static void D3D11_GetTextureData2D(
 	);
 
 	SDL_UnlockMutex(renderer->ctxLock);
-} D3D_END(driverData) }
+}
 
 static void D3D11_GetTextureData3D(
 	FNA3D_Renderer *driverData,
@@ -3346,7 +3285,7 @@ static void D3D11_GetTextureData3D(
 	int32_t level,
 	void* data,
 	int32_t dataLength
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *tex = (D3D11Texture*) texture;
 	D3D11_TEXTURE3D_DESC stagingDesc;
@@ -3411,7 +3350,7 @@ static void D3D11_GetTextureData3D(
 	);
 
 	SDL_UnlockMutex(renderer->ctxLock);
-} D3D_END(driverData) }
+}
 
 static void D3D11_GetTextureDataCube(
 	FNA3D_Renderer *driverData,
@@ -3425,7 +3364,7 @@ static void D3D11_GetTextureDataCube(
 	int32_t level,
 	void* data,
 	int32_t dataLength
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *tex = (D3D11Texture*) texture;
 	D3D11_TEXTURE2D_DESC stagingDesc;
@@ -3496,7 +3435,7 @@ static void D3D11_GetTextureDataCube(
 	);
 
 	SDL_UnlockMutex(renderer->ctxLock);
-} D3D_END(driverData) }
+}
 
 /* Renderbuffers */
 
@@ -3507,7 +3446,7 @@ static FNA3D_Renderbuffer* D3D11_GenColorRenderbuffer(
 	FNA3D_SurfaceFormat format,
 	int32_t multiSampleCount,
 	FNA3D_Texture *texture
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11_TEXTURE2D_DESC desc;
 	D3D11Renderbuffer *result;
@@ -3548,7 +3487,7 @@ static FNA3D_Renderbuffer* D3D11_GenColorRenderbuffer(
 	);
 
 	return (FNA3D_Renderbuffer*) result;
-} D3D_END(driverData) }
+}
 
 static FNA3D_Renderbuffer* D3D11_GenDepthStencilRenderbuffer(
 	FNA3D_Renderer *driverData,
@@ -3556,7 +3495,7 @@ static FNA3D_Renderbuffer* D3D11_GenDepthStencilRenderbuffer(
 	int32_t height,
 	FNA3D_DepthFormat format,
 	int32_t multiSampleCount
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11_TEXTURE2D_DESC desc;
 	D3D11Renderbuffer *result;
@@ -3597,12 +3536,12 @@ static FNA3D_Renderbuffer* D3D11_GenDepthStencilRenderbuffer(
 	);
 
 	return (FNA3D_Renderbuffer*) result;
-} D3D_END(driverData) }
+}
 
 static void D3D11_AddDisposeRenderbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Renderbuffer *renderbuffer
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Renderbuffer *d3dRenderbuffer = (D3D11Renderbuffer*) renderbuffer;
 	int32_t i;
@@ -3631,7 +3570,7 @@ static void D3D11_AddDisposeRenderbuffer(
 	ID3D11Texture2D_Release(d3dRenderbuffer->handle);
 	d3dRenderbuffer->handle = NULL;
 	SDL_free(renderbuffer);
-} D3D_END(driverData) }
+}
 
 /* Vertex Buffers */
 
@@ -3641,7 +3580,7 @@ static FNA3D_Buffer* D3D11_GenVertexBuffer(
 	FNA3D_BufferUsage usage,
 	int32_t vertexCount,
 	int32_t vertexStride
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *result = (D3D11Buffer*) SDL_malloc(sizeof(D3D11Buffer));
 	D3D11_BUFFER_DESC desc;
@@ -3667,12 +3606,12 @@ static FNA3D_Buffer* D3D11_GenVertexBuffer(
 	result->size = desc.ByteWidth;
 	result->staging = NULL;
 	return (FNA3D_Buffer*) result;
-} D3D_END(driverData) }
+}
 
 static void D3D11_AddDisposeVertexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *d3dBuffer = (D3D11Buffer*) buffer;
 	ID3D11Buffer *nullVertexBuffers[] = {NULL};
@@ -3703,7 +3642,7 @@ static void D3D11_AddDisposeVertexBuffer(
 	}
 	ID3D11Buffer_Release(d3dBuffer->handle);
 	SDL_free(buffer);
-} D3D_END(driverData) }
+}
 
 static void D3D11_SetVertexBufferData(
 	FNA3D_Renderer *driverData,
@@ -3714,7 +3653,7 @@ static void D3D11_SetVertexBufferData(
 	int32_t elementSizeInBytes,
 	int32_t vertexStride,
 	FNA3D_SetDataOptions options
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *d3dBuffer = (D3D11Buffer*) buffer;
 	D3D11_MAPPED_SUBRESOURCE subres = {0, 0, 0};
@@ -3758,7 +3697,7 @@ static void D3D11_SetVertexBufferData(
 		);
 	}
 	SDL_UnlockMutex(renderer->ctxLock);
-} D3D_END(driverData) }
+}
 
 static void D3D11_GetVertexBufferData(
 	FNA3D_Renderer *driverData,
@@ -3768,7 +3707,7 @@ static void D3D11_GetVertexBufferData(
 	int32_t elementCount,
 	int32_t elementSizeInBytes,
 	int32_t vertexStride
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *d3dBuffer = (D3D11Buffer*) buffer;
 	D3D11_BUFFER_DESC desc;
@@ -3831,7 +3770,7 @@ static void D3D11_GetVertexBufferData(
 	);
 
 	SDL_UnlockMutex(renderer->ctxLock);
-} D3D_END(driverData) }
+}
 
 /* Index Buffers */
 
@@ -3841,7 +3780,7 @@ static FNA3D_Buffer* D3D11_GenIndexBuffer(
 	FNA3D_BufferUsage usage,
 	int32_t indexCount,
 	FNA3D_IndexElementSize indexElementSize
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *result = (D3D11Buffer*) SDL_malloc(sizeof(D3D11Buffer));
 	D3D11_BUFFER_DESC desc;
@@ -3867,12 +3806,12 @@ static FNA3D_Buffer* D3D11_GenIndexBuffer(
 	result->size = desc.ByteWidth;
 	result->staging = NULL;
 	return (FNA3D_Buffer*) result;
-} D3D_END(driverData) }
+}
 
 static void D3D11_AddDisposeIndexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *d3dBuffer = (D3D11Buffer*) buffer;
 
@@ -3895,7 +3834,7 @@ static void D3D11_AddDisposeIndexBuffer(
 	}
 	ID3D11Buffer_Release(d3dBuffer->handle);
 	SDL_free(buffer);
-} D3D_END(driverData) }
+}
 
 static void D3D11_SetIndexBufferData(
 	FNA3D_Renderer *driverData,
@@ -3904,7 +3843,7 @@ static void D3D11_SetIndexBufferData(
 	void* data,
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *d3dBuffer = (D3D11Buffer*) buffer;
 	D3D11_MAPPED_SUBRESOURCE subres = {0, 0, 0};
@@ -3947,7 +3886,7 @@ static void D3D11_SetIndexBufferData(
 		);
 	}
 	SDL_UnlockMutex(renderer->ctxLock);
-} D3D_END(driverData) }
+}
 
 static void D3D11_GetIndexBufferData(
 	FNA3D_Renderer *driverData,
@@ -3955,7 +3894,7 @@ static void D3D11_GetIndexBufferData(
 	int32_t offsetInBytes,
 	void* data,
 	int32_t dataLength
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *d3dBuffer = (D3D11Buffer*) buffer;
 	D3D11_BUFFER_DESC desc;
@@ -4015,7 +3954,7 @@ static void D3D11_GetIndexBufferData(
 	);
 
 	SDL_UnlockMutex(renderer->ctxLock);
-} D3D_END(driverData) }
+}
 
 /* Effects */
 
@@ -4025,7 +3964,7 @@ static void D3D11_CreateEffect(
 	uint32_t effectCodeLength,
 	FNA3D_Effect **effect,
 	MOJOSHADER_effect **effectData
-) { D3D_BEGIN {
+) {
 	int32_t i;
 	MOJOSHADER_effectShaderContext shaderBackend;
 	D3D11Effect *result;
@@ -4063,14 +4002,14 @@ static void D3D11_CreateEffect(
 	result = (D3D11Effect*) SDL_malloc(sizeof(D3D11Effect));
 	result->effect = *effectData;
 	*effect = (FNA3D_Effect*) result;
-} D3D_END(driverData) }
+}
 
 static void D3D11_CloneEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *cloneSource,
 	FNA3D_Effect **effect,
 	MOJOSHADER_effect **effectData
-) { D3D_BEGIN {
+) {
 	D3D11Effect *d3dCloneSource = (D3D11Effect*) cloneSource;
 	D3D11Effect *result;
 
@@ -4085,12 +4024,12 @@ static void D3D11_CloneEffect(
 	result = (D3D11Effect*) SDL_malloc(sizeof(D3D11Effect));
 	result->effect = *effectData;
 	*effect = (FNA3D_Effect*) result;
-} D3D_END(driverData) }
+}
 
 static void D3D11_AddDisposeEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	MOJOSHADER_effect *effectData = ((D3D11Effect*) effect)->effect;
 	if (effectData == renderer->currentEffect)
@@ -4104,7 +4043,7 @@ static void D3D11_AddDisposeEffect(
 	}
 	MOJOSHADER_deleteEffect(effectData);
 	SDL_free(effect);
-} D3D_END(driverData) }
+}
 
 static void D3D11_SetEffectTechnique(
 	FNA3D_Renderer *driverData,
@@ -4121,7 +4060,7 @@ static void D3D11_ApplyEffect(
 	FNA3D_Effect *effect,
 	uint32_t pass,
 	MOJOSHADER_effectStateChanges *stateChanges
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	MOJOSHADER_effect *effectData = ((D3D11Effect*) effect)->effect;
 	const MOJOSHADER_effectTechnique *technique = effectData->current_technique;
@@ -4163,13 +4102,13 @@ static void D3D11_ApplyEffect(
 	renderer->currentEffect = effectData;
 	renderer->currentTechnique = technique;
 	renderer->currentPass = pass;
-} D3D_END(driverData) }
+}
 
 static void D3D11_BeginPassRestore(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectStateChanges *stateChanges
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	MOJOSHADER_effect *effectData = ((D3D11Effect*) effect)->effect;
 	uint32_t whatever;
@@ -4183,12 +4122,12 @@ static void D3D11_BeginPassRestore(
 	MOJOSHADER_effectBeginPass(effectData, 0);
 	SDL_UnlockMutex(renderer->ctxLock);
 	renderer->effectApplied = 1;
-} D3D_END(driverData) }
+}
 
 static void D3D11_EndPassRestore(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	MOJOSHADER_effect *effectData = ((D3D11Effect*) effect)->effect;
 	SDL_LockMutex(renderer->ctxLock);
@@ -4196,12 +4135,12 @@ static void D3D11_EndPassRestore(
 	MOJOSHADER_effectEnd(effectData);
 	SDL_UnlockMutex(renderer->ctxLock);
 	renderer->effectApplied = 1;
-} D3D_END(driverData) }
+}
 
 /* Queries */
 
 static FNA3D_Query* D3D11_CreateQuery(FNA3D_Renderer *driverData)
-{ D3D_BEGIN {
+{
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Query *query = (D3D11Query*) SDL_malloc(sizeof(D3D11Query));
 	D3D11_QUERY_DESC desc;
@@ -4216,19 +4155,19 @@ static FNA3D_Query* D3D11_CreateQuery(FNA3D_Renderer *driverData)
 	);
 
 	return (FNA3D_Query*) query;
-} D3D_END(driverData) }
+}
 
 static void D3D11_AddDisposeQuery(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
-) { D3D_BEGIN {
+) {
 	D3D11Query *d3dQuery = (D3D11Query*) query;
 	ID3D11Query_Release(d3dQuery->handle);
 	SDL_free(query);
-} D3D_END(driverData) }
+}
 
 static void D3D11_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
-{ D3D_BEGIN {
+{
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Query *d3dQuery = (D3D11Query*) query;
 	SDL_LockMutex(renderer->ctxLock);
@@ -4237,10 +4176,10 @@ static void D3D11_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 		(ID3D11Asynchronous*) d3dQuery->handle
 	);
 	SDL_UnlockMutex(renderer->ctxLock);
-} D3D_END(driverData) }
+}
 
 static void D3D11_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
-{ D3D_BEGIN {
+{
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Query *d3dQuery = (D3D11Query*) query;
 	SDL_LockMutex(renderer->ctxLock);
@@ -4249,12 +4188,12 @@ static void D3D11_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
 		(ID3D11Asynchronous*) d3dQuery->handle
 	);
 	SDL_UnlockMutex(renderer->ctxLock);
-} D3D_END(driverData) }
+}
 
 static uint8_t D3D11_QueryComplete(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Query *d3dQuery = (D3D11Query*) query;
 	uint8_t result;
@@ -4268,12 +4207,12 @@ static uint8_t D3D11_QueryComplete(
 	) == S_OK;
 	SDL_UnlockMutex(renderer->ctxLock);
 	return result;
-} D3D_END(driverData) }
+}
 
 static int32_t D3D11_QueryPixelCount(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
-) { D3D_BEGIN {
+) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Query *d3dQuery = (D3D11Query*) query;
 	uint64_t result;
@@ -4287,7 +4226,7 @@ static int32_t D3D11_QueryPixelCount(
 	);
 	SDL_UnlockMutex(renderer->ctxLock);
 	return (int32_t) result;
-} D3D_END(driverData) }
+}
 
 /* Feature Queries */
 
@@ -4384,7 +4323,7 @@ static void D3D11_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 static void InitializeFauxBackbuffer(
 	D3D11Renderer *renderer,
 	uint8_t scaleNearest
-) { D3D_BEGIN {
+) {
 	void* d3dCompilerModule;
 	PFN_D3DCOMPILE D3DCompileFunc;
 	ID3DBlob *blob;
@@ -4562,7 +4501,7 @@ static void InitializeFauxBackbuffer(
 		&blendDesc,
 		&renderer->fauxBlendState
 	);
-} D3D_END((FNA3D_Renderer*) renderer) }
+}
 
 static FNA3D_Device* D3D11_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters,
@@ -4683,25 +4622,6 @@ static FNA3D_Device* D3D11_CreateDevice(
 			ret
 		);
 		return NULL;
-	}
-
-	/* Set up info queue */
-	if (debugMode)
-	{
-		ret = ID3D11Device_QueryInterface(
-			renderer->device,
-			&D3D_IID_ID3D11InfoQueue,
-			&renderer->infoQueue
-		);
-		if (ret < 0)
-		{
-			FNA3D_LogInfo("D3D11InfoQueue not supported!");
-		}
-		else
-		{
-			ID3D11InfoQueue_PushEmptyStorageFilter(renderer->infoQueue);
-			ID3D11InfoQueue_PushEmptyRetrievalFilter(renderer->infoQueue);
-		}
 	}
 
 	/* Initialize MojoShader context */
