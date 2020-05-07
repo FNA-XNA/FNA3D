@@ -1814,7 +1814,6 @@ static void D3D11_DrawUserIndexedPrimitives(
 	);
 
 	SDL_UnlockMutex(renderer->ctxLock);
-
 }
 
 static void D3D11_DrawUserPrimitives(
@@ -1858,7 +1857,6 @@ static void D3D11_DrawUserPrimitives(
 	);
 
 	SDL_UnlockMutex(renderer->ctxLock);
-
 }
 
 /* Mutable Render States */
@@ -1892,7 +1890,6 @@ static void D3D11_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewpo
 		);
 		SDL_UnlockMutex(renderer->ctxLock);
 	}
-
 }
 
 static void D3D11_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor)
@@ -1920,7 +1917,6 @@ static void D3D11_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor
 		);
 		SDL_UnlockMutex(renderer->ctxLock);
 	}
-
 }
 
 static void D3D11_GetBlendFactor(
