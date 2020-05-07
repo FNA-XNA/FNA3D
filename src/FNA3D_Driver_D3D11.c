@@ -1461,7 +1461,6 @@ static void D3D11_Clear(
 	}
 
 	SDL_UnlockMutex(renderer->ctxLock);
-
 }
 
 static void D3D11_DrawIndexedPrimitives(
@@ -1516,7 +1515,6 @@ static void D3D11_DrawIndexedPrimitives(
 	);
 
 	SDL_UnlockMutex(renderer->ctxLock);
-
 }
 
 static void D3D11_DrawInstancedPrimitives(
@@ -1574,7 +1572,6 @@ static void D3D11_DrawInstancedPrimitives(
 	);
 
 	SDL_UnlockMutex(renderer->ctxLock);
-
 }
 
 static void D3D11_DrawPrimitives(
@@ -1605,7 +1602,6 @@ static void D3D11_DrawPrimitives(
 	);
 
 	SDL_UnlockMutex(renderer->ctxLock);
-
 }
 
 static void BindUserVertexBuffer(
