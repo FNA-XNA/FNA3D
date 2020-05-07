@@ -50,6 +50,12 @@
 #define DXGI_DLL	"libdxgi.so"
 #endif
 
+#ifdef __WINRT__
+#include <dxgi1_2.h>
+#else
+#include <dxgi.h>
+#endif
+
 /* Internal Structures */
 
 typedef struct D3D11Texture /* Cast FNA3D_Texture* to this! */
@@ -181,7 +187,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	/* Persistent D3D11 Objects */
 	ID3D11Device *device;
 	ID3D11DeviceContext *context;
-	IDXGIFactory1 *factory;
+	void* factory; /* IDXGIFactory1 or IDXGIFactory2 */
 	IDXGISwapChain *swapchain;
 	ID3DUserDefinedAnnotation *annotation;
 	SDL_mutex *ctxLock;
@@ -2477,15 +2483,99 @@ static void D3D11_ResolveTarget(
 
 /* Backbuffer Functions */
 
-static HWND GetHWND(SDL_Window *window)
+static void* GetDXGIHandle(SDL_Window *window)
 {
 #ifdef FNA3D_DXVK_NATIVE
-	return (HWND) window;
+	return (void*) window;
 #else
 	SDL_SysWMinfo info;
 	SDL_VERSION(&info.version);
 	SDL_GetWindowWMInfo((SDL_Window*) window, &info);
-	return info.info.win.window;
+#ifdef __WINRT__
+	return (void*) info.info.winrt.window; /* CoreWindow* */
+#else
+	return (void*) info.info.win.window; /* HWND */
+#endif
+#endif
+}
+
+static void CreateSwapChain(
+	D3D11Renderer *renderer,
+	FNA3D_PresentationParameters *pp
+) {
+#ifdef __WINRT__
+	DXGI_SWAP_CHAIN_DESC1 swapchainDesc;
+	HRESULT res;
+
+	/* Initialize swapchain descriptor */
+	swapchainDesc.Width = 0;
+	swapchainDesc.Height = 0;
+	swapchainDesc.Format = XNAToD3D_TextureFormat[pp->backBufferFormat];
+	swapchainDesc.Stereo = 0;
+	swapchainDesc.SampleDesc.Count = 1;
+	swapchainDesc.SampleDesc.Quality = 0;
+	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	swapchainDesc.BufferCount = 3;
+	swapchainDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+	swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+	swapchainDesc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
+	swapchainDesc.Flags = 0;
+
+	/* Create the swap chain! */
+	res = IDXGIFactory2_CreateSwapChainForCoreWindow(
+		(IDXGIFactory2*) renderer->factory,
+		(IUnknown*) renderer->device,
+		(IUnknown*) GetDXGIHandle(pp->deviceWindowHandle),
+		&swapchainDesc,
+		NULL,
+		&renderer->swapchain
+	);
+	if (res < 0)
+	{
+		FNA3D_LogError(
+			"Could not create swapchain! Error code: %x",
+			res
+		);
+	}
+#else
+	DXGI_SWAP_CHAIN_DESC swapchainDesc;
+	DXGI_RATIONAL refreshRate = { 1, 60 }; /* FIXME: Get this from display mode. */
+	DXGI_MODE_DESC swapchainBufferDesc;
+	HRESULT res;
+
+	/* Initialize swapchain buffer descriptor */
+	swapchainBufferDesc.Width = 0;
+	swapchainBufferDesc.Height = 0;
+	swapchainBufferDesc.RefreshRate = refreshRate;
+	swapchainBufferDesc.Format = XNAToD3D_TextureFormat[pp->backBufferFormat];
+	swapchainBufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+	swapchainBufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+
+	/* Initialize the swapchain descriptor */
+	swapchainDesc.BufferDesc = swapchainBufferDesc;
+	swapchainDesc.SampleDesc.Count = 1;
+	swapchainDesc.SampleDesc.Quality = 0;
+	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	swapchainDesc.BufferCount = 3;
+	swapchainDesc.OutputWindow = (HWND) GetDXGIHandle((SDL_Window*) pp->deviceWindowHandle);
+	swapchainDesc.Windowed = 1;
+	swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+	swapchainDesc.Flags = 0;
+
+	/* Create the swapchain! */
+	res = IDXGIFactory1_CreateSwapChain(
+		(IDXGIFactory1*) renderer->factory,
+		(IUnknown*) renderer->device,
+		&swapchainDesc,
+		&renderer->swapchain
+	);
+	if (res < 0)
+	{
+		FNA3D_LogError(
+			"Could not create swapchain! Error code: %x",
+			res
+		);
+	}
 #endif
 }
 
@@ -2494,16 +2584,12 @@ static void CreateFramebuffer(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
 	int32_t w, h;
-	HRESULT ret;
+	HRESULT res;
 	D3D11_TEXTURE2D_DESC colorBufferDesc;
 	D3D11_RENDER_TARGET_VIEW_DESC colorViewDesc;
 	D3D11_SHADER_RESOURCE_VIEW_DESC shaderViewDesc;
 	D3D11_TEXTURE2D_DESC depthStencilDesc;
 	D3D11_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc;
-	DXGI_RATIONAL refreshRate = { 1, 60 }; /* FIXME: Get this from display mode. */
-	DXGI_MODE_DESC swapchainBufferDesc;
-	DXGI_SAMPLE_DESC swapchainSampleDesc = { 1, 0 };
-	DXGI_SWAP_CHAIN_DESC swapchainDesc;
 	D3D11_RENDER_TARGET_VIEW_DESC swapchainViewDesc;
 	ID3D11Texture2D *swapchainTexture;
 
@@ -2642,44 +2728,15 @@ static void CreateFramebuffer(
 		);
 	}
 
-	/* Do we need to create the swapchain? */
+	/* Create the swapchain */
 	if (renderer->swapchain == NULL)
 	{
-		/* Initialize swapchain buffer descriptor */
-		D3D11_GetDrawableSize(
-			presentationParameters->deviceWindowHandle,
-			&w,
-			&h
-		);
-		swapchainBufferDesc.Width = w;
-		swapchainBufferDesc.Height = h;
-		swapchainBufferDesc.RefreshRate = refreshRate;
-		swapchainBufferDesc.Format = colorBufferDesc.Format;
-		swapchainBufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
-		swapchainBufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
-
-		/* Create the swapchain! */
-		swapchainDesc.BufferDesc = swapchainBufferDesc;
-		swapchainDesc.SampleDesc = swapchainSampleDesc;
-		swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-		swapchainDesc.BufferCount = 3;
-		swapchainDesc.OutputWindow = GetHWND(
-			(SDL_Window*) presentationParameters->deviceWindowHandle
-		);
-		swapchainDesc.Windowed = 1;
-		swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-		swapchainDesc.Flags = 0; /* FIXME: ??? */
-		IDXGIFactory1_CreateSwapChain(
-			renderer->factory,
-			(IUnknown*) renderer->device,
-			&swapchainDesc,
-			&renderer->swapchain
-		);
+		CreateSwapChain(renderer, presentationParameters);
 	}
 	else
 	{
 		/* Resize the swapchain to the new window size */
-		ret = IDXGISwapChain_ResizeBuffers(
+		res = IDXGISwapChain_ResizeBuffers(
 			renderer->swapchain,
 			0,			/* keep # of buffers the same */
 			0,			/* get width from window */
@@ -2687,9 +2744,12 @@ static void CreateFramebuffer(
 			DXGI_FORMAT_UNKNOWN,	/* keep the old format */
 			0
 		);
-		if (ret < 0)
+		if (res < 0)
 		{
-			FNA3D_LogError("Error resizing swapchain! %x", ret);
+			FNA3D_LogError(
+				"Could not resize swapchain! Error code: %x",
+				res
+			);
 		}
 	}
 
@@ -4599,7 +4659,27 @@ static FNA3D_Device* D3D11_CreateDevice(
 		return NULL;
 	}
 
-	/* Create the DXGIFactory */
+#if __WINRT__
+	/* Create the DXGIFactory2 */
+	ret = CreateDXGIFactoryFunc(
+		&D3D_IID_IDXGIFactory2,
+		(void **) &renderer->factory
+	);
+	if (ret < 0)
+	{
+		FNA3D_LogError(
+			"Could not create DXGIFactory! Error code: %x",
+			ret
+		);
+		return NULL;
+	}
+	IDXGIFactory2_EnumAdapters1(
+		(IDXGIFactory2*) renderer->factory,
+		0,
+		&adapter
+	);
+#else
+	/* Create the DXGIFactory1 */
 	ret = CreateDXGIFactoryFunc(
 		&D3D_IID_IDXGIFactory1,
 		(void**)&renderer->factory
@@ -4613,10 +4693,11 @@ static FNA3D_Device* D3D11_CreateDevice(
 		return NULL;
 	}
 	IDXGIFactory1_EnumAdapters1(
-		renderer->factory,
+		(IDXGIFactory1*) renderer->factory,
 		0,
 		&adapter
 	);
+#endif
 	IDXGIAdapter1_GetDesc1(adapter, &adapterDesc);
 
 	/* Load D3D11CreateDevice */
