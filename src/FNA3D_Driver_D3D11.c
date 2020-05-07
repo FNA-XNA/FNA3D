@@ -1122,7 +1122,7 @@ static void D3D11_SetRenderTargets(
 	FNA3D_Renderbuffer *depthStencilBuffer,
 	FNA3D_DepthFormat depthFormat
 );
-static void BlitFramebuffer(D3D11Renderer *renderer)
+static void BlitFramebuffer(D3D11Renderer *renderer, int32_t w, int32_t h)
 {
 	const uint32_t vertexStride = 16;
 	const uint32_t offsets[] = { 0 };
@@ -1130,6 +1130,7 @@ static void BlitFramebuffer(D3D11Renderer *renderer)
 	ID3D11VertexShader *oldVertexShader;
 	ID3D11PixelShader *oldPixelShader;
 	uint32_t whatever;
+	D3D11_VIEWPORT vp = { 0, 0, (float) w, (float) h, 0, 1 };
 
 	SDL_LockMutex(renderer->ctxLock);
 
@@ -1173,6 +1174,11 @@ static void BlitFramebuffer(D3D11Renderer *renderer)
 	);
 
 	/* Set the rest of the pipeline state */
+	ID3D11DeviceContext_RSSetViewports(
+		renderer->context,
+		1,
+		&vp
+	);
 	ID3D11DeviceContext_OMSetBlendState(
 		renderer->context,
 		renderer->fauxBlendState,
@@ -1229,6 +1235,7 @@ static void BlitFramebuffer(D3D11Renderer *renderer)
 	ID3D11DeviceContext_DrawIndexed(renderer->context, 6, 0, 0);
 
 	/* Restore the old state */
+	renderer->viewport.minDepth = -1; /* Force an update */
 	ID3D11DeviceContext_OMSetBlendState(
 		renderer->context,
 		renderer->blendState,
@@ -1351,6 +1358,7 @@ static void D3D11_SwapBuffers(
 		renderer->prevDestRect.w != dstRect.w ||
 		renderer->prevDestRect.h != dstRect.h	)
 	{
+		FNA3D_LogInfo("Update cached vertex buffer");
 		UpdateBackbufferVertexBuffer(
 			renderer,
 			&srcRect,
@@ -1376,7 +1384,7 @@ static void D3D11_SwapBuffers(
 	}
 
 	/* "Blit" the faux-backbuffer to the swapchain image */
-	BlitFramebuffer(renderer);
+	BlitFramebuffer(renderer, drawableWidth, drawableHeight);
 
 	SDL_UnlockMutex(renderer->ctxLock);
 
@@ -4339,10 +4347,7 @@ static void D3D11_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 #ifdef FNA3D_DXVK_NATIVE
 	SDL_Vulkan_GetDrawableSize((SDL_Window*) window, x, y);
 #else
-	RECT clientRect;
-	GetClientRect(GetHWND((SDL_Window*) window), &clientRect);
-	*x = (clientRect.right - clientRect.left);
-	*y = (clientRect.bottom - clientRect.top);
+	SDL_GetWindowSize((SDL_Window*) window, x, y);
 #endif
 }
 
@@ -4584,7 +4589,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 	}
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
-	CreateDXGIFactoryFunc = (PFN_CREATE_DXGI_FACTORY)SDL_LoadFunction(
+	CreateDXGIFactoryFunc = (PFN_CREATE_DXGI_FACTORY) SDL_LoadFunction(
 		module,
 		"CreateDXGIFactory1"
 	);
