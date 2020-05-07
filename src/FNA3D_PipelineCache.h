@@ -49,7 +49,7 @@ typedef struct UInt64HashMap
 
 StateHash GetBlendStateHash(FNA3D_BlendState blendState);
 StateHash GetDepthStencilStateHash(FNA3D_DepthStencilState dsState);
-StateHash GetRasterizerStateHash(FNA3D_RasterizerState rastState);
+StateHash GetRasterizerStateHash(FNA3D_RasterizerState rastState, float bias);
 StateHash GetSamplerStateHash(FNA3D_SamplerState samplerState);
 uint64_t GetVertexDeclarationHash(
 	FNA3D_VertexDeclaration declaration,

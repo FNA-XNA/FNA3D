@@ -91,6 +91,9 @@
 #define STBI_REALLOC SDL_realloc
 #define STBI_FREE SDL_free
 #define STB_IMAGE_IMPLEMENTATION
+#ifdef __MINGW32__
+#define STBI_NO_THREAD_LOCALS /* FIXME: Port to SDL_TLS -flibit */
+#endif
 #include "stb_image.h"
 
 #define MINIZ_NO_STDIO

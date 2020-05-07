@@ -122,7 +122,7 @@ StateHash GetDepthStencilStateHash(FNA3D_DepthStencilState dsState)
 	return result;
 }
 
-StateHash GetRasterizerStateHash(FNA3D_RasterizerState rastState)
+StateHash GetRasterizerStateHash(FNA3D_RasterizerState rastState, float bias)
 {
 	StateHash result;
 	int32_t packedProperties = (
@@ -134,7 +134,7 @@ StateHash GetRasterizerStateHash(FNA3D_RasterizerState rastState)
 	result.a = (uint64_t) packedProperties;
 	result.b = (
 		FLOAT_TO_UINT64(rastState.slopeScaleDepthBias) << 32 |
-		FLOAT_TO_UINT64(rastState.depthBias)
+		FLOAT_TO_UINT64(bias)
 	);
 	return result;
 }
