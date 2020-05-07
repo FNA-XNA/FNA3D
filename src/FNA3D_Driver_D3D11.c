@@ -641,11 +641,16 @@ static ID3D11RasterizerState* FetchRasterizerState(
 	FNA3D_RasterizerState *state
 ) {
 	StateHash hash;
+	float depthBias;
 	D3D11_RASTERIZER_DESC desc;
 	ID3D11RasterizerState *result;
 
+	depthBias = state->depthBias * XNAToD3D_DepthBiasScale[
+		renderer->currentDepthFormat
+	];
+
 	/* Can we just reuse an existing state? */
-	hash = GetRasterizerStateHash(*state);
+	hash = GetRasterizerStateHash(*state, depthBias);
 	result = hmget(renderer->rasterizerStateCache, hash);
 	if (result != NULL)
 	{
@@ -656,9 +661,7 @@ static ID3D11RasterizerState* FetchRasterizerState(
 	/* We have to make a new rasterizer state... */
 	desc.AntialiasedLineEnable = 0;
 	desc.CullMode = XNAToD3D_CullMode[state->cullMode];
-	desc.DepthBias = state->depthBias * XNAToD3D_DepthBiasScale[
-		renderer->currentDepthFormat
-	];
+	desc.DepthBias = depthBias;
 	desc.DepthBiasClamp = D3D11_FLOAT32_MAX;
 	desc.DepthClipEnable = 1;
 	desc.FillMode = XNAToD3D_FillMode[state->fillMode];
