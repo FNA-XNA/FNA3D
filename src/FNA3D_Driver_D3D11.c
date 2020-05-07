@@ -246,7 +246,8 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	/* User Buffers */
 	ID3D11Buffer *userVertexBuffer;
 	ID3D11Buffer *userIndexBuffer;
-	FNA3D_VertexDeclaration *userVertexDeclaration;
+	int32_t userVertexStride;
+	int32_t ldUserVertexStride;
 	int32_t userVertexBufferSize;
 	int32_t userIndexBufferSize;
 
@@ -1611,14 +1612,13 @@ static void BindUserVertexBuffer(
 	int32_t vertexCount,
 	int32_t vertexOffset
 ) {
-	int32_t len, offset, stride;
+	int32_t len, offset;
 	D3D11_BUFFER_DESC desc;
 	D3D11_MAPPED_SUBRESOURCE subres;
 	uint32_t nullOffset[1] = {0};
 
-	stride = renderer->userVertexDeclaration->vertexStride;
-	len = vertexCount * stride;
-	offset = vertexOffset * stride;
+	len = vertexCount * renderer->userVertexStride;
+	offset = vertexOffset * renderer->userVertexStride;
 
 	/* (Re-)create the user vertex buffer, if needed */
 	if (	renderer->userVertexBuffer == NULL ||
@@ -1679,15 +1679,17 @@ static void BindUserVertexBuffer(
 	);
 
 	/* Bind the buffer */
-	if (renderer->vertexBuffers[0] != renderer->userVertexBuffer)
+	if (	renderer->vertexBuffers[0] != renderer->userVertexBuffer ||
+		renderer->ldUserVertexStride != renderer->userVertexStride	)
 	{
 		renderer->vertexBuffers[0] = renderer->userVertexBuffer;
+		renderer->ldUserVertexStride = renderer->userVertexStride;
 		ID3D11DeviceContext_IASetVertexBuffers(
 			renderer->context,
 			0,
 			1,
 			&renderer->vertexBuffers[0],
-			(uint32_t*) &stride,
+			(uint32_t*) &renderer->userVertexStride,
 			nullOffset
 		);
 	}
@@ -2301,20 +2303,17 @@ static void D3D11_ApplyVertexDeclaration(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	ID3D11InputLayout *inputLayout;
 
-	if (	renderer->userVertexDeclaration == vertexDeclaration &&
-		!renderer->effectApplied				)
+	if (!renderer->effectApplied)
 	{
 		return;
 	}
-
-	/* Store this for future DrawUser* calls */
-	renderer->userVertexDeclaration = vertexDeclaration;
 
 	/* Translate the bindings array into an input layout */
 	inputLayout = FetchDeclarationInputLayout(
 		renderer,
 		vertexDeclaration
 	);
+	renderer->userVertexStride = vertexDeclaration->vertexStride;
 
 	if (renderer->inputLayout != inputLayout)
 	{
