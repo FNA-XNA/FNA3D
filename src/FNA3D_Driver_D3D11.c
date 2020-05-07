@@ -4554,6 +4554,8 @@ static FNA3D_Device* D3D11_CreateDevice(
 ) {
 	FNA3D_Device *result;
 	D3D11Renderer *renderer;
+	IDXGIAdapter1 *adapter;
+	DXGI_ADAPTER_DESC1 adapterDesc;
 	void* module;
 	typedef HRESULT(WINAPI *PFN_CREATE_DXGI_FACTORY)(const GUID *riid, void **ppFactory);
 	PFN_D3D11_CREATE_DEVICE D3D11CreateDeviceFunc;
@@ -4572,6 +4574,46 @@ static FNA3D_Device* D3D11_CreateDevice(
 	/* Allocate and zero out the renderer */
 	renderer = (D3D11Renderer*) SDL_malloc(sizeof(D3D11Renderer));
 	SDL_memset(renderer, '\0', sizeof(D3D11Renderer));
+
+	/* Load CreateDXGIFactory1 */
+	module = SDL_LoadObject(DXGI_DLL);
+	if (module == NULL)
+	{
+		FNA3D_LogError("Could not find " DXGI_DLL);
+		return NULL;
+	}
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+	CreateDXGIFactoryFunc = (PFN_CREATE_DXGI_FACTORY)SDL_LoadFunction(
+		module,
+		"CreateDXGIFactory1"
+	);
+#pragma GCC diagnostic pop
+	if (CreateDXGIFactoryFunc == NULL)
+	{
+		FNA3D_LogError("Could not load function CreateDXGIFactory1!");
+		return NULL;
+	}
+
+	/* Create the DXGIFactory */
+	ret = CreateDXGIFactoryFunc(
+		&D3D_IID_IDXGIFactory1,
+		(void**)&renderer->factory
+	);
+	if (ret < 0)
+	{
+		FNA3D_LogError(
+			"Could not create DXGIFactory! Error code: %x",
+			ret
+		);
+		return NULL;
+	}
+	IDXGIFactory1_EnumAdapters1(
+		renderer->factory,
+		0,
+		&adapter
+	);
+	IDXGIAdapter1_GetDesc1(adapter, &adapterDesc);
 
 	/* Load D3D11CreateDevice */
 	module = SDL_LoadObject(D3D11_DLL);
@@ -4600,7 +4642,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 		flags |= D3D11_CREATE_DEVICE_DEBUG;
 	}
 	ret = D3D11CreateDeviceFunc(
-		NULL, /* FIXME: Do we need to use a non-default adapter? */
+		NULL, /* FIXME: Use adapter from above EnumAdapters? */
 		D3D_DRIVER_TYPE_HARDWARE,
 		NULL,
 		flags,
@@ -4622,6 +4664,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 
 	/* Print driver info */
 	FNA3D_LogInfo("FNA3D Driver: D3D11"); /* FIXME: Print more info! */
+	FNA3D_LogInfo("D3D11 Adapter: %S", adapterDesc.Description);
 
 	/* Determine DXT/S3TC support */
 	ID3D11Device_CheckFormatSupport(
@@ -4640,40 +4683,6 @@ static FNA3D_Device* D3D11_CreateDevice(
 		&supportsDxt5
 	);
 	renderer->supportsS3tc = (supportsDxt3 || supportsDxt5);
-
-	/* Load CreateDXGIFactory1 */
-	module = SDL_LoadObject(DXGI_DLL);
-	if (module == NULL)
-	{
-		FNA3D_LogError("Could not find " DXGI_DLL);
-		return NULL;
-	}
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpedantic"
-	CreateDXGIFactoryFunc = (PFN_CREATE_DXGI_FACTORY) SDL_LoadFunction(
-		module,
-		"CreateDXGIFactory1"
-	);
-#pragma GCC diagnostic pop
-	if (CreateDXGIFactoryFunc == NULL)
-	{
-		FNA3D_LogError("Could not load function CreateDXGIFactory1!");
-		return NULL;
-	}
-
-	/* Create the DXGIFactory */
-	ret = CreateDXGIFactoryFunc(
-		&D3D_IID_IDXGIFactory1,
-		(void**) &renderer->factory
-	);
-	if (ret < 0)
-	{
-		FNA3D_LogError(
-			"Could not create DXGIFactory! Error code: %x",
-			ret
-		);
-		return NULL;
-	}
 
 	/* Initialize MojoShader context */
 	MOJOSHADER_d3d11CreateContext(
