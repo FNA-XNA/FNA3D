@@ -1051,7 +1051,8 @@ static void D3D11_BeginFrame(FNA3D_Renderer *driverData)
 static void D3D11_GetDrawableSize(void *window, int32_t *x, int32_t *y);
 static void UpdateBackbufferVertexBuffer(
 	D3D11Renderer *renderer,
-	FNA3D_Rect dstRect,
+	FNA3D_Rect *srcRect,
+	FNA3D_Rect *dstRect,
 	int32_t drawableWidth,
 	int32_t drawableHeight
 ) {
@@ -1061,13 +1062,15 @@ static void UpdateBackbufferVertexBuffer(
 
 	/* Cache the new info */
 	renderer->backbufferSizeChanged = 0;
-	renderer->prevDestRect = dstRect;
+	renderer->prevDestRect = *dstRect;
+
+	/* FIXME: srcRect as texture coordinates? */
 
 	/* Scale the coordinates to (-1, 1) */
-	sx = -1 + (dstRect.x / (float) drawableWidth);
-	sy = -1 + (dstRect.y / (float) drawableHeight);
-	sw = (dstRect.w / (float) drawableWidth) * 2;
-	sh = (dstRect.h / (float) drawableHeight) * 2;
+	sx = -1 + (dstRect->x / (float) drawableWidth);
+	sy = -1 + (dstRect->y / (float) drawableHeight);
+	sw = (dstRect->w / (float) drawableWidth) * 2;
+	sh = (dstRect->h / (float) drawableHeight) * 2;
 
 	/* Stuff the data into an array */
 	data[0] = sx;
@@ -1350,7 +1353,8 @@ static void D3D11_SwapBuffers(
 	{
 		UpdateBackbufferVertexBuffer(
 			renderer,
-			dstRect,
+			&srcRect,
+			&dstRect,
 			drawableWidth,
 			drawableHeight
 		);
