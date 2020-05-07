@@ -1358,7 +1358,6 @@ static void D3D11_SwapBuffers(
 		renderer->prevDestRect.w != dstRect.w ||
 		renderer->prevDestRect.h != dstRect.h	)
 	{
-		FNA3D_LogInfo("Update cached vertex buffer");
 		UpdateBackbufferVertexBuffer(
 			renderer,
 			&srcRect,
