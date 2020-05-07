@@ -1711,7 +1711,6 @@ static void D3D11_DrawUserIndexedPrimitives(
 	int32_t numIndices, indexSize, len;
 	D3D11_BUFFER_DESC desc;
 	D3D11_MAPPED_SUBRESOURCE subres;
-	uint32_t nullOffset[1] = {0};
 
 	numIndices = PrimitiveVerts(primitiveType, primitiveCount);
 	indexSize = IndexSize(indexElementSize);
@@ -4372,10 +4371,13 @@ static void InitializeFauxBackbuffer(
 	{
 		FNA3D_LogError("Could not find " D3DCOMPILER_DLL);
 	}
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 	D3DCompileFunc = (PFN_D3DCOMPILE) SDL_LoadFunction(
 		d3dCompilerModule,
 		"D3DCompile"
 	);
+#pragma GCC diagnostic pop
 	if (D3DCompileFunc == NULL)
 	{
 		FNA3D_LogError("Could not load function D3DCompile!");
@@ -4387,6 +4389,14 @@ static void InitializeFauxBackbuffer(
 		"Faux-Backbuffer Blit Vertex Shader", NULL, NULL,
 		"main", "vs_4_0", 0, 0, &blob, &blob
 	);
+	if (res < 0)
+	{
+		FNA3D_LogError(
+			"Backbuffer vshader failed to compile! Error code: %x",
+			res
+		);
+		return;
+	}
 	ID3D11Device_CreateVertexShader(
 		renderer->device,
 		ID3D10Blob_GetBufferPointer(blob),
@@ -4424,11 +4434,19 @@ static void InitializeFauxBackbuffer(
 	);
 
 	/* Create and compile the pixel shader */
-	D3DCompileFunc(
+	res = D3DCompileFunc(
 		FAUX_BLIT_PIXEL_SHADER, SDL_strlen(FAUX_BLIT_PIXEL_SHADER),
 		"Faux-Backbuffer Blit Pixel Shader", NULL, NULL,
 		"main", "ps_4_0", 0, 0, &blob, &blob
 	);
+	if (res < 0)
+	{
+		FNA3D_LogError(
+			"Backbuffer pshader failed to compile! Error code: %x",
+			res
+		);
+		return;
+	}
 	ID3D11Device_CreatePixelShader(
 		renderer->device,
 		ID3D10Blob_GetBufferPointer(blob),
@@ -4558,10 +4576,13 @@ static FNA3D_Device* D3D11_CreateDevice(
 		FNA3D_LogError("Could not find " D3D11_DLL);
 		return NULL;
 	}
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 	D3D11CreateDeviceFunc = (PFN_D3D11_CREATE_DEVICE) SDL_LoadFunction(
 		module,
 		"D3D11CreateDevice"
 	);
+#pragma GCC diagnostic pop
 	if (D3D11CreateDeviceFunc == NULL)
 	{
 		FNA3D_LogError("Could not load function D3D11CreateDevice!");
@@ -4623,10 +4644,13 @@ static FNA3D_Device* D3D11_CreateDevice(
 		FNA3D_LogError("Could not find " DXGI_DLL);
 		return NULL;
 	}
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 	CreateDXGIFactoryFunc = (PFN_CREATE_DXGI_FACTORY) SDL_LoadFunction(
 		module,
 		"CreateDXGIFactory1"
 	);
+#pragma GCC diagnostic pop
 	if (CreateDXGIFactoryFunc == NULL)
 	{
 		FNA3D_LogError("Could not load function CreateDXGIFactory1!");
