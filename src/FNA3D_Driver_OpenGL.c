@@ -5466,17 +5466,18 @@ FNA3D_Device* OPENGL_CreateDevice(
 	rendererStr =	(const char*) renderer->glGetString(GL_RENDERER);
 	versionStr =	(const char*) renderer->glGetString(GL_VERSION);
 	vendorStr =	(const char*) renderer->glGetString(GL_VENDOR);
-	SDL_snprintf(
-		driverInfo, sizeof(driverInfo),
-		"OpenGL renderer: %s\nOpenGL Driver: %s\nOpenGL Vendor: %s",
-		rendererStr, versionStr, vendorStr
-	);
-	FNA3D_LogInfo(
-		"FNA3D Driver: OpenGL\n%s",
-		driverInfo
-	);
+
+	FNA3D_LogInfo("FNA3D Driver: OpenGL");
+	FNA3D_LogInfo("OpenGL Renderer: %s", rendererStr);
+	FNA3D_LogInfo("OpenGL Driver: %s", versionStr);
+	FNA3D_LogInfo("OpenGL Vendor: %s", vendorStr);
 
 	/* Initialize entry points */
+	SDL_snprintf(
+		driverInfo, sizeof(driverInfo),
+		"OpenGL Renderer: %s\nOpenGL Driver: %s\nOpenGL Vendor: %s",
+		rendererStr, versionStr, vendorStr
+	);
 	LoadEntryPoints(renderer, driverInfo, debugMode);
 
 	/* FIXME: REMOVE ME ASAP! TERRIBLE HACK FOR ANGLE! */
