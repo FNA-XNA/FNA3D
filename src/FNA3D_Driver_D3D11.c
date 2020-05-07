@@ -539,10 +539,10 @@ static ID3D11BlendState* FetchBlendState(
 	}
 
 	/* FIXME: For colorWriteEnable1/2/3, we'll need
-	* to loop over all render target descriptors
-	* and apply the same state, except for the mask.
-	* Ugh. -caleb
-	*/
+	 * to loop over all render target descriptors
+	 * and apply the same state, except for the mask.
+	 * Ugh. -caleb
+	 */
 	desc.RenderTarget[0].RenderTargetWriteMask = (
 		(uint32_t) state->colorWriteEnable
 	);
@@ -1531,7 +1531,6 @@ static void D3D11_DrawInstancedPrimitives(
 	FNA3D_Buffer *indices,
 	FNA3D_IndexElementSize indexElementSize
 ) {
-	/* FIXME: Needs testing! */
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *d3dIndices = (D3D11Buffer*) indices;
 	int32_t indexOffset = startIndex * IndexSize(indexElementSize);
@@ -2666,7 +2665,7 @@ static void CreateFramebuffer(
 			(SDL_Window*) presentationParameters->deviceWindowHandle
 		);
 		swapchainDesc.Windowed = 1;
-		swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD; /* FIXME: What do we want? */
+		swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 		swapchainDesc.Flags = 0; /* FIXME: ??? */
 		IDXGIFactory1_CreateSwapChain(
 			renderer->factory,
@@ -3748,8 +3747,6 @@ static void D3D11_GetVertexBufferData(
 	D3D11_MAPPED_SUBRESOURCE subres;
 	D3D11_BOX srcBox = {offsetInBytes, 0, 0, offsetInBytes + dataLength, 1, 1};
 
-	/* FIXME: Staging buffer for elementSizeInBytes < vertexStride! */
-
 	/* Create staging buffer if needed */
 	if (d3dBuffer->staging == NULL)
 	{
@@ -3791,6 +3788,7 @@ static void D3D11_GetVertexBufferData(
 		0,
 		&subres
 	);
+	/* FIXME: Looped memcpys for elementSizeInBytes < vertexStride! */
 	SDL_memcpy(
 		data,
 		subres.pData,
