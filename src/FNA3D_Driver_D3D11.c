@@ -52,6 +52,7 @@
 
 #ifdef __WINRT__
 #include <dxgi1_2.h>
+#include <d3dcompiler.h>
 #else
 #include <dxgi.h>
 #endif
@@ -2528,7 +2529,7 @@ static void CreateSwapChain(
 		(IUnknown*) GetDXGIHandle(pp->deviceWindowHandle),
 		&swapchainDesc,
 		NULL,
-		&renderer->swapchain
+		(IDXGISwapChain1**) &renderer->swapchain
 	);
 	if (res < 0)
 	{
@@ -4434,6 +4435,9 @@ static void InitializeFauxBackbuffer(
 	HRESULT res;
 
 	/* Load the D3DCompile function */
+#ifdef __WINRT__
+	D3DCompileFunc = D3DCompile;
+#else
 	d3dCompilerModule = SDL_LoadObject(D3DCOMPILER_DLL);
 	if (d3dCompilerModule == NULL)
 	{
@@ -4450,6 +4454,7 @@ static void InitializeFauxBackbuffer(
 	{
 		FNA3D_LogError("Could not load function D3DCompile!");
 	}
+#endif /* __WINRT__ */
 
 	/* Create and compile the vertex shader */
 	res = D3DCompileFunc(
@@ -4640,26 +4645,9 @@ static FNA3D_Device* D3D11_CreateDevice(
 	SDL_memset(renderer, '\0', sizeof(D3D11Renderer));
 
 	/* Load CreateDXGIFactory1 */
-	module = SDL_LoadObject(DXGI_DLL);
-	if (module == NULL)
-	{
-		FNA3D_LogError("Could not find " DXGI_DLL);
-		return NULL;
-	}
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpedantic"
-	CreateDXGIFactoryFunc = (PFN_CREATE_DXGI_FACTORY) SDL_LoadFunction(
-		module,
-		"CreateDXGIFactory1"
-	);
-#pragma GCC diagnostic pop
-	if (CreateDXGIFactoryFunc == NULL)
-	{
-		FNA3D_LogError("Could not load function CreateDXGIFactory1!");
-		return NULL;
-	}
+#ifdef __WINRT__
+	CreateDXGIFactoryFunc = CreateDXGIFactory1;
 
-#if __WINRT__
 	/* Create the DXGIFactory2 */
 	ret = CreateDXGIFactoryFunc(
 		&D3D_IID_IDXGIFactory2,
@@ -4679,6 +4667,25 @@ static FNA3D_Device* D3D11_CreateDevice(
 		&adapter
 	);
 #else
+	module = SDL_LoadObject(DXGI_DLL);
+	if (module == NULL)
+	{
+		FNA3D_LogError("Could not find " DXGI_DLL);
+		return NULL;
+	}
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+	CreateDXGIFactoryFunc = (PFN_CREATE_DXGI_FACTORY) SDL_LoadFunction(
+		module,
+		"CreateDXGIFactory1"
+	);
+#pragma GCC diagnostic pop
+	if (CreateDXGIFactoryFunc == NULL)
+	{
+		FNA3D_LogError("Could not load function CreateDXGIFactory1!");
+		return NULL;
+	}
+
 	/* Create the DXGIFactory1 */
 	ret = CreateDXGIFactoryFunc(
 		&D3D_IID_IDXGIFactory1,
@@ -4697,10 +4704,14 @@ static FNA3D_Device* D3D11_CreateDevice(
 		0,
 		&adapter
 	);
-#endif
+#endif /* __WINRT__ */
+
 	IDXGIAdapter1_GetDesc1(adapter, &adapterDesc);
 
 	/* Load D3D11CreateDevice */
+#ifdef __WINRT__
+	D3D11CreateDeviceFunc = D3D11CreateDevice;
+#else
 	module = SDL_LoadObject(D3D11_DLL);
 	if (module == NULL)
 	{
@@ -4719,6 +4730,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 		FNA3D_LogError("Could not load function D3D11CreateDevice!");
 		return NULL;
 	}
+#endif /* __WINRT__ */
 
 	/* Create the D3D11Device */
 	flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
