@@ -4596,11 +4596,8 @@ static void GLAPIENTRY DebugCall(
 
 /* Driver */
 
-static void LoadEntryPoints(
-	ModernGLRenderer *renderer,
-	const char *driverInfo,
-	uint8_t debugMode
-) {
+static void LoadEntryPoints(ModernGLRenderer *renderer, uint8_t debugMode)
+{
 	renderer->supports_KHR_debug = 1;
 	renderer->supports_GREMEDY_string_marker = 1;
 
@@ -4785,7 +4782,6 @@ static FNA3D_Device* MODERNGL_CreateDevice(
 	int32_t flags;
 	int32_t depthSize, stencilSize;
 	const char *rendererStr, *versionStr, *vendorStr;
-	char driverInfo[256];
 	int32_t i;
 	int32_t numExtensions, numSamplers, numAttributes, numAttachments;
 	ModernGLRenderer *renderer;
@@ -4863,21 +4859,17 @@ static FNA3D_Device* MODERNGL_CreateDevice(
 	}
 
 	/* Initialize entry points */
-	LoadEntryPoints(renderer, driverInfo, debugMode);
+	LoadEntryPoints(renderer, debugMode);
 
 	/* Print GL information */
 	rendererStr =	(const char*) renderer->glGetString(GL_RENDERER);
 	versionStr =	(const char*) renderer->glGetString(GL_VERSION);
 	vendorStr =	(const char*) renderer->glGetString(GL_VENDOR);
-	SDL_snprintf(
-		driverInfo, sizeof(driverInfo),
-		"OpenGL renderer: %s\nOpenGL Driver: %s\nOpenGL Vendor: %s",
-		rendererStr, versionStr, vendorStr
-	);
-	FNA3D_LogInfo(
-		"FNA3D Driver: ModernGL\n%s",
-		driverInfo
-	);
+
+	FNA3D_LogInfo("FNA3D Driver: ModernGL");
+	FNA3D_LogInfo("OpenGL Renderer: %s", rendererStr);
+	FNA3D_LogInfo("OpenGL Driver: %s", versionStr);
+	FNA3D_LogInfo("OpenGL Vendor: %s", vendorStr);
 
 	/* Initialize shader context */
 	renderer->shaderProfile = SDL_GetHint("FNA3D_MOJOSHADER_PROFILE");
