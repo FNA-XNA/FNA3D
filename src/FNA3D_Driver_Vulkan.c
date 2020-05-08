@@ -3670,7 +3670,19 @@ void VULKAN_AddDisposeEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanEffect *fnaEffect = (VulkanEffect*) effect;
+	MOJOSHADER_effect *effectData = fnaEffect->effect;
+
+	if (effectData == renderer->currentEffect) {
+		MOJOSHADER_effectEndPass(renderer->currentEffect);
+		MOJOSHADER_effectEnd(renderer->currentEffect);
+		renderer->currentEffect = NULL;
+		renderer->currentTechnique = NULL;
+		renderer->currentPass = 0;
+	}
+	MOJOSHADER_deleteEffect(effectData);
+	SDL_free(effect);
 }
 
 void VULKAN_SetEffectTechnique(
