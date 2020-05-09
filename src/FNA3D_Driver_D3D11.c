@@ -1938,16 +1938,23 @@ static void D3D11_GetBlendFactor(
 	blendFactor->a = (uint8_t) (renderer->blendFactor[3] * 255);
 }
 
+static uint8_t BlendEquals(float *a, FNA3D_Color *b)
+{
+	/* FIXME: Floating point comparisons... */
+	return (
+		a[0] == b->r / 255.0f &&
+		a[1] == b->g / 255.0f &&
+		a[2] == b->b / 255.0f &&
+		a[3] == b->a / 255.0f
+	);
+}
+
 static void D3D11_SetBlendFactor(
 	FNA3D_Renderer *driverData,
 	FNA3D_Color *blendFactor
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	/* FIXME: Floating point comparisons... */
-	if (	renderer->blendFactor[0] != blendFactor->r / 255.0f ||
-		renderer->blendFactor[1] != blendFactor->g / 255.0f ||
-		renderer->blendFactor[2] != blendFactor->b / 255.0f ||
-		renderer->blendFactor[3] != blendFactor->a / 255.0f	)
+	if (!BlendEquals(renderer->blendFactor, blendFactor))
 	{
 		renderer->blendFactor[0] = blendFactor->r / 255.0f;
 		renderer->blendFactor[1] = blendFactor->g / 255.0f;
@@ -2018,7 +2025,9 @@ static void D3D11_SetBlendState(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	ID3D11BlendState *bs = FetchBlendState(renderer, blendState);
 
-	if (renderer->blendState != bs)
+	if (	renderer->blendState != bs ||
+		!BlendEquals(renderer->blendFactor, &blendState->blendFactor) ||
+		renderer->multiSampleMask != blendState->multiSampleMask	)
 	{
 		renderer->blendState = bs;
 		renderer->blendFactor[0] = blendState->blendFactor.r / 255.0f;
@@ -2044,7 +2053,8 @@ static void D3D11_SetDepthStencilState(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	ID3D11DepthStencilState *ds = FetchDepthStencilState(renderer, depthStencilState);
 
-	if (renderer->depthStencilState != ds)
+	if (	renderer->depthStencilState != ds ||
+		renderer->stencilRef != depthStencilState->referenceStencil	)
 	{
 		renderer->depthStencilState = ds;
 		renderer->stencilRef = depthStencilState->referenceStencil;
