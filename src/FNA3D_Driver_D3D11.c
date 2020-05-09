@@ -253,7 +253,6 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	ID3D11Buffer *userVertexBuffer;
 	ID3D11Buffer *userIndexBuffer;
 	int32_t userVertexStride;
-	int32_t ldUserVertexStride;
 	int32_t userVertexBufferSize;
 	int32_t userIndexBufferSize;
 
@@ -1688,10 +1687,10 @@ static void BindUserVertexBuffer(
 
 	/* Bind the buffer */
 	if (	renderer->vertexBuffers[0] != renderer->userVertexBuffer ||
-		renderer->ldUserVertexStride != renderer->userVertexStride	)
+		renderer->vertexBufferStrides[0] != renderer->userVertexStride	)
 	{
 		renderer->vertexBuffers[0] = renderer->userVertexBuffer;
-		renderer->ldUserVertexStride = renderer->userVertexStride;
+		renderer->vertexBufferStrides[0] = renderer->userVertexStride;
 		ID3D11DeviceContext_IASetVertexBuffers(
 			renderer->context,
 			0,
@@ -2328,6 +2327,8 @@ static void D3D11_ApplyVertexDeclaration(
 		);
 		SDL_UnlockMutex(renderer->ctxLock);
 	}
+
+	renderer->effectApplied = 0;
 }
 
 /* Render Targets */
