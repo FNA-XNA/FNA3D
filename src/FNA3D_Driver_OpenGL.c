@@ -3793,7 +3793,7 @@ static void OPENGL_GetTextureData2D(
 	GLenum glFormat;
 	int32_t glFormatSize;
 	uint8_t *texData;
-	int32_t row, col;
+	int32_t row;
 	int32_t textureWidth, textureHeight;
 	uint8_t *dataPtr = (uint8_t*) data;
 	FNA3D_Command cmd;
@@ -3877,16 +3877,12 @@ static void OPENGL_GetTextureData2D(
 		/* Now, blit the rect region into the user array. */
 		for (row = y; row < y + h; row += 1)
 		{
-			for (col = x; col < x + w; col += 1)
-			{
-				/* FIXME: Can we copy via pitch instead, or something? -flibit */
-				SDL_memcpy(
-					dataPtr,
-					texData + (((row * textureWidth) + col) * glFormatSize),
-					glFormatSize
-				);
-				dataPtr += glFormatSize;
-			}
+			SDL_memcpy(
+				dataPtr,
+				texData + (((row * textureWidth) + x) * glFormatSize),
+				glFormatSize * w
+			);
+			dataPtr += glFormatSize * w;
 		}
 		SDL_free(texData);
 	}
@@ -3932,7 +3928,7 @@ static void OPENGL_GetTextureDataCube(
 	GLenum glFormat;
 	int32_t glFormatSize;
 	uint8_t *texData;
-	int32_t row, col;
+	int32_t row;
 	int32_t textureSize;
 	uint8_t *dataPtr = (uint8_t*) data;
 	FNA3D_Command cmd;
@@ -4003,16 +3999,12 @@ static void OPENGL_GetTextureDataCube(
 		/* Now, blit the rect region into the user array. */
 		for (row = y; row < y + h; row += 1)
 		{
-			for (col = x; col < x + w; col += 1)
-			{
-				/* FIXME: Can we copy via pitch instead, or something? -flibit */
-				SDL_memcpy(
-					dataPtr,
-					texData + (((row * textureSize) + col) * glFormatSize),
-					glFormatSize
-				);
-				dataPtr += glFormatSize;
-			}
+			SDL_memcpy(
+				dataPtr,
+				texData + (((row * textureSize) + x) * glFormatSize),
+				glFormatSize * w
+			);
+			dataPtr += glFormatSize * w;
 		}
 		SDL_free(texData);
 	}
