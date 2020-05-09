@@ -241,7 +241,6 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	uint32_t vertexBufferStrides[MAX_BOUND_VERTEX_BUFFERS];
 	ID3D11Buffer *indexBuffer;
 	FNA3D_IndexElementSize indexElementSize;
-	uint32_t indexBufferOffset;
 
 	/* Resource Caches */
 	StateHashMap *blendStateCache;
@@ -1286,7 +1285,7 @@ static void BlitFramebuffer(D3D11Renderer *renderer, int32_t w, int32_t h)
 		renderer->context,
 		renderer->indexBuffer,
 		XNAToD3D_IndexType[renderer->indexElementSize],
-		renderer->indexBufferOffset
+		0
 	);
 	ID3D11DeviceContext_PSSetShaderResources(
 		renderer->context,
@@ -1494,23 +1493,19 @@ static void D3D11_DrawIndexedPrimitives(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *d3dIndices = (D3D11Buffer*) indices;
-	int32_t indexOffset = startIndex * IndexSize(indexElementSize);
 
 	SDL_LockMutex(renderer->ctxLock);
 
 	/* Bind index buffer */
-	if (	renderer->indexBuffer != d3dIndices->handle ||
-		renderer->indexBufferOffset != indexOffset	)
+	if (renderer->indexBuffer != d3dIndices->handle)
 	{
 		renderer->indexBuffer = d3dIndices->handle;
 		renderer->indexElementSize = indexElementSize;
-		renderer->indexBufferOffset = indexOffset;
-
 		ID3D11DeviceContext_IASetIndexBuffer(
 			renderer->context,
 			d3dIndices->handle,
 			XNAToD3D_IndexType[indexElementSize],
-			indexOffset
+			0
 		);
 	}
 
@@ -1554,18 +1549,15 @@ static void D3D11_DrawInstancedPrimitives(
 	SDL_LockMutex(renderer->ctxLock);
 
 	/* Bind index buffer */
-	if (	renderer->indexBuffer != d3dIndices->handle ||
-		renderer->indexBufferOffset != indexOffset	)
+	if (renderer->indexBuffer != d3dIndices->handle)
 	{
 		renderer->indexBuffer = d3dIndices->handle;
 		renderer->indexElementSize = indexElementSize;
-		renderer->indexBufferOffset = indexOffset;
-
 		ID3D11DeviceContext_IASetIndexBuffer(
 			renderer->context,
 			d3dIndices->handle,
 			XNAToD3D_IndexType[indexElementSize],
-			indexOffset
+			0
 		);
 	}
 
@@ -1826,7 +1818,7 @@ static void D3D11_DrawUserIndexedPrimitives(
 	ID3D11DeviceContext_DrawIndexed(
 		renderer->context,
 		numIndices,
-		0,
+		indexOffset,
 		0
 	);
 
