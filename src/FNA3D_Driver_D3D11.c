@@ -3301,7 +3301,7 @@ static void D3D11_GetTextureData2D(
 	D3D11_BOX srcBox = {0, 0, 0, texW, texH, 1};
 	D3D11_MAPPED_SUBRESOURCE subresource;
 	uint8_t *dataPtr = (uint8_t*) data;
-	int32_t row, col;
+	int32_t row;
 	int32_t formatSize = Texture_GetFormatSize(format);
 
 	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
@@ -3363,16 +3363,12 @@ static void D3D11_GetTextureData2D(
 	);
 	for (row = y; row < y + h; row += 1)
 	{
-		for (col = x; col < x + w; col += 1)
-		{
-			/* FIXME: Can we copy via pitch instead, or something? -flibit */
-			SDL_memcpy(
-				dataPtr,
-				(uint8_t*) subresource.pData + (((row * texW) + col) * formatSize),
-				formatSize
-			);
-			dataPtr += formatSize;
-		}
+		SDL_memcpy(
+			dataPtr,
+			(uint8_t*) subresource.pData + (((row * texW) + x) * formatSize),
+			formatSize * w
+		);
+		dataPtr += formatSize * w;
 	}
 	ID3D11DeviceContext_Unmap(
 		renderer->context,
@@ -3429,7 +3425,7 @@ static void D3D11_GetTextureDataCube(
 	D3D11_BOX srcBox = {0, 0, 0, texSize, texSize, 1};
 	D3D11_MAPPED_SUBRESOURCE subresource;
 	uint8_t *dataPtr = (uint8_t*) data;
-	int32_t row, col;
+	int32_t row;
 	int32_t formatSize = Texture_GetFormatSize(format);
 
 	if (format == FNA3D_SURFACEFORMAT_DXT1 ||
@@ -3491,16 +3487,12 @@ static void D3D11_GetTextureDataCube(
 	);
 	for (row = y; row < y + h; row += 1)
 	{
-		for (col = x; col < x + w; col += 1)
-		{
-			/* FIXME: Can we copy via pitch instead, or something? -flibit */
-			SDL_memcpy(
-				dataPtr,
-				(uint8_t*) subresource.pData + (((row * texSize) + col) * formatSize),
-				formatSize
-			);
-			dataPtr += formatSize;
-		}
+		SDL_memcpy(
+			dataPtr,
+			(uint8_t*) subresource.pData + (((row * texSize) + x) * formatSize),
+			formatSize * w
+		);
+		dataPtr += formatSize * w;
 	}
 	ID3D11DeviceContext_Unmap(
 		renderer->context,
