@@ -3303,8 +3303,23 @@ static void D3D11_GetTextureData2D(
 	D3D11Texture *tex = (D3D11Texture*) texture;
 	D3D11_TEXTURE2D_DESC stagingDesc;
 	uint32_t subresourceIndex = CalcSubresource(level, 0, tex->levelCount);
-	D3D11_BOX srcBox = {x, y, 0, x + w, y + h, 1};
+	int32_t texW = tex->twod.width >> level;
+	int32_t texH = tex->twod.height >> level;
+	D3D11_BOX srcBox = {0, 0, 0, texW, texH, 1};
 	D3D11_MAPPED_SUBRESOURCE subresource;
+	uint8_t *dataPtr = (uint8_t*) data;
+	int32_t row, col;
+	int32_t formatSize = Texture_GetFormatSize(format);
+
+	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
+		format == FNA3D_SURFACEFORMAT_DXT3 ||
+		format == FNA3D_SURFACEFORMAT_DXT5	)
+	{
+		FNA3D_LogError(
+			"GetData with compressed textures unsupported!"
+		);
+		return;
+	}
 
 	/* Create staging texture if needed */
 	if (tex->staging == NULL)
@@ -3353,11 +3368,19 @@ static void D3D11_GetTextureData2D(
 		0,
 		&subresource
 	);
-	SDL_memcpy(
-		data,
-		subresource.pData,
-		dataLength
-	);
+	for (row = y; row < y + h; row += 1)
+	{
+		for (col = x; col < x + w; col += 1)
+		{
+			/* FIXME: Can we copy via pitch instead, or something? -flibit */
+			SDL_memcpy(
+				dataPtr,
+				(uint8_t*) subresource.pData + (((row * texW) + col) * formatSize),
+				formatSize
+			);
+			dataPtr += formatSize;
+		}
+	}
 	ID3D11DeviceContext_Unmap(
 		renderer->context,
 		tex->staging,
@@ -3382,69 +3405,10 @@ static void D3D11_GetTextureData3D(
 	int32_t dataLength
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	D3D11Texture *tex = (D3D11Texture*) texture;
-	D3D11_TEXTURE3D_DESC stagingDesc;
-	uint32_t subresourceIndex = CalcSubresource(level, 0, tex->levelCount);
-	D3D11_BOX srcBox = {x, y, z, x + w, y + h, z + d};
-	D3D11_MAPPED_SUBRESOURCE subresource;
 
-	/* Create staging texture if needed */
-	if (tex->staging == NULL)
-	{
-		stagingDesc.Width = tex->threed.width;
-		stagingDesc.Height = tex->threed.height;
-		stagingDesc.Depth = tex->threed.depth;
-		stagingDesc.MipLevels = tex->levelCount;
-		stagingDesc.Format = XNAToD3D_TextureFormat[tex->format];
-		stagingDesc.Usage = D3D11_USAGE_STAGING;
-		stagingDesc.BindFlags = 0;
-		stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-		stagingDesc.MiscFlags = 0;
-
-		ID3D11Device_CreateTexture3D(
-			renderer->device,
-			&stagingDesc,
-			NULL,
-			(ID3D11Texture3D**) &tex->staging
-		);
-	}
-
-	SDL_LockMutex(renderer->ctxLock);
-
-	/* Copy data into staging texture */
-	ID3D11DeviceContext_CopySubresourceRegion(
-		renderer->context,
-		tex->staging,
-		subresourceIndex,
-		0,
-		0,
-		0,
-		tex->handle,
-		subresourceIndex,
-		&srcBox
+	FNA3D_LogError(
+		"GetTextureData3D is unsupported!"
 	);
-
-	/* Read from the staging texture */
-	ID3D11DeviceContext_Map(
-		renderer->context,
-		tex->staging,
-		subresourceIndex,
-		D3D11_MAP_READ,
-		0,
-		&subresource
-	);
-	SDL_memcpy(
-		data,
-		subresource.pData,
-		dataLength
-	);
-	ID3D11DeviceContext_Unmap(
-		renderer->context,
-		tex->staging,
-		subresourceIndex
-	);
-
-	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_GetTextureDataCube(
@@ -3468,8 +3432,22 @@ static void D3D11_GetTextureDataCube(
 		cubeMapFace,
 		tex->levelCount
 	);
-	D3D11_BOX srcBox = {x, y, 0, x + w, y + h, 1};
+	int32_t texSize = tex->cube.size >> level;
+	D3D11_BOX srcBox = {0, 0, 0, texSize, texSize, 1};
 	D3D11_MAPPED_SUBRESOURCE subresource;
+	uint8_t *dataPtr = (uint8_t*) data;
+	int32_t row, col;
+	int32_t formatSize = Texture_GetFormatSize(format);
+
+	if (format == FNA3D_SURFACEFORMAT_DXT1 ||
+		format == FNA3D_SURFACEFORMAT_DXT3 ||
+		format == FNA3D_SURFACEFORMAT_DXT5)
+	{
+		FNA3D_LogError(
+			"GetData with compressed textures unsupported!"
+		);
+		return;
+	}
 
 	/* Create staging texture if needed */
 	if (tex->staging == NULL)
@@ -3518,11 +3496,19 @@ static void D3D11_GetTextureDataCube(
 		0,
 		&subresource
 	);
-	SDL_memcpy(
-		data,
-		subresource.pData,
-		dataLength
-	);
+	for (row = y; row < y + h; row += 1)
+	{
+		for (col = x; col < x + w; col += 1)
+		{
+			/* FIXME: Can we copy via pitch instead, or something? -flibit */
+			SDL_memcpy(
+				dataPtr,
+				(uint8_t*) subresource.pData + (((row * texSize) + col) * formatSize),
+				formatSize
+			);
+			dataPtr += formatSize;
+		}
+	}
 	ID3D11DeviceContext_Unmap(
 		renderer->context,
 		tex->staging,
