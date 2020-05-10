@@ -3792,6 +3792,8 @@ static void D3D11_GetVertexBufferData(
 	D3D11Buffer *d3dBuffer = (D3D11Buffer*) buffer;
 	D3D11_BUFFER_DESC desc;
 	int32_t dataLength = vertexStride * elementCount;
+	uint8_t *src, *dst;
+	int32_t i;
 	D3D11_MAPPED_SUBRESOURCE subres;
 	D3D11_BOX srcBox = {offsetInBytes, 0, 0, offsetInBytes + dataLength, 1, 1};
 
@@ -3836,12 +3838,25 @@ static void D3D11_GetVertexBufferData(
 		0,
 		&subres
 	);
-	/* FIXME: Looped memcpys for elementSizeInBytes < vertexStride! */
-	SDL_memcpy(
-		data,
-		subres.pData,
-		dataLength
-	);
+	if (elementSizeInBytes < vertexStride)
+	{
+		dst = (uint8_t*) data;
+		src = (uint8_t*) subres.pData;
+		for (i = 0; i < elementCount; i += 1)
+		{
+			SDL_memcpy(dst, src, elementSizeInBytes);
+			dst += elementSizeInBytes;
+			src += vertexStride;
+		}
+	}
+	else
+	{
+		SDL_memcpy(
+			data,
+			subres.pData,
+			dataLength
+		);
+	}
 	ID3D11DeviceContext_Unmap(
 		renderer->context,
 		(ID3D11Resource*) d3dBuffer->staging,
