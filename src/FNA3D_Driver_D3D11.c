@@ -1547,7 +1547,6 @@ static void D3D11_DrawInstancedPrimitives(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *d3dIndices = (D3D11Buffer*) indices;
-	int32_t indexOffset = startIndex * IndexSize(indexElementSize);
 
 	SDL_LockMutex(renderer->ctxLock);
 
@@ -3410,8 +3409,6 @@ static void D3D11_GetTextureData3D(
 	void* data,
 	int32_t dataLength
 ) {
-	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-
 	FNA3D_LogError(
 		"GetTextureData3D is unsupported!"
 	);
