@@ -2517,7 +2517,7 @@ static void CreateSwapChain(
 	swapchainDesc.Format = XNAToD3D_TextureFormat[pp->backBufferFormat];
 	swapchainDesc.Stereo = 0;
 	swapchainDesc.SampleDesc.Count = 1;
-	swapchainDesc.SampleDesc.Quality = 0;
+	swapchainDesc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
 	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	swapchainDesc.BufferCount = 3;
 	swapchainDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
@@ -2558,7 +2558,7 @@ static void CreateSwapChain(
 	/* Initialize the swapchain descriptor */
 	swapchainDesc.BufferDesc = swapchainBufferDesc;
 	swapchainDesc.SampleDesc.Count = 1;
-	swapchainDesc.SampleDesc.Quality = 0;
+	swapchainDesc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
 	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	swapchainDesc.BufferCount = 3;
 	swapchainDesc.OutputWindow = (HWND) GetDXGIHandle((SDL_Window*) pp->deviceWindowHandle);
@@ -2621,7 +2621,7 @@ static void CreateFramebuffer(
 	colorBufferDesc.ArraySize = 1;
 	colorBufferDesc.Format = XNAToD3D_TextureFormat[BB->surfaceFormat];
 	colorBufferDesc.SampleDesc.Count = (BB->multiSampleCount > 1 ? BB->multiSampleCount : 1);
-	colorBufferDesc.SampleDesc.Quality = 0; /* FIXME: This should probably be different... */
+	colorBufferDesc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
 	colorBufferDesc.Usage = D3D11_USAGE_DEFAULT;
 	colorBufferDesc.BindFlags = D3D11_BIND_RENDER_TARGET;
 	if (BB->multiSampleCount <= 1)
@@ -2670,7 +2670,7 @@ static void CreateFramebuffer(
 		colorBufferDesc.ArraySize = 1;
 		colorBufferDesc.Format = XNAToD3D_TextureFormat[BB->surfaceFormat];
 		colorBufferDesc.SampleDesc.Count = 1;
-		colorBufferDesc.SampleDesc.Quality = 0; /* FIXME: This should probably be different... */
+		colorBufferDesc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
 		colorBufferDesc.Usage = D3D11_USAGE_DEFAULT;
 		colorBufferDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 		colorBufferDesc.CPUAccessFlags = 0;
@@ -2699,7 +2699,7 @@ static void CreateFramebuffer(
 		depthStencilDesc.ArraySize = 1;
 		depthStencilDesc.Format = XNAToD3D_DepthFormat[BB->depthFormat];
 		depthStencilDesc.SampleDesc.Count = (BB->multiSampleCount > 1 ? BB->multiSampleCount : 1);
-		depthStencilDesc.SampleDesc.Quality = 0; /* FIXME: This should probably be different... */
+		depthStencilDesc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
 		depthStencilDesc.Usage = D3D11_USAGE_DEFAULT;
 		depthStencilDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 		depthStencilDesc.CPUAccessFlags = 0;
@@ -3333,7 +3333,7 @@ static void D3D11_GetTextureData2D(
 		stagingDesc.ArraySize = 1;
 		stagingDesc.Format = XNAToD3D_TextureFormat[tex->format];
 		stagingDesc.SampleDesc.Count = 1;
-		stagingDesc.SampleDesc.Quality = 0;
+		stagingDesc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
 		stagingDesc.Usage = D3D11_USAGE_STAGING;
 		stagingDesc.BindFlags = 0;
 		stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
@@ -3457,7 +3457,7 @@ static void D3D11_GetTextureDataCube(
 		stagingDesc.ArraySize = 1;
 		stagingDesc.Format = XNAToD3D_TextureFormat[tex->format];
 		stagingDesc.SampleDesc.Count = 1;
-		stagingDesc.SampleDesc.Quality = 0;
+		stagingDesc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
 		stagingDesc.Usage = D3D11_USAGE_STAGING;
 		stagingDesc.BindFlags = 0;
 		stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
@@ -3541,7 +3541,7 @@ static FNA3D_Renderbuffer* D3D11_GenColorRenderbuffer(
 	desc.ArraySize = 1;
 	desc.Format = XNAToD3D_TextureFormat[format];
 	desc.SampleDesc.Count = multiSampleCount;
-	desc.SampleDesc.Quality = 0; /* FIXME: What should this be? */
+	desc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
 	desc.Usage = D3D11_USAGE_DEFAULT;
 	desc.BindFlags = D3D11_BIND_RENDER_TARGET;
 	desc.CPUAccessFlags = 0;
@@ -3590,7 +3590,7 @@ static FNA3D_Renderbuffer* D3D11_GenDepthStencilRenderbuffer(
 	desc.ArraySize = 1;
 	desc.Format = XNAToD3D_DepthFormat[format];
 	desc.SampleDesc.Count = (multiSampleCount > 1 ? multiSampleCount : 1);
-	desc.SampleDesc.Quality = 0; /* FIXME: What should this be? */
+	desc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
 	desc.Usage = D3D11_USAGE_DEFAULT;
 	desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 	desc.CPUAccessFlags = 0;
@@ -4612,7 +4612,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 	PFN_CREATE_DXGI_FACTORY CreateDXGIFactoryFunc;
 	D3D_FEATURE_LEVEL levels[] =
 	{
-		D3D_FEATURE_LEVEL_11_1,
+		//D3D_FEATURE_LEVEL_11_1,
 		D3D_FEATURE_LEVEL_11_0,
 		D3D_FEATURE_LEVEL_10_1,
 		D3D_FEATURE_LEVEL_10_0
