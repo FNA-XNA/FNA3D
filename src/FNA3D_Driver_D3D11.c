@@ -2523,7 +2523,7 @@ static void CreateSwapChain(
 	swapchainDesc.Format = XNAToD3D_TextureFormat[pp->backBufferFormat];
 	swapchainDesc.Stereo = 0;
 	swapchainDesc.SampleDesc.Count = 1;
-	swapchainDesc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
+	swapchainDesc.SampleDesc.Quality = 0;
 	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	swapchainDesc.BufferCount = 3;
 	swapchainDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
@@ -2564,7 +2564,7 @@ static void CreateSwapChain(
 	/* Initialize the swapchain descriptor */
 	swapchainDesc.BufferDesc = swapchainBufferDesc;
 	swapchainDesc.SampleDesc.Count = 1;
-	swapchainDesc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
+	swapchainDesc.SampleDesc.Quality = 0;
 	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	swapchainDesc.BufferCount = 3;
 	swapchainDesc.OutputWindow = (HWND) GetDXGIHandle((SDL_Window*) pp->deviceWindowHandle);
@@ -2627,7 +2627,7 @@ static void CreateFramebuffer(
 	colorBufferDesc.ArraySize = 1;
 	colorBufferDesc.Format = XNAToD3D_TextureFormat[BB->surfaceFormat];
 	colorBufferDesc.SampleDesc.Count = (BB->multiSampleCount > 1 ? BB->multiSampleCount : 1);
-	colorBufferDesc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
+	colorBufferDesc.SampleDesc.Quality = 0;
 	colorBufferDesc.Usage = D3D11_USAGE_DEFAULT;
 	colorBufferDesc.BindFlags = D3D11_BIND_RENDER_TARGET;
 	if (BB->multiSampleCount <= 1)
@@ -2676,7 +2676,7 @@ static void CreateFramebuffer(
 		colorBufferDesc.ArraySize = 1;
 		colorBufferDesc.Format = XNAToD3D_TextureFormat[BB->surfaceFormat];
 		colorBufferDesc.SampleDesc.Count = 1;
-		colorBufferDesc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
+		colorBufferDesc.SampleDesc.Quality = 0;
 		colorBufferDesc.Usage = D3D11_USAGE_DEFAULT;
 		colorBufferDesc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 		colorBufferDesc.CPUAccessFlags = 0;
@@ -2705,7 +2705,7 @@ static void CreateFramebuffer(
 		depthStencilDesc.ArraySize = 1;
 		depthStencilDesc.Format = XNAToD3D_DepthFormat[BB->depthFormat];
 		depthStencilDesc.SampleDesc.Count = (BB->multiSampleCount > 1 ? BB->multiSampleCount : 1);
-		depthStencilDesc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
+		depthStencilDesc.SampleDesc.Quality = 0;
 		depthStencilDesc.Usage = D3D11_USAGE_DEFAULT;
 		depthStencilDesc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 		depthStencilDesc.CPUAccessFlags = 0;
@@ -2910,7 +2910,6 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *result;
-	DXGI_SAMPLE_DESC sampleDesc = {1, 0};
 	D3D11_TEXTURE2D_DESC desc;
 	D3D11_RENDER_TARGET_VIEW_DESC rtViewDesc;
 
@@ -2924,7 +2923,8 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 	desc.MipLevels = levelCount;
 	desc.ArraySize = 1;
 	desc.Format = XNAToD3D_TextureFormat[format];
-	desc.SampleDesc = sampleDesc;
+	desc.SampleDesc.Count = 1;
+	desc.SampleDesc.Quality = 0;
 	desc.Usage = D3D11_USAGE_DEFAULT;
 	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 	desc.CPUAccessFlags = 0;
@@ -3038,7 +3038,6 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *result;
-	DXGI_SAMPLE_DESC sampleDesc = {1, 0};
 	D3D11_TEXTURE2D_DESC desc;
 	D3D11_RENDER_TARGET_VIEW_DESC rtViewDesc;
 
@@ -3052,7 +3051,8 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 	desc.MipLevels = levelCount;
 	desc.ArraySize = 6;
 	desc.Format = XNAToD3D_TextureFormat[format];
-	desc.SampleDesc = sampleDesc;
+	desc.SampleDesc.Count = 1;
+	desc.SampleDesc.Quality = 0;
 	desc.Usage = D3D11_USAGE_DEFAULT;
 	desc.BindFlags = D3D11_BIND_SHADER_RESOURCE;
 	desc.CPUAccessFlags = 0;
@@ -3339,7 +3339,7 @@ static void D3D11_GetTextureData2D(
 		stagingDesc.ArraySize = 1;
 		stagingDesc.Format = XNAToD3D_TextureFormat[tex->format];
 		stagingDesc.SampleDesc.Count = 1;
-		stagingDesc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
+		stagingDesc.SampleDesc.Quality = 0;
 		stagingDesc.Usage = D3D11_USAGE_STAGING;
 		stagingDesc.BindFlags = 0;
 		stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
@@ -3461,7 +3461,7 @@ static void D3D11_GetTextureDataCube(
 		stagingDesc.ArraySize = 1;
 		stagingDesc.Format = XNAToD3D_TextureFormat[tex->format];
 		stagingDesc.SampleDesc.Count = 1;
-		stagingDesc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
+		stagingDesc.SampleDesc.Quality = 0;
 		stagingDesc.Usage = D3D11_USAGE_STAGING;
 		stagingDesc.BindFlags = 0;
 		stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
@@ -3594,7 +3594,9 @@ static FNA3D_Renderbuffer* D3D11_GenDepthStencilRenderbuffer(
 	desc.ArraySize = 1;
 	desc.Format = XNAToD3D_DepthFormat[format];
 	desc.SampleDesc.Count = (multiSampleCount > 1 ? multiSampleCount : 1);
-	desc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
+	desc.SampleDesc.Quality = (
+		multiSampleCount > 1 ? D3D11_STANDARD_MULTISAMPLE_PATTERN : 0
+	);
 	desc.Usage = D3D11_USAGE_DEFAULT;
 	desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 	desc.CPUAccessFlags = 0;
