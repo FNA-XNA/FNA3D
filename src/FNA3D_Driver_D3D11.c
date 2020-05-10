@@ -4760,7 +4760,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 	}
 
 	/* Print driver info */
-	FNA3D_LogInfo("FNA3D Driver: D3D11"); /* FIXME: Print more info! */
+	FNA3D_LogInfo("FNA3D Driver: D3D11");
 	FNA3D_LogInfo("D3D11 Adapter: %S", adapterDesc.Description);
 
 	/* Determine DXT/S3TC support */
