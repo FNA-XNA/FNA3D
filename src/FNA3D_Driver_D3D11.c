@@ -329,7 +329,7 @@ static DXGI_FORMAT XNAToD3D_VertexAttribFormat[] =
 	DXGI_FORMAT_R32G32B32_FLOAT,	/* VertexElementFormat.Vector3 */
 	DXGI_FORMAT_R32G32B32A32_FLOAT,	/* VertexElementFormat.Vector4 */
 	DXGI_FORMAT_R8G8B8A8_UNORM,	/* VertexElementFormat.Color */
-	DXGI_FORMAT_R8G8B8A8_UNORM,	/* VertexElementFormat.Byte4 */
+	DXGI_FORMAT_R8G8B8A8_UINT,	/* VertexElementFormat.Byte4 */
 	DXGI_FORMAT_R16G16_SINT,	/* VertexElementFormat.Short2 */
 	DXGI_FORMAT_R16G16B16A16_SINT,	/* VertexElementFormat.Short4 */
 	DXGI_FORMAT_R16G16_SNORM,	/* VertexElementFormat.NormalizedShort2 */
