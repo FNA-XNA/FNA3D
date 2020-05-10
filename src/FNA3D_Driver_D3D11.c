@@ -217,7 +217,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 
 	/* Blend State */
 	ID3D11BlendState *blendState;
-	float blendFactor[4];
+	FNA3D_Color blendFactor;
 	int32_t multiSampleMask;
 
 	/* Depth Stencil State */
@@ -1240,11 +1240,15 @@ static void BlitFramebuffer(D3D11Renderer *renderer, int32_t w, int32_t h)
 	ID3D11DeviceContext_DrawIndexed(renderer->context, 6, 0, 0);
 
 	/* Restore the old state */
+	blendFactor[0] = renderer->blendFactor.r / 255.0f;
+	blendFactor[1] = renderer->blendFactor.g / 255.0f;
+	blendFactor[2] = renderer->blendFactor.b / 255.0f;
+	blendFactor[3] = renderer->blendFactor.a / 255.0f;
 	renderer->viewport.minDepth = -1; /* Force an update */
 	ID3D11DeviceContext_OMSetBlendState(
 		renderer->context,
 		renderer->blendState,
-		renderer->blendFactor,
+		blendFactor,
 		renderer->multiSampleMask
 	);
 	ID3D11DeviceContext_OMSetDepthStencilState(
@@ -1932,21 +1936,15 @@ static void D3D11_GetBlendFactor(
 	FNA3D_Color *blendFactor
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	blendFactor->r = (uint8_t) (renderer->blendFactor[0] * 255);
-	blendFactor->g = (uint8_t) (renderer->blendFactor[1] * 255);
-	blendFactor->b = (uint8_t) (renderer->blendFactor[2] * 255);
-	blendFactor->a = (uint8_t) (renderer->blendFactor[3] * 255);
+	*blendFactor = renderer->blendFactor;
 }
 
-static uint8_t BlendEquals(float *a, FNA3D_Color *b)
+static inline uint8_t BlendEquals(FNA3D_Color *a, FNA3D_Color *b)
 {
-	/* FIXME: Floating point comparisons... */
-	return (
-		a[0] == b->r / 255.0f &&
-		a[1] == b->g / 255.0f &&
-		a[2] == b->b / 255.0f &&
-		a[3] == b->a / 255.0f
-	);
+	return (	a->r == b->r &&
+			a->g == b->g &&
+			a->b == b->b &&
+			a->a == b->a	);
 }
 
 static void D3D11_SetBlendFactor(
@@ -1954,17 +1952,19 @@ static void D3D11_SetBlendFactor(
 	FNA3D_Color *blendFactor
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	if (!BlendEquals(renderer->blendFactor, blendFactor))
+	float factor[4];
+	if (!BlendEquals(&renderer->blendFactor, blendFactor))
 	{
-		renderer->blendFactor[0] = blendFactor->r / 255.0f;
-		renderer->blendFactor[1] = blendFactor->g / 255.0f;
-		renderer->blendFactor[2] = blendFactor->b / 255.0f;
-		renderer->blendFactor[3] = blendFactor->a / 255.0f;
+		factor[0] = blendFactor->r / 255.0f;
+		factor[1] = blendFactor->g / 255.0f;
+		factor[2] = blendFactor->b / 255.0f;
+		factor[3] = blendFactor->a / 255.0f;
+		renderer->blendFactor = *blendFactor;
 		SDL_LockMutex(renderer->ctxLock);
 		ID3D11DeviceContext_OMSetBlendState(
 			renderer->context,
 			renderer->blendState,
-			renderer->blendFactor,
+			factor,
 			renderer->multiSampleMask
 		);
 		SDL_UnlockMutex(renderer->ctxLock);
@@ -1980,14 +1980,19 @@ static int32_t D3D11_GetMultiSampleMask(FNA3D_Renderer *driverData)
 static void D3D11_SetMultiSampleMask(FNA3D_Renderer *driverData, int32_t mask)
 {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	float factor[4];
 	if (renderer->multiSampleMask != mask)
 	{
 		renderer->multiSampleMask = mask;
+		factor[0] = renderer->blendFactor.r / 255.0f;
+		factor[1] = renderer->blendFactor.g / 255.0f;
+		factor[2] = renderer->blendFactor.b / 255.0f;
+		factor[3] = renderer->blendFactor.a / 255.0f;
 		SDL_LockMutex(renderer->ctxLock);
 		ID3D11DeviceContext_OMSetBlendState(
 			renderer->context,
 			renderer->blendState,
-			renderer->blendFactor,
+			factor,
 			renderer->multiSampleMask
 		);
 		SDL_UnlockMutex(renderer->ctxLock);
@@ -2024,22 +2029,24 @@ static void D3D11_SetBlendState(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	ID3D11BlendState *bs = FetchBlendState(renderer, blendState);
+	float factor[4];
 
 	if (	renderer->blendState != bs ||
-		!BlendEquals(renderer->blendFactor, &blendState->blendFactor) ||
+		!BlendEquals(&renderer->blendFactor, &blendState->blendFactor) ||
 		renderer->multiSampleMask != blendState->multiSampleMask	)
 	{
 		renderer->blendState = bs;
-		renderer->blendFactor[0] = blendState->blendFactor.r / 255.0f;
-		renderer->blendFactor[1] = blendState->blendFactor.g / 255.0f;
-		renderer->blendFactor[2] = blendState->blendFactor.b / 255.0f;
-		renderer->blendFactor[3] = blendState->blendFactor.a / 255.0f;
+		factor[0] = blendState->blendFactor.r / 255.0f;
+		factor[1] = blendState->blendFactor.g / 255.0f;
+		factor[2] = blendState->blendFactor.b / 255.0f;
+		factor[3] = blendState->blendFactor.a / 255.0f;
+		renderer->blendFactor = blendState->blendFactor;
 		renderer->multiSampleMask = blendState->multiSampleMask;
 		SDL_LockMutex(renderer->ctxLock);
 		ID3D11DeviceContext_OMSetBlendState(
 			renderer->context,
 			bs,
-			renderer->blendFactor,
+			factor,
 			(uint32_t) renderer->multiSampleMask
 		);
 		SDL_UnlockMutex(renderer->ctxLock);
@@ -4800,10 +4807,10 @@ static FNA3D_Device* D3D11_CreateDevice(
 	}
 
 	/* Initialize renderer members not covered by SDL_memset('\0') */
-	renderer->blendFactor[0] = 1.0f;
-	renderer->blendFactor[1] = 1.0f;
-	renderer->blendFactor[2] = 1.0f;
-	renderer->blendFactor[3] = 1.0f;
+	renderer->blendFactor.r = 0xFF;
+	renderer->blendFactor.g = 0xFF;
+	renderer->blendFactor.b = 0xFF;
+	renderer->blendFactor.a = 0xFF;
 	renderer->multiSampleMask = -1; /* AKA 0xFFFFFFFF, ugh -flibit */
 	renderer->topology = (FNA3D_PrimitiveType) -1; /* Force an update */
 
