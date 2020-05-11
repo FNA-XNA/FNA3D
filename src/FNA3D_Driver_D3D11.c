@@ -4397,6 +4397,7 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 		D3D_FEATURE_LEVEL_10_1,
 		D3D_FEATURE_LEVEL_10_0
 	};
+	HRESULT res;
 
 #ifdef __WINRT__
 	D3D11CreateDeviceFunc = D3D11CreateDevice;
@@ -4415,11 +4416,12 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 #pragma GCC diagnostic pop
 	if (D3D11CreateDeviceFunc == NULL)
 	{
+		SDL_UnloadObject(module);
 		return 0;
 	}
 #endif /* __WINRT__ */
 
-	if (D3D11CreateDeviceFunc(
+	res = D3D11CreateDeviceFunc(
 		NULL,
 		D3D_DRIVER_TYPE_HARDWARE,
 		NULL,
@@ -4430,7 +4432,10 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 		NULL,
 		NULL,
 		NULL
-	) != S_OK) {
+	);
+	SDL_UnloadObject(module);
+	if (res != S_OK)
+	{
 		return 0;
 	}
 
