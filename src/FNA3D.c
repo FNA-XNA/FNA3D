@@ -161,7 +161,6 @@ uint32_t FNA3D_PrepareWindowAttributes(void)
 		{
 			break;
 		}
-		i += 1;
 	}
 	if (drivers[i] == NULL)
 	{
