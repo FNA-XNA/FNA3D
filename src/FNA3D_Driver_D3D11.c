@@ -713,7 +713,7 @@ static ID3D11SamplerState* FetchSamplerState(
 	desc.BorderColor[1] = 1.0f;
 	desc.BorderColor[2] = 1.0f;
 	desc.BorderColor[3] = 1.0f;
-	desc.ComparisonFunc = D3D11_COMPARISON_ALWAYS; /* FIXME: What should this be? */
+	desc.ComparisonFunc = D3D11_COMPARISON_NEVER;
 	desc.Filter = XNAToD3D_Filter[state->filter];
 	desc.MaxAnisotropy = (uint32_t) state->maxAnisotropy;
 	desc.MaxLOD = D3D11_FLOAT32_MAX;
