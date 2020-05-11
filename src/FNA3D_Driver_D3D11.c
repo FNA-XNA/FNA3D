@@ -1034,13 +1034,16 @@ static ID3D11InputLayout* FetchDeclarationInputLayout(
 
 /* Quit */
 
+static void DestroyFramebuffer(D3D11Renderer *renderer);
 static void D3D11_DestroyDevice(FNA3D_Device *device)
 {
 	D3D11Renderer* renderer = (D3D11Renderer*) device->driverData;
 
-	/* TODO: Destroy faux backbuffer resources */
+	DestroyFramebuffer(renderer);
 
 	MOJOSHADER_d3d11DestroyContext();
+
+	/* FIXME: Destroy swapchain */
 
 	SDL_DestroyMutex(renderer->ctxLock);
 	SDL_free(renderer);
