@@ -484,7 +484,6 @@ static SEL selSetViewport;
 static SEL selSetVisibilityResultBuffer;
 static SEL selSetVisibilityResultMode;
 static SEL selSetWriteMask;
-static SEL selSetWriteMask;
 static SEL selStencilAttachment;
 static SEL selSupportsFamily;
 static SEL selSupportsFeatureSet;
@@ -647,44 +646,50 @@ static inline void InitObjC()
 	selWidth				= sel_registerName("width");
 }
 
-/* objc_msgSend Function Cast Macros */
-#define msg_v		((void (*)(void*, SEL)) objc_msgSend)
-#define msg_v_color	((void (*)(void*, SEL, MTLClearColor)) objc_msgSend)
-#define msg_v_scissor	((void (*)(void*, SEL, MTLScissorRect)) objc_msgSend)
-#define msg_v_viewport	((void (*)(void*, SEL, MTLViewport)) objc_msgSend)
+/* Function Casts for objc_msgSend */
+#define msg_b		((uint8_t (*)(void*, SEL)) objc_msgSend)
+#define msg_bi		((uint8_t (*)(void*, SEL, int32_t)) objc_msgSend)
+#define msg_b_osversion	((uint8_t (*)(void*, SEL, NSOperatingSystemVersion)) objc_msgSend)
+#define msg_bp		((uint8_t (*)(void*, SEL, void*)) objc_msgSend)
+#define msg_bU		((uint8_t (*)(void*, SEL, uint64_t)) objc_msgSend)
 #define msg_cgsize	((CGSize (*)(void*, SEL)) objc_msgSend)
+#define msg_i		((int32_t (*)(void*, SEL)) objc_msgSend)
+#define msg_ii		((int32_t (*)(void*, SEL, int32_t)) objc_msgSend)
+#define msg_p		((void* (*)(void*, SEL)) objc_msgSend)
+#define msg_pp		((void* (*)(void*, SEL, void*)) objc_msgSend)
+#define msg_ppp 	((void* (*)(void*, SEL, void*, void*)) objc_msgSend)
+#define msg_pppp	((void* (*)(void*, SEL, void*, void*, void*)) objc_msgSend)
+#define msg_piUb	((void* (*)(void*, SEL, int32_t, uint64_t, uint8_t)) objc_msgSend)
+#define msg_piUUb	((void* (*)(void*, SEL, int32_t, uint64_t, uint64_t, uint8_t)) objc_msgSend)
+#define msg_pU		((void* (*)(void*, SEL, uint64_t)) objc_msgSend)
+#define msg_pUi 	((void* (*)(void*, SEL, uint64_t, int32_t)) objc_msgSend)
+#define msg_ps		((void* (*)(void*, SEL, const char*)) objc_msgSend)
+#define msg_U		((uint64_t (*)(void*, SEL)) objc_msgSend)
+#define msg_v		((void (*)(void*, SEL)) objc_msgSend)
+#define msg_vb		((void (*)(void*, SEL, uint8_t)) objc_msgSend)
+#define msg_v_color	((void (*)(void*, SEL, MTLClearColor)) objc_msgSend)
 #define msg_vd		((void (*)(void*, SEL, double)) objc_msgSend)
 #define msg_vf		((void (*)(void*, SEL, float)) objc_msgSend)
 #define msg_vfff	((void (*)(void*, SEL, float, float, float)) objc_msgSend)
 #define msg_vffff	((void (*)(void*, SEL, float, float, float, float)) objc_msgSend)
 #define msg_vi		((void (*)(void*, SEL, int32_t)) objc_msgSend)
-#define msg_vii		((void (*)(void*, SEL, int32_t, int32_t)) objc_msgSend)
-#define msg_viii	((void (*)(void*, SEL, int32_t, int32_t, int32_t)) objc_msgSend)
-#define msg_viiipii	((void (*)(void*, SEL, int32_t, int32_t, int32_t, void*, int32_t, int32_t)) objc_msgSend)
+#define msg_viU 	((void (*)(void*, SEL, int32_t, uint64_t)) objc_msgSend)
+#define msg_viUipUU	((void (*)(void*, SEL, int32_t, uint64_t, int32_t, void*, uint64_t, uint64_t)) objc_msgSend)
+#define msg_viUU	((void (*)(void*, SEL, int32_t, uint64_t, uint64_t)) objc_msgSend)
 #define msg_vp		((void (*)(void*, SEL, void*)) objc_msgSend)
-#define msg_vpi 	((void (*)(void*, SEL, void*, int32_t)) objc_msgSend)
-#define msg_vpii	((void (*)(void*, SEL, void*, int32_t, int32_t)) objc_msgSend)
+#define msg_vpU 	((void (*)(void*, SEL, void*, uint64_t)) objc_msgSend)
+#define msg_vpUU	((void (*)(void*, SEL, void*, uint64_t, uint64_t)) objc_msgSend)
+#define msg_vpUU_origin_size_pUU_origin \
+	((void (*)(void*, SEL, void*, uint64_t, uint64_t, MTLOrigin, MTLSize, void*, uint64_t, uint64_t, MTLOrigin)) objc_msgSend)
+#define msg_vpUU_region_UU \
+	((void (*)(void*, SEL, void*, uint64_t, uint64_t, MTLRegion, uint64_t, uint64_t)) objc_msgSend)
+#define msg_v_region_UUpUU \
+	((void (*)(void*, SEL, MTLRegion, uint64_t, uint64_t, void*, uint64_t, uint64_t)) objc_msgSend)
+#define msg_v_scissor	((void (*)(void*, SEL, MTLScissorRect)) objc_msgSend)
 #define msg_vu		((void (*)(void*, SEL, uint32_t)) objc_msgSend)
-#define msg_p		((void* (*)(void*, SEL)) objc_msgSend)
-#define msg_pp		((void* (*)(void*, SEL, void*)) objc_msgSend)
-#define msg_ppp		((void* (*)(void*, SEL, void*, void*)) objc_msgSend)
-#define msg_pppp	((void* (*)(void*, SEL, void*, void*, void*)) objc_msgSend)
-#define msg_pi		((void* (*)(void*, SEL, int32_t)) objc_msgSend)
-#define msg_piii	((void* (*)(void*, SEL, int32_t, int32_t, int32_t)) objc_msgSend)
-#define msg_piiii	((void* (*)(void*, SEL, int32_t, int32_t, int32_t, int32_t)) objc_msgSend)
-#define msg_ps		((void* (*)(void*, SEL, const char*)) objc_msgSend)
-#define msg_pu		((void* (*)(void*, SEL, uint32_t)) objc_msgSend)
-#define msg_pui		((void* (*)(void*, SEL, uint32_t, int32_t)) objc_msgSend)
-#define msg_i		((int32_t (*)(void*, SEL)) objc_msgSend)
-#define msg_i_osversion	((int32_t (*)(void*, SEL, NSOperatingSystemVersion)) objc_msgSend)
-#define msg_ii		((int32_t (*)(void*, SEL, int32_t)) objc_msgSend)
-#define msg_ip		((int32_t (*)(void*, SEL, void*)) objc_msgSend)
-#define msg_v_region_iipii \
-	((void (*)(void*, SEL, MTLRegion, int32_t, int32_t, void*, int32_t, int32_t)) objc_msgSend)
-#define msg_vpii_region_ii \
-	((void (*)(void*, SEL, void*, int32_t, int32_t, MTLRegion, int32_t, int32_t)) objc_msgSend)
-#define msg_vpii_origin_size_pii_origin	\
-	((void (*)(void*, SEL, void*, int32_t, int32_t, MTLOrigin, MTLSize, void*, int32_t, int32_t, MTLOrigin)) objc_msgSend)
+#define msg_vU		((void (*)(void*, SEL, uint64_t)) objc_msgSend)
+#define msg_vUU 	((void (*)(void*, SEL, uint64_t, uint64_t)) objc_msgSend)
+#define msg_v_viewport	((void (*)(void*, SEL, MTLViewport)) objc_msgSend)
 
 /* NSString <-> UTF8 */
 
@@ -721,7 +726,7 @@ static inline const char* GetNSErrorDescription(NSError *error)
 
 static inline uint8_t RespondsToSelector(void* obj, SEL selector)
 {
-	return msg_ip(obj, selRespondsToSelector, selector);
+	return msg_bp(obj, selRespondsToSelector, selector);
 }
 
 /* iOS / tvOS GPU Check */
@@ -742,12 +747,12 @@ static inline uint8_t HasModernAppleGPU(MTLDevice *device)
 	}
 
 	/* Fall back to checking FeatureSets... */
-	iosCompat = msg_ii(
+	iosCompat = msg_bi(
 		device,
 		selSupportsFeatureSet,
 		4 /* iOS_GPUFamily3_v1 */
 	);
-	tvosCompat = msg_ii(
+	tvosCompat = msg_bi(
 		device,
 		selSupportsFeatureSet,
 		30003 /* tvOS_GPUFamily2_v1 */
@@ -763,7 +768,7 @@ static inline uint8_t OperatingSystemAtLeast(
 	int64_t patch
 ) {
 	NSOperatingSystemVersion version = {major, minor, patch};
-	return msg_i_osversion(
+	return msg_b_osversion(
 		msg_p(
 			classNSProcessInfo,
 			selProcessInfo
@@ -785,9 +790,9 @@ static inline const char* mtlGetDeviceName(MTLDevice *device)
 
 static inline uint8_t mtlDeviceSupportsSampleCount(
 	MTLDevice *device,
-	int32_t count
+	uint64_t count
 ) {
-	return msg_ii(
+	return msg_bU(
 		device,
 		selSupportsTextureSampleCount,
 		count
@@ -796,7 +801,7 @@ static inline uint8_t mtlDeviceSupportsSampleCount(
 
 static inline uint8_t mtlDeviceSupportsDepth24Stencil8(MTLDevice *device)
 {
-	return msg_i(device, selIsD24S8Supported);
+	return msg_b(device, selIsD24S8Supported);
 }
 
 static inline MTLCommandQueue* mtlNewCommandQueue(MTLDevice *device)
@@ -811,10 +816,10 @@ static inline MTLCommandQueue* mtlNewCommandQueue(MTLDevice *device)
 
 static inline MTLBuffer* mtlNewBuffer(
 	MTLDevice *device,
-	uint32_t length,
+	uint64_t length,
 	MTLResourceOptions options
 ) {
-	return (MTLBuffer*) msg_pui(
+	return (MTLBuffer*) msg_pUi(
 		device,
 		selNewBufferWithLength,
 		length,
@@ -962,9 +967,9 @@ static inline void* mtlGetBufferContents(MTLBuffer *buffer)
 /* If desc is MTLRenderPassDescriptor*, return MTLRenderPassColorAttachmentDescriptor*
  * If desc is MTLRenderPipelineDescriptor*, return MTLRenderPipelineColorAttachmentDescriptor*
  */
-static inline void* mtlGetColorAttachment(void* desc, uint32_t index)
+static inline void* mtlGetColorAttachment(void* desc, uint64_t index)
 {
-	return msg_pu(
+	return msg_pU(
 		msg_p(
 			desc,
 			selColorAttachments
@@ -1019,9 +1024,9 @@ static inline void mtlSetAttachmentTexture(
 /* attachment can be Color, Depth, or Stencil! */
 static inline void mtlSetAttachmentSlice(
 	void* attachment,
-	int32_t slice
+	uint64_t slice
 ) {
-	msg_vi(attachment, selSetSlice, slice);
+	msg_vU(attachment, selSetSlice, slice);
 }
 
 /* attachment can be Color, Depth, or Stencil! */
@@ -1043,9 +1048,9 @@ static inline void mtlSetAttachmentResolveTexture(
 /* attachment can be Color, Depth, or Stencil! */
 static inline void mtlSetAttachmentResolveSlice(
 	void* attachment,
-	int32_t resolveSlice
+	uint64_t resolveSlice
 ) {
-	msg_vi(attachment, selSetResolveSlice, resolveSlice);
+	msg_vU(attachment, selSetResolveSlice, resolveSlice);
 }
 
 static inline void mtlSetAttachmentClearColor(
@@ -1061,23 +1066,23 @@ static inline void mtlSetAttachmentClearColor(
 
 static inline void mtlSetAttachmentClearDepth(
 	MTLRenderPassDepthAttachmentDescriptor *attachment,
-	float clearDepth
+	double clearDepth
 ) {
 	msg_vd(attachment, selSetClearDepth, clearDepth);
 }
 
 static inline void mtlSetAttachmentClearStencil(
 	MTLRenderPassStencilAttachmentDescriptor *attachment,
-	int32_t clearStencil
+	uint32_t clearStencil
 ) {
-	msg_vi(attachment, selSetClearStencil, clearStencil);
+	msg_vu(attachment, selSetClearStencil, clearStencil);
 }
 
 static inline void mtlSetAttachmentBlendingEnabled(
 	MTLRenderPipelineColorAttachmentDescriptor *attachment,
 	uint8_t enabled
 ) {
-	msg_vi(attachment, selSetBlendingEnabled, enabled);
+	msg_vb(attachment, selSetBlendingEnabled, enabled);
 }
 
 static inline void mtlSetAttachmentAlphaBlendOperation(
@@ -1124,7 +1129,7 @@ static inline void mtlSetAttachmentSourceRGBBlendFactor(
 
 static inline void mtlSetAttachmentWriteMask(
 	MTLRenderPipelineColorAttachmentDescriptor *attachment,
-	int32_t mask
+	int32_t mask /* MTLColorWriteMask */
 ) {
 	msg_vi(attachment, selSetWriteMask, mask);
 }
@@ -1153,9 +1158,9 @@ static inline void mtlSetVisibilityResultBuffer(
 static inline void mtlSetVisibilityResultMode(
 	MTLRenderCommandEncoder *renderCommandEncoder,
 	MTLVisibilityResultMode mode,
-	int32_t offset
+	uint64_t offset
 ) {
-	msg_vii(
+	msg_viU(
 		renderCommandEncoder,
 		selSetVisibilityResultMode,
 		mode,
@@ -1193,10 +1198,10 @@ static inline void mtlSetStencilReferenceValue(
 
 static inline void mtlSetViewport(
 	MTLRenderCommandEncoder *renderCommandEncoder,
-	int32_t x,
-	int32_t y,
-	int32_t w,
-	int32_t h,
+	double x,
+	double y,
+	double w,
+	double h,
 	double minDepth,
 	double maxDepth
 ) {
@@ -1210,10 +1215,10 @@ static inline void mtlSetViewport(
 
 static inline void mtlSetScissorRect(
 	MTLRenderCommandEncoder *renderCommandEncoder,
-	int32_t x,
-	int32_t y,
-	int32_t w,
-	int32_t h
+	uint64_t x,
+	uint64_t y,
+	uint64_t w,
+	uint64_t h
 ) {
 	MTLScissorRect rect = {x, y, w, h};
 	msg_v_scissor(
@@ -1296,10 +1301,10 @@ static inline void mtlSetRenderPipelineState(
 static inline void mtlSetVertexBuffer(
 	MTLRenderCommandEncoder *renderCommandEncoder,
 	MTLBuffer *vertexBuffer,
-	int32_t offset,
-	int32_t index
+	uint64_t offset,
+	uint64_t index
 ) {
-	msg_vpii(
+	msg_vpUU(
 		renderCommandEncoder,
 		selSetVertexBuffer,
 		vertexBuffer,
@@ -1310,10 +1315,10 @@ static inline void mtlSetVertexBuffer(
 
 static inline void mtlSetVertexBufferOffset(
 	MTLRenderCommandEncoder *renderCommandEncoder,
-	int32_t offset,
-	int32_t index
+	uint64_t offset,
+	uint64_t index
 ) {
-	msg_vii(
+	msg_vUU(
 		renderCommandEncoder,
 		selSetVertexBufferOffset,
 		offset,
@@ -1324,9 +1329,9 @@ static inline void mtlSetVertexBufferOffset(
 static inline void mtlSetVertexSamplerState(
 	MTLRenderCommandEncoder *renderCommandEncoder,
 	MTLSamplerState *samplerState,
-	int32_t index
+	uint64_t index
 ) {
-	msg_vpi(
+	msg_vpU(
 		renderCommandEncoder,
 		selSetVertexSamplerState,
 		samplerState,
@@ -1337,9 +1342,9 @@ static inline void mtlSetVertexSamplerState(
 static inline void mtlSetVertexTexture(
 	MTLRenderCommandEncoder *renderCommandEncoder,
 	MTLTexture *vertexTexture,
-	int32_t index
+	uint64_t index
 ) {
-	msg_vpi(
+	msg_vpU(
 		renderCommandEncoder,
 		selSetVertexTexture,
 		vertexTexture,
@@ -1350,10 +1355,10 @@ static inline void mtlSetVertexTexture(
 static inline void mtlSetFragmentBuffer(
 	MTLRenderCommandEncoder *renderCommandEncoder,
 	MTLBuffer *fragmentBuffer,
-	int32_t offset,
-	int32_t index
+	uint64_t offset,
+	uint64_t index
 ) {
-	msg_vpii(
+	msg_vpUU(
 		renderCommandEncoder,
 		selSetFragmentBuffer,
 		fragmentBuffer,
@@ -1364,10 +1369,10 @@ static inline void mtlSetFragmentBuffer(
 
 static inline void mtlSetFragmentBufferOffset(
 	MTLRenderCommandEncoder *renderCommandEncoder,
-	int32_t offset,
-	int32_t index
+	uint64_t offset,
+	uint64_t index
 ) {
-	msg_vii(
+	msg_vUU(
 		renderCommandEncoder,
 		selSetFragmentBufferOffset,
 		offset,
@@ -1378,9 +1383,9 @@ static inline void mtlSetFragmentBufferOffset(
 static inline void mtlSetFragmentSamplerState(
 	MTLRenderCommandEncoder *renderCommandEncoder,
 	MTLSamplerState *samplerState,
-	int32_t index
+	uint64_t index
 ) {
-	msg_vpi(
+	msg_vpU(
 		renderCommandEncoder,
 		selSetFragmentSamplerState,
 		samplerState,
@@ -1391,9 +1396,9 @@ static inline void mtlSetFragmentSamplerState(
 static inline void mtlSetFragmentTexture(
 	MTLRenderCommandEncoder *renderCommandEncoder,
 	MTLTexture *fragmentTexture,
-	int32_t index
+	uint64_t index
 ) {
-	msg_vpi(
+	msg_vpU(
 		renderCommandEncoder,
 		selSetFragmentTexture,
 		fragmentTexture,
@@ -1410,13 +1415,13 @@ static inline void mtlEndEncoding(void* commandEncoder)
 static inline void mtlDrawIndexedPrimitives(
 	MTLRenderCommandEncoder *renderCommandEncoder,
 	MTLPrimitiveType primitiveType,
-	int32_t indexCount,
+	uint64_t indexCount,
 	MTLIndexType indexType,
 	MTLBuffer *indexBuffer,
-	int32_t indexBufferOffset,
-	int32_t instanceCount
+	uint64_t indexBufferOffset,
+	uint64_t instanceCount
 ) {
-	msg_viiipii(
+	msg_viUipUU(
 		renderCommandEncoder,
 		selDrawIndexedPrimitives,
 		primitiveType,
@@ -1431,10 +1436,10 @@ static inline void mtlDrawIndexedPrimitives(
 static inline void mtlDrawPrimitives(
 	MTLRenderCommandEncoder *renderCommandEncoder,
 	MTLPrimitiveType primitive,
-	int32_t vertexStart,
-	int32_t vertexCount
+	uint64_t vertexStart,
+	uint64_t vertexCount
 ) {
-	msg_viii(
+	msg_viUU(
 		renderCommandEncoder,
 		selDrawPrimitives,
 		primitive,
@@ -1454,11 +1459,7 @@ static inline void mtlSetLayerDevice(
 	CAMetalLayer *layer,
 	MTLDevice *device
 ) {
-	msg_vp(
-		layer,
-		selSetDevice,
-		device
-	);
+	msg_vp(layer, selSetDevice, device);
 }
 
 static inline MTLDrawable* mtlNextDrawable(CAMetalLayer *layer)
@@ -1480,14 +1481,14 @@ static inline void mtlSetDisplaySyncEnabled(
 	CAMetalLayer *layer,
 	uint8_t enabled
 ) {
-	msg_vi(layer, selDisplaySyncEnabled, enabled);
+	msg_vb(layer, selDisplaySyncEnabled, enabled);
 }
 
 static inline void mtlSetLayerFramebufferOnly(
 	CAMetalLayer *layer,
 	uint8_t framebufferOnly
 ) {
-	msg_vi(layer, selSetFramebufferOnly, framebufferOnly);
+	msg_vb(layer, selSetFramebufferOnly, framebufferOnly);
 }
 
 static inline void mtlSetLayerMagnificationFilter(
@@ -1506,11 +1507,11 @@ static inline MTLTexture* mtlGetTextureFromDrawable(MTLDrawable *drawable)
 
 static inline MTLTextureDescriptor* mtlMakeTexture2DDescriptor(
 	MTLPixelFormat format,
-	int32_t width,
-	int32_t height,
+	uint64_t width,
+	uint64_t height,
 	uint8_t mipmapped
 ) {
-	return (MTLTextureDescriptor*) msg_piiii(
+	return (MTLTextureDescriptor*) msg_piUUb(
 		classMTLTextureDescriptor,
 		selTexture2DDescriptor,
 		format,
@@ -1522,10 +1523,10 @@ static inline MTLTextureDescriptor* mtlMakeTexture2DDescriptor(
 
 static inline MTLTextureDescriptor* mtlMakeTextureCubeDescriptor(
 	MTLPixelFormat format,
-	int32_t size,
+	uint64_t size,
 	uint8_t mipmapped
 ) {
-	return (MTLTextureDescriptor*) msg_piii(
+	return (MTLTextureDescriptor*) msg_piUb(
 		classMTLTextureDescriptor,
 		selTextureCubeDescriptor,
 		format,
@@ -1550,16 +1551,16 @@ static inline void mtlSetTextureType(
 
 static inline void mtlSetTextureSampleCount(
 	MTLTextureDescriptor *texDesc,
-	int32_t sampleCount
+	uint64_t sampleCount
 ) {
-	msg_vi(texDesc, selSetSampleCount, sampleCount);
+	msg_vU(texDesc, selSetSampleCount, sampleCount);
 }
 
 static inline void mtlSetTextureDepth(
 	MTLTextureDescriptor *texDesc,
-	int32_t depth
+	uint64_t depth
 ) {
-	msg_vi(texDesc, selSetDepth, depth);
+	msg_vU(texDesc, selSetDepth, depth);
 }
 
 /* Texture Functions */
@@ -1567,13 +1568,13 @@ static inline void mtlSetTextureDepth(
 static inline void mtlReplaceRegion(
 	MTLTexture *texture,
 	MTLRegion region,
-	int32_t level,
-	int32_t slice,
+	uint64_t level,
+	uint64_t slice,
 	void* pixelBytes,
-	int32_t bytesPerRow,
-	int32_t bytesPerImage
+	uint64_t bytesPerRow,
+	uint64_t bytesPerImage
 ) {
-	msg_v_region_iipii(
+	msg_v_region_UUpUU(
 		texture,
 		selReplaceRegion,
 		region,
@@ -1588,13 +1589,13 @@ static inline void mtlReplaceRegion(
 static inline void mtlGetTextureBytes(
 	MTLTexture *texture,
 	void* pixelBytes,
-	int32_t bytesPerRow,
-	int32_t bytesPerImage,
+	uint64_t bytesPerRow,
+	uint64_t bytesPerImage,
 	MTLRegion region,
-	int32_t level,
-	int32_t slice
+	uint64_t level,
+	uint64_t slice
 ) {
-	msg_vpii_region_ii(
+	msg_vpUU_region_UU(
 		texture,
 		selGetBytes,
 		pixelBytes,
@@ -1606,14 +1607,14 @@ static inline void mtlGetTextureBytes(
 	);
 }
 
-static inline int32_t mtlGetTextureWidth(MTLTexture *texture)
+static inline uint64_t mtlGetTextureWidth(MTLTexture *texture)
 {
-	return msg_i(texture, selWidth);
+	return msg_U(texture, selWidth);
 }
 
-static inline int32_t mtlGetTextureHeight(MTLTexture *texture)
+static inline uint64_t mtlGetTextureHeight(MTLTexture *texture)
 {
-	return msg_i(texture, selHeight);
+	return msg_U(texture, selHeight);
 }
 
 /* resource can be an MTLTexture* or MTLBuffer* */
@@ -1633,16 +1634,16 @@ static inline MTLPurgeableState mtlSetPurgeableState(
 static inline void mtlBlitTextureToTexture(
 	MTLBlitCommandEncoder *blitCommandEncoder,
 	MTLTexture *srcTexture,
-	int32_t srcSlice,
-	int32_t srcLevel,
+	uint64_t srcSlice,
+	uint64_t srcLevel,
 	MTLOrigin origin,
 	MTLSize size,
 	MTLTexture *dstTexture,
-	int32_t dstSlice,
-	int32_t dstLevel,
+	uint64_t dstSlice,
+	uint64_t dstLevel,
 	MTLOrigin dstOrigin
 ) {
-	msg_vpii_origin_size_pii_origin(
+	msg_vpUU_origin_size_pUU_origin(
 		blitCommandEncoder,
 		selCopyFromTexture,
 		srcTexture,
@@ -1723,9 +1724,9 @@ static inline void mtlSetStencilAttachmentPixelFormat(
 
 static inline void mtlSetPipelineSampleCount(
 	MTLRenderPipelineDescriptor *pipelineDesc,
-	int32_t sampleCount
+	uint64_t sampleCount
 ) {
-	msg_vi(pipelineDesc, selSetSampleCount, sampleCount);
+	msg_vU(pipelineDesc, selSetSampleCount, sampleCount);
 }
 
 /* Sampler Descriptor Functions */
@@ -1768,9 +1769,9 @@ static inline void mtlSetSamplerLodMinClamp(
 
 static inline void mtlSetSamplerMaxAnisotropy(
 	MTLSamplerDescriptor *samplerDesc,
-	int32_t maxAnisotropy
+	uint64_t maxAnisotropy
 ) {
-	msg_vi(samplerDesc, selSetMaxAnisotropy, maxAnisotropy);
+	msg_vU(samplerDesc, selSetMaxAnisotropy, maxAnisotropy);
 }
 
 static inline void mtlSetSampler_rAddressMode(
@@ -1806,9 +1807,9 @@ static inline MTLVertexDescriptor* mtlMakeVertexDescriptor()
 
 static inline MTLVertexAttributeDescriptor* mtlGetVertexAttributeDescriptor(
 	MTLVertexDescriptor *vertexDesc,
-	int32_t index
+	uint64_t index
 ) {
-	return (MTLVertexAttributeDescriptor*) msg_pi(
+	return (MTLVertexAttributeDescriptor*) msg_pU(
 		msg_p(
 			vertexDesc,
 			selAttributes
@@ -1827,23 +1828,23 @@ static inline void mtlSetVertexAttributeFormat(
 
 static inline void mtlSetVertexAttributeOffset(
 	MTLVertexAttributeDescriptor* vertexAttribute,
-	int32_t offset
+	uint64_t offset
 ) {
-	msg_vi(vertexAttribute, selSetOffset, offset);
+	msg_vU(vertexAttribute, selSetOffset, offset);
 }
 
 static inline void mtlSetVertexAttributeBufferIndex(
 	MTLVertexAttributeDescriptor* vertexAttribute,
-	int32_t bufferIndex
+	uint64_t bufferIndex
 ) {
-	msg_vi(vertexAttribute, selSetBufferIndex, bufferIndex);
+	msg_vU(vertexAttribute, selSetBufferIndex, bufferIndex);
 }
 
 static inline MTLVertexBufferLayoutDescriptor* mtlGetVertexBufferLayoutDescriptor(
 	MTLVertexDescriptor *vertexDesc,
-	int32_t index
+	uint64_t index
 ) {
-	return (MTLVertexBufferLayoutDescriptor*) msg_pi(
+	return (MTLVertexBufferLayoutDescriptor*) msg_pU(
 		msg_p(
 			vertexDesc,
 			selLayouts
@@ -1855,9 +1856,9 @@ static inline MTLVertexBufferLayoutDescriptor* mtlGetVertexBufferLayoutDescripto
 
 static inline void mtlSetVertexBufferLayoutStride(
 	MTLVertexBufferLayoutDescriptor *vertexBufferLayout,
-	int32_t stride
+	uint64_t stride
 ) {
-	msg_vi(vertexBufferLayout, selSetStride, stride);
+	msg_vU(vertexBufferLayout, selSetStride, stride);
 }
 
 static inline void mtlSetVertexBufferLayoutStepFunction(
@@ -1869,9 +1870,9 @@ static inline void mtlSetVertexBufferLayoutStepFunction(
 
 static inline void mtlSetVertexBufferLayoutStepRate(
 	MTLVertexBufferLayoutDescriptor *vertexBufferLayout,
-	int32_t stepRate
+	uint64_t stepRate
 ) {
-	msg_vi(vertexBufferLayout, selSetStepRate, stepRate);
+	msg_vU(vertexBufferLayout, selSetStepRate, stepRate);
 }
 
 /* Library Functions */
@@ -1938,7 +1939,7 @@ static inline void mtlSetDepthWriteEnabled(
 	MTLDepthStencilDescriptor *depthStencilDesc,
 	uint8_t enabled
 ) {
-	msg_vi(depthStencilDesc, selSetDepthWriteEnabled, enabled);
+	msg_vb(depthStencilDesc, selSetDepthWriteEnabled, enabled);
 }
 
 static inline void mtlSetBackFaceStencil(
