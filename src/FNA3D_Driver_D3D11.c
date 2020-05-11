@@ -1161,7 +1161,6 @@ static void BlitFramebuffer(D3D11Renderer *renderer, int32_t w, int32_t h)
 		NULL,
 		&whatever
 	);
-	/* FIXME: Need to call Release on the returned resources */
 
 	/* Bind the swapchain render target */
 	ID3D11DeviceContext_OMSetRenderTargets(
@@ -1285,6 +1284,14 @@ static void BlitFramebuffer(D3D11Renderer *renderer, int32_t w, int32_t h)
 		NULL,
 		0
 	);
+	if (oldVertexShader != NULL)
+	{
+		ID3D11VertexShader_Release(oldVertexShader);
+	}
+	if (oldPixelShader != NULL)
+	{
+		ID3D11PixelShader_Release(oldPixelShader);
+	}
 	ID3D11DeviceContext_IASetVertexBuffers(
 		renderer->context,
 		0,
