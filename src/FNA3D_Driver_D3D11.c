@@ -196,6 +196,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	/* The Faux-Backbuffer */
 	D3D11Backbuffer *backbuffer;
 	uint8_t backbufferSizeChanged;
+	FNA3D_Rect prevSrcRect;
 	FNA3D_Rect prevDestRect;
 	ID3D11VertexShader *fauxBlitVS;
 	ID3D11PixelShader *fauxBlitPS;
@@ -1058,45 +1059,53 @@ static void UpdateBackbufferVertexBuffer(
 	D3D11Renderer *renderer,
 	FNA3D_Rect *srcRect,
 	FNA3D_Rect *dstRect,
+	int32_t sourceWidth,
+	int32_t sourceHeight,
 	int32_t drawableWidth,
 	int32_t drawableHeight
 ) {
-	float sx, sy, sw, sh;
+	float sx0, sy0, sx1, sy1;
+	float dx, dy, dw, dh;
 	float data[16];
 	D3D11_MAPPED_SUBRESOURCE mappedBuffer;
 
 	/* Cache the new info */
 	renderer->backbufferSizeChanged = 0;
+	renderer->prevSrcRect = *srcRect;
 	renderer->prevDestRect = *dstRect;
 
-	/* FIXME: srcRect as texture coordinates? */
+	/* Scale the texture coordinates to (0, 1) */
+	sx0 = srcRect->x / (float) sourceWidth;
+	sy0 = srcRect->y / (float) sourceHeight;
+	sx1 = (srcRect->x + srcRect->w) / (float) sourceWidth;
+	sy1 = (srcRect->y + srcRect->h) / (float) sourceHeight;
 
-	/* Scale the coordinates to (-1, 1) */
-	sx = -1 + (dstRect->x / (float) drawableWidth);
-	sy = -1 + (dstRect->y / (float) drawableHeight);
-	sw = (dstRect->w / (float) drawableWidth) * 2;
-	sh = (dstRect->h / (float) drawableHeight) * 2;
+	/* Scale the position coordinates to (-1, 1) */
+	dx = -1 + (dstRect->x / (float) drawableWidth);
+	dy = -1 + (dstRect->y / (float) drawableHeight);
+	dw = (dstRect->w / (float) drawableWidth) * 2;
+	dh = (dstRect->h / (float) drawableHeight) * 2;
 
 	/* Stuff the data into an array */
-	data[0] = sx;
-	data[1] = sy;
-	data[2] = 0;
-	data[3] = 0;
+	data[0] = dx;
+	data[1] = dy;
+	data[2] = sx0;
+	data[3] = sy0;
 
-	data[4] = sx + sw;
-	data[5] = sy;
-	data[6] = 1;
-	data[7] = 0;
+	data[4] = dx + dw;
+	data[5] = dy;
+	data[6] = sx1;
+	data[7] = sy0;
 
-	data[8] = sx + sw;
-	data[9] = sy + sh;
-	data[10] = 1;
-	data[11] = 1;
+	data[8] = dx + dw;
+	data[9] = dy + dh;
+	data[10] = sx1;
+	data[11] = sy1;
 
-	data[12] = sx;
-	data[13] = sy + sh;
-	data[14] = 0;
-	data[15] = 1;
+	data[12] = dx;
+	data[13] = dy + dh;
+	data[14] = sx0;
+	data[15] = sy1;
 
 	/* Copy the data into the buffer */
 	mappedBuffer.pData = NULL;
@@ -1362,6 +1371,10 @@ static void D3D11_SwapBuffers(
 
 	/* Update the cached vertex buffer, if needed */
 	if (	renderer->backbufferSizeChanged ||
+		renderer->prevSrcRect.x != srcRect.x ||
+		renderer->prevSrcRect.y != srcRect.y ||
+		renderer->prevSrcRect.w != srcRect.w ||
+		renderer->prevSrcRect.h != srcRect.h ||
 		renderer->prevDestRect.x != dstRect.x ||
 		renderer->prevDestRect.y != dstRect.y ||
 		renderer->prevDestRect.w != dstRect.w ||
@@ -1371,6 +1384,8 @@ static void D3D11_SwapBuffers(
 			renderer,
 			&srcRect,
 			&dstRect,
+			renderer->backbuffer->width,
+			renderer->backbuffer->height,
 			drawableWidth,
 			drawableHeight
 		);
