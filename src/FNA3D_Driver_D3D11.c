@@ -4434,7 +4434,7 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 		NULL
 	);
 	SDL_UnloadObject(module);
-	if (res != S_OK)
+	if (res < 0)
 	{
 		return 0;
 	}
