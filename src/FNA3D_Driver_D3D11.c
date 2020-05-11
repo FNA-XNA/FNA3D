@@ -4388,15 +4388,51 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 	*flags = SDL_WINDOW_VULKAN;
 	return 1;
 #else
-	const char *osVersion = SDL_GetPlatform();
-	if (	(strcmp(osVersion, "Windows") != 0) &&
-		(strcmp(osVersion, "WinRT") != 0)	)
+	void* module;
+	PFN_D3D11_CREATE_DEVICE D3D11CreateDeviceFunc;
+	D3D_FEATURE_LEVEL levels[] =
 	{
-		/* Windows / Xbox is required for DirectX! */
+		D3D_FEATURE_LEVEL_11_1,
+		D3D_FEATURE_LEVEL_11_0,
+		D3D_FEATURE_LEVEL_10_1,
+		D3D_FEATURE_LEVEL_10_0
+	};
+
+#ifdef __WINRT__
+	D3D11CreateDeviceFunc = D3D11CreateDevice;
+#else
+	module = SDL_LoadObject(D3D11_DLL);
+	if (module == NULL)
+	{
 		return 0;
 	}
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+	D3D11CreateDeviceFunc = (PFN_D3D11_CREATE_DEVICE) SDL_LoadFunction(
+		module,
+		"D3D11CreateDevice"
+	);
+#pragma GCC diagnostic pop
+	if (D3D11CreateDeviceFunc == NULL)
+	{
+		return 0;
+	}
+#endif /* __WINRT__ */
 
-	/* FIXME: Check for DirectX 11 support! */
+	if (D3D11CreateDeviceFunc(
+		NULL,
+		D3D_DRIVER_TYPE_HARDWARE,
+		NULL,
+		D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+		levels,
+		SDL_arraysize(levels),
+		D3D11_SDK_VERSION,
+		NULL,
+		NULL,
+		NULL
+	) != S_OK) {
+		return 0;
+	}
 
 	/* No window flags required */
 	SDL_SetHint(SDL_HINT_VIDEO_EXTERNAL_CONTEXT, "1");
