@@ -4413,7 +4413,7 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 	*flags = SDL_WINDOW_VULKAN;
 	return 1;
 #else
-	void* module;
+	void* module = NULL;
 	PFN_D3D11_CREATE_DEVICE D3D11CreateDeviceFunc;
 	D3D_FEATURE_LEVEL levels[] =
 	{
