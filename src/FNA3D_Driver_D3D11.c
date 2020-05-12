@@ -3406,7 +3406,7 @@ static void D3D11_GetTextureData2D(
 	{
 		SDL_memcpy(
 			dataPtr,
-			(uint8_t*) subresource.pData + (row * subresouce.RowPitch) + (x * formatSize),
+			(uint8_t*) subresource.pData + (row * subresource.RowPitch) + (x * formatSize),
 			formatSize * w
 		);
 		dataPtr += formatSize * w;
@@ -3528,7 +3528,7 @@ static void D3D11_GetTextureDataCube(
 	{
 		SDL_memcpy(
 			dataPtr,
-			(uint8_t*) subresource.pData + (row * subresouce.RowPitch) + (x * formatSize),
+			(uint8_t*) subresource.pData + (row * subresource.RowPitch) + (x * formatSize),
 			formatSize * w
 		);
 		dataPtr += formatSize * w;
