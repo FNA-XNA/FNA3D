@@ -5372,7 +5372,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	result->driverData = (FNA3D_Renderer*) renderer;
 
 	/* Debug context support */
-	if (debugMode)
+	if (debugMode && SDL_strcmp("Emscripten", SDL_GetPlatform()) != 0)
 	{
 		SDL_GL_SetAttribute(
 			SDL_GL_CONTEXT_FLAGS,
