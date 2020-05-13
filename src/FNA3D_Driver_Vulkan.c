@@ -101,6 +101,7 @@ typedef struct PipelineHash
 	StateHash blendState;
 	StateHash rasterizerState;
 	StateHash depthStencilState;
+	uint64_t vertexBufferBindingsHash;
 	FNA3D_PrimitiveType primitiveType;
 	VkSampleMask sampleMask;
 	/* pipelines have to be compatible with a render pass */
@@ -233,6 +234,7 @@ typedef struct FNAVulkanRenderer
 	VkRenderPass renderPass;
 	VkFramebuffer framebuffer;
 	PipelineHash currentPipelineHash;
+	uint64_t currentVertexBufferBindingHash;
 	VkCommandBuffer *commandBuffers;
 	uint32_t commandBufferCapacity;
 	uint32_t commandBufferCount;
@@ -274,6 +276,12 @@ typedef struct FNAVulkanRenderer
 	VulkanBuffer *userVertexBuffer;
 	VulkanBuffer *userIndexBuffer;
 	int32_t userVertexStride;
+
+	/* Some vertex declarations may have overlapping attributes :/ */
+	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
+
+	uint32_t numVertexBindings;
+	FNA3D_VertexBufferBinding *vertexBindings;
 
 	/* counts equal to swap chain count */
 	VkBuffer **ldVertUniformBuffers; /* FIXME: init these !! */
@@ -368,7 +376,6 @@ static void BeginRenderPass(
 	FNAVulkanRenderer *renderer
 );
 
-/* FIXME: fold this into BindResources? */
 static void BindPipeline(
 	FNAVulkanRenderer *renderer
 );
@@ -387,6 +394,12 @@ static void BindUserVertexBuffer(
 static void CheckPrimitiveTypeAndBindPipeline(
 	FNAVulkanRenderer *renderer,
 	FNA3D_PrimitiveType primitiveType
+);
+
+static void CheckVertexBufferBindingsAndBindPipeline(
+	FNAVulkanRenderer *renderer,
+	FNA3D_VertexBufferBinding *bindings,
+	int32_t numBindings
 );
 
 static void CreateBackingBuffer(
@@ -863,6 +876,22 @@ static VkStencilOp XNAToVK_StencilOp[] =
 	VK_STENCIL_OP_INVERT				/* FNA3D_STENCILOPERATION_INVERT */
 };
 
+static VkFormat XNAToVK_VertexAttribType[] =
+{
+	VK_FORMAT_R32_SFLOAT,				/* FNA3D_VERTEXELEMENTFORMAT_SINGLE */
+	VK_FORMAT_R32G32_SFLOAT,			/* FNA3D_VERTEXELEMENTFORMAT_VECTOR2 */
+	VK_FORMAT_R32G32B32_SFLOAT,			/* FNA3D_VERTEXELEMENTFORMAT_VECTOR3 */
+	VK_FORMAT_R32G32B32A32_SFLOAT, 		/* FNA3D_VERTEXELEMENTFORMAT_VECTOR4 */
+	VK_FORMAT_R8G8B8A8_UNORM,			/* FNA3D_VERTEXELEMENTFORMAT_COLOR */
+	VK_FORMAT_R8G8B8A8_UINT,			/* FNA3D_VERTEXELEMENTFORMAT_BYTE4 */
+	VK_FORMAT_R16G16_SINT, 				/* FNA3D_VERTEXELEMENTFORMAT_SHORT2 */
+	VK_FORMAT_R16G16B16A16_SINT,		/* FNA3D_VERTEXELEMENTFORMAT_SHORT4 */
+	VK_FORMAT_R16G16_SNORM,				/* FNA3D_VERTEXELEMENTFORMAT_NORMALIZEDSHORT2 */
+	VK_FORMAT_R16G16B16A16_SNORM,		/* FNA3D_VERTEXELEMENTFORMAT_NORMALIZEDSHORT4 */
+	VK_FORMAT_R16G16_SFLOAT,			/* FNA3D_VERTEXELEMENTFORMAT_HALFVECTOR2 */
+	VK_FORMAT_R16G16B16A16_SFLOAT		/* FNA3D_VERTEXELEMENTFORMAT_HALFVECTOR4 */
+};
+
 static float ColorConvert(uint8_t colorValue)
 {
 	return colorValue / 255.0f;
@@ -1239,15 +1268,44 @@ static void CheckPrimitiveTypeAndBindPipeline(
 	FNA3D_PrimitiveType primitiveType
 )
 {
+	/* topology is fixed in the pipeline so we need to
+	 * bind a new pipeline if it changes
+	 */
 	if (	!renderer->pipelineBoundThisFrame ||
 			primitiveType != renderer->currentPrimitiveType	)
 	{
 		renderer->currentPrimitiveType = primitiveType;
-
-		/* topology is fixed in the pipeline so we need to
-		 * fetch a new pipeline if it changes -cosmonaut
-		 */
 		BindPipeline(renderer);
+	}
+}
+
+static void CheckVertexBufferBindingsAndBindPipeline(
+	FNAVulkanRenderer *renderer,
+	FNA3D_VertexBufferBinding *bindings,
+	int32_t numBindings
+) {
+	MOJOSHADER_vkShader *vertexShader, *blah;
+	uint64_t hash;
+
+	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
+
+	hash = GetVertexBufferBindingsHash(
+		bindings,
+		numBindings,
+		vertexShader
+	);
+	
+	renderer->vertexBindings = bindings;
+	renderer->numVertexBindings = numBindings;
+
+	/* vertex buffer bindings are fixed in the pipeline
+	 * so we need to bind a new pipeline if it changes
+	 */
+	if (	!renderer->pipelineBoundThisFrame ||
+			hash != renderer->currentVertexBufferBindingHash	)
+	{
+		renderer->currentVertexBufferBindingHash = hash;
+		BindPipeline(renderer);	
 	}
 }
 
@@ -2140,6 +2198,87 @@ static VkPipeline FetchPipeline(
 	inputAssemblyInfo.topology = XNAToVK_Topology[renderer->currentPrimitiveType];
 	inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
 
+	MOJOSHADER_vkShader *vertexShader, *blah;
+	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
+
+	VkVertexInputBindingDescription bindingDescriptions[renderer->numVertexBindings];
+	VkVertexInputAttributeDescription attributeDescriptions[renderer->numVertexBindings * MAX_VERTEX_ATTRIBUTES];
+	uint32_t attributeDescriptionCount = 0;
+
+	for (uint32_t i = 0; i < renderer->numVertexBindings; i++)
+	{
+		FNA3D_VertexDeclaration vertexDeclaration = renderer->vertexBindings[i].vertexDeclaration;
+
+		for (uint32_t j = 0; j < vertexDeclaration.elementCount; j++)
+		{
+			FNA3D_VertexElement element = vertexDeclaration.elements[j];
+			FNA3D_VertexElementUsage usage = element.vertexElementUsage;
+			int32_t index = element.usageIndex;
+
+			if (renderer->attrUse[usage][index])
+			{
+				index = -1;
+
+				for (uint32_t k = 0; k < MAX_VERTEX_ATTRIBUTES; k++)
+				{
+					if (!renderer->attrUse[usage][k])
+					{
+						index = k;
+						break;
+					}
+				}
+
+				if (index < 0)
+				{
+					FNA3D_LogError(
+						"Vertex usage collision!"
+					);
+				}
+			}
+
+			renderer->attrUse[usage][index] = 1;
+
+			int32_t attribLoc = MOJOSHADER_vkGetVertexAttribLocation(
+				vertexShader,
+				VertexAttribUsage(usage),
+				index
+			);
+			
+			if (attribLoc == -1)
+			{
+				/* Stream not in use! */
+				continue;
+			}
+
+			VkVertexInputAttributeDescription vInputAttribDescription;
+			vInputAttribDescription.location = attribLoc;
+			vInputAttribDescription.format = XNAToVK_VertexAttribType[
+				element.vertexElementFormat
+			];
+			vInputAttribDescription.offset = element.offset;
+			vInputAttribDescription.binding = i;
+
+			attributeDescriptions[attributeDescriptionCount] = vInputAttribDescription;
+			attributeDescriptionCount++;
+		}
+
+		VkVertexInputBindingDescription vertexInputBindingDescription;
+		vertexInputBindingDescription.binding = i;
+		vertexInputBindingDescription.stride = vertexDeclaration.vertexStride;
+		vertexInputBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
+
+		bindingDescriptions[i] = vertexInputBindingDescription;
+	}
+
+	VkPipelineVertexInputStateCreateInfo vertexInputInfo = {
+		VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
+	};
+
+	vertexInputInfo.vertexBindingDescriptionCount = renderer->numVertexBindings;
+	vertexInputInfo.vertexAttributeDescriptionCount = attributeDescriptionCount;
+	vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions;
+	vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions;
+
 	VkPipelineRasterizationStateCreateInfo rasterizerInfo = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
 	rasterizerInfo.depthClampEnable = VK_FALSE;
 	rasterizerInfo.rasterizerDiscardEnable = VK_FALSE;
@@ -2254,6 +2393,7 @@ static VkPipeline FetchPipeline(
 	VkGraphicsPipelineCreateInfo pipelineCreateInfo = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
 	pipelineCreateInfo.stageCount = 0;
 	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyInfo;
+	pipelineCreateInfo.pVertexInputState = &vertexInputInfo;
 	pipelineCreateInfo.pViewportState = &viewportStateInfo;
 	pipelineCreateInfo.pRasterizationState = &rasterizerInfo;
 	pipelineCreateInfo.pMultisampleState = &multisamplingInfo;
@@ -2532,6 +2672,7 @@ static PipelineHash GetPipelineHash(
 	hash.blendState = GetBlendStateHash(renderer->blendState);
 	hash.rasterizerState = GetRasterizerStateHash(renderer->rasterizerState);
 	hash.depthStencilState = GetDepthStencilStateHash(renderer->depthStencilState);
+	hash.vertexBufferBindingsHash = renderer->currentVertexBufferBindingHash;
 	hash.primitiveType = renderer->currentPrimitiveType;
 	hash.renderPass = renderer->renderPass;
 	hash.sampleMask = renderer->multiSampleMask[0];
@@ -3531,7 +3672,53 @@ void VULKAN_ApplyVertexBufferBindings(
 	uint8_t bindingsUpdated,
 	int32_t baseVertex
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+
+	CheckVertexBufferBindingsAndBindPipeline(
+		renderer,
+		bindings,
+		numBindings
+	);
+
+	UpdateRenderPass(driverData);
+	BindResources(renderer);
+
+	VulkanBuffer *vertexBuffer;
+	int32_t offset;
+
+	VkBuffer updatedVertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
+	VkDeviceSize updatedOffsets[MAX_BOUND_VERTEX_BUFFERS];
+	uint32_t updatedVertexBufferCount = 0;
+
+	for (uint32_t i = 0; i < numBindings; i++)
+	{
+		vertexBuffer = (VulkanBuffer*) bindings[i].vertexBuffer;
+		if (vertexBuffer == NULL)
+		{
+			continue;
+		}
+
+		offset = vertexBuffer->internalOffset + (
+			(bindings[i].vertexOffset + baseVertex) *
+			bindings[i].vertexDeclaration.vertexStride
+		);
+
+		vertexBuffer->boundThisFrame = 1;
+		if (	renderer->ldVertexBuffers[i] != vertexBuffer->handle ||
+				renderer->ldVertexBufferOffsets[i] != offset	)
+		{
+			updatedVertexBuffers[updatedVertexBufferCount] = *vertexBuffer->handle;
+			updatedOffsets[updatedVertexBufferCount] = offset;
+		}
+	}
+
+	renderer->vkCmdBindVertexBuffers(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		0,
+		updatedVertexBufferCount,
+		updatedVertexBuffers,
+		updatedOffsets
+	);
 }
 
 void VULKAN_ApplyVertexDeclaration(
