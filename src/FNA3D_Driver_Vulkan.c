@@ -102,6 +102,7 @@ typedef struct PipelineHash
 	StateHash rasterizerState;
 	StateHash depthStencilState;
 	uint64_t vertexBufferBindingsHash;
+	uint64_t vertexDeclarationHash;
 	FNA3D_PrimitiveType primitiveType;
 	VkSampleMask sampleMask;
 	/* pipelines have to be compatible with a render pass */
@@ -197,7 +198,8 @@ struct VulkanDepthStencilBuffer
 
 struct VulkanBuffer
 {
-	VkBuffer *handle;
+	VkBuffer handle;
+	VkDeviceMemory deviceMemory;
 	void* contents;
 	VkDeviceSize size;
 	VkDeviceSize internalOffset;
@@ -276,6 +278,9 @@ typedef struct FNAVulkanRenderer
 	VulkanBuffer *userVertexBuffer;
 	VulkanBuffer *userIndexBuffer;
 	int32_t userVertexStride;
+	uint8_t userVertexBufferInUse;
+	FNA3D_VertexDeclaration userVertexDeclaration;
+	uint64_t currentUserVertexDeclarationHash;
 
 	/* Some vertex declarations may have overlapping attributes :/ */
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
@@ -402,6 +407,11 @@ static void CheckVertexBufferBindingsAndBindPipeline(
 	int32_t numBindings
 );
 
+static void CheckVertexDeclarationAndBindPipeline(
+	FNAVulkanRenderer *renderer,
+	FNA3D_VertexDeclaration *vertexDeclaration
+);
+
 static void CreateBackingBuffer(
 	FNAVulkanRenderer *renderer,
 	VulkanBuffer *buffer,
@@ -482,6 +492,14 @@ static uint8_t FindMemoryType(
 	uint32_t typeFilter,
 	VkMemoryPropertyFlags properties,
 	uint32_t *result
+);
+
+static VkPipelineVertexInputStateCreateInfo GenerateUserVertexInputInfo(
+	FNAVulkanRenderer *renderer
+);
+
+static VkPipelineVertexInputStateCreateInfo GenerateVertexInputInfo(
+	FNAVulkanRenderer *renderer
 );
 
 static void InternalClear(
@@ -1245,8 +1263,7 @@ static void BindUserVertexBuffer(
 	);
 
 	offset = renderer->userVertexBuffer->internalOffset;
-	handle = renderer->userVertexBuffer->handle;
-	VkBuffer buffers[1] = { *handle };
+	handle = &renderer->userVertexBuffer->handle;
 
 	if (	renderer->ldVertexBuffers[0] != handle ||
 			renderer->ldVertexBufferOffsets[0] != offset	)
@@ -1255,7 +1272,7 @@ static void BindUserVertexBuffer(
 			renderer->commandBuffers[renderer->commandBufferCount - 1],
 			0,
 			1,
-			buffers, /* this is wrong type */
+			handle,
 			&offset
 		);
 		renderer->ldVertexBuffers[0] = handle;
@@ -1294,17 +1311,50 @@ static void CheckVertexBufferBindingsAndBindPipeline(
 		numBindings,
 		vertexShader
 	);
-	
-	renderer->vertexBindings = bindings;
-	renderer->numVertexBindings = numBindings;
 
 	/* vertex buffer bindings are fixed in the pipeline
 	 * so we need to bind a new pipeline if it changes
 	 */
 	if (	!renderer->pipelineBoundThisFrame ||
+			renderer->userVertexBufferInUse ||
+			renderer->vertexBindings != bindings ||
+			renderer->numVertexBindings != numBindings ||
 			hash != renderer->currentVertexBufferBindingHash	)
 	{
+		renderer->vertexBindings = bindings;
+		renderer->numVertexBindings = numBindings;
+		renderer->userVertexBufferInUse = 0;
 		renderer->currentVertexBufferBindingHash = hash;
+		renderer->currentUserVertexDeclarationHash = 0;
+		BindPipeline(renderer);	
+	}
+}
+
+static void CheckVertexDeclarationAndBindPipeline(
+	FNAVulkanRenderer *renderer,
+	FNA3D_VertexDeclaration *vertexDeclaration
+) {
+	MOJOSHADER_vkShader *vertexShader, *blah;
+	uint64_t hash;
+
+	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
+
+	hash = GetVertexDeclarationHash(
+		*vertexDeclaration,
+		vertexShader
+	);
+
+	/* vertex buffer bindings are fixed in the pipeline
+	 * so we need to bind a new pipeline if it changes
+	 */
+	if (	!renderer->pipelineBoundThisFrame ||
+			renderer->userVertexBufferInUse ||
+			hash != renderer->currentUserVertexDeclarationHash	)
+	{
+		renderer->userVertexBufferInUse = 0;
+		renderer->currentUserVertexDeclarationHash = hash;
+		renderer->currentVertexBufferBindingHash = 0;
+		renderer->userVertexDeclaration = *vertexDeclaration;
 		BindPipeline(renderer);	
 	}
 }
@@ -1315,8 +1365,8 @@ static void CreateBackingBuffer(
 	VkDeviceSize previousSize,
 	VkBufferUsageFlags usageFlags
 ) {
-	VkBuffer *oldBuffer = buffer->handle;
-	VkBuffer *oldContents = buffer->contents;
+	VkBuffer *oldBuffer = &buffer->handle;
+	void *oldContents = buffer->contents;
 
 	VkBufferCreateInfo buffer_create_info = {
 		VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO
@@ -1328,20 +1378,71 @@ static void CreateBackingBuffer(
 	buffer_create_info.queueFamilyIndexCount = 1;
 	buffer_create_info.pQueueFamilyIndices = &renderer->queueFamilyIndices.graphicsFamily;
 
-	buffer->handle = SDL_malloc(sizeof(VkBuffer));
-	if (!buffer->handle)
-	{
-		SDL_OutOfMemory();
-		return;
-	}
-
 	renderer->vkCreateBuffer(
 		renderer->logicalDevice,
 		&buffer_create_info,
 		NULL,
-		buffer->handle
+		&buffer->handle
 	);
 	buffer->contents = SDL_malloc(sizeof(buffer->internalBufferSize));
+
+	VkMemoryRequirements memoryRequirements;
+	renderer->vkGetBufferMemoryRequirements(
+		renderer->logicalDevice,
+		buffer->handle,
+		&memoryRequirements
+	);
+
+	VkMemoryAllocateInfo allocInfo = {
+		VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO
+	};
+
+	allocInfo.allocationSize = memoryRequirements.size;
+
+	if (
+		!FindMemoryType(
+			renderer,
+			memoryRequirements.memoryTypeBits,
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+			&allocInfo.memoryTypeIndex
+		)
+	) {
+		FNA3D_LogError("Failed to allocate vertex buffer memory!");
+		return;
+	}
+
+	VkResult vulkanResult = renderer->vkAllocateMemory(
+		renderer->logicalDevice,
+		&allocInfo,
+		NULL,
+		&buffer->deviceMemory
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkAllocateMemory", vulkanResult);
+	}
+
+	vulkanResult = renderer->vkBindBufferMemory(
+		renderer->logicalDevice,
+		buffer->handle,
+		buffer->deviceMemory,
+		0
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkBindBufferMemory", vulkanResult);
+	}
+
+	renderer->vkMapMemory(
+		renderer->logicalDevice,
+		buffer->deviceMemory,
+		0,
+		buffer_create_info.size,
+		0,
+		buffer->contents
+	);
 
 	if (oldBuffer != NULL)
 	{
@@ -1359,6 +1460,11 @@ static void CreateBackingBuffer(
 
 		SDL_free(oldBuffer);
 	}
+
+	renderer->vkUnmapMemory(
+		renderer->logicalDevice,
+		buffer->deviceMemory
+	);
 }
 
 static VulkanBuffer* CreateBuffer(
@@ -1431,6 +1537,15 @@ static void SetBufferData(
 		}
 	}
 
+	renderer->vkMapMemory(
+		renderer->logicalDevice,
+		vulkanBuffer->deviceMemory,
+		vulkanBuffer->internalOffset,
+		vulkanBuffer->internalBufferSize,
+		0,
+		vulkanBuffer->contents
+	);
+
 	/* Copy previous contents if necessary */
 	contentsPtr = (uint8_t*) vulkanBuffer->contents;
 	if (	dataLength < vulkanBuffer->size &&
@@ -1448,6 +1563,11 @@ static void SetBufferData(
 		contentsPtr + vulkanBuffer->internalOffset + offsetInBytes,
 		data,
 		dataLength
+	);
+
+	renderer->vkUnmapMemory(
+		renderer->logicalDevice,
+		vulkanBuffer->deviceMemory
 	);
 
 	vulkanBuffer->prevInternalOffset = vulkanBuffer->internalOffset;
@@ -1475,10 +1595,24 @@ static void SetUserBufferData(
 		CreateBackingBuffer(renderer, buffer, previousSize, usageFlagBits);
 	}
 
+	renderer->vkMapMemory(
+		renderer->logicalDevice,
+		buffer->deviceMemory,
+		buffer->internalOffset,
+		buffer->internalBufferSize,
+		0,
+		&buffer->contents
+	);
+
 	SDL_memcpy(
 		(uint8_t*) buffer->contents + buffer->internalOffset,
 		(uint8_t*) data + offsetInBytes,
 		dataLength
+	);
+
+	renderer->vkUnmapMemory(
+		renderer->logicalDevice,
+		buffer->deviceMemory
 	);
 
 	buffer->prevDataLength = dataLength;
@@ -2198,86 +2332,15 @@ static VkPipeline FetchPipeline(
 	inputAssemblyInfo.topology = XNAToVK_Topology[renderer->currentPrimitiveType];
 	inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
 
-	MOJOSHADER_vkShader *vertexShader, *blah;
-	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
-
-	VkVertexInputBindingDescription bindingDescriptions[renderer->numVertexBindings];
-	VkVertexInputAttributeDescription attributeDescriptions[renderer->numVertexBindings * MAX_VERTEX_ATTRIBUTES];
-	uint32_t attributeDescriptionCount = 0;
-
-	for (uint32_t i = 0; i < renderer->numVertexBindings; i++)
+	VkPipelineVertexInputStateCreateInfo vertexInputInfo;
+	if (renderer->userVertexBufferInUse)
 	{
-		FNA3D_VertexDeclaration vertexDeclaration = renderer->vertexBindings[i].vertexDeclaration;
-
-		for (uint32_t j = 0; j < vertexDeclaration.elementCount; j++)
-		{
-			FNA3D_VertexElement element = vertexDeclaration.elements[j];
-			FNA3D_VertexElementUsage usage = element.vertexElementUsage;
-			int32_t index = element.usageIndex;
-
-			if (renderer->attrUse[usage][index])
-			{
-				index = -1;
-
-				for (uint32_t k = 0; k < MAX_VERTEX_ATTRIBUTES; k++)
-				{
-					if (!renderer->attrUse[usage][k])
-					{
-						index = k;
-						break;
-					}
-				}
-
-				if (index < 0)
-				{
-					FNA3D_LogError(
-						"Vertex usage collision!"
-					);
-				}
-			}
-
-			renderer->attrUse[usage][index] = 1;
-
-			int32_t attribLoc = MOJOSHADER_vkGetVertexAttribLocation(
-				vertexShader,
-				VertexAttribUsage(usage),
-				index
-			);
-			
-			if (attribLoc == -1)
-			{
-				/* Stream not in use! */
-				continue;
-			}
-
-			VkVertexInputAttributeDescription vInputAttribDescription;
-			vInputAttribDescription.location = attribLoc;
-			vInputAttribDescription.format = XNAToVK_VertexAttribType[
-				element.vertexElementFormat
-			];
-			vInputAttribDescription.offset = element.offset;
-			vInputAttribDescription.binding = i;
-
-			attributeDescriptions[attributeDescriptionCount] = vInputAttribDescription;
-			attributeDescriptionCount++;
-		}
-
-		VkVertexInputBindingDescription vertexInputBindingDescription;
-		vertexInputBindingDescription.binding = i;
-		vertexInputBindingDescription.stride = vertexDeclaration.vertexStride;
-		vertexInputBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
-
-		bindingDescriptions[i] = vertexInputBindingDescription;
+		vertexInputInfo = GenerateUserVertexInputInfo(renderer);
 	}
-
-	VkPipelineVertexInputStateCreateInfo vertexInputInfo = {
-		VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
-	};
-
-	vertexInputInfo.vertexBindingDescriptionCount = renderer->numVertexBindings;
-	vertexInputInfo.vertexAttributeDescriptionCount = attributeDescriptionCount;
-	vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions;
-	vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions;
+	else
+	{
+		vertexInputInfo = GenerateVertexInputInfo(renderer);
+	}
 
 	VkPipelineRasterizationStateCreateInfo rasterizerInfo = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
 	rasterizerInfo.depthClampEnable = VK_FALSE;
@@ -2672,6 +2735,7 @@ static PipelineHash GetPipelineHash(
 	hash.blendState = GetBlendStateHash(renderer->blendState);
 	hash.rasterizerState = GetRasterizerStateHash(renderer->rasterizerState);
 	hash.depthStencilState = GetDepthStencilStateHash(renderer->depthStencilState);
+	hash.vertexDeclarationHash = renderer->currentUserVertexDeclarationHash;
 	hash.vertexBufferBindingsHash = renderer->currentVertexBufferBindingHash;
 	hash.primitiveType = renderer->currentPrimitiveType;
 	hash.renderPass = renderer->renderPass;
@@ -3196,7 +3260,7 @@ void VULKAN_DrawInstancedPrimitives(
 
 	renderer->vkCmdBindIndexBuffer(
 		renderer->commandBuffers[renderer->commandBufferCount - 1],
-		*indexBuffer->handle,
+		indexBuffer->handle,
 		totalIndexOffset,
 		XNAToVK_IndexType[indexElementSize]
 	);
@@ -3307,7 +3371,7 @@ void VULKAN_DrawUserIndexedPrimitives(
 
 	renderer->vkCmdBindIndexBuffer(
 		renderer->commandBuffers[renderer->commandBufferCount - 1],
-		*renderer->userIndexBuffer->handle,
+		renderer->userIndexBuffer->handle,
 		renderer->userIndexBuffer->internalOffset,
 		XNAToVK_IndexType[indexElementSize]
 	);
@@ -3704,10 +3768,10 @@ void VULKAN_ApplyVertexBufferBindings(
 		);
 
 		vertexBuffer->boundThisFrame = 1;
-		if (	renderer->ldVertexBuffers[i] != vertexBuffer->handle ||
+		if (	renderer->ldVertexBuffers[i] != &vertexBuffer->handle ||
 				renderer->ldVertexBufferOffsets[i] != offset	)
 		{
-			updatedVertexBuffers[updatedVertexBufferCount] = *vertexBuffer->handle;
+			updatedVertexBuffers[updatedVertexBufferCount] = vertexBuffer->handle;
 			updatedOffsets[updatedVertexBufferCount] = offset;
 		}
 	}
@@ -3727,7 +3791,18 @@ void VULKAN_ApplyVertexDeclaration(
 	void* ptr,
 	int32_t vertexOffset
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+
+	CheckVertexDeclarationAndBindPipeline(
+		renderer,
+		vertexDeclaration
+	);
+	renderer->userVertexStride = vertexDeclaration->vertexStride;
+
+	UpdateRenderPass(driverData);
+	BindResources(renderer);
+
+	/* the rest happens in DrawUser[Indexed]Primitives */
 }
 
 /* Render Targets */
@@ -3783,13 +3858,14 @@ static void DestroyBuffer(
 		prev
 	);
 
+	/* TODO: destroy memory */
+
 	renderer->vkDestroyBuffer(
 		renderer->logicalDevice,
-		*vulkanBuffer->handle,
+		vulkanBuffer->handle,
 		NULL
 	);
 
-	vulkanBuffer->handle = NULL;
 	SDL_free(vulkanBuffer);
 }
 
@@ -5204,6 +5280,172 @@ static uint8_t FindMemoryType(
 	);
 
 	return 0;
+}
+
+static VkPipelineVertexInputStateCreateInfo GenerateUserVertexInputInfo(
+	FNAVulkanRenderer *renderer
+) {
+	MOJOSHADER_vkShader *vertexShader, *blah;
+	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
+
+	VkVertexInputBindingDescription bindingDescription;
+	bindingDescription.binding = 0;
+	bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	bindingDescription.stride = renderer->userVertexDeclaration.vertexStride;
+
+	VkVertexInputAttributeDescription attributeDescriptions[renderer->numVertexBindings * MAX_VERTEX_ATTRIBUTES];
+	uint32_t attributeDescriptionCount = 0;
+
+	for (uint32_t i = 0; i < renderer->userVertexDeclaration.elementCount; i++)
+	{
+		FNA3D_VertexElement element = renderer->userVertexDeclaration.elements[i];
+		FNA3D_VertexElementUsage usage = element.vertexElementUsage;
+		int32_t index = element.usageIndex;
+
+		if (renderer->attrUse[usage][index])
+		{
+			index = -1;
+
+			for (uint32_t j = 0; j < MAX_VERTEX_ATTRIBUTES; j++)
+			{
+				if (!renderer->attrUse[usage][j])
+				{
+					index = j;
+					break;
+				}
+			}
+
+			if (index < 0)
+			{
+				FNA3D_LogError(
+					"Vertex usage collision!"
+				);
+			}
+		}
+
+		renderer->attrUse[usage][index] = 1;
+
+		int32_t attribLoc = MOJOSHADER_vkGetVertexAttribLocation(
+			vertexShader,
+			VertexAttribUsage(usage),
+			index
+		);
+		
+		if (attribLoc == -1)
+		{
+			/* Stream not in use! */
+			continue;
+		}
+
+		VkVertexInputAttributeDescription vInputAttribDescription;
+		vInputAttribDescription.location = attribLoc;
+		vInputAttribDescription.format = XNAToVK_VertexAttribType[
+			element.vertexElementFormat
+		];
+		vInputAttribDescription.offset = element.offset;
+		vInputAttribDescription.binding = 0;
+
+		attributeDescriptions[attributeDescriptionCount] = vInputAttribDescription;
+		attributeDescriptionCount++;
+	}
+
+	VkPipelineVertexInputStateCreateInfo vertexInputInfo = {
+		VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
+	};
+
+	vertexInputInfo.vertexBindingDescriptionCount = 1;
+	vertexInputInfo.vertexAttributeDescriptionCount = attributeDescriptionCount;
+	vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
+	vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions;
+
+	return vertexInputInfo;
+}
+
+static VkPipelineVertexInputStateCreateInfo GenerateVertexInputInfo(
+	FNAVulkanRenderer *renderer
+) {
+	MOJOSHADER_vkShader *vertexShader, *blah;
+	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
+
+	VkVertexInputBindingDescription bindingDescriptions[renderer->numVertexBindings];
+	VkVertexInputAttributeDescription attributeDescriptions[renderer->numVertexBindings * MAX_VERTEX_ATTRIBUTES];
+	uint32_t attributeDescriptionCount = 0;
+
+	for (uint32_t i = 0; i < renderer->numVertexBindings; i++)
+	{
+		FNA3D_VertexDeclaration vertexDeclaration = renderer->vertexBindings[i].vertexDeclaration;
+
+		for (uint32_t j = 0; j < vertexDeclaration.elementCount; j++)
+		{
+			FNA3D_VertexElement element = vertexDeclaration.elements[j];
+			FNA3D_VertexElementUsage usage = element.vertexElementUsage;
+			int32_t index = element.usageIndex;
+
+			if (renderer->attrUse[usage][index])
+			{
+				index = -1;
+
+				for (uint32_t k = 0; k < MAX_VERTEX_ATTRIBUTES; k++)
+				{
+					if (!renderer->attrUse[usage][k])
+					{
+						index = k;
+						break;
+					}
+				}
+
+				if (index < 0)
+				{
+					FNA3D_LogError(
+						"Vertex usage collision!"
+					);
+				}
+			}
+
+			renderer->attrUse[usage][index] = 1;
+
+			int32_t attribLoc = MOJOSHADER_vkGetVertexAttribLocation(
+				vertexShader,
+				VertexAttribUsage(usage),
+				index
+			);
+			
+			if (attribLoc == -1)
+			{
+				/* Stream not in use! */
+				continue;
+			}
+
+			VkVertexInputAttributeDescription vInputAttribDescription;
+			vInputAttribDescription.location = attribLoc;
+			vInputAttribDescription.format = XNAToVK_VertexAttribType[
+				element.vertexElementFormat
+			];
+			vInputAttribDescription.offset = element.offset;
+			vInputAttribDescription.binding = i;
+
+			attributeDescriptions[attributeDescriptionCount] = vInputAttribDescription;
+			attributeDescriptionCount++;
+		}
+
+		VkVertexInputBindingDescription vertexInputBindingDescription;
+		vertexInputBindingDescription.binding = i;
+		vertexInputBindingDescription.stride = vertexDeclaration.vertexStride;
+		vertexInputBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+		bindingDescriptions[i] = vertexInputBindingDescription;
+	}
+
+	VkPipelineVertexInputStateCreateInfo vertexInputInfo = {
+		VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
+	};
+
+	vertexInputInfo.vertexBindingDescriptionCount = renderer->numVertexBindings;
+	vertexInputInfo.vertexAttributeDescriptionCount = attributeDescriptionCount;
+	vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions;
+	vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions;
+
+	return vertexInputInfo;
 }
 
 FNA3D_Device* VULKAN_CreateDevice(
