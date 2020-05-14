@@ -1616,6 +1616,7 @@ static void OPENGL_SetBlendState(
 			(renderer->colorWriteEnable & FNA3D_COLORWRITECHANNELS_ALPHA) != 0
 		);
 	}
+
 	/* FIXME: So how exactly do we factor in
 	 * COLORWRITEENABLE for buffer 0? Do we just assume that
 	 * the default is just buffer 0, and all other calls
@@ -1627,6 +1628,7 @@ static void OPENGL_SetBlendState(
 	 */
 	if (blendState->colorWriteEnable1 != renderer->colorWriteEnable1)
 	{
+		SDL_assert(renderer->supports_EXT_draw_buffers2);
 		renderer->colorWriteEnable1 = blendState->colorWriteEnable1;
 		renderer->glColorMaski(
 			1,
@@ -1638,6 +1640,7 @@ static void OPENGL_SetBlendState(
 	}
 	if (blendState->colorWriteEnable2 != renderer->colorWriteEnable2)
 	{
+		SDL_assert(renderer->supports_EXT_draw_buffers2);
 		renderer->colorWriteEnable2 = blendState->colorWriteEnable2;
 		renderer->glColorMaski(
 			2,
@@ -1649,6 +1652,7 @@ static void OPENGL_SetBlendState(
 	}
 	if (blendState->colorWriteEnable3 != renderer->colorWriteEnable3)
 	{
+		SDL_assert(renderer->supports_EXT_draw_buffers2);
 		renderer->colorWriteEnable3 = blendState->colorWriteEnable3;
 		renderer->glColorMaski(
 			3,
@@ -1661,6 +1665,7 @@ static void OPENGL_SetBlendState(
 
 	if (blendState->multiSampleMask != renderer->multiSampleMask)
 	{
+		SDL_assert(renderer->supports_ARB_texture_multisample);
 		if (blendState->multiSampleMask == -1)
 		{
 			renderer->glDisable(GL_SAMPLE_MASK);
@@ -5372,7 +5377,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	result->driverData = (FNA3D_Renderer*) renderer;
 
 	/* Debug context support */
-	if (debugMode)
+	if (debugMode && SDL_strcmp("Emscripten", SDL_GetPlatform()) != 0)
 	{
 		SDL_GL_SetAttribute(
 			SDL_GL_CONTEXT_FLAGS,
