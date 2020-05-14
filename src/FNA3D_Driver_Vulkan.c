@@ -2766,23 +2766,23 @@ static uint8_t AllocateAndBeginCommandBuffer(
 			renderer->commandBuffers,
 			sizeof(VkCommandBuffer) * renderer->commandBufferCapacity
 		);
+	}
 
-		VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-		commandBufferAllocateInfo.commandPool = renderer->commandPool;
-		commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-		commandBufferAllocateInfo.commandBufferCount = 1; /* TODO: change for frames in flight */
+	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+	commandBufferAllocateInfo.commandPool = renderer->commandPool;
+	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	commandBufferAllocateInfo.commandBufferCount = 1; /* TODO: change for frames in flight */
 
-		vulkanResult = renderer->vkAllocateCommandBuffers(
-			renderer->logicalDevice,
-			&commandBufferAllocateInfo,
-			&renderer->commandBuffers[renderer->commandBufferCount - 1]
-		);
+	vulkanResult = renderer->vkAllocateCommandBuffers(
+		renderer->logicalDevice,
+		&commandBufferAllocateInfo,
+		&renderer->commandBuffers[renderer->commandBufferCount - 1]
+	);
 
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
-			return 0;
-		}
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
+		return 0;
 	}
 
 	VkCommandBufferBeginInfo beginInfo = {
@@ -2819,23 +2819,23 @@ static void BeginRenderPass(
 			renderer->commandBuffers,
 			sizeof(VkCommandBuffer) * renderer->commandBufferCapacity
 		);
+	}
 
-		VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-		commandBufferAllocateInfo.commandPool = renderer->commandPool;
-		commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-		commandBufferAllocateInfo.commandBufferCount = 1; /* TODO: change for frames in flight */
+	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
+	commandBufferAllocateInfo.commandPool = renderer->commandPool;
+	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	commandBufferAllocateInfo.commandBufferCount = 1; /* TODO: change for frames in flight */
 
-		vulkanResult = renderer->vkAllocateCommandBuffers(
-			renderer->logicalDevice,
-			&commandBufferAllocateInfo,
-			&renderer->commandBuffers[renderer->commandBufferCount - 1]
-		);
+	vulkanResult = renderer->vkAllocateCommandBuffers(
+		renderer->logicalDevice,
+		&commandBufferAllocateInfo,
+		&renderer->commandBuffers[renderer->commandBufferCount - 1]
+	);
 
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
-			return;
-		}
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
+		return;
 	}
 
 	renderer->renderPass = FetchRenderPass(renderer);
