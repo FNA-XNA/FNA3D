@@ -757,7 +757,7 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 		numBindings,
 		vertexShader
 	);
-	result = hmget(renderer->inputLayoutCache, hash);
+	result = hmget(renderer->inputLayoutCache, *hash);
 	if (result != NULL)
 	{
 		/* This input layout has already been cached! */
@@ -915,7 +915,7 @@ static ID3D11InputLayout* FetchDeclarationInputLayout(
 		*vertexDeclaration,
 		vertexShader
 	);
-	result = hmget(renderer->inputLayoutCache, hash);
+	result = hmget(renderer->inputLayoutCache, *hash);
 	if (result != NULL)
 	{
 		/* This input layout has already been cached! */
