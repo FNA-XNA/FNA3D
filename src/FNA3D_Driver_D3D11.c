@@ -735,15 +735,16 @@ static ID3D11SamplerState* FetchSamplerState(
 static ID3D11InputLayout* FetchBindingsInputLayout(
 	D3D11Renderer *renderer,
 	FNA3D_VertexBufferBinding *bindings,
-	int32_t numBindings
+	int32_t numBindings,
+	uint64_t *hash
 ) {
-	uint64_t hash;
-	int32_t numElements, bufsize, i, j, k, usage, index, attribLoc;
+	int32_t numElements, bufsize, i, j, k, usage, index, attribLoc, datalen;
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 	FNA3D_VertexDeclaration vertexDeclaration;
 	FNA3D_VertexElement element;
 	D3D11_INPUT_ELEMENT_DESC *d3dElement, *elements;
 	MOJOSHADER_d3d11Shader *vertexShader, *blah;
+	void *bytecode;
 	HRESULT res;
 	ID3D11InputLayout *result;
 
@@ -751,7 +752,7 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 	MOJOSHADER_d3d11GetBoundShaders(&vertexShader, &blah);
 
 	/* Can we just reuse an existing input layout? */
-	hash = GetVertexBufferBindingsHash(
+	*hash = GetVertexBufferBindingsHash(
 		bindings,
 		numBindings,
 		vertexShader
@@ -867,12 +868,13 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 		}
 	}
 
+	MOJOSHADER_d3d11CompileVertexShader(*hash, 0, &bytecode, &datalen);
 	res = ID3D11Device_CreateInputLayout(
 		renderer->device,
 		elements,
 		numElements,
-		MOJOSHADER_d3d11GetBytecode(vertexShader),
-		MOJOSHADER_d3d11GetBytecodeLength(vertexShader),
+		bytecode,
+		datalen,
 		&result
 	);
 	if (res < 0)
@@ -887,20 +889,21 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 	SDL_free(elements);
 
 	/* Return the new input layout! */
-	hmput(renderer->inputLayoutCache, hash, result);
+	hmput(renderer->inputLayoutCache, *hash, result);
 	return result;
 }
 
 static ID3D11InputLayout* FetchDeclarationInputLayout(
 	D3D11Renderer *renderer,
-	FNA3D_VertexDeclaration *vertexDeclaration
+	FNA3D_VertexDeclaration *vertexDeclaration,
+	uint64_t *hash
 ) {
-	uint64_t hash;
-	int32_t numElements, bufsize, i, j, usage, index, attribLoc;
+	int32_t numElements, bufsize, i, j, usage, index, attribLoc, datalen;
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 	FNA3D_VertexElement element;
 	D3D11_INPUT_ELEMENT_DESC *elements, *d3dElement;
 	MOJOSHADER_d3d11Shader *vertexShader, *blah;
+	void *bytecode;
 	HRESULT res;
 	ID3D11InputLayout *result;
 
@@ -908,7 +911,7 @@ static ID3D11InputLayout* FetchDeclarationInputLayout(
 	MOJOSHADER_d3d11GetBoundShaders(&vertexShader, &blah);
 
 	/* Can we just reuse an existing input layout? */
-	hash = GetVertexDeclarationHash(
+	*hash = GetVertexDeclarationHash(
 		*vertexDeclaration,
 		vertexShader
 	);
@@ -1006,12 +1009,13 @@ static ID3D11InputLayout* FetchDeclarationInputLayout(
 		d3dElement->InstanceDataStepRate = 0;
 	}
 
+	MOJOSHADER_d3d11CompileVertexShader(*hash, 0, &bytecode, &datalen);
 	res = ID3D11Device_CreateInputLayout(
 		renderer->device,
 		elements,
 		numElements,
-		MOJOSHADER_d3d11GetBytecode(vertexShader),
-		MOJOSHADER_d3d11GetBytecodeLength(vertexShader),
+		bytecode,
+		datalen,
 		&result
 	);
 	if (res < 0)
@@ -1026,7 +1030,7 @@ static ID3D11InputLayout* FetchDeclarationInputLayout(
 	SDL_free(elements);
 
 	/* Return the new input layout! */
-	hmput(renderer->inputLayoutCache, hash, result);
+	hmput(renderer->inputLayoutCache, *hash, result);
 	return result;
 }
 
@@ -2275,6 +2279,7 @@ static void D3D11_ApplyVertexBufferBindings(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *vertexBuffer;
 	ID3D11InputLayout *inputLayout;
+	uint64_t hash;
 	int32_t i, offset;
 
 	if (!bindingsUpdated && !renderer->effectApplied)
@@ -2286,7 +2291,8 @@ static void D3D11_ApplyVertexBufferBindings(
 	inputLayout = FetchBindingsInputLayout(
 		renderer,
 		bindings,
-		numBindings
+		numBindings,
+		&hash
 	);
 
 	SDL_LockMutex(renderer->ctxLock);
@@ -2334,6 +2340,7 @@ static void D3D11_ApplyVertexBufferBindings(
 
 	SDL_UnlockMutex(renderer->ctxLock);
 
+	MOJOSHADER_d3d11ProgramReady(hash);
 	renderer->effectApplied = 0;
 }
 
@@ -2345,6 +2352,7 @@ static void D3D11_ApplyVertexDeclaration(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	ID3D11InputLayout *inputLayout;
+	uint64_t hash;
 
 	if (!renderer->effectApplied)
 	{
@@ -2354,7 +2362,8 @@ static void D3D11_ApplyVertexDeclaration(
 	/* Translate the bindings array into an input layout */
 	inputLayout = FetchDeclarationInputLayout(
 		renderer,
-		vertexDeclaration
+		vertexDeclaration,
+		&hash
 	);
 	renderer->userVertexStride = vertexDeclaration->vertexStride;
 
@@ -2369,6 +2378,7 @@ static void D3D11_ApplyVertexDeclaration(
 		SDL_UnlockMutex(renderer->ctxLock);
 	}
 
+	MOJOSHADER_d3d11ProgramReady(hash);
 	renderer->effectApplied = 0;
 }
 
