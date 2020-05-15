@@ -868,7 +868,13 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 		}
 	}
 
-	MOJOSHADER_d3d11CompileVertexShader(*hash, 0, &bytecode, &datalen);
+	MOJOSHADER_d3d11CompileVertexShader(
+		*hash,
+		elements,
+		numElements,
+		&bytecode,
+		&datalen
+	);
 	res = ID3D11Device_CreateInputLayout(
 		renderer->device,
 		elements,
@@ -1009,7 +1015,13 @@ static ID3D11InputLayout* FetchDeclarationInputLayout(
 		d3dElement->InstanceDataStepRate = 0;
 	}
 
-	MOJOSHADER_d3d11CompileVertexShader(*hash, 0, &bytecode, &datalen);
+	MOJOSHADER_d3d11CompileVertexShader(
+		*hash,
+		elements,
+		numElements,
+		&bytecode,
+		&datalen
+	);
 	res = ID3D11Device_CreateInputLayout(
 		renderer->device,
 		elements,
