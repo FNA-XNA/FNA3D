@@ -1054,12 +1054,72 @@ static void DestroyFramebuffer(D3D11Renderer *renderer);
 static void D3D11_DestroyDevice(FNA3D_Device *device)
 {
 	D3D11Renderer* renderer = (D3D11Renderer*) device->driverData;
+	int32_t i;
 
+	/* Unbind all render objects */
+	ID3D11DeviceContext_ClearState(renderer->context);
+
+	/* Release faux backbuffer and swapchain */
 	DestroyFramebuffer(renderer);
+	ID3D11BlendState_Release(renderer->fauxBlendState);
+	ID3D11Buffer_Release(renderer->fauxBlitIndexBuffer);
+	ID3D11InputLayout_Release(renderer->fauxBlitLayout);
+	ID3D11PixelShader_Release(renderer->fauxBlitPS);
+	ID3D11SamplerState_Release(renderer->fauxBlitSampler);
+	ID3D11VertexShader_Release(renderer->fauxBlitVS);
+	ID3D11RasterizerState_Release(renderer->fauxRasterizer);
+	ID3D11Buffer_Release(renderer->fauxBlitVertexBuffer);
+	IDXGISwapChain_Release(renderer->swapchain);
 
+	/* Release blend states */
+	for (i = 0; i < hmlen(renderer->blendStateCache); i += 1)
+	{
+		ID3D11BlendState_Release((ID3D11BlendState*) renderer->blendStateCache[i].value);
+	}
+	hmfree(renderer->blendStateCache);
+
+	/* Release depth stencil states */
+	for (i = 0; i < hmlen(renderer->depthStencilStateCache); i += 1)
+	{
+		ID3D11DepthStencilState_Release((ID3D11DepthStencilState*) renderer->depthStencilStateCache[i].value);
+	}
+	hmfree(renderer->depthStencilStateCache);
+
+	/* Release input layouts */
+	for (i = 0; i < hmlen(renderer->inputLayoutCache); i += 1)
+	{
+		ID3D11InputLayout_Release((ID3D11InputLayout*) renderer->inputLayoutCache[i].value);
+	}
+	hmfree(renderer->inputLayoutCache);
+
+	/* Release rasterizer states */
+	for (i = 0; i < hmlen(renderer->rasterizerStateCache); i += 1)
+	{
+		ID3D11RasterizerState_Release((ID3D11RasterizerState*) renderer->rasterizerStateCache[i].value);
+	}
+	hmfree(renderer->rasterizerStateCache);
+
+	/* Release sampler states */
+	for (i = 0; i < hmlen(renderer->samplerStateCache); i += 1)
+	{
+		ID3D11SamplerState_Release((ID3D11SamplerState*) renderer->samplerStateCache[i].value);
+	}
+	hmfree(renderer->samplerStateCache);
+
+	/* Release the annotation, if applicable */
+	if (renderer->annotation != NULL)
+	{
+		ID3DUserDefinedAnnotation_Release(renderer->annotation);
+	}
+
+	/* Release the factory */
+	IUnknown_Release((IUnknown*) renderer->factory);
+
+	/* Release the MojoShader context */
 	MOJOSHADER_d3d11DestroyContext();
 
-	/* FIXME: Destroy swapchain */
+	/* Release the device */
+	ID3D11Device_Release(renderer->device);
 
 	SDL_DestroyMutex(renderer->ctxLock);
 	SDL_free(renderer);
