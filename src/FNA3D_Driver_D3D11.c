@@ -172,6 +172,7 @@ typedef struct D3D11Backbuffer
 	ID3D11Texture2D *colorBuffer;
 	ID3D11RenderTargetView *colorView;
 	ID3D11ShaderResourceView *shaderView;
+	ID3D11Texture2D *stagingBuffer;
 
 	/* Depth Stencil */
 	FNA3D_DepthFormat depthFormat;
@@ -2769,15 +2770,9 @@ static void CreateFramebuffer(
 		&BB->colorView
 	);
 
-	/* Update shader resource view */
-	shaderViewDesc.Format = colorBufferDesc.Format;
-	shaderViewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
-	shaderViewDesc.Texture2D.MipLevels = 1;
-	shaderViewDesc.Texture2D.MostDetailedMip = 0;
-
+	/* Update resolve texture, if applicable */
 	if (BB->multiSampleCount > 1)
 	{
-		/* Make a resolve texture */
 		colorBufferDesc.Width = BB->width;
 		colorBufferDesc.Height = BB->height;
 		colorBufferDesc.MipLevels = 1;
@@ -2797,6 +2792,11 @@ static void CreateFramebuffer(
 		);
 	}
 
+	/* Update shader resource view */
+	shaderViewDesc.Format = colorBufferDesc.Format;
+	shaderViewDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURE2D;
+	shaderViewDesc.Texture2D.MipLevels = 1;
+	shaderViewDesc.Texture2D.MostDetailedMip = 0;
 	ID3D11Device_CreateShaderResourceView(
 		renderer->device,
 		(ID3D11Resource*) ((BB->multiSampleCount > 1) ? BB->resolveBuffer : BB->colorBuffer),
@@ -2906,43 +2906,39 @@ static void CreateFramebuffer(
 
 static void DestroyFramebuffer(D3D11Renderer *renderer)
 {
-	if (renderer->backbuffer->colorBuffer != NULL)
+	#define BB renderer->backbuffer
+
+	if (BB->colorBuffer != NULL)
 	{
-		ID3D11RenderTargetView_Release(
-			renderer->backbuffer->colorView
-		);
-		renderer->backbuffer->colorView = NULL;
+		ID3D11RenderTargetView_Release(BB->colorView);
+		BB->colorView = NULL;
 
-		ID3D11ShaderResourceView_Release(
-			renderer->backbuffer->shaderView
-		);
-		renderer->backbuffer->shaderView = NULL;
+		ID3D11ShaderResourceView_Release(BB->shaderView);
+		BB->shaderView = NULL;
 
-		ID3D11Texture2D_Release(
-			renderer->backbuffer->colorBuffer
-		);
-		renderer->backbuffer->colorBuffer = NULL;
+		ID3D11Texture2D_Release(BB->colorBuffer);
+		BB->colorBuffer = NULL;
 	}
 
-	if (renderer->backbuffer->resolveBuffer != NULL)
+	if (BB->stagingBuffer != NULL)
 	{
-		ID3D11Texture2D_Release(
-			renderer->backbuffer->resolveBuffer
-		);
-		renderer->backbuffer->resolveBuffer = NULL;
+		ID3D11Texture2D_Release(BB->stagingBuffer);
+		BB->stagingBuffer = NULL;
 	}
 
-	if (renderer->backbuffer->depthStencilBuffer != NULL)
+	if (BB->depthStencilBuffer != NULL)
 	{
-		ID3D11DepthStencilView_Release(
-			renderer->backbuffer->depthStencilView
-		);
-		renderer->backbuffer->depthStencilView = NULL;
+		ID3D11DepthStencilView_Release(BB->depthStencilView);
+		BB->depthStencilView = NULL;
 
-		ID3D11Texture2D_Release(
-			renderer->backbuffer->depthStencilBuffer
-		);
-		renderer->backbuffer->depthStencilBuffer = NULL;
+		ID3D11Texture2D_Release(BB->depthStencilBuffer);
+		BB->depthStencilBuffer = NULL;
+	}
+
+	if (BB->resolveBuffer != NULL)
+	{
+		ID3D11Texture2D_Release(BB->resolveBuffer);
+		BB->resolveBuffer = NULL;
 	}
 
 	if (renderer->swapchainRTView != NULL)
@@ -2950,6 +2946,8 @@ static void DestroyFramebuffer(D3D11Renderer *renderer)
 		ID3D11RenderTargetView_Release(renderer->swapchainRTView);
 		renderer->swapchainRTView = NULL;
 	}
+
+	#undef BB
 }
 
 static void D3D11_ResetBackbuffer(
@@ -2966,6 +2964,18 @@ static void D3D11_ResetBackbuffer(
 
 }
 
+static void D3D11_GetTextureData2D(
+	FNA3D_Renderer *driverData,
+	FNA3D_Texture *texture,
+	FNA3D_SurfaceFormat format,
+	int32_t x,
+	int32_t y,
+	int32_t w,
+	int32_t h,
+	int32_t level,
+	void* data,
+	int32_t dataLength
+);
 static void D3D11_ReadBackbuffer(
 	FNA3D_Renderer *driverData,
 	int32_t x,
@@ -2975,7 +2985,49 @@ static void D3D11_ReadBackbuffer(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	D3D11Texture backbufferTexture;
+
+	if (renderer->backbuffer->multiSampleCount > 1)
+	{
+		/* We have to resolve the backbuffer first. */
+		ID3D11DeviceContext_ResolveSubresource(
+			renderer->context,
+			(ID3D11Resource*) renderer->backbuffer->resolveBuffer,
+			0,
+			(ID3D11Resource*) renderer->backbuffer->colorBuffer,
+			0,
+			XNAToD3D_TextureFormat[renderer->backbuffer->surfaceFormat]
+		);
+	}
+
+	/* Create a pseudo-texture we can feed to GetTextureData2D.
+	 * These are the only members we need to initialize.
+	 * -caleb
+	 */
+	backbufferTexture.twod.width = renderer->backbuffer->width;
+	backbufferTexture.twod.height = renderer->backbuffer->height;
+	backbufferTexture.format = renderer->backbuffer->surfaceFormat;
+	backbufferTexture.levelCount = 1;
+	backbufferTexture.handle = (
+		renderer->backbuffer->multiSampleCount > 1 ?
+			(ID3D11Resource*) renderer->backbuffer->resolveBuffer :
+			(ID3D11Resource*) renderer->backbuffer->colorBuffer
+	);
+	backbufferTexture.staging = (ID3D11Resource*) renderer->backbuffer->stagingBuffer;
+
+	D3D11_GetTextureData2D(
+		driverData,
+		(FNA3D_Texture*) &backbufferTexture,
+		renderer->backbuffer->surfaceFormat,
+		x,
+		y,
+		w,
+		h,
+		0,
+		data,
+		dataLength
+	);
 }
 
 static void D3D11_GetBackbufferSize(
