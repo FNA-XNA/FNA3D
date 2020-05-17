@@ -63,7 +63,6 @@ typedef struct D3D11Texture /* Cast FNA3D_Texture* to this! */
 {
 	/* D3D Handles */
 	ID3D11Resource *handle; /* ID3D11Texture2D or ID3D11Texture3D */
-	ID3D11RenderTargetView *rtView;
 	ID3D11ShaderResourceView *shaderView;
 	ID3D11Resource *staging; /* ID3D11Texture2D or ID3D11Texture3D */
 
@@ -80,12 +79,14 @@ typedef struct D3D11Texture /* Cast FNA3D_Texture* to this! */
 	float lodBias;
 
 	/* Dimensions */
+	uint8_t rtType;
 	FNA3DNAMELESS union
 	{
 		struct
 		{
 			int32_t width;
 			int32_t height;
+			ID3D11RenderTargetView *rtView;
 		} twod;
 		struct
 		{
@@ -96,13 +97,13 @@ typedef struct D3D11Texture /* Cast FNA3D_Texture* to this! */
 		struct
 		{
 			int32_t size;
+			ID3D11RenderTargetView **rtViews;
 		} cube;
 	};
 } D3D11Texture;
 
 static D3D11Texture NullTexture =
 {
-	NULL,
 	NULL,
 	NULL,
 	NULL,
@@ -116,6 +117,7 @@ static D3D11Texture NullTexture =
 	0.0f,
 	0,
 	0.0f,
+	0,
 	{
 		{ 0, 0 }
 	}
@@ -493,6 +495,14 @@ static inline int32_t BytesPerDepthSlice(
 	}
 
 	return blocksPerRow * blocksPerColumn * Texture_GetFormatSize(format);
+}
+
+static inline uint32_t CalcSubresource(
+	uint32_t mipLevel,
+	uint32_t arraySlice,
+	uint32_t numLevels
+) {
+	return mipLevel + (arraySlice * numLevels);
 }
 
 /* Pipeline State Object Caching */
@@ -2502,8 +2512,6 @@ static void D3D11_SetRenderTargets(
 	/* Update color buffers */
 	for (i = 0; i < numRenderTargets; i += 1)
 	{
-		/* TODO: Handle cube RTs */
-
 		if (renderTargets[i].colorBuffer != NULL)
 		{
 			rb = (D3D11Renderbuffer*) renderTargets[i].colorBuffer;
@@ -2512,7 +2520,16 @@ static void D3D11_SetRenderTargets(
 		else
 		{
 			tex = (D3D11Texture*) renderTargets[i].texture;
-			renderer->renderTargetViews[i] = tex->rtView;
+			if (tex->rtType == FNA3D_RENDERTARGET_TYPE_2D)
+			{
+				renderer->renderTargetViews[i] = tex->twod.rtView;
+			}
+			else if (tex->rtType == FNA3D_RENDERTARGET_TYPE_CUBE)
+			{
+				renderer->renderTargetViews[i] = tex->cube.rtViews[
+					renderTargets[i].cube.face
+				];
+			}
 		}
 	}
 
@@ -2573,15 +2590,20 @@ static void D3D11_ResolveTarget(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *tex = (D3D11Texture*) target->texture;
 	D3D11Renderbuffer *rb = (D3D11Renderbuffer*) target->colorBuffer;
+	uint32_t slice = 0;
 
 	SDL_LockMutex(renderer->ctxLock);
 
 	if (target->multiSampleCount > 0)
 	{
+		if (target->type == FNA3D_RENDERTARGET_TYPE_CUBE)
+		{
+			slice = target->cube.face;
+		}
 		ID3D11DeviceContext_ResolveSubresource(
 			renderer->context,
 			(ID3D11Resource*) tex->handle,
-			0,
+			CalcSubresource(0, slice, tex->levelCount),
 			(ID3D11Resource*) rb->handle,
 			0,
 			XNAToD3D_TextureFormat[tex->format]
@@ -3120,6 +3142,7 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 	/* Create the render target view, if applicable */
 	if (isRenderTarget)
 	{
+		result->rtType = FNA3D_RENDERTARGET_TYPE_2D;
 		rtViewDesc.Format = desc.Format;
 		rtViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
 		rtViewDesc.Texture2D.MipSlice = 0;
@@ -3127,7 +3150,7 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 			renderer->device,
 			result->handle,
 			&rtViewDesc,
-			&result->rtView
+			&result->twod.rtView
 		);
 	}
 
@@ -3196,7 +3219,9 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *result;
 	D3D11_TEXTURE2D_DESC desc;
+	D3D11_SHADER_RESOURCE_VIEW_DESC srvDesc;
 	D3D11_RENDER_TARGET_VIEW_DESC rtViewDesc;
+	int32_t i;
 
 	/* Initialize D3D11Texture */
 	result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
@@ -3218,7 +3243,7 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 	if (isRenderTarget)
 	{
 		desc.BindFlags |= D3D11_BIND_RENDER_TARGET;
-		desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+		desc.MiscFlags |= D3D11_RESOURCE_MISC_GENERATE_MIPS;
 	}
 
 	/* Create the texture */
@@ -3234,29 +3259,41 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 	result->cube.size = size;
 
 	/* Create the shader resource view */
+	srvDesc.Format = desc.Format;
+	srvDesc.ViewDimension = D3D11_SRV_DIMENSION_TEXTURECUBE;
+	srvDesc.TextureCube.MipLevels = levelCount;
+	srvDesc.TextureCube.MostDetailedMip = 0;
 	ID3D11Device_CreateShaderResourceView(
 		renderer->device,
 		result->handle,
-		NULL,
+		&srvDesc,
 		&result->shaderView
 	);
 
 	/* Create the render target view, if applicable */
 	if (isRenderTarget)
 	{
-		rtViewDesc.Format = desc.Format;
-		rtViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D; /* FIXME: Should this be 2D Array? */
-		rtViewDesc.Texture2D.MipSlice = 0;
-		ID3D11Device_CreateRenderTargetView(
-			renderer->device,
-			result->handle,
-			&rtViewDesc,
-			&result->rtView
+		result->rtType = FNA3D_RENDERTARGET_TYPE_CUBE;
+		result->cube.rtViews = (ID3D11RenderTargetView**) SDL_malloc(
+			6 * sizeof(ID3D11RenderTargetView*)
 		);
+		rtViewDesc.Format = desc.Format;
+		rtViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2DARRAY;
+		rtViewDesc.Texture2DArray.ArraySize = 1; /* One slice per view */
+		rtViewDesc.Texture2DArray.MipSlice = 0;
+		for (i = 0; i < 6; i += 1)
+		{
+			rtViewDesc.Texture2DArray.FirstArraySlice = i;
+			ID3D11Device_CreateRenderTargetView(
+				renderer->device,
+				result->handle,
+				&rtViewDesc,
+				&result->cube.rtViews[i]
+			);
+		}
 	}
 
 	return (FNA3D_Texture*) result;
-
 }
 
 static void D3D11_AddDisposeTexture(
@@ -3265,15 +3302,9 @@ static void D3D11_AddDisposeTexture(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *tex = (D3D11Texture*) texture;
-	int32_t i;
+	int32_t i, j;
 
-	for (i = 0; i < renderer->numRenderTargets; i += 1)
-	{
-		if (tex->rtView == renderer->renderTargetViews[i])
-		{
-			renderer->renderTargetViews[i] = NULL;
-		}
-	}
+	/* Unbind the texture */
 	for (i = 0; i < MAX_TOTAL_SAMPLERS; i += 1)
 	{
 		if (renderer->textures[i] == tex)
@@ -3282,22 +3313,49 @@ static void D3D11_AddDisposeTexture(
 		}
 	}
 
-	if (tex->rtView != NULL)
+	/* Unbind and release the render target views, if applicable */
+	if (tex->isRenderTarget)
 	{
-		ID3D11RenderTargetView_Release(tex->rtView);
+		for (i = 0; i < renderer->numRenderTargets; i += 1)
+		{
+			if (tex->rtType == FNA3D_RENDERTARGET_TYPE_2D)
+			{
+				if (tex->twod.rtView == renderer->renderTargetViews[i])
+				{
+					renderer->renderTargetViews[i] = NULL;
+				}
+			}
+			else if (tex->rtType == FNA3D_RENDERTARGET_TYPE_CUBE)
+			{
+				for (j = 0; j < 6; j += 1)
+				{
+					if (tex->cube.rtViews[j] == renderer->renderTargetViews[i])
+					{
+						renderer->renderTargetViews[i] = NULL;
+					}
+				}
+			}
+		}
+
+		if (tex->rtType == FNA3D_RENDERTARGET_TYPE_2D)
+		{
+			ID3D11RenderTargetView_Release(tex->twod.rtView);
+		}
+		else if (tex->rtType == FNA3D_RENDERTARGET_TYPE_CUBE)
+		{
+			for (i = 0; i < 6; i += 1)
+			{
+				ID3D11RenderTargetView_Release(tex->cube.rtViews[i]);
+			}
+			SDL_free(tex->cube.rtViews);
+		}
 	}
+
+	/* Release the shader resource view and texture */
 	ID3D11ShaderResourceView_Release(tex->shaderView);
-	ID3D11Texture2D_Release(tex->handle);
+	IUnknown_Release(tex->handle);
 
 	SDL_free(texture);
-}
-
-static inline uint32_t CalcSubresource(
-	uint32_t mipLevel,
-	uint32_t arraySlice,
-	uint32_t numLevels
-) {
-	return mipLevel + (arraySlice * numLevels);
 }
 
 static void D3D11_SetTextureData2D(
