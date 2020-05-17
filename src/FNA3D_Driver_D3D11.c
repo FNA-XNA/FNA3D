@@ -3040,9 +3040,6 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 
 	if (isRenderTarget)
 	{
-		/* FIXME: Apparently it's faster to specify
-		 * a single bind flag. What can we do here?
-		 */
 		desc.BindFlags |= D3D11_BIND_RENDER_TARGET;
 		desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
 	}
@@ -3168,9 +3165,6 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 
 	if (isRenderTarget)
 	{
-		/* FIXME: Apparently it's faster to specify
-		 * a single bind flag. What can we do here?
-		 */
 		desc.BindFlags |= D3D11_BIND_RENDER_TARGET;
 		desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
 	}
