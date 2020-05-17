@@ -1119,6 +1119,7 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 	MOJOSHADER_d3d11DestroyContext();
 
 	/* Release the device */
+	ID3D11DeviceContext_Release(renderer->context);
 	ID3D11Device_Release(renderer->device);
 
 	SDL_DestroyMutex(renderer->ctxLock);
