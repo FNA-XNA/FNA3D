@@ -256,6 +256,7 @@ typedef unsigned char	GLboolean;
 #define GL_MULTISAMPLE  				0x809D
 #define GL_MAX_SAMPLES  				0x8D57
 #define GL_SAMPLE_MASK  				0x8E51
+#define GL_SAMPLES					0x80A9
 
 /* 3.2 Core Profile */
 #define GL_NUM_EXTENSIONS				0x821D
