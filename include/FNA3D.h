@@ -1575,7 +1575,7 @@ FNA3DAPI void FNA3D_GetMaxTextureSlots(
 FNA3DAPI int32_t FNA3D_GetMaxMultiSampleCount(
 	FNA3D_Device *device,
 	FNA3D_SurfaceFormat format,
-	int multiSampleCount
+	int32_t multiSampleCount
 );
 
 /* Debugging */

@@ -666,7 +666,7 @@ struct FNA3D_Device
 	int32_t (*GetMaxMultiSampleCount)(
 		FNA3D_Renderer *driverData,
 		FNA3D_SurfaceFormat format,
-		int multiSampleCount
+		int32_t multiSampleCount
 	);
 
 	/* Debugging */
