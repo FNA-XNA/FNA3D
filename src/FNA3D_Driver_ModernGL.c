@@ -4905,6 +4905,7 @@ static FNA3D_Device* MODERNGL_CreateDevice(
 		NULL
 	);
 	MOJOSHADER_glMakeContextCurrent(renderer->shaderContext);
+	FNA3D_LogInfo("MojoShader Profile: %s", renderer->shaderProfile);
 
 	/* Some users might want pixely upscaling... */
 	renderer->backbufferScaleMode = SDL_GetHintBoolean(

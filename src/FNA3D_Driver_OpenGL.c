@@ -5528,6 +5528,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 		NULL
 	);
 	MOJOSHADER_glMakeContextCurrent(renderer->shaderContext);
+	FNA3D_LogInfo("MojoShader Profile: %s", renderer->shaderProfile);
 
 	/* Some users might want pixely upscaling... */
 	renderer->backbufferScaleMode = SDL_GetHintBoolean(
@@ -5574,16 +5575,33 @@ FNA3D_Device* OPENGL_CreateDevice(
 	}
 	if (renderer->supports_ARB_internalformat_query)
 	{
-		for (i = 0; i < 21; i += 1)
-		{
-			renderer->glGetInternalformativ(
-				GL_RENDERBUFFER,
-				XNAToGL_TextureInternalFormat[i],
-				GL_SAMPLES,
-				1,
-				&renderer->maxMultiSampleCountFormat[i]
-			);
-		}
+		#define ITERATE_QUERIES(max) \
+			do \
+			{ \
+				renderer->glGetInternalformativ( \
+					GL_RENDERBUFFER, \
+					XNAToGL_TextureInternalFormat[i], \
+					GL_SAMPLES, \
+					1, \
+					&renderer->maxMultiSampleCountFormat[i] \
+				); \
+			} while (++i < max);
+		i = 0;
+		ITERATE_QUERIES(3)
+
+		/* S3TC rendering is never supported */
+		renderer->maxMultiSampleCountFormat[i++] = 0;
+		renderer->maxMultiSampleCountFormat[i++] = 0;
+		renderer->maxMultiSampleCountFormat[i++] = 0;
+
+		ITERATE_QUERIES(12)
+
+		/* ALPHA8 rendering is never supported */
+		renderer->maxMultiSampleCountFormat[i++] = 0;
+
+		ITERATE_QUERIES(21)
+		#undef ITERATE_QUERIES
+
 		presentationParameters->multiSampleCount = SDL_min(
 			presentationParameters->multiSampleCount,
 			renderer->maxMultiSampleCountFormat[presentationParameters->backBufferFormat]
