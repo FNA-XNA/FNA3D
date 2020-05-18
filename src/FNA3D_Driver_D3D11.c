@@ -4572,7 +4572,7 @@ static void D3D11_GetMaxTextureSlots(
 static int32_t D3D11_GetMaxMultiSampleCount(
 	FNA3D_Renderer *driverData,
 	FNA3D_SurfaceFormat format,
-	int multiSampleCount
+	int32_t multiSampleCount
 ) {
 	uint32_t levels;
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
