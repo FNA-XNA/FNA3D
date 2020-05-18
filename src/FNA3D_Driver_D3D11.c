@@ -4569,13 +4569,28 @@ static void D3D11_GetMaxTextureSlots(
 	*vertexTextures = D3D11_COMMONSHADER_SAMPLER_SLOT_COUNT;
 }
 
-static int32_t D3D11_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
-{
-	/* 8x MSAA is guaranteed for all
-	 * surface formats except Vector4.
-	 * FIXME: Can we check if the actual limit is higher?
-	 */
-	return 8;
+static int32_t D3D11_GetMaxMultiSampleCount(
+	FNA3D_Renderer *driverData,
+	FNA3D_SurfaceFormat format,
+	int multiSampleCount
+) {
+	uint32_t levels;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	do
+	{
+		ID3D11Device_CheckMultisampleQualityLevels(
+			renderer->device,
+			XNAToD3D_TextureFormat[format],
+			multiSampleCount,
+			&levels
+		);
+		if (levels > 0)
+		{
+			break;
+		}
+		multiSampleCount >>= 1;
+	} while (multiSampleCount > 0);
+	return multiSampleCount;
 }
 
 /* Debugging */
