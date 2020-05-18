@@ -173,6 +173,7 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	uint8_t supports_ARB_framebuffer_object;
 	uint8_t supports_EXT_framebuffer_blit;
 	uint8_t supports_EXT_framebuffer_multisample;
+	uint8_t supports_ARB_internalformat_query;
 	uint8_t supports_ARB_invalidate_subdata;
 	uint8_t supports_ARB_draw_instanced;
 	uint8_t supports_ARB_instanced_arrays;
@@ -184,6 +185,7 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	uint8_t supports_s3tc;
 	uint8_t supports_dxt1;
 	int32_t maxMultiSampleCount;
+	int32_t maxMultiSampleCountFormat[21];
 
 	/* Blend State */
 	uint8_t alphaBlendEnable;
@@ -4923,13 +4925,19 @@ static int32_t OPENGL_GetMaxMultiSampleCount(
 	FNA3D_SurfaceFormat format,
 	int32_t multiSampleCount
 ) {
+	int32_t maxSamples;
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 
-	/* FIXME: This value is kind of wrong for most formats,
-	 * use ARB_internalformat_query instead when available!
-	 * -flibit
-	 */
-	return SDL_min(renderer->maxMultiSampleCount, multiSampleCount);
+	if (renderer->supports_ARB_internalformat_query)
+	{
+		maxSamples = renderer->maxMultiSampleCountFormat[format];
+	}
+	else
+	{
+		/* This number isn't very good, but it's all we have... */
+		maxSamples = renderer->maxMultiSampleCount;
+	}
+	return SDL_min(maxSamples, multiSampleCount);
 }
 
 /* Debugging */
@@ -5021,6 +5029,7 @@ static inline void LoadEntryPoints(
 	renderer->supports_ARB_framebuffer_object = 1;
 	renderer->supports_EXT_framebuffer_blit = 1;
 	renderer->supports_EXT_framebuffer_multisample = 1;
+	renderer->supports_ARB_internalformat_query = 1;
 	renderer->supports_ARB_invalidate_subdata = 1;
 	renderer->supports_ARB_draw_instanced = 1;
 	renderer->supports_ARB_instanced_arrays = 1;
@@ -5563,10 +5572,31 @@ FNA3D_Device* OPENGL_CreateDevice(
 			&renderer->maxMultiSampleCount
 		);
 	}
-	presentationParameters->multiSampleCount = SDL_min(
-		presentationParameters->multiSampleCount,
-		renderer->maxMultiSampleCount
-	);
+	if (renderer->supports_ARB_internalformat_query)
+	{
+		for (i = 0; i < 21; i += 1)
+		{
+			renderer->glGetInternalformativ(
+				GL_RENDERBUFFER,
+				XNAToGL_TextureInternalFormat[i],
+				GL_SAMPLES,
+				1,
+				&renderer->maxMultiSampleCountFormat[i]
+			);
+		}
+		presentationParameters->multiSampleCount = SDL_min(
+			presentationParameters->multiSampleCount,
+			renderer->maxMultiSampleCountFormat[presentationParameters->backBufferFormat]
+		);
+	}
+	else
+	{
+		/* This number isn't very good, but it's all we have... */
+		presentationParameters->multiSampleCount = SDL_min(
+			presentationParameters->multiSampleCount,
+			renderer->maxMultiSampleCount
+		);
+	}
 
 	/* Initialize the faux backbuffer */
 	OPENGL_INTERNAL_CreateBackbuffer(renderer, presentationParameters);

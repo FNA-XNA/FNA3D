@@ -134,7 +134,7 @@ typedef struct ModernGLRenderer /* Cast FNA3D_Renderer* to this! */
 	uint8_t supports_GREMEDY_string_marker;
 	uint8_t supports_s3tc;
 	uint8_t supports_dxt1;
-	int32_t maxMultiSampleCount;
+	int32_t maxMultiSampleCountFormat[21];
 
 	/* Blend State */
 	uint8_t alphaBlendEnable;
@@ -4529,12 +4529,10 @@ static int32_t MODERNGL_GetMaxMultiSampleCount(
 	int32_t multiSampleCount
 ) {
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
-
-	/* FIXME: This value is kind of wrong for most formats,
-	 * use ARB_internalformat_query instead when available!
-	 * -flibit
-	 */
-	return SDL_min(renderer->maxMultiSampleCount, multiSampleCount);
+	return SDL_min(
+		renderer->maxMultiSampleCountFormat[format],
+		multiSampleCount
+	);
 }
 
 /* Debugging */
@@ -4944,13 +4942,19 @@ static FNA3D_Device* MODERNGL_CreateDevice(
 	}
 
 	/* Check the max multisample count, override parameters if necessary */
-	renderer->glGetIntegerv(
-		GL_MAX_SAMPLES,
-		&renderer->maxMultiSampleCount
-	);
+	for (i = 0; i < 21; i += 1)
+	{
+		renderer->glGetInternalformativ(
+			GL_RENDERBUFFER,
+			XNAToGL_TextureInternalFormat[i],
+			GL_SAMPLES,
+			1,
+			&renderer->maxMultiSampleCountFormat[i]
+		);
+	}
 	presentationParameters->multiSampleCount = SDL_min(
 		presentationParameters->multiSampleCount,
-		renderer->maxMultiSampleCount
+		renderer->maxMultiSampleCountFormat[presentationParameters->backBufferFormat]
 	);
 
 	/* Initialize the faux backbuffer */

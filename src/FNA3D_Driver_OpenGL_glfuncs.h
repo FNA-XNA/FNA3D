@@ -122,6 +122,7 @@ GL_PROC_EXT(EXT_framebuffer_blit, EXT, void, glBlitFramebuffer, (GLint a, GLint 
 
 /* Multisampling is nice to have, but isn't used all the time, technically ARB_framebuffer_object */
 GL_PROC_EXT(EXT_framebuffer_multisample, EXT, void, glRenderbufferStorageMultisample, (GLenum a, GLsizei b, GLenum c, GLsizei d, GLsizei e))
+GL_PROC(ARB_internalformat_query, void, glGetInternalformativ, (GLenum a, GLenum b, GLenum c, GLsizei d, GLint *e))
 
 /* This is mostly needed by ES3, where loads/stores are a huge slowdown */
 GL_PROC(ARB_invalidate_subdata, void, glInvalidateFramebuffer, (GLenum a, GLsizei b, const GLenum *c))
