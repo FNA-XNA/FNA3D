@@ -4604,6 +4604,7 @@ static void GLAPIENTRY DebugCall(
 
 static void LoadEntryPoints(ModernGLRenderer *renderer, uint8_t debugMode)
 {
+	int32_t i;
 	renderer->supports_KHR_debug = 1;
 	renderer->supports_GREMEDY_string_marker = 1;
 
@@ -4630,6 +4631,20 @@ static void LoadEntryPoints(ModernGLRenderer *renderer, uint8_t debugMode)
 #pragma GCC diagnostic pop
 	#undef GL_PROC
 	#undef GL_PROC_EXT
+
+	/* Check this before KHR_debug inits, to prevent complaints about
+	 * unsupported render formats from showing up
+	 */
+	for (i = 0; i < 21; i += 1)
+	{
+		renderer->glGetInternalformativ(
+			GL_RENDERBUFFER,
+			XNAToGL_TextureInternalFormat[i],
+			GL_SAMPLES,
+			1,
+			&renderer->maxMultiSampleCountFormat[i]
+		);
+	}
 
 	/* Everything below this check is for debug contexts */
 	if (!debugMode)
@@ -4943,16 +4958,6 @@ static FNA3D_Device* MODERNGL_CreateDevice(
 	}
 
 	/* Check the max multisample count, override parameters if necessary */
-	for (i = 0; i < 21; i += 1)
-	{
-		renderer->glGetInternalformativ(
-			GL_RENDERBUFFER,
-			XNAToGL_TextureInternalFormat[i],
-			GL_SAMPLES,
-			1,
-			&renderer->maxMultiSampleCountFormat[i]
-		);
-	}
 	presentationParameters->multiSampleCount = SDL_min(
 		presentationParameters->multiSampleCount,
 		renderer->maxMultiSampleCountFormat[presentationParameters->backBufferFormat]
