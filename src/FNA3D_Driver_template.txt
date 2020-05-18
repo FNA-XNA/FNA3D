@@ -872,8 +872,11 @@ static void TEMPLATE_GetMaxTextureSlots(
 ) {
 }
 
-static int32_t TEMPLATE_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
-{
+static int32_t TEMPLATE_GetMaxMultiSampleCount(
+	FNA3D_Renderer *driverData,
+	FNA3D_SurfaceFormat format,
+	int multiSampleCount
+) {
 	return 0;
 }
 
