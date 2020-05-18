@@ -4354,6 +4354,8 @@ static void D3D11_AddDisposeEffect(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	MOJOSHADER_effect *effectData = ((D3D11Effect*) effect)->effect;
+
+	SDL_LockMutex(renderer->ctxLock);
 	if (effectData == renderer->currentEffect)
 	{
 		MOJOSHADER_effectEndPass(renderer->currentEffect);
@@ -4364,6 +4366,7 @@ static void D3D11_AddDisposeEffect(
 		renderer->effectApplied = 1;
 	}
 	MOJOSHADER_deleteEffect(effectData);
+	SDL_UnlockMutex(renderer->ctxLock);
 	SDL_free(effect);
 }
 
