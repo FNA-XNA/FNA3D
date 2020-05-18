@@ -4523,10 +4523,18 @@ static void MODERNGL_GetMaxTextureSlots(
 	*vertexTextures = renderer->numVertexTextureSlots;
 }
 
-static int32_t MODERNGL_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
-{
+static int32_t MODERNGL_GetMaxMultiSampleCount(
+	FNA3D_Renderer *driverData,
+	FNA3D_SurfaceFormat format,
+	int multiSampleCount
+) {
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
-	return renderer->maxMultiSampleCount;
+
+	/* FIXME: This value is kind of wrong for most formats,
+	 * use ARB_internalformat_query instead when available!
+	 * -flibit
+	 */
+	return SDL_min(renderer->maxMultiSampleCount, multiSampleCount);
 }
 
 /* Debugging */

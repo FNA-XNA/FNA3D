@@ -4423,9 +4423,15 @@ static void METAL_GetMaxTextureSlots(
 	*vertexTextures = MAX_VERTEXTEXTURE_SAMPLERS;
 }
 
-static int32_t METAL_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
-{
-	return ((MetalRenderer*) driverData)->maxMultiSampleCount;
+static int32_t METAL_GetMaxMultiSampleCount(
+	FNA3D_Renderer *driverData,
+	FNA3D_SurfaceFormat format,
+	int multiSampleCount
+) {
+	MetalRenderer *renderer = (MetalRenderer*) driverData;
+
+	/* FIXME: Format-specific MSAA queries? */
+	return SDL_min(renderer->maxMultiSampleCount, multiSampleCount);
 }
 
 /* Debugging */

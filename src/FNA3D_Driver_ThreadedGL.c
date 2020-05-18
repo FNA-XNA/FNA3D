@@ -586,6 +586,8 @@ struct GLThreadCommand
 		} getMaxTextureSlots;
 		struct
 		{
+			FNA3D_SurfaceFormat format;
+			int multiSampleCount;
 			int32_t retval;
 		} getMaxMultiSampleCount;
 		struct
@@ -1218,7 +1220,9 @@ static int GLRenderThread(void* data)
 				break;
 			case COMMAND_GETMAXMULTISAMPLECOUNT:
 				cmd->getMaxMultiSampleCount.retval = renderer->actualDevice->GetMaxMultiSampleCount(
-					renderer->actualDevice->driverData
+					renderer->actualDevice->driverData,
+					cmd->getMaxMultiSampleCount.format,
+					cmd->getMaxMultiSampleCount.multiSampleCount
 				);
 				break;
 			case COMMAND_SETSTRINGMARKER:
@@ -2470,12 +2474,17 @@ static void THREADEDGL_GetMaxTextureSlots(
 	ForceToRenderThread(renderer, &cmd);
 }
 
-static int32_t THREADEDGL_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
-{
+static int32_t THREADEDGL_GetMaxMultiSampleCount(
+	FNA3D_Renderer *driverData,
+	FNA3D_SurfaceFormat format,
+	int multiSampleCount
+) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;
 
 	cmd.type = COMMAND_GETMAXMULTISAMPLECOUNT;
+	cmd.getMaxMultiSampleCount.format = format;
+	cmd.getMaxMultiSampleCount.multiSampleCount = multiSampleCount;
 	ForceToRenderThread(renderer, &cmd);
 	return cmd.getMaxMultiSampleCount.retval;
 }

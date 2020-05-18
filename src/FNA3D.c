@@ -1421,13 +1421,20 @@ void FNA3D_GetMaxTextureSlots(
 	);
 }
 
-int32_t FNA3D_GetMaxMultiSampleCount(FNA3D_Device *device)
-{
+int32_t FNA3D_GetMaxMultiSampleCount(
+	FNA3D_Device *device,
+	FNA3D_SurfaceFormat format,
+	int multiSampleCount
+) {
 	if (device == NULL)
 	{
 		return 0;
 	}
-	return device->GetMaxMultiSampleCount(device->driverData);
+	return device->GetMaxMultiSampleCount(
+		device->driverData,
+		format,
+		multiSampleCount
+	);
 }
 
 /* Debugging */

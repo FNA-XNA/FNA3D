@@ -1565,8 +1565,18 @@ FNA3DAPI void FNA3D_GetMaxTextureSlots(
 	int32_t *vertexTextures
 );
 
-/* Return the highest multisample count supported for anti-aliasing. */
-FNA3DAPI int32_t FNA3D_GetMaxMultiSampleCount(FNA3D_Device *device);
+/* Returns the highest multisample count supported for anti-aliasing.
+ *
+ * format:		The pixel format to query for MSAA support.
+ * multiSampleCount:	The max MSAA value requested for this format.
+ *
+ * Returns a hardware-specific version of min(preferred, possible).
+ */
+FNA3DAPI int32_t FNA3D_GetMaxMultiSampleCount(
+	FNA3D_Device *device,
+	FNA3D_SurfaceFormat format,
+	int multiSampleCount
+);
 
 /* Debugging */
 
