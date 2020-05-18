@@ -56,6 +56,7 @@ typedef struct VulkanColorBuffer VulkanColorBuffer;
 typedef struct VulkanDepthStencilBuffer VulkanDepthStencilBuffer;
 typedef struct VulkanBuffer VulkanBuffer;
 typedef struct VulkanEffect VulkanEffect;
+typedef struct VulkanQuery VulkanQuery;
 typedef struct PipelineHashMap PipelineHashMap;
 typedef struct RenderPassHashMap RenderPassHashMap;
 typedef struct FramebufferHashMap FramebufferHashMap;
@@ -140,6 +141,10 @@ struct SamplerStateHashMap
 
 struct VulkanEffect {
 	MOJOSHADER_effect *effect;
+};
+
+struct VulkanQuery {
+	uint32_t index;
 };
 
 struct VulkanTexture {
@@ -240,10 +245,16 @@ typedef struct FNAVulkanRenderer
 	VkCommandBuffer *commandBuffers;
 	uint32_t commandBufferCapacity;
 	uint32_t commandBufferCount;
+	uint8_t commandBufferBegunThisPass;
 
 	FNA3D_Vec4 clearColor;
 	float clearDepthValue;
 	uint32_t clearStencilValue;
+
+	/* Queries */
+	VkQueryPool queryPool;
+	int8_t freeQueryIndexStack[MAX_QUERIES];
+	int8_t freeQueryIndexStackHead;
 
 	SurfaceFormatMapping surfaceFormatMapping;
 	FNA3D_SurfaceFormat fauxBackbufferSurfaceFormat;
@@ -1666,6 +1677,12 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 		NULL
 	);
 
+	renderer->vkDestroyQueryPool(
+		renderer->logicalDevice,
+		renderer->queryPool,
+		NULL
+	);
+
 	renderer->vkDestroyCommandPool(
 		renderer->logicalDevice,
 		renderer->commandPool,
@@ -2809,51 +2826,59 @@ static void BeginRenderPass(
 {
 	VkResult vulkanResult;
 
-	renderer->commandBufferCount++;
-
-	if (renderer->commandBufferCount > renderer->commandBufferCapacity)
+	if (!renderer->commandBufferBegunThisPass)
 	{
-		renderer->commandBufferCapacity *= 2;
+		renderer->commandBufferCount++;
 
-		renderer->commandBuffers = SDL_realloc(
-			renderer->commandBuffers,
-			sizeof(VkCommandBuffer) * renderer->commandBufferCapacity
+		if (renderer->commandBufferCount > renderer->commandBufferCapacity)
+		{
+			renderer->commandBufferCapacity *= 2;
+
+			renderer->commandBuffers = SDL_realloc(
+				renderer->commandBuffers,
+				sizeof(VkCommandBuffer) * renderer->commandBufferCapacity
+			);
+		}
+
+		VkCommandBufferAllocateInfo commandBufferAllocateInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
+		commandBufferAllocateInfo.commandPool = renderer->commandPool;
+		commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+		commandBufferAllocateInfo.commandBufferCount = 1; /* TODO: change for frames in flight */
+
+		vulkanResult = renderer->vkAllocateCommandBuffers(
+			renderer->logicalDevice,
+			&commandBufferAllocateInfo,
+			&renderer->commandBuffers[renderer->commandBufferCount - 1]
 		);
-	}
 
-	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-	commandBufferAllocateInfo.commandPool = renderer->commandPool;
-	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	commandBufferAllocateInfo.commandBufferCount = 1; /* TODO: change for frames in flight */
-
-	vulkanResult = renderer->vkAllocateCommandBuffers(
-		renderer->logicalDevice,
-		&commandBufferAllocateInfo,
-		&renderer->commandBuffers[renderer->commandBufferCount - 1]
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
-		return;
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
+			return;
+		}
 	}
 
 	renderer->renderPass = FetchRenderPass(renderer);
 	renderer->framebuffer = FetchFramebuffer(renderer, renderer->renderPass);
 
-	VkCommandBufferBeginInfo beginInfo = {
-		VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
-	};
-
-	vulkanResult = renderer->vkBeginCommandBuffer(
-		renderer->commandBuffers[renderer->commandBufferCount - 1],
-		&beginInfo
-	);
-
-	if (vulkanResult != VK_SUCCESS)
+	if (!renderer->commandBufferBegunThisPass)
 	{
-		LogVulkanResult("vkBeginCommandBuffer", vulkanResult);
-		return;
+		VkCommandBufferBeginInfo beginInfo = {
+			VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
+		};
+
+		vulkanResult = renderer->vkBeginCommandBuffer(
+			renderer->commandBuffers[renderer->commandBufferCount - 1],
+			&beginInfo
+		);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
+			return;
+		}
+
+		renderer->commandBufferBegunThisPass = 1;
 	}
 
 	renderer->renderPassInProgress = 1;
@@ -3888,6 +3913,7 @@ static void EndPass(
 		}
 
 		renderer->renderPassInProgress = 0;
+		renderer->commandBufferBegunThisPass = 0;
 	}
 }
 
@@ -4032,6 +4058,7 @@ static void Stall(FNAVulkanRenderer *renderer)
 
 	renderer->commandBufferCount = 0;
 	AllocateAndBeginCommandBuffer(renderer);
+	renderer->commandBufferBegunThisPass = 1;
 	renderer->needNewRenderPass = 1;
 
 	buf = renderer->buffers;
@@ -4724,34 +4751,132 @@ void VULKAN_EndPassRestore(
 
 FNA3D_Query* VULKAN_CreateQuery(FNA3D_Renderer *driverData)
 {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer *) driverData;
+	VulkanQuery *query = SDL_malloc(sizeof(VulkanQuery));
+
+	if (renderer->freeQueryIndexStackHead == -1) {
+		SDL_LogError(
+			SDL_LOG_CATEGORY_APPLICATION,
+			"Query limit of %d has been exceeded",
+			MAX_QUERIES
+		);
+		return NULL;
+	}
+
+	query->index = renderer->freeQueryIndexStackHead;
+	renderer->freeQueryIndexStackHead = renderer->freeQueryIndexStack[renderer->freeQueryIndexStackHead];
+	return (FNA3D_Query *) query;
 }
 
 void VULKAN_AddDisposeQuery(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanQuery *vulkanQuery = (VulkanQuery*) query;
+
+	/* Need to do this between passes */
+	EndPass(renderer);
+
+	if (!renderer->commandBufferBegunThisPass)
+	{
+		AllocateAndBeginCommandBuffer(renderer);
+		renderer->commandBufferBegunThisPass = 1;
+	}
+
+	renderer->vkCmdResetQueryPool(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		renderer->queryPool,
+		vulkanQuery->index,
+		1
+	);
+
+	/* Push the now-freed index to the stack */
+	renderer->freeQueryIndexStack[vulkanQuery->index] = renderer->freeQueryIndexStackHead;
+	renderer->freeQueryIndexStackHead = vulkanQuery->index;
+
+	SDL_free(vulkanQuery);
 }
 
 void VULKAN_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanQuery *vulkanQuery = (VulkanQuery*) query;
+
+	if (!renderer->commandBufferBegunThisPass)
+	{
+		AllocateAndBeginCommandBuffer(renderer);
+		renderer->commandBufferBegunThisPass = 1;
+	}
+
+	renderer->vkCmdBeginQuery(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		renderer->queryPool,
+		vulkanQuery->index,
+		VK_QUERY_CONTROL_PRECISE_BIT
+	);
 }
 
 void VULKAN_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanQuery *vulkanQuery = (VulkanQuery*) query;
+
+	/* Assume that the user is calling this in the same pass as they started it */
+
+	renderer->vkCmdEndQuery(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		renderer->queryPool,
+		vulkanQuery->index
+	);
 }
 
 uint8_t VULKAN_QueryComplete(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanQuery *vulkanQuery = (VulkanQuery*) query;
+	VkResult vulkanResult;
+	uint32_t queryResult;
+
+	vulkanResult = renderer->vkGetQueryPoolResults(
+		renderer->logicalDevice,
+		renderer->queryPool,
+		vulkanQuery->index,
+		1,
+		sizeof(queryResult),
+		&queryResult,
+		0,
+		0
+	);
+
+	return vulkanResult == VK_SUCCESS;
 }
 
 int32_t VULKAN_QueryPixelCount(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanQuery *vulkanQuery = (VulkanQuery*) query;
+	VkResult vulkanResult;
+	uint32_t queryResult;
+
+	vulkanResult = renderer->vkGetQueryPoolResults(
+		renderer->logicalDevice,
+		renderer->queryPool,
+		vulkanQuery->index,
+		1,
+		sizeof(queryResult),
+		&queryResult,
+		0,
+		0
+	);
+
+	if (vulkanResult != VK_SUCCESS) {
+		LogVulkanResult("vkGetQueryPoolResults", VK_SUCCESS);
+		return 0;
+	}
+
+	/* FIXME maybe signed/unsigned integer problems? */
+	return queryResult;
 }
 
 /* Feature Queries */
@@ -5738,8 +5863,8 @@ FNA3D_Device* VULKAN_CreateDevice(
 	}
 
 	/* specifying used device features */
-	/* empty for now because i don't know what we need yet... --cosmonaut */
 	VkPhysicalDeviceFeatures deviceFeatures = { 0 };
+	deviceFeatures.occlusionQueryPrecise = VK_TRUE;
 	//SDL_memset(&deviceFeatures, '\0', sizeof(VkPhysicalDeviceFeatures));
 
 	/* creating the logical device */
@@ -6529,25 +6654,43 @@ FNA3D_Device* VULKAN_CreateDevice(
 	renderer->commandBufferCount = 0;
 	renderer->commandBufferCapacity = 1;
 
-	VkCommandBufferAllocateInfo commandBufferAllocateInfo = { VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO };
-	commandBufferAllocateInfo.commandPool = renderer->commandPool;
-	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	commandBufferAllocateInfo.commandBufferCount = 1; /* TODO: change for frames in flight */
+	AllocateAndBeginCommandBuffer(renderer);
 
-	vulkanResult = renderer->vkAllocateCommandBuffers(
+	renderer->needNewRenderPass = 1;
+	renderer->frameInProgress = 0;
+	renderer->commandBufferBegunThisPass = 1;
+
+	/* Set up query pool */
+	VkQueryPoolCreateInfo queryPoolCreateInfo = { VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO };
+	queryPoolCreateInfo.flags = 0;
+	queryPoolCreateInfo.queryType = VK_QUERY_TYPE_OCCLUSION;
+	queryPoolCreateInfo.queryCount = MAX_QUERIES;
+
+	vulkanResult = renderer->vkCreateQueryPool(
 		renderer->logicalDevice,
-		&commandBufferAllocateInfo,
-		&renderer->commandBuffers[0]
+		&queryPoolCreateInfo,
+		NULL,
+		&renderer->queryPool
 	);
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
+		LogVulkanResult("vkCreateQueryPool", vulkanResult);
 		return NULL;
 	}
 
-	renderer->needNewRenderPass = 1;
-	renderer->frameInProgress = 0;
+	renderer->vkCmdResetQueryPool(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		renderer->queryPool,
+		0,
+		MAX_QUERIES
+	);
+
+	/* Set up the stack, the value at each index is the next available index, or -1 if no such index exists. */
+	for (int i = 0; i < MAX_QUERIES - 1; ++i){
+		renderer->freeQueryIndexStack[i] = i + 1;
+	}
+	renderer->freeQueryIndexStack[MAX_QUERIES - 1] = -1;
 
 	/* Initialize renderer members not covered by SDL_memset('\0') */
 	SDL_memset(renderer->multiSampleMask, -1, sizeof(renderer->multiSampleMask)); /* AKA 0xFFFFFFFF */
