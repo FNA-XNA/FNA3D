@@ -5012,6 +5012,7 @@ static inline void LoadEntryPoints(
 	const char *driverInfo,
 	uint8_t debugMode
 ) {
+	int32_t i;
 	const char *baseErrorString = (
 		renderer->useES3 ?
 			"OpenGL ES 3.0 support is required!" :
@@ -5178,6 +5179,23 @@ static inline void LoadEntryPoints(
 			driverInfo
 		);
 		return;
+	}
+
+	/* Check this before KHR_debug inits, to prevent complaints about
+	 * unsupported render formats from showing up
+	 */
+	if (renderer->supports_ARB_internalformat_query)
+	{
+		for (i = 0; i < 21; i += 1)
+		{
+			renderer->glGetInternalformativ(
+				GL_RENDERBUFFER,
+				XNAToGL_TextureInternalFormat[i],
+				GL_SAMPLES,
+				1,
+				&renderer->maxMultiSampleCountFormat[i]
+			);
+		}
 	}
 
 	/* Everything below this check is for debug contexts */
@@ -5575,33 +5593,6 @@ FNA3D_Device* OPENGL_CreateDevice(
 	}
 	if (renderer->supports_ARB_internalformat_query)
 	{
-		#define ITERATE_QUERIES(max) \
-			do \
-			{ \
-				renderer->glGetInternalformativ( \
-					GL_RENDERBUFFER, \
-					XNAToGL_TextureInternalFormat[i], \
-					GL_SAMPLES, \
-					1, \
-					&renderer->maxMultiSampleCountFormat[i] \
-				); \
-			} while (++i < max);
-		i = 0;
-		ITERATE_QUERIES(3)
-
-		/* S3TC rendering is never supported */
-		renderer->maxMultiSampleCountFormat[i++] = 0;
-		renderer->maxMultiSampleCountFormat[i++] = 0;
-		renderer->maxMultiSampleCountFormat[i++] = 0;
-
-		ITERATE_QUERIES(12)
-
-		/* ALPHA8 rendering is never supported */
-		renderer->maxMultiSampleCountFormat[i++] = 0;
-
-		ITERATE_QUERIES(21)
-		#undef ITERATE_QUERIES
-
 		presentationParameters->multiSampleCount = SDL_min(
 			presentationParameters->multiSampleCount,
 			renderer->maxMultiSampleCountFormat[presentationParameters->backBufferFormat]
