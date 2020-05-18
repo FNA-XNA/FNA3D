@@ -587,7 +587,7 @@ struct GLThreadCommand
 		struct
 		{
 			FNA3D_SurfaceFormat format;
-			int multiSampleCount;
+			int32_t multiSampleCount;
 			int32_t retval;
 		} getMaxMultiSampleCount;
 		struct
@@ -2477,7 +2477,7 @@ static void THREADEDGL_GetMaxTextureSlots(
 static int32_t THREADEDGL_GetMaxMultiSampleCount(
 	FNA3D_Renderer *driverData,
 	FNA3D_SurfaceFormat format,
-	int multiSampleCount
+	int32_t multiSampleCount
 ) {
 	GLThreadCommand cmd;
 	ThreadedGLRenderer *renderer = (ThreadedGLRenderer*) driverData;

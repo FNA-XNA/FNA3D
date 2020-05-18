@@ -4921,7 +4921,7 @@ static void OPENGL_GetMaxTextureSlots(
 static int32_t OPENGL_GetMaxMultiSampleCount(
 	FNA3D_Renderer *driverData,
 	FNA3D_SurfaceFormat format,
-	int multiSampleCount
+	int32_t multiSampleCount
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 

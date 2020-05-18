@@ -4526,7 +4526,7 @@ static void MODERNGL_GetMaxTextureSlots(
 static int32_t MODERNGL_GetMaxMultiSampleCount(
 	FNA3D_Renderer *driverData,
 	FNA3D_SurfaceFormat format,
-	int multiSampleCount
+	int32_t multiSampleCount
 ) {
 	ModernGLRenderer *renderer = (ModernGLRenderer*) driverData;
 
