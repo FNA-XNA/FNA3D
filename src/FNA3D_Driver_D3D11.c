@@ -556,13 +556,23 @@ static ID3D11BlendState* FetchBlendState(
 		];
 	}
 
-	/* FIXME: For colorWriteEnable1/2/3, we'll need
-	 * to loop over all render target descriptors
-	 * and apply the same state, except for the mask.
-	 * Ugh. -caleb
-	 */
+	/* All other states should match for all targets... */
+	desc.RenderTarget[1] = desc.RenderTarget[0];
+	desc.RenderTarget[2] = desc.RenderTarget[0];
+	desc.RenderTarget[3] = desc.RenderTarget[0];
+
+	/* ... except RenderTargetWriteMask. */
 	desc.RenderTarget[0].RenderTargetWriteMask = (
 		(uint32_t) state->colorWriteEnable
+	);
+	desc.RenderTarget[1].RenderTargetWriteMask = (
+		(uint32_t) state->colorWriteEnable1
+	);
+	desc.RenderTarget[2].RenderTargetWriteMask = (
+		(uint32_t) state->colorWriteEnable2
+	);
+	desc.RenderTarget[3].RenderTargetWriteMask = (
+		(uint32_t) state->colorWriteEnable3
 	);
 
 	/* Bake the state! */
