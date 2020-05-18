@@ -31,8 +31,6 @@
 
 /* STB_DS Implementation */
 
-#define strcmp SDL_strcmp
-#define strlen SDL_strlen
 #ifdef memcmp
 #undef memcmp
 #endif
@@ -49,6 +47,14 @@
 #undef memset
 #endif
 #define memset SDL_memset
+#ifdef strcmp
+#undef strcmp
+#endif
+#define strcmp SDL_strcmp
+#ifdef strlen
+#undef strlen
+#endif
+#define strlen SDL_strlen
 #define STBDS_ASSERT(x) SDL_assert(x)
 #define STBDS_REALLOC(c,p,s) SDL_realloc(p,s)
 #define STBDS_FREE(c,p) SDL_free(p)
