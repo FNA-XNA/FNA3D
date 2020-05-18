@@ -192,6 +192,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	ID3D11Device *device;
 	ID3D11DeviceContext *context;
 	void* factory; /* IDXGIFactory1 or IDXGIFactory2 */
+	IDXGIAdapter1 *adapter;
 	IDXGISwapChain *swapchain;
 	ID3DUserDefinedAnnotation *annotation;
 	SDL_mutex *ctxLock;
@@ -2679,18 +2680,31 @@ static void CreateSwapChain(
 		);
 	}
 #else
+	IDXGIOutput *output;
 	DXGI_SWAP_CHAIN_DESC swapchainDesc;
-	DXGI_RATIONAL refreshRate = { 1, 60 }; /* FIXME: Get this from display mode. */
 	DXGI_MODE_DESC swapchainBufferDesc;
 	HRESULT res;
 
 	/* Initialize swapchain buffer descriptor */
 	swapchainBufferDesc.Width = 0;
 	swapchainBufferDesc.Height = 0;
-	swapchainBufferDesc.RefreshRate = refreshRate;
+	swapchainBufferDesc.RefreshRate.Numerator = 0;
+	swapchainBufferDesc.RefreshRate.Denominator = 0;
 	swapchainBufferDesc.Format = XNAToD3D_TextureFormat[pp->backBufferFormat];
 	swapchainBufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
 	swapchainBufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+
+	IDXGIAdapter_EnumOutputs(
+		(IDXGIAdapter*) renderer->adapter,
+		0,
+		&output
+	);
+	IDXGIOutput_FindClosestMatchingMode(
+		output,
+		&swapchainBufferDesc,
+		&swapchainDesc.BufferDesc,
+		(IUnknown*) renderer->device
+	);
 
 	/* Initialize the swapchain descriptor */
 	swapchainDesc.BufferDesc = swapchainBufferDesc;
@@ -4893,7 +4907,6 @@ static FNA3D_Device* D3D11_CreateDevice(
 ) {
 	FNA3D_Device *result;
 	D3D11Renderer *renderer;
-	IDXGIAdapter1 *adapter;
 	DXGI_ADAPTER_DESC1 adapterDesc;
 	void* module;
 	typedef HRESULT(WINAPI *PFN_CREATE_DXGI_FACTORY)(const GUID *riid, void **ppFactory);
@@ -4934,7 +4947,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 	IDXGIFactory2_EnumAdapters1(
 		(IDXGIFactory2*) renderer->factory,
 		0,
-		&adapter
+		&renderer->adapter
 	);
 #else
 	module = SDL_LoadObject(DXGI_DLL);
@@ -4972,11 +4985,11 @@ static FNA3D_Device* D3D11_CreateDevice(
 	IDXGIFactory1_EnumAdapters1(
 		(IDXGIFactory1*) renderer->factory,
 		0,
-		&adapter
+		&renderer->adapter
 	);
 #endif /* __WINRT__ */
 
-	IDXGIAdapter1_GetDesc1(adapter, &adapterDesc);
+	IDXGIAdapter1_GetDesc1(renderer->adapter, &adapterDesc);
 
 	/* Load D3D11CreateDevice */
 #ifdef __WINRT__
@@ -5009,7 +5022,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 		flags |= D3D11_CREATE_DEVICE_DEBUG;
 	}
 	ret = D3D11CreateDeviceFunc(
-		NULL, /* FIXME: Use adapter from above EnumAdapters? */
+		NULL, /* FIXME: Should be renderer->adapter! */
 		D3D_DRIVER_TYPE_HARDWARE,
 		NULL,
 		flags,
