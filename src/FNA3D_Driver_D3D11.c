@@ -447,14 +447,23 @@ static D3D_PRIMITIVE_TOPOLOGY XNAToD3D_Primitive[] =
 /* Faux-Backbuffer Blit Shader Sources */
 
 static const char* FAUX_BLIT_VERTEX_SHADER =
-	"void main(inout float4 pos : SV_POSITION, inout float2 texCoord : TEXCOORD0) \n"
-	"{ pos.y *= -1; pos.zw = float2(0.0f, 1.0f); }";
+	"void main("
+	"	inout float4 position : SV_POSITION,"
+	"	inout float2 texcoord : TEXCOORD0"
+	") {"
+	"	position.y *= -1;"
+	"	position.zw = float2(0.0f, 1.0f);"
+	"}";
 
 const char* FAUX_BLIT_PIXEL_SHADER =
-	"Texture2D Texture : register(t0); \n"
-	"sampler TextureSampler : register(s0); \n"
-	"float4 main(float4 position : SV_POSITION, float2 texcoord : TEXCOORD0) : SV_TARGET \n"
-	"{ return Texture.Sample(TextureSampler, texcoord); }";
+	"Texture2D Texture : register(t0);"
+	"sampler TextureSampler : register(s0);"
+	"float4 main("
+	"	float4 position : SV_POSITION,"
+	"	float2 texcoord : TEXCOORD0"
+	") : SV_TARGET {"
+	"	return Texture.Sample(TextureSampler, texcoord);"
+	"}";
 
 /* Texture Helper Functions */
 
@@ -499,6 +508,14 @@ static inline uint32_t CalcSubresource(
 	uint32_t numLevels
 ) {
 	return mipLevel + (arraySlice * numLevels);
+}
+
+static inline uint8_t BlendEquals(FNA3D_Color *a, FNA3D_Color *b)
+{
+	return (	a->r == b->r &&
+			a->g == b->g &&
+			a->b == b->b &&
+			a->a == b->a	);
 }
 
 /* Pipeline State Object Caching */
@@ -1063,11 +1080,54 @@ static ID3D11InputLayout* FetchDeclarationInputLayout(
 	return result;
 }
 
+/* Forward Declarations */
+
+static void D3D11_INTERNAL_DestroyFramebuffer(D3D11Renderer *renderer);
+
+static void D3D11_SetRenderTargets(
+	FNA3D_Renderer *driverData,
+	FNA3D_RenderTargetBinding *renderTargets,
+	int32_t numRenderTargets,
+	FNA3D_Renderbuffer *depthStencilBuffer,
+	FNA3D_DepthFormat depthFormat
+);
+static void D3D11_GetTextureData2D(
+	FNA3D_Renderer *driverData,
+	FNA3D_Texture *texture,
+	FNA3D_SurfaceFormat format,
+	int32_t x,
+	int32_t y,
+	int32_t w,
+	int32_t h,
+	int32_t level,
+	void* data,
+	int32_t dataLength
+);
+
+static void D3D11_GetDrawableSize(void *window, int32_t *x, int32_t *y);
+
+static void* D3D11_PLATFORM_LoadD3D11();
+static void D3D11_PLATFORM_UnloadD3D11(void* module);
+static PFN_D3D11_CREATE_DEVICE D3D11_PLATFORM_GetCreateDeviceFunc(void* module);
+
+static void* D3D11_PLATFORM_LoadCompiler();
+static PFN_D3DCOMPILE D3D11_PLATFORM_GetCompileFunc(void* module);
+
+static HRESULT D3D11_PLATFORM_CreateDXGIFactory(void** factory);
+static void D3D11_PLATFORM_GetDefaultAdapter(
+	void* factory,
+	IDXGIAdapter1 **adapter
+);
+
+static void D3D11_PLATFORM_CreateSwapChain(
+	D3D11Renderer *renderer,
+	FNA3D_PresentationParameters *pp
+);
+
 /* Renderer Implementation */
 
 /* Quit */
 
-static void DestroyFramebuffer(D3D11Renderer *renderer);
 static void D3D11_DestroyDevice(FNA3D_Device *device)
 {
 	D3D11Renderer* renderer = (D3D11Renderer*) device->driverData;
@@ -1077,7 +1137,7 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 	ID3D11DeviceContext_ClearState(renderer->context);
 
 	/* Release faux backbuffer and swapchain */
-	DestroyFramebuffer(renderer);
+	D3D11_INTERNAL_DestroyFramebuffer(renderer);
 	ID3D11BlendState_Release(renderer->fauxBlendState);
 	ID3D11Buffer_Release(renderer->fauxBlitIndexBuffer);
 	ID3D11InputLayout_Release(renderer->fauxBlitLayout);
@@ -1151,8 +1211,7 @@ static void D3D11_BeginFrame(FNA3D_Renderer *driverData)
 	/* No-op */
 }
 
-static void D3D11_GetDrawableSize(void *window, int32_t *x, int32_t *y);
-static void UpdateBackbufferVertexBuffer(
+static void D3D11_INTERNAL_UpdateBackbufferVertexBuffer(
 	D3D11Renderer *renderer,
 	FNA3D_Rect *srcRect,
 	FNA3D_Rect *dstRect,
@@ -1226,14 +1285,7 @@ static void UpdateBackbufferVertexBuffer(
 	SDL_UnlockMutex(renderer->ctxLock);
 }
 
-static void D3D11_SetRenderTargets(
-	FNA3D_Renderer *driverData,
-	FNA3D_RenderTargetBinding *renderTargets,
-	int32_t numRenderTargets,
-	FNA3D_Renderbuffer *depthStencilBuffer,
-	FNA3D_DepthFormat depthFormat
-);
-static void BlitFramebuffer(D3D11Renderer *renderer, int32_t w, int32_t h)
+static void D3D11_INTERNAL_BlitFramebuffer(D3D11Renderer *renderer, int32_t w, int32_t h)
 {
 	const uint32_t vertexStride = 16;
 	const uint32_t offsets[] = { 0 };
@@ -1484,7 +1536,7 @@ static void D3D11_SwapBuffers(
 		renderer->prevDestRect.w != dstRect.w ||
 		renderer->prevDestRect.h != dstRect.h	)
 	{
-		UpdateBackbufferVertexBuffer(
+		D3D11_INTERNAL_UpdateBackbufferVertexBuffer(
 			renderer,
 			&srcRect,
 			&dstRect,
@@ -1511,7 +1563,7 @@ static void D3D11_SwapBuffers(
 	}
 
 	/* "Blit" the faux-backbuffer to the swapchain image */
-	BlitFramebuffer(renderer, drawableWidth, drawableHeight);
+	D3D11_INTERNAL_BlitFramebuffer(renderer, drawableWidth, drawableHeight);
 
 	SDL_UnlockMutex(renderer->ctxLock);
 
@@ -1735,7 +1787,7 @@ static void D3D11_DrawPrimitives(
 	SDL_UnlockMutex(renderer->ctxLock);
 }
 
-static void BindUserVertexBuffer(
+static void D3D11_INTERNAL_BindUserVertexBuffer(
 	D3D11Renderer *renderer,
 	void* vertexData,
 	int32_t vertexCount,
@@ -1826,7 +1878,6 @@ static void BindUserVertexBuffer(
 	SDL_UnlockMutex(renderer->ctxLock);
 }
 
-
 static void D3D11_DrawUserIndexedPrimitives(
 	FNA3D_Renderer *driverData,
 	FNA3D_PrimitiveType primitiveType,
@@ -1848,7 +1899,7 @@ static void D3D11_DrawUserIndexedPrimitives(
 	len = numIndices * indexSize;
 
 	/* Bind the vertex buffer */
-	BindUserVertexBuffer(
+	D3D11_INTERNAL_BindUserVertexBuffer(
 		renderer,
 		vertexData,
 		numVertices,
@@ -1960,7 +2011,7 @@ static void D3D11_DrawUserPrimitives(
 		primitiveType,
 		primitiveCount
 	);
-	BindUserVertexBuffer(
+	D3D11_INTERNAL_BindUserVertexBuffer(
 		renderer,
 		vertexData,
 		numVerts,
@@ -2055,14 +2106,6 @@ static void D3D11_GetBlendFactor(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	*blendFactor = renderer->blendFactor;
-}
-
-static inline uint8_t BlendEquals(FNA3D_Color *a, FNA3D_Color *b)
-{
-	return (	a->r == b->r &&
-			a->g == b->g &&
-			a->b == b->b &&
-			a->a == b->a	);
 }
 
 static void D3D11_SetBlendFactor(
@@ -2630,116 +2673,7 @@ static void D3D11_ResolveTarget(
 
 /* Backbuffer Functions */
 
-static void* GetDXGIHandle(SDL_Window *window)
-{
-#ifdef FNA3D_DXVK_NATIVE
-	return (void*) window;
-#else
-	SDL_SysWMinfo info;
-	SDL_VERSION(&info.version);
-	SDL_GetWindowWMInfo((SDL_Window*) window, &info);
-#ifdef __WINRT__
-	return (void*) info.info.winrt.window; /* CoreWindow* */
-#else
-	return (void*) info.info.win.window; /* HWND */
-#endif
-#endif
-}
-
-static void CreateSwapChain(
-	D3D11Renderer *renderer,
-	FNA3D_PresentationParameters *pp
-) {
-#ifdef __WINRT__
-	DXGI_SWAP_CHAIN_DESC1 swapchainDesc;
-	HRESULT res;
-
-	/* Initialize swapchain descriptor */
-	swapchainDesc.Width = 0;
-	swapchainDesc.Height = 0;
-	swapchainDesc.Format = XNAToD3D_TextureFormat[pp->backBufferFormat];
-	swapchainDesc.Stereo = 0;
-	swapchainDesc.SampleDesc.Count = 1;
-	swapchainDesc.SampleDesc.Quality = 0;
-	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	swapchainDesc.BufferCount = 3;
-	swapchainDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
-	swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
-	swapchainDesc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
-	swapchainDesc.Flags = 0;
-
-	/* Create the swap chain! */
-	res = IDXGIFactory2_CreateSwapChainForCoreWindow(
-		(IDXGIFactory2*) renderer->factory,
-		(IUnknown*) renderer->device,
-		(IUnknown*) GetDXGIHandle(pp->deviceWindowHandle),
-		&swapchainDesc,
-		NULL,
-		(IDXGISwapChain1**) &renderer->swapchain
-	);
-	if (res < 0)
-	{
-		FNA3D_LogError(
-			"Could not create swapchain! Error code: %x",
-			res
-		);
-	}
-#else
-	IDXGIOutput *output;
-	DXGI_SWAP_CHAIN_DESC swapchainDesc;
-	DXGI_MODE_DESC swapchainBufferDesc;
-	HRESULT res;
-
-	/* Initialize swapchain buffer descriptor */
-	swapchainBufferDesc.Width = 0;
-	swapchainBufferDesc.Height = 0;
-	swapchainBufferDesc.RefreshRate.Numerator = 0;
-	swapchainBufferDesc.RefreshRate.Denominator = 0;
-	swapchainBufferDesc.Format = XNAToD3D_TextureFormat[pp->backBufferFormat];
-	swapchainBufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
-	swapchainBufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
-
-	IDXGIAdapter_EnumOutputs(
-		(IDXGIAdapter*) renderer->adapter,
-		0,
-		&output
-	);
-	IDXGIOutput_FindClosestMatchingMode(
-		output,
-		&swapchainBufferDesc,
-		&swapchainDesc.BufferDesc,
-		(IUnknown*) renderer->device
-	);
-
-	/* Initialize the swapchain descriptor */
-	swapchainDesc.BufferDesc = swapchainBufferDesc;
-	swapchainDesc.SampleDesc.Count = 1;
-	swapchainDesc.SampleDesc.Quality = 0;
-	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	swapchainDesc.BufferCount = 3;
-	swapchainDesc.OutputWindow = (HWND) GetDXGIHandle((SDL_Window*) pp->deviceWindowHandle);
-	swapchainDesc.Windowed = 1;
-	swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-	swapchainDesc.Flags = 0;
-
-	/* Create the swapchain! */
-	res = IDXGIFactory1_CreateSwapChain(
-		(IDXGIFactory1*) renderer->factory,
-		(IUnknown*) renderer->device,
-		&swapchainDesc,
-		&renderer->swapchain
-	);
-	if (res < 0)
-	{
-		FNA3D_LogError(
-			"Could not create swapchain! Error code: %x",
-			res
-		);
-	}
-#endif
-}
-
-static void CreateFramebuffer(
+static void D3D11_INTERNAL_CreateFramebuffer(
 	D3D11Renderer *renderer,
 	FNA3D_PresentationParameters *presentationParameters
 ) {
@@ -2890,7 +2824,7 @@ static void CreateFramebuffer(
 	/* Create the swapchain */
 	if (renderer->swapchain == NULL)
 	{
-		CreateSwapChain(renderer, presentationParameters);
+		D3D11_PLATFORM_CreateSwapChain(renderer, presentationParameters);
 	}
 	else
 	{
@@ -2945,7 +2879,7 @@ static void CreateFramebuffer(
 	#undef BB
 }
 
-static void DestroyFramebuffer(D3D11Renderer *renderer)
+static void D3D11_INTERNAL_DestroyFramebuffer(D3D11Renderer *renderer)
 {
 	#define BB renderer->backbuffer
 
@@ -2997,26 +2931,13 @@ static void D3D11_ResetBackbuffer(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 
-	DestroyFramebuffer(renderer);
-	CreateFramebuffer(
+	D3D11_INTERNAL_DestroyFramebuffer(renderer);
+	D3D11_INTERNAL_CreateFramebuffer(
 		renderer,
 		presentationParameters
 	);
-
 }
 
-static void D3D11_GetTextureData2D(
-	FNA3D_Renderer *driverData,
-	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
-	int32_t x,
-	int32_t y,
-	int32_t w,
-	int32_t h,
-	int32_t level,
-	void* data,
-	int32_t dataLength
-);
 static void D3D11_ReadBackbuffer(
 	FNA3D_Renderer *driverData,
 	int32_t x,
@@ -3673,7 +3594,7 @@ static void D3D11_GetTextureDataCube(
 	int32_t row;
 	int32_t formatSize = Texture_GetFormatSize(format);
 
-	if (format == FNA3D_SURFACEFORMAT_DXT1 ||
+	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
 		format == FNA3D_SURFACEFORMAT_DXT3 ||
 		format == FNA3D_SURFACEFORMAT_DXT5)
 	{
@@ -4648,27 +4569,17 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 	};
 	HRESULT res;
 
-#ifdef __WINRT__
-	D3D11CreateDeviceFunc = D3D11CreateDevice;
-#else
-	module = SDL_LoadObject(D3D11_DLL);
+	module = D3D11_PLATFORM_LoadD3D11();
 	if (module == NULL)
 	{
 		return 0;
 	}
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpedantic"
-	D3D11CreateDeviceFunc = (PFN_D3D11_CREATE_DEVICE) SDL_LoadFunction(
-		module,
-		"D3D11CreateDevice"
-	);
-#pragma GCC diagnostic pop
+	D3D11CreateDeviceFunc = D3D11_PLATFORM_GetCreateDeviceFunc(module);
 	if (D3D11CreateDeviceFunc == NULL)
 	{
 		SDL_UnloadObject(module);
 		return 0;
 	}
-#endif /* __WINRT__ */
 
 	res = D3D11CreateDeviceFunc(
 		NULL,
@@ -4682,7 +4593,9 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 		NULL,
 		NULL
 	);
-	SDL_UnloadObject(module);
+
+	D3D11_PLATFORM_UnloadD3D11(module);
+
 	if (res < 0)
 	{
 		return 0;
@@ -4703,7 +4616,7 @@ static void D3D11_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 #endif
 }
 
-static void InitializeFauxBackbuffer(
+static void D3D11_INTERNAL_InitializeFauxBackbuffer(
 	D3D11Renderer *renderer,
 	uint8_t scaleNearest
 ) {
@@ -4727,26 +4640,17 @@ static void InitializeFauxBackbuffer(
 	HRESULT res;
 
 	/* Load the D3DCompile function */
-#ifdef __WINRT__
-	D3DCompileFunc = D3DCompile;
-#else
-	d3dCompilerModule = SDL_LoadObject(D3DCOMPILER_DLL);
+	d3dCompilerModule = D3D11_PLATFORM_LoadCompiler();
 	if (d3dCompilerModule == NULL)
 	{
 		FNA3D_LogError("Could not find " D3DCOMPILER_DLL);
 	}
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpedantic"
-	D3DCompileFunc = (PFN_D3DCOMPILE) SDL_LoadFunction(
-		d3dCompilerModule,
-		"D3DCompile"
-	);
-#pragma GCC diagnostic pop
+	D3DCompileFunc = D3D11_PLATFORM_GetCompileFunc(d3dCompilerModule);
 	if (D3DCompileFunc == NULL)
 	{
 		FNA3D_LogError("Could not load function D3DCompile!");
 	}
-#endif /* __WINRT__ */
+	/* FIXME: Unload compiler at Destroy? */
 
 	/* Create and compile the vertex shader */
 	res = D3DCompileFunc(
@@ -4917,9 +4821,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 	D3D11Renderer *renderer;
 	DXGI_ADAPTER_DESC1 adapterDesc;
 	void* module;
-	typedef HRESULT(WINAPI *PFN_CREATE_DXGI_FACTORY)(const GUID *riid, void **ppFactory);
 	PFN_D3D11_CREATE_DEVICE D3D11CreateDeviceFunc;
-	PFN_CREATE_DXGI_FACTORY CreateDXGIFactoryFunc;
 	D3D_FEATURE_LEVEL levels[] =
 	{
 		D3D_FEATURE_LEVEL_11_1,
@@ -4936,14 +4838,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 	SDL_memset(renderer, '\0', sizeof(D3D11Renderer));
 
 	/* Load CreateDXGIFactory1 */
-#ifdef __WINRT__
-	CreateDXGIFactoryFunc = CreateDXGIFactory1;
-
-	/* Create the DXGIFactory2 */
-	ret = CreateDXGIFactoryFunc(
-		&D3D_IID_IDXGIFactory2,
-		(void **) &renderer->factory
-	);
+	ret = D3D11_PLATFORM_CreateDXGIFactory(&renderer->factory);
 	if (ret < 0)
 	{
 		FNA3D_LogError(
@@ -4952,76 +4847,28 @@ static FNA3D_Device* D3D11_CreateDevice(
 		);
 		return NULL;
 	}
-	IDXGIFactory2_EnumAdapters1(
-		(IDXGIFactory2*) renderer->factory,
-		0,
+	D3D11_PLATFORM_GetDefaultAdapter(
+		renderer->factory,
 		&renderer->adapter
 	);
-#else
-	module = SDL_LoadObject(DXGI_DLL);
-	if (module == NULL)
-	{
-		FNA3D_LogError("Could not find " DXGI_DLL);
-		return NULL;
-	}
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpedantic"
-	CreateDXGIFactoryFunc = (PFN_CREATE_DXGI_FACTORY) SDL_LoadFunction(
-		module,
-		"CreateDXGIFactory1"
-	);
-#pragma GCC diagnostic pop
-	if (CreateDXGIFactoryFunc == NULL)
-	{
-		FNA3D_LogError("Could not load function CreateDXGIFactory1!");
-		return NULL;
-	}
-
-	/* Create the DXGIFactory1 */
-	ret = CreateDXGIFactoryFunc(
-		&D3D_IID_IDXGIFactory1,
-		(void**)&renderer->factory
-	);
-	if (ret < 0)
-	{
-		FNA3D_LogError(
-			"Could not create DXGIFactory! Error code: %x",
-			ret
-		);
-		return NULL;
-	}
-	IDXGIFactory1_EnumAdapters1(
-		(IDXGIFactory1*) renderer->factory,
-		0,
-		&renderer->adapter
-	);
-#endif /* __WINRT__ */
+	/* FIXME: Unload DXGI at Destroy? */
 
 	IDXGIAdapter1_GetDesc1(renderer->adapter, &adapterDesc);
 
 	/* Load D3D11CreateDevice */
-#ifdef __WINRT__
-	D3D11CreateDeviceFunc = D3D11CreateDevice;
-#else
-	module = SDL_LoadObject(D3D11_DLL);
+	module = D3D11_PLATFORM_LoadD3D11();
 	if (module == NULL)
 	{
 		FNA3D_LogError("Could not find " D3D11_DLL);
 		return NULL;
 	}
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpedantic"
-	D3D11CreateDeviceFunc = (PFN_D3D11_CREATE_DEVICE) SDL_LoadFunction(
-		module,
-		"D3D11CreateDevice"
-	);
-#pragma GCC diagnostic pop
+	D3D11CreateDeviceFunc = D3D11_PLATFORM_GetCreateDeviceFunc(module);
 	if (D3D11CreateDeviceFunc == NULL)
 	{
 		FNA3D_LogError("Could not load function D3D11CreateDevice!");
 		return NULL;
 	}
-#endif /* __WINRT__ */
+	/* FIXME: Unload D3D11 at Destroy? */
 
 	/* Create the D3D11Device */
 	flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
@@ -5129,8 +4976,8 @@ static FNA3D_Device* D3D11_CreateDevice(
 		sizeof(D3D11Backbuffer)
 	);
 	SDL_memset(renderer->backbuffer, '\0', sizeof(D3D11Backbuffer));
-	CreateFramebuffer(renderer, presentationParameters);
-	InitializeFauxBackbuffer(
+	D3D11_INTERNAL_CreateFramebuffer(renderer, presentationParameters);
+	D3D11_INTERNAL_InitializeFauxBackbuffer(
 		renderer,
 		SDL_GetHintBoolean("FNA3D_BACKBUFFER_SCALE_NEAREST", SDL_FALSE)
 	);
@@ -5150,6 +4997,254 @@ static FNA3D_Device* D3D11_CreateDevice(
 	ASSIGN_DRIVER(D3D11)
 	return result;
 }
+
+#ifdef __WINRT__
+
+/* WinRT Platform Implementation */
+
+static void* D3D11_PLATFORM_LoadD3D11()
+{
+	return (size_t) 69420;
+}
+
+static void D3D11_PLATFORM_UnloadD3D11(void* module)
+{
+	/* No-op */
+}
+
+static PFN_D3D11_CREATE_DEVICE D3D11_PLATFORM_GetCreateDeviceFunc(void* module)
+{
+	return D3D11CreateDevice;
+}
+
+static void* D3D11_PLATFORM_LoadCompiler()
+{
+	return (size_t) 42069;
+}
+
+static PFN_D3DCOMPILE D3D11_PLATFORM_GetCompileFunc(void* module)
+{
+	return D3DCompile;
+}
+
+static HRESULT D3D11_PLATFORM_CreateDXGIFactory(void** factory)
+{
+	CreateDXGIFactoryFunc = CreateDXGIFactory1;
+
+	/* Create the DXGIFactory2 */
+	return CreateDXGIFactoryFunc(
+		&D3D_IID_IDXGIFactory2,
+		&renderer->factory
+	);
+}
+
+static void D3D11_PLATFORM_GetDefaultAdapter(
+	void* factory,
+	IDXGIAdapter1 **adapter
+) {
+	IDXGIFactory2_EnumAdapters1(
+		(IDXGIFactory2*) factory,
+		0,
+		&adapter
+	);
+}
+
+static void D3D11_PLATFORM_CreateSwapChain(
+	D3D11Renderer *renderer,
+	FNA3D_PresentationParameters *pp
+) {
+	DXGI_SWAP_CHAIN_DESC1 swapchainDesc;
+	HRESULT res;
+	SDL_SysWMinfo info;
+
+	SDL_VERSION(&info.version);
+	SDL_GetWindowWMInfo((SDL_Window*) pp->deviceWindowHandle, &info);
+
+	/* Initialize swapchain descriptor */
+	swapchainDesc.Width = 0;
+	swapchainDesc.Height = 0;
+	swapchainDesc.Format = XNAToD3D_TextureFormat[pp->backBufferFormat];
+	swapchainDesc.Stereo = 0;
+	swapchainDesc.SampleDesc.Count = 1;
+	swapchainDesc.SampleDesc.Quality = 0;
+	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	swapchainDesc.BufferCount = 3;
+	swapchainDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+	swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
+	swapchainDesc.AlphaMode = DXGI_ALPHA_MODE_UNSPECIFIED;
+	swapchainDesc.Flags = 0;
+
+	/* Create the swap chain! */
+	res = IDXGIFactory2_CreateSwapChainForCoreWindow(
+		(IDXGIFactory2*) renderer->factory,
+		(IUnknown*) renderer->device,
+		(IUnknown*) info.info.winrt.window,
+		&swapchainDesc,
+		NULL,
+		(IDXGISwapChain1**) &renderer->swapchain
+	);
+	if (res < 0)
+	{
+		FNA3D_LogError(
+			"Could not create swapchain! Error code: %x",
+			res
+		);
+	}
+}
+
+#else
+
+/* Win32 Platform Implementation */
+
+static void* D3D11_PLATFORM_LoadD3D11()
+{
+	return SDL_LoadObject(D3D11_DLL);
+}
+
+static void D3D11_PLATFORM_UnloadD3D11(void* module)
+{
+	SDL_UnloadObject(module);
+}
+
+static PFN_D3D11_CREATE_DEVICE D3D11_PLATFORM_GetCreateDeviceFunc(void* module)
+{
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+	return (PFN_D3D11_CREATE_DEVICE) SDL_LoadFunction(
+		module,
+		"D3D11CreateDevice"
+	);
+#pragma GCC diagnostic pop
+}
+
+static void* D3D11_PLATFORM_LoadCompiler()
+{
+	return SDL_LoadObject(D3DCOMPILER_DLL);
+}
+
+static PFN_D3DCOMPILE D3D11_PLATFORM_GetCompileFunc(void* module)
+{
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+	return (PFN_D3DCOMPILE) SDL_LoadFunction(module, "D3DCompile");
+#pragma GCC diagnostic pop
+}
+
+static HRESULT D3D11_PLATFORM_CreateDXGIFactory(void** factory)
+{
+	typedef HRESULT(WINAPI *PFN_CREATE_DXGI_FACTORY)(const GUID *riid, void **ppFactory);
+	PFN_CREATE_DXGI_FACTORY CreateDXGIFactoryFunc;
+
+	/* Load DXGI... */
+	void* module = SDL_LoadObject(DXGI_DLL);
+	if (module == NULL)
+	{
+		FNA3D_LogError("Could not find " DXGI_DLL);
+		return -1;
+	}
+
+	/* Load CreateFactory... */
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+	CreateDXGIFactoryFunc = (PFN_CREATE_DXGI_FACTORY) SDL_LoadFunction(
+		module,
+		"CreateDXGIFactory1"
+	);
+#pragma GCC diagnostic pop
+	if (CreateDXGIFactoryFunc == NULL)
+	{
+		FNA3D_LogError("Could not load function CreateDXGIFactory1!");
+		return -1;
+	}
+
+	/* ... Create, finally. */
+	return CreateDXGIFactoryFunc(
+		&D3D_IID_IDXGIFactory1,
+		factory
+	);
+}
+
+static void D3D11_PLATFORM_GetDefaultAdapter(
+	void* factory,
+	IDXGIAdapter1 **adapter
+) {
+	IDXGIFactory1_EnumAdapters1(
+		(IDXGIFactory1*) factory,
+		0,
+		adapter
+	);
+}
+
+static inline void* GetDXGIHandle(SDL_Window *window)
+{
+#ifdef FNA3D_DXVK_NATIVE
+	return (void*) window;
+#else
+	SDL_SysWMinfo info;
+	SDL_VERSION(&info.version);
+	SDL_GetWindowWMInfo((SDL_Window*) window, &info);
+	return (void*) info.info.win.window; /* HWND */
+#endif
+}
+
+static void D3D11_PLATFORM_CreateSwapChain(
+	D3D11Renderer *renderer,
+	FNA3D_PresentationParameters *pp
+) {
+	IDXGIOutput *output;
+	DXGI_SWAP_CHAIN_DESC swapchainDesc;
+	DXGI_MODE_DESC swapchainBufferDesc;
+	HRESULT res;
+
+	/* Initialize swapchain buffer descriptor */
+	swapchainBufferDesc.Width = 0;
+	swapchainBufferDesc.Height = 0;
+	swapchainBufferDesc.RefreshRate.Numerator = 0;
+	swapchainBufferDesc.RefreshRate.Denominator = 0;
+	swapchainBufferDesc.Format = XNAToD3D_TextureFormat[pp->backBufferFormat];
+	swapchainBufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+	swapchainBufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
+
+	IDXGIAdapter_EnumOutputs(
+		(IDXGIAdapter*) renderer->adapter,
+		0,
+		&output
+	);
+	IDXGIOutput_FindClosestMatchingMode(
+		output,
+		&swapchainBufferDesc,
+		&swapchainDesc.BufferDesc,
+		(IUnknown*) renderer->device
+	);
+
+	/* Initialize the swapchain descriptor */
+	swapchainDesc.BufferDesc = swapchainBufferDesc;
+	swapchainDesc.SampleDesc.Count = 1;
+	swapchainDesc.SampleDesc.Quality = 0;
+	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
+	swapchainDesc.BufferCount = 3;
+	swapchainDesc.OutputWindow = (HWND) GetDXGIHandle((SDL_Window*) pp->deviceWindowHandle);
+	swapchainDesc.Windowed = 1;
+	swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+	swapchainDesc.Flags = 0;
+
+	/* Create the swapchain! */
+	res = IDXGIFactory1_CreateSwapChain(
+		(IDXGIFactory1*) renderer->factory,
+		(IUnknown*) renderer->device,
+		&swapchainDesc,
+		&renderer->swapchain
+	);
+	if (res < 0)
+	{
+		FNA3D_LogError(
+			"Could not create swapchain! Error code: %x",
+			res
+		);
+	}
+}
+
+#endif
 
 FNA3D_Driver D3D11Driver = {
 	"D3D11",
