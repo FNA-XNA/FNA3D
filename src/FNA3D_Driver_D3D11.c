@@ -66,17 +66,10 @@ typedef struct D3D11Texture /* Cast FNA3D_Texture* to this! */
 	ID3D11ShaderResourceView *shaderView;
 	ID3D11Resource *staging; /* ID3D11Texture2D or ID3D11Texture3D */
 
-	/* Sampler Info */
+	/* Basic Info */
 	int32_t levelCount;
 	uint8_t isRenderTarget;
 	FNA3D_SurfaceFormat format;
-	FNA3D_TextureAddressMode wrapS;
-	FNA3D_TextureAddressMode wrapT;
-	FNA3D_TextureAddressMode wrapR;
-	FNA3D_TextureFilter filter;
-	float anisotropy;
-	int32_t maxMipmapLevel;
-	float lodBias;
 
 	/* Dimensions */
 	uint8_t rtType;
@@ -110,13 +103,6 @@ static D3D11Texture NullTexture =
 	1,
 	0,
 	FNA3D_SURFACEFORMAT_COLOR,
-	FNA3D_TEXTUREADDRESSMODE_WRAP,
-	FNA3D_TEXTUREADDRESSMODE_WRAP,
-	FNA3D_TEXTUREADDRESSMODE_WRAP,
-	FNA3D_TEXTUREFILTER_LINEAR,
-	0.0f,
-	0,
-	0.0f,
 	0,
 	{
 		{ 0, 0 }
@@ -237,6 +223,15 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	/* Textures */
 	D3D11Texture *textures[MAX_TOTAL_SAMPLERS];
 	ID3D11SamplerState *samplers[MAX_TOTAL_SAMPLERS];
+
+	/* Samplers */
+	FNA3D_TextureAddressMode wrapS[MAX_TOTAL_SAMPLERS];
+	FNA3D_TextureAddressMode wrapT[MAX_TOTAL_SAMPLERS];
+	FNA3D_TextureAddressMode wrapR[MAX_TOTAL_SAMPLERS];
+	FNA3D_TextureFilter filter[MAX_TOTAL_SAMPLERS];
+	float anisotropy[MAX_TOTAL_SAMPLERS];
+	int32_t maxMipmapLevel[MAX_TOTAL_SAMPLERS];
+	float lodBias[MAX_TOTAL_SAMPLERS];
 
 	/* Input Assembly */
 	ID3D11InputLayout *inputLayout;
@@ -2269,19 +2264,6 @@ static void D3D11_VerifySampler(
 		return;
 	}
 
-	if (	d3dTexture == renderer->textures[index] &&
-		sampler->addressU == d3dTexture->wrapS &&
-		sampler->addressV == d3dTexture->wrapT &&
-		sampler->addressW == d3dTexture->wrapR &&
-		sampler->filter == d3dTexture->filter &&
-		sampler->maxAnisotropy == d3dTexture->anisotropy &&
-		sampler->maxMipLevel == d3dTexture->maxMipmapLevel &&
-		sampler->mipMapLevelOfDetailBias == d3dTexture->lodBias	)
-	{
-		/* Nothing's changing, forget it. */
-		return;
-	}
-
 	/* Bind the correct texture */
 	if (d3dTexture != renderer->textures[index])
 	{
@@ -2308,14 +2290,26 @@ static void D3D11_VerifySampler(
 		SDL_UnlockMutex(renderer->ctxLock);
 	}
 
+	if (	sampler->addressU == renderer->wrapS[index] &&
+		sampler->addressV == renderer->wrapT[index] &&
+		sampler->addressW == renderer->wrapR[index] &&
+		sampler->filter == renderer->filter[index] &&
+		sampler->maxAnisotropy == renderer->anisotropy[index] &&
+		sampler->maxMipLevel == renderer->maxMipmapLevel[index] &&
+		sampler->mipMapLevelOfDetailBias == renderer->lodBias[index]	)
+	{
+		/* Nothing's changing, forget it. */
+		return;
+	}
+
 	/* Update the texture sampler info */
-	d3dTexture->wrapS = sampler->addressU;
-	d3dTexture->wrapT = sampler->addressV;
-	d3dTexture->wrapR = sampler->addressW;
-	d3dTexture->filter = sampler->filter;
-	d3dTexture->anisotropy = sampler->maxAnisotropy;
-	d3dTexture->maxMipmapLevel = sampler->maxMipLevel;
-	d3dTexture->lodBias = sampler->mipMapLevelOfDetailBias;
+	renderer->wrapS[index] = sampler->addressU;
+	renderer->wrapT[index] = sampler->addressV;
+	renderer->wrapR[index] = sampler->addressW;
+	renderer->filter[index] = sampler->filter;
+	renderer->anisotropy[index] = sampler->maxAnisotropy;
+	renderer->maxMipmapLevel[index] = sampler->maxMipLevel;
+	renderer->lodBias[index] = sampler->mipMapLevelOfDetailBias;
 
 	/* Update the sampler state, if needed */
 	d3dSamplerState = FetchSamplerState(
@@ -3151,7 +3145,6 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 	);
 	result->levelCount = levelCount;
 	result->isRenderTarget = isRenderTarget;
-	result->anisotropy = 4.0f;
 	result->twod.width = width;
 	result->twod.height = height;
 
@@ -3217,7 +3210,6 @@ static FNA3D_Texture* D3D11_CreateTexture3D(
 	);
 	result->levelCount = levelCount;
 	result->isRenderTarget = 0;
-	result->anisotropy = 4.0f;
 	result->threed.width = width;
 	result->threed.height = height;
 	result->threed.depth = depth;
@@ -3279,7 +3271,6 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 	);
 	result->levelCount = levelCount;
 	result->isRenderTarget = isRenderTarget;
-	result->anisotropy = 4.0f;
 	result->cube.size = size;
 
 	/* Create the shader resource view */
@@ -5091,6 +5082,13 @@ static FNA3D_Device* D3D11_CreateDevice(
 	{
 		renderer->textures[i] = &NullTexture;
 		renderer->samplers[i] = NULL;
+		renderer->wrapS[i] = FNA3D_TEXTUREADDRESSMODE_WRAP;
+		renderer->wrapT[i] = FNA3D_TEXTUREADDRESSMODE_WRAP;
+		renderer->wrapR[i] = FNA3D_TEXTUREADDRESSMODE_WRAP;
+		renderer->filter[i] = FNA3D_TEXTUREFILTER_LINEAR;
+		renderer->anisotropy[i] = 4.0f;
+		renderer->maxMipmapLevel[i] = 0;
+		renderer->lodBias[i] = 0.0f;
 	}
 
 	/* Initialize SetStringMarker support, if available */
