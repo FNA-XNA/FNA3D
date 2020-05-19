@@ -3146,6 +3146,7 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 	);
 	result->levelCount = levelCount;
 	result->isRenderTarget = isRenderTarget;
+	result->format = format;
 	result->twod.width = width;
 	result->twod.height = height;
 
@@ -3211,6 +3212,7 @@ static FNA3D_Texture* D3D11_CreateTexture3D(
 	);
 	result->levelCount = levelCount;
 	result->isRenderTarget = 0;
+	result->format = format;
 	result->threed.width = width;
 	result->threed.height = height;
 	result->threed.depth = depth;
@@ -3272,6 +3274,7 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 	);
 	result->levelCount = levelCount;
 	result->isRenderTarget = isRenderTarget;
+	result->format = format;
 	result->cube.size = size;
 
 	/* Create the shader resource view */
