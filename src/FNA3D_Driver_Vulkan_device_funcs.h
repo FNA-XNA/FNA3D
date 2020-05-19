@@ -32,6 +32,7 @@ VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkBeginCommandBuffer, (VkCommandBuffer 
 VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkBindBufferMemory, (VkDevice device, VkBuffer buffer, VkDeviceMemory memory, VkDeviceSize memoryOffset))
 VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkBindImageMemory, (VkDevice device, VkImage image, VkDeviceMemory memory, VkDeviceSize memoryOffset))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkCmdBeginRenderPass, (VkCommandBuffer commandBuffer, const VkRenderPassBeginInfo *pRenderPassBegin, VkSubpassContents contents))
+VULKAN_DEVICE_FUNCTION(BaseVK, void, vkCmdBindDescriptorSets, (VkCommandBuffer commandBuffer, VkPipelineBindPoint pipelineBindPoint, VkPipelineLayout layout, uint32_t firstSet, uint32_t descriptorSetCount, const VkDescriptorSet *pDescriptorSets, uint32_t dynamicOffsetCount, const uint32_t *pDynamicOffsets))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkCmdBindIndexBuffer, (VkCommandBuffer commandBuffer, VkBuffer buffer, VkDeviceSize offset, VkIndexType indexType))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkCmdBindPipeline, (VkCommandBuffer commandBuffer, VkPipelineBindPoint pipelineBindPoint, VkPipeline pipeline))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkCmdBindVertexBuffers, (VkCommandBuffer commandBuffer, uint32_t firstBinding, uint32_t bindingCount, const VkBuffer *pBuffers, const VkDeviceSize *pOffsets))
