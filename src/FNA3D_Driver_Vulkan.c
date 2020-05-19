@@ -39,7 +39,11 @@
 /* constants */
 
 /* should be equivalent to the number of values in FNA3D_PrimitiveType */
-const int PRIMITIVE_TYPES_COUNT = 5;
+#define PRIMITIVE_TYPES_COUNT 5
+
+#define SAMPLER_DESCRIPTOR_POOL_SIZE 256
+#define UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE 16
+
 const VkComponentMapping IDENTITY_SWIZZLE =
 {
 	VK_COMPONENT_SWIZZLE_R,
@@ -61,6 +65,7 @@ typedef struct PipelineHashMap PipelineHashMap;
 typedef struct RenderPassHashMap RenderPassHashMap;
 typedef struct FramebufferHashMap FramebufferHashMap;
 typedef struct SamplerStateHashMap SamplerStateHashMap;
+typedef struct PipelineLayoutHashMap PipelineLayoutHashMap;
 
 typedef struct SurfaceFormatMapping {
 	VkFormat formatColor;
@@ -86,6 +91,7 @@ typedef struct FNAVulkanImageData
 	VkImageView view;
 	VkDeviceMemory memory;
 	VkExtent2D dimensions;
+	VkImageLayout layout;
 } FNAVulkanImageData;
 
 typedef struct FNAVulkanFramebuffer
@@ -97,6 +103,7 @@ typedef struct FNAVulkanFramebuffer
 	int32_t height;
 } FNAVulkanFramebuffer;
 
+/* FIXME: this could be packed better */
 typedef struct PipelineHash
 {
 	StateHash blendState;
@@ -106,6 +113,8 @@ typedef struct PipelineHash
 	uint64_t vertexDeclarationHash;
 	FNA3D_PrimitiveType primitiveType;
 	VkSampleMask sampleMask;
+	uint64_t vertShader;
+	uint64_t fragShader;
 	/* pipelines have to be compatible with a render pass */
 	VkRenderPass renderPass;
 } PipelineHash;
@@ -139,6 +148,21 @@ struct SamplerStateHashMap
 	VkSampler value;
 };
 
+/* FIXME: this can be packed better */
+typedef struct PipelineLayoutHash
+{
+	uint8_t vertUniformBufferCount;
+	uint8_t vertSamplerCount;
+	uint8_t fragUniformBufferCount;
+	uint8_t fragSamplerCount;
+} PipelineLayoutHash;
+
+struct PipelineLayoutHashMap
+{
+	PipelineLayoutHash key;
+	VkPipelineLayout value;
+};
+
 struct VulkanEffect {
 	MOJOSHADER_effect *effect;
 };
@@ -148,8 +172,7 @@ struct VulkanQuery {
 };
 
 struct VulkanTexture {
-	VkImage handle;
-	VkImageView imageView;
+	FNAVulkanImageData *imageData;
 	uint8_t hasMipmaps;
 	int32_t width;
 	int32_t height;
@@ -165,10 +188,12 @@ struct VulkanTexture {
 	VkImage *next; /* linked list */
 };
 
+/* vulkan doesnt like null descriptors so we do this crap */
+static FNAVulkanImageData NullImageData;
+
 static VulkanTexture NullTexture =
 {
-	NULL,
-	NULL,
+	&NullImageData,
 	0,
 	0,
 	0,
@@ -183,6 +208,8 @@ static VulkanTexture NullTexture =
 	0.0f,
 	NULL
 };
+
+static VkSampler DummySampler;
 
 struct VulkanRenderbuffer /* Cast from FNA3D_Renderbuffer */
 {
@@ -216,6 +243,8 @@ struct VulkanBuffer
 	VulkanBuffer *next; /* linked list */
 };
 
+static VulkanBuffer NullBuffer;
+
 typedef struct FNAVulkanRenderer
 {
 	FNA3D_Device *parentDevice;
@@ -235,12 +264,12 @@ typedef struct FNAVulkanRenderer
 	uint32_t currentSwapChainIndex;
 
 	VkCommandPool commandPool;
-	VkDescriptorPool descriptorPool;
 	VkPipelineCache pipelineCache;
 
 	VkRenderPass renderPass;
 	VkFramebuffer framebuffer;
-	PipelineHash currentPipelineHash;
+	VkPipeline currentPipeline;
+	VkPipelineLayout currentPipelineLayout;
 	uint64_t currentVertexBufferBindingHash;
 	VkCommandBuffer *commandBuffers;
 	uint32_t commandBufferCapacity;
@@ -320,33 +349,52 @@ typedef struct FNAVulkanRenderer
 	uint32_t textureCount;
 
 	VulkanTexture **textures;
-	VkSampler **samplers;
+	VkSampler *samplers;
 	uint8_t *textureNeedsUpdate;
 	uint8_t *samplerNeedsUpdate;
 
-	VkDescriptorSetLayoutBinding vertexSamplerBindings[MAX_VERTEXTEXTURE_SAMPLERS];
-	VkDescriptorSetLayoutBinding samplerBindings[MAX_TEXTURE_SAMPLERS];
-	VkDescriptorSetLayoutBinding vertexUniformBufferBinding;
-	VkDescriptorSetLayoutBinding fragUniformBufferBinding;
+	VkDescriptorSetLayout vertUniformBufferDescriptorSetLayouts[2];
+	VkDescriptorSetLayout vertSamplerDescriptorSetLayouts[MAX_VERTEXTEXTURE_SAMPLERS];
+	VkDescriptorSetLayout fragUniformBufferDescriptorSetLayouts[2];
+	VkDescriptorSetLayout fragSamplerDescriptorSetLayouts[MAX_TEXTURE_SAMPLERS];
 
-	VkDescriptorSetLayout vertexSamplerDescriptorSetLayout;
-	VkDescriptorSetLayout samplerDescriptorSetLayout;
-	VkDescriptorSetLayout vertexUniformBufferDescriptorSetLayout;
-	VkDescriptorSetLayout fragUniformBufferDescriptorSetLayout;
+	/* TODO: reset these at end of frame */
+	VkDescriptorPool *samplerDescriptorPools;
+	uint32_t activeSamplerDescriptorPoolIndex;
+	uint32_t activeSamplerPoolUsage;
+	uint32_t samplerDescriptorPoolCount;
 
-	/* these need to be dynamic because of swap chain count */
-	uint32_t vertexSamplerCount;
-	uint32_t fragSamplerCount;
+	VkDescriptorPool *uniformBufferDescriptorPools;
+	uint32_t activeUniformBufferDescriptorPoolIndex;
+	uint32_t activeUniformBufferPoolUsage;
+	uint32_t uniformBufferDescriptorPoolCount;
 
-	VkDescriptorSet *vertexSamplerDescriptorSets;
-	VkDescriptorSet *samplerDescriptorSets;
-	VkDescriptorSet *vertexUniformBufferDescriptorSets; /* count is equal to swap chain count */
-	VkDescriptorSet *fragUniformBufferDescriptorSets; /* count is equal to swap chain count */
+	VkDescriptorImageInfo *vertSamplerImageInfos;
+	uint32_t vertSamplerImageInfoCount;
+	VkDescriptorImageInfo *fragSamplerImageInfos;
+	uint32_t fragSamplerImageInfoCount;
+	VkDescriptorBufferInfo *vertUniformBufferInfo; /* count is swap image count */
+	VkDescriptorBufferInfo *fragUniformBufferInfo; /* count is swap image count */
+
+	/* TODO: clean this at end of frame */
+	VkDescriptorSet *activeDescriptorSets; 
+	VkDescriptorSet currentVertSamplerDescriptorSet;
+	VkDescriptorSet currentFragSamplerDescriptorSet;
+	VkDescriptorSet currentVertUniformBufferDescriptorSet;
+	VkDescriptorSet currentFragUniformBufferDescriptorSet;
+	uint32_t activeDescriptorSetCount;
+	uint32_t activeDescriptorSetCapacity;
+
+	PipelineLayoutHash currentPipelineLayoutHash;
+
+	VkImageMemoryBarrier *imageMemoryBarriers;
+	uint32_t imageMemoryBarrierCount;
+	uint32_t imageMemoryBarrierCapacity;
 
 	FNAVulkanFramebuffer *framebuffers;
 	uint32_t framebufferCount;
 
-	VkPipelineLayout pipelineLayout;
+	PipelineLayoutHashMap *pipelineLayoutHashMap;
 	PipelineHashMap *pipelineHashMap;
 	RenderPassHashMap *renderPassHashMap;
 	FramebufferHashMap *framebufferHashMap;
@@ -357,6 +405,7 @@ typedef struct FNAVulkanRenderer
 	VkSemaphore renderFinishedSemaphore;
 
 	/* MojoShader Interop */
+	MOJOSHADER_vkContext *mojoshaderContext;
 	MOJOSHADER_effect *currentEffect;
 	const MOJOSHADER_effectTechnique *currentTechnique;
 	uint32_t currentPass;
@@ -367,7 +416,6 @@ typedef struct FNAVulkanRenderer
 	uint8_t shouldClearDepth;
 	uint8_t shouldClearStencil;
 	uint8_t needNewRenderPass;
-	uint8_t pipelineBoundThisFrame;
 
 	uint8_t debugMode;
 
@@ -432,7 +480,7 @@ static void CreateBackingBuffer(
 
 /* FIXME: do we even have a write only buffer concept in vulkan? */
 static VulkanBuffer* CreateBuffer(
-	FNA3D_Renderer *driverData,
+	FNAVulkanRenderer *renderer,
 	FNA3D_BufferUsage usage, 
 	VkDeviceSize size,
 	VkBufferUsageFlags usageFlags
@@ -447,6 +495,7 @@ static uint8_t CreateImage(
 	VkComponentMapping swizzle,
 	VkImageAspectFlags aspectMask,
 	VkImageTiling tiling,
+	VkImageType imageType,
 	VkImageUsageFlags usage,
 	VkMemoryPropertyFlags memoryProperties,
 	FNAVulkanImageData *imageData
@@ -454,12 +503,12 @@ static uint8_t CreateImage(
 
 static VulkanTexture* CreateTexture(
 	FNAVulkanRenderer *renderer,
-	VkImageCreateInfo textureCreateInfo,
 	FNA3D_SurfaceFormat format,
 	int32_t width,
 	int32_t height,
 	int32_t levelCount,
-	uint8_t isRenderTarget
+	uint8_t isRenderTarget,
+	VkImageType imageType
 );
 
 static void DestroyBuffer(
@@ -473,6 +522,12 @@ static void EndPass(
 
 static VkPipeline FetchPipeline(
 	FNAVulkanRenderer *renderer
+);
+
+static VkPipelineLayout FetchPipelineLayout(
+	FNAVulkanRenderer *renderer,
+	MOJOSHADER_vkShader *vertShader,
+	MOJOSHADER_vkShader *fragShader
 );
 
 static VkRenderPass FetchRenderPass(
@@ -494,6 +549,12 @@ static PipelineHash GetPipelineHash(
 	FNAVulkanRenderer *renderer
 );
 
+static PipelineLayoutHash GetPipelineLayoutHash(
+	FNAVulkanRenderer *renderer,
+	MOJOSHADER_vkShader *vertShader,
+	MOJOSHADER_vkShader *fragShader
+);
+
 static RenderPassHash GetRenderPassHash(
 	FNAVulkanRenderer *renderer
 );
@@ -505,11 +566,28 @@ static uint8_t FindMemoryType(
 	uint32_t *result
 );
 
-static VkPipelineVertexInputStateCreateInfo GenerateUserVertexInputInfo(
-	FNAVulkanRenderer *renderer
+static void GenerateUserVertexInputInfo(
+	FNAVulkanRenderer *renderer,
+	VkVertexInputBindingDescription *bindingDescriptions,
+	VkVertexInputAttributeDescription* attributeDescriptions,
+	uint32_t *attributeDescriptionCount
 );
 
-static VkPipelineVertexInputStateCreateInfo GenerateVertexInputInfo(
+static void GenerateVertexInputInfo(
+	FNAVulkanRenderer *renderer,
+	VkVertexInputBindingDescription *bindingDescriptions,
+	VkVertexInputAttributeDescription* attributeDescriptions,
+	uint32_t *attributeDescriptionCount
+);
+
+static void QueueImageLayoutTransition(
+	FNAVulkanRenderer *renderer,
+	FNAVulkanImageData *imageData,
+	VkImageLayout targetLayout,
+	VkImageAspectFlags aspectMask
+);
+
+static void PerformImageLayoutTransitions(
 	FNAVulkanRenderer *renderer
 );
 
@@ -942,6 +1020,14 @@ static const char* VkErrorMessages(VkResult code)
 			errorString = "Out of device memory";
 			break;
 
+		case VK_ERROR_FRAGMENTED_POOL:
+			errorString = "Pool fragmentation";
+			break;
+
+		case VK_ERROR_OUT_OF_POOL_MEMORY:
+			errorString = "Out of pool memory";
+			break;
+
 		case VK_ERROR_INITIALIZATION_FAILED:
 			errorString = "Initialization failed";
 			break;
@@ -1073,8 +1159,7 @@ static void LogVulkanResult(
 ) {
 	if (result != VK_SUCCESS)
 	{
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
+		FNA3D_LogError(
 			"%s: %s\n",
 			vulkanFunctionName,
 			VkErrorMessages(result)
@@ -1085,81 +1170,268 @@ static void LogVulkanResult(
 /* Command Functions */
 
 static void BindPipeline(FNAVulkanRenderer *renderer)
-{
-	renderer->vkCmdBindPipeline(
-		renderer->commandBuffers[renderer->commandBufferCount - 1],
-		VK_PIPELINE_BIND_POINT_GRAPHICS,
-		FetchPipeline(renderer)
-	);
-	renderer->pipelineBoundThisFrame = 1;
+{	
+	VkPipeline pipeline = FetchPipeline(renderer);
+
+	if (pipeline != renderer->currentPipeline)
+	{
+		renderer->vkCmdBindPipeline(
+			renderer->commandBuffers[renderer->commandBufferCount - 1],
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			pipeline
+		);
+
+		renderer->currentPipeline = pipeline;
+	}
 }
 
-/* TODO: use this to bind sampler/vertex/shader state */
-/* FIXME: does this involve the pipeline? */
+static void CheckSamplerDescriptorPool(
+	FNAVulkanRenderer *renderer,
+	uint32_t additionalCount
+) {
+	if (renderer->activeSamplerPoolUsage + additionalCount >= SAMPLER_DESCRIPTOR_POOL_SIZE)
+	{
+		renderer->activeSamplerDescriptorPoolIndex++;
+
+		/* if we have used all the pools, allocate a new one */
+		if (renderer->activeSamplerDescriptorPoolIndex >= renderer->samplerDescriptorPoolCount)
+		{
+			renderer->samplerDescriptorPoolCount++;
+
+			renderer->samplerDescriptorPools = SDL_realloc(
+				renderer->samplerDescriptorPools,
+				sizeof(VkDescriptorPool) * renderer->samplerDescriptorPoolCount
+			);
+
+			VkDescriptorPoolSize samplerPoolSize;
+			samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			samplerPoolSize.descriptorCount = SAMPLER_DESCRIPTOR_POOL_SIZE;
+
+			VkDescriptorPoolCreateInfo samplerPoolInfo = {
+				VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO
+			};
+			samplerPoolInfo.poolSizeCount = 1;
+			samplerPoolInfo.pPoolSizes = &samplerPoolSize;
+			samplerPoolInfo.maxSets = SAMPLER_DESCRIPTOR_POOL_SIZE;
+
+			VkResult vulkanResult = renderer->vkCreateDescriptorPool(
+				renderer->logicalDevice,
+				&samplerPoolInfo,
+				NULL,
+				&renderer->samplerDescriptorPools[
+					renderer->activeSamplerDescriptorPoolIndex
+				]
+			);
+
+			if (vulkanResult != VK_SUCCESS)
+			{
+				LogVulkanResult("vkCreateDescriptorPool", vulkanResult);
+				return;
+			}
+		}
+
+		renderer->activeSamplerPoolUsage = 0;
+	}
+}
+
+static void CheckUniformBufferDescriptorPool(
+	FNAVulkanRenderer *renderer,
+	uint32_t additionalCount
+) {
+	/* if the UBO descriptor pool is maxed out, create another one */
+	if (renderer->activeUniformBufferPoolUsage + additionalCount > UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE
+	) {
+		renderer->activeUniformBufferDescriptorPoolIndex++;
+
+		/* if we have used all the pools, allocate a new one */
+		if (renderer->activeUniformBufferDescriptorPoolIndex >= renderer->uniformBufferDescriptorPoolCount)
+		{
+			renderer->uniformBufferDescriptorPoolCount++;
+
+			renderer->uniformBufferDescriptorPools = SDL_realloc(
+				renderer->uniformBufferDescriptorPools,
+				sizeof(VkDescriptorPool) * renderer->uniformBufferDescriptorPoolCount
+			);
+
+			VkDescriptorPoolSize bufferPoolSize;
+			bufferPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			bufferPoolSize.descriptorCount = UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE;
+
+			VkDescriptorPoolCreateInfo bufferPoolInfo = {
+				VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO
+			};
+			bufferPoolInfo.poolSizeCount = 1;
+			bufferPoolInfo.pPoolSizes = &bufferPoolSize;
+			bufferPoolInfo.maxSets = UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE;
+
+			VkResult vulkanResult = renderer->vkCreateDescriptorPool(
+				renderer->logicalDevice,
+				&bufferPoolInfo,
+				NULL,
+				&renderer->uniformBufferDescriptorPools[
+					renderer->activeUniformBufferDescriptorPoolIndex
+				]
+			);
+
+			if (vulkanResult != VK_SUCCESS)
+			{
+				LogVulkanResult("vkCreateDescriptorPool", vulkanResult);
+				return;
+			}
+		}
+
+		renderer->activeUniformBufferPoolUsage = 0;
+	}
+}
+
 static void BindResources(FNAVulkanRenderer *renderer)
 {
-	VkDescriptorImageInfo descriptorImageInfos[MAX_TOTAL_SAMPLERS];
-	uint32_t descriptorImageInfoCount = 0;
-	VkDescriptorBufferInfo descriptorBufferInfos[2];
-	VkWriteDescriptorSet descriptorWrites[MAX_TOTAL_SAMPLERS + 2];
-	uint32_t descriptorWriteCount = 0;
+	VkResult vulkanResult;
 
-	uint32_t vertArrayOffset = (renderer->currentSwapChainIndex * MAX_VERTEXTEXTURE_SAMPLERS);
-	uint32_t fragArrayOffset = (renderer->currentSwapChainIndex * MAX_TEXTURE_SAMPLERS);
+	PerformImageLayoutTransitions(renderer);
 
-	for (uint32_t i = 0; i < MAX_VERTEXTEXTURE_SAMPLERS; i++)
+	uint8_t vertexSamplerDescriptorSetNeedsUpdate = (renderer->currentVertSamplerDescriptorSet == NULL);
+	uint8_t fragSamplerDescriptorSetNeedsUpdate = (renderer->currentFragSamplerDescriptorSet == NULL);
+	uint8_t vertUniformBufferDescriptorSetNeedsUpdate = (renderer->currentVertUniformBufferDescriptorSet == NULL);
+	uint8_t fragUniformBufferDescriptorSetNeedsUpdate = (renderer->currentFragUniformBufferDescriptorSet == NULL);
+
+	uint32_t vertArrayOffset = (renderer->currentSwapChainIndex * MAX_TOTAL_SAMPLERS);
+	uint32_t fragArrayOffset = (renderer->currentSwapChainIndex * MAX_TOTAL_SAMPLERS) + MAX_VERTEXTEXTURE_SAMPLERS;
+
+	for (uint32_t i = 0; i < renderer->currentPipelineLayoutHash.vertSamplerCount; i++)
 	{
 		if (	renderer->textureNeedsUpdate[vertArrayOffset + i] || 
 				renderer->samplerNeedsUpdate[vertArrayOffset + i]		)
-		{
-			descriptorImageInfos[descriptorImageInfoCount].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			descriptorImageInfos[descriptorImageInfoCount].imageView = renderer->textures[vertArrayOffset + i]->imageView;
-			descriptorImageInfos[descriptorImageInfoCount].sampler = *renderer->samplers[vertArrayOffset + i];
-			descriptorImageInfoCount++;
+		{		
+			renderer->vertSamplerImageInfos[vertArrayOffset + i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			renderer->vertSamplerImageInfos[vertArrayOffset + i].imageView = renderer->textures[vertArrayOffset + i]->imageData->view;
+			renderer->vertSamplerImageInfos[vertArrayOffset + i].sampler = renderer->samplers[vertArrayOffset + i];
 
-			descriptorWrites[descriptorWriteCount].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			descriptorWrites[descriptorWriteCount].dstSet = renderer->vertexSamplerDescriptorSets[vertArrayOffset + i];
-			descriptorWrites[descriptorWriteCount].dstBinding = i;
-			descriptorWrites[descriptorWriteCount].dstArrayElement = 0;
-			descriptorWrites[descriptorWriteCount].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			descriptorWrites[descriptorWriteCount].descriptorCount = 1;
-			descriptorWrites[descriptorWriteCount].pBufferInfo = NULL;
-			descriptorWrites[descriptorWriteCount].pImageInfo = &descriptorImageInfos[descriptorImageInfoCount];
-			descriptorWrites[descriptorWriteCount].pTexelBufferView = NULL;
-
-			descriptorWriteCount++;
-
+			vertexSamplerDescriptorSetNeedsUpdate = 1;
 			renderer->textureNeedsUpdate[vertArrayOffset + 1] = 0;
 			renderer->samplerNeedsUpdate[vertArrayOffset + 1] = 0;
 		}
 	}
 
-	for (uint32_t i = 0; i < MAX_TEXTURE_SAMPLERS; i++)
+	for (uint32_t i = 0; i < renderer->currentPipelineLayoutHash.fragSamplerCount; i++)
 	{
 		if (	renderer->textureNeedsUpdate[fragArrayOffset + i] || 
 				renderer->samplerNeedsUpdate[fragArrayOffset + i]		)
 		{
-			descriptorImageInfos[descriptorImageInfoCount].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			descriptorImageInfos[descriptorImageInfoCount].imageView = renderer->textures[fragArrayOffset + i]->imageView;
-			descriptorImageInfos[descriptorImageInfoCount].sampler = *renderer->samplers[fragArrayOffset + i];
-			descriptorImageInfoCount++;
+			renderer->fragSamplerImageInfos[fragArrayOffset + i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+			renderer->fragSamplerImageInfos[fragArrayOffset + i].imageView = renderer->textures[fragArrayOffset + i]->imageData->view;
+			renderer->fragSamplerImageInfos[fragArrayOffset + i].sampler = renderer->samplers[fragArrayOffset + i];
 
-			descriptorWrites[descriptorWriteCount].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			descriptorWrites[descriptorWriteCount].dstSet = renderer->vertexSamplerDescriptorSets[fragArrayOffset + i];
-			descriptorWrites[descriptorWriteCount].dstBinding = i;
-			descriptorWrites[descriptorWriteCount].dstArrayElement = 0;
-			descriptorWrites[descriptorWriteCount].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-			descriptorWrites[descriptorWriteCount].descriptorCount = 1;
-			descriptorWrites[descriptorWriteCount].pBufferInfo = NULL;
-			descriptorWrites[descriptorWriteCount].pImageInfo = &descriptorImageInfos[descriptorImageInfoCount];
-			descriptorWrites[descriptorWriteCount].pTexelBufferView = NULL;
-
-			descriptorWriteCount++;
-
+			fragSamplerDescriptorSetNeedsUpdate = 1;
 			renderer->textureNeedsUpdate[fragArrayOffset + 1] = 0;
 			renderer->samplerNeedsUpdate[fragArrayOffset + 1] = 0;
 		}
 	}
+
+	VkWriteDescriptorSet writeDescriptorSets[MAX_TOTAL_SAMPLERS + 2];
+	uint32_t writeDescriptorSetCount = 0;
+
+	VkDescriptorSet samplerDescriptorSets[2];
+
+	VkDescriptorSetLayout samplerLayoutsToUpdate[2];
+	uint32_t samplerLayoutsToUpdateCount = 0;
+
+	uint32_t vertSamplerIndex = -1;
+	uint32_t fragSamplerIndex = -1;
+
+	if (vertexSamplerDescriptorSetNeedsUpdate)
+	{
+		samplerLayoutsToUpdate[samplerLayoutsToUpdateCount] = renderer->vertSamplerDescriptorSetLayouts[
+			renderer->currentPipelineLayoutHash.vertSamplerCount
+		];
+
+		vertSamplerIndex = samplerLayoutsToUpdateCount;
+		samplerLayoutsToUpdateCount++;
+	}
+
+	if (fragSamplerDescriptorSetNeedsUpdate)
+	{
+		samplerLayoutsToUpdate[samplerLayoutsToUpdateCount] = renderer->fragSamplerDescriptorSetLayouts[
+			renderer->currentPipelineLayoutHash.fragSamplerCount
+		];
+
+		fragSamplerIndex = samplerLayoutsToUpdateCount;
+		samplerLayoutsToUpdateCount++;
+	}
+
+	if (samplerLayoutsToUpdateCount > 0)
+	{
+		/* allocate the sampler descriptor sets */
+		CheckSamplerDescriptorPool(renderer, samplerLayoutsToUpdateCount);
+
+		VkDescriptorSetAllocateInfo samplerAllocateInfo = {
+			VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
+		};
+
+		samplerAllocateInfo.descriptorPool = renderer->samplerDescriptorPools[
+			renderer->activeSamplerDescriptorPoolIndex
+		];
+		samplerAllocateInfo.descriptorSetCount = samplerLayoutsToUpdateCount;
+		samplerAllocateInfo.pSetLayouts = samplerLayoutsToUpdate;
+
+		vulkanResult = renderer->vkAllocateDescriptorSets(
+			renderer->logicalDevice,
+			&samplerAllocateInfo,
+			samplerDescriptorSets
+		);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkAllocateDescriptorSets", vulkanResult);
+			return;
+		}
+	}
+	
+	if (vertSamplerIndex != -1)
+	{
+		for (uint32_t i = 0; i < renderer->currentPipelineLayoutHash.vertSamplerCount; i++)
+		{
+			VkWriteDescriptorSet vertSamplerWrite = {
+				VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET
+			};
+
+			vertSamplerWrite.dstSet = samplerDescriptorSets[vertSamplerIndex];
+			vertSamplerWrite.dstBinding = i;
+			vertSamplerWrite.dstArrayElement = 0;
+			vertSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			vertSamplerWrite.descriptorCount = 1;
+			vertSamplerWrite.pBufferInfo = NULL;
+			vertSamplerWrite.pImageInfo = &renderer->vertSamplerImageInfos[vertArrayOffset];
+			vertSamplerWrite.pTexelBufferView = NULL;
+
+			writeDescriptorSets[writeDescriptorSetCount] = vertSamplerWrite;
+			writeDescriptorSetCount++;
+		}
+	}
+
+	if (fragSamplerIndex != -1)
+	{
+		for (uint32_t i = 0; i < renderer->currentPipelineLayoutHash.fragSamplerCount; i++)
+		{
+			VkWriteDescriptorSet fragSamplerWrite = {
+				VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET
+			};
+
+			fragSamplerWrite.dstSet = samplerDescriptorSets[fragSamplerIndex];
+			fragSamplerWrite.dstBinding = i;
+			fragSamplerWrite.dstArrayElement = 0;
+			fragSamplerWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			fragSamplerWrite.descriptorCount = 1;
+			fragSamplerWrite.pBufferInfo = NULL;
+			fragSamplerWrite.pImageInfo = &renderer->fragSamplerImageInfos[fragArrayOffset];
+			fragSamplerWrite.pTexelBufferView = NULL;
+
+			writeDescriptorSets[writeDescriptorSetCount] = fragSamplerWrite;
+			writeDescriptorSetCount++;
+		}
+	}
+
+	renderer->activeSamplerPoolUsage += samplerLayoutsToUpdateCount;
 
 	VkBuffer *vUniform, *fUniform;
 	VkDeviceSize vOff, fOff, vSize, fSize;
@@ -1173,75 +1445,235 @@ static void BindResources(FNAVulkanRenderer *renderer)
 		&fSize
 	);
 
-	if (	vUniform != renderer->ldVertUniformBuffers[renderer->currentSwapChainIndex] ||
-			vOff != renderer->ldVertUniformOffsets[renderer->currentSwapChainIndex]		)
+	if (renderer->currentPipelineLayoutHash.vertUniformBufferCount)
 	{
-		descriptorBufferInfos[0].buffer = *vUniform;
-		descriptorBufferInfos[0].offset = vOff;
-		descriptorBufferInfos[0].range = vSize;
+		/* TODO: need to treat buffer pointer and offset changes differently */
+		if (	vUniform != renderer->ldVertUniformBuffers[renderer->currentSwapChainIndex] ||
+				vOff != renderer->ldVertUniformOffsets[renderer->currentSwapChainIndex]		)
+		{
+			renderer->vertUniformBufferInfo[renderer->currentSwapChainIndex].buffer = *vUniform;
+			renderer->vertUniformBufferInfo[renderer->currentSwapChainIndex].offset = vOff;
+			renderer->vertUniformBufferInfo[renderer->currentSwapChainIndex].range = vSize;
 
-		descriptorWrites[descriptorWriteCount].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrites[descriptorWriteCount].dstSet = renderer->vertexUniformBufferDescriptorSets[renderer->currentSwapChainIndex];
-		descriptorWrites[descriptorWriteCount].dstBinding = 0;
-		descriptorWrites[descriptorWriteCount].dstArrayElement = 0;
-		descriptorWrites[descriptorWriteCount].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		descriptorWrites[descriptorWriteCount].descriptorCount = 1;
-		descriptorWrites[descriptorWriteCount].pBufferInfo = &descriptorBufferInfos[0];
-		descriptorWrites[descriptorWriteCount].pImageInfo = NULL;
-		descriptorWrites[descriptorWriteCount].pTexelBufferView = NULL;
-
-		descriptorWriteCount++;
-
-		renderer->ldVertUniformBuffers[renderer->currentSwapChainIndex] = vUniform;
-		renderer->ldVertUniformOffsets[renderer->currentSwapChainIndex] = vOff;
+			vertUniformBufferDescriptorSetNeedsUpdate = 1;
+			renderer->ldVertUniformBuffers[renderer->currentSwapChainIndex] = vUniform;
+			renderer->ldVertUniformOffsets[renderer->currentSwapChainIndex] = vOff;
+		}
 	}
 
-	if (	fUniform != renderer->ldFragUniformBuffers[renderer->currentSwapChainIndex] ||
-			fOff != renderer->ldFragUniformOffsets[renderer->currentSwapChainIndex]		)
+	if (renderer->currentPipelineLayoutHash.fragUniformBufferCount)
 	{
-		descriptorBufferInfos[1].buffer = *fUniform;
-		descriptorBufferInfos[1].offset = fOff;
-		descriptorBufferInfos[1].range = fSize;
+		if (	fUniform != renderer->ldFragUniformBuffers[renderer->currentSwapChainIndex] ||
+				fOff != renderer->ldFragUniformOffsets[renderer->currentSwapChainIndex]		)
+		{
+			renderer->fragUniformBufferInfo[renderer->currentSwapChainIndex].buffer = *fUniform;
+			renderer->fragUniformBufferInfo[renderer->currentSwapChainIndex].offset = fOff;
+			renderer->fragUniformBufferInfo[renderer->currentSwapChainIndex].range = fSize;
 
-		descriptorWrites[descriptorWriteCount].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrites[descriptorWriteCount].dstSet = renderer->fragUniformBufferDescriptorSets[renderer->currentSwapChainIndex];
-		descriptorWrites[descriptorWriteCount].dstBinding = 0;
-		descriptorWrites[descriptorWriteCount].dstArrayElement = 0;
-		descriptorWrites[descriptorWriteCount].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		descriptorWrites[descriptorWriteCount].descriptorCount = 1;
-		descriptorWrites[descriptorWriteCount].pBufferInfo = &descriptorBufferInfos[1];
-		descriptorWrites[descriptorWriteCount].pImageInfo = NULL;
-		descriptorWrites[descriptorWriteCount].pTexelBufferView = NULL;
+			fragUniformBufferDescriptorSetNeedsUpdate = 1;
+			renderer->ldFragUniformBuffers[renderer->currentSwapChainIndex] = fUniform;
+			renderer->ldFragUniformOffsets[renderer->currentSwapChainIndex] = fOff;
+		}
+	}
 
-		descriptorWriteCount++;
+	VkDescriptorSetLayout uniformBufferLayouts[2];
+	VkDescriptorSet uniformBufferDescriptorSets[2];
+	uint32_t uniformBufferLayoutCount = 0;
 
-		renderer->ldFragUniformBuffers[renderer->currentSwapChainIndex] = fUniform;
-		renderer->ldFragUniformOffsets[renderer->currentSwapChainIndex] = fOff;
+	int32_t vertUniformBufferIndex = -1;
+	int32_t fragUniformBufferIndex = -1;
+
+	if (vertUniformBufferDescriptorSetNeedsUpdate)
+	{
+		uniformBufferLayouts[uniformBufferLayoutCount] = renderer->vertUniformBufferDescriptorSetLayouts[
+			renderer->currentPipelineLayoutHash.vertUniformBufferCount
+		];
+		vertUniformBufferIndex = uniformBufferLayoutCount;
+		uniformBufferLayoutCount++;
+	}
+
+	if (fragUniformBufferDescriptorSetNeedsUpdate)
+	{
+		uniformBufferLayouts[uniformBufferLayoutCount] = renderer->fragUniformBufferDescriptorSetLayouts[
+			renderer->currentPipelineLayoutHash.fragUniformBufferCount
+		];
+		fragUniformBufferIndex = uniformBufferLayoutCount;
+		uniformBufferLayoutCount++;
+	}
+
+	if (uniformBufferLayoutCount > 0)
+	{
+		/* allocate the UBO descriptor sets */
+		CheckUniformBufferDescriptorPool(renderer, uniformBufferLayoutCount);
+
+		VkDescriptorSetAllocateInfo uniformBufferAllocateInfo = {
+			VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
+		};
+
+		uniformBufferAllocateInfo.descriptorPool = renderer->uniformBufferDescriptorPools[
+			renderer->activeUniformBufferDescriptorPoolIndex
+		];
+		uniformBufferAllocateInfo.descriptorSetCount = uniformBufferLayoutCount;
+		uniformBufferAllocateInfo.pSetLayouts = uniformBufferLayouts;
+
+		vulkanResult = renderer->vkAllocateDescriptorSets(
+			renderer->logicalDevice,
+			&uniformBufferAllocateInfo,
+			uniformBufferDescriptorSets
+		);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkAllocateDescriptorSets", vulkanResult);
+			return;
+		}
+	}
+	
+	if (	vertUniformBufferDescriptorSetNeedsUpdate && 
+			renderer->currentPipelineLayoutHash.vertUniformBufferCount > 0	)
+	{
+		VkWriteDescriptorSet vertUniformBufferWrite = {
+			VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET
+		};
+
+		vertUniformBufferWrite.dstSet = uniformBufferDescriptorSets[vertUniformBufferIndex];
+		vertUniformBufferWrite.dstBinding = 0;
+		vertUniformBufferWrite.dstArrayElement = 0;
+		vertUniformBufferWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		vertUniformBufferWrite.descriptorCount = 1;
+		vertUniformBufferWrite.pBufferInfo = &renderer->vertUniformBufferInfo[renderer->currentSwapChainIndex];
+		vertUniformBufferWrite.pImageInfo = NULL;
+		vertUniformBufferWrite.pTexelBufferView = NULL;
+
+		writeDescriptorSets[writeDescriptorSetCount] = vertUniformBufferWrite;
+		writeDescriptorSetCount++;
+	}
+
+	if (	fragUniformBufferDescriptorSetNeedsUpdate &&
+			renderer->currentPipelineLayoutHash.fragUniformBufferCount > 0	)
+	{
+		VkWriteDescriptorSet fragUniformBufferWrite = {
+			VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET
+		};
+
+		fragUniformBufferWrite.dstSet = uniformBufferDescriptorSets[fragUniformBufferIndex];
+		fragUniformBufferWrite.dstBinding = 0;
+		fragUniformBufferWrite.dstArrayElement = 0;
+		fragUniformBufferWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		fragUniformBufferWrite.descriptorCount = 1;
+		fragUniformBufferWrite.pBufferInfo = &renderer->fragUniformBufferInfo[renderer->currentSwapChainIndex];
+		fragUniformBufferWrite.pImageInfo = NULL;
+		fragUniformBufferWrite.pTexelBufferView = NULL;
+
+		writeDescriptorSets[writeDescriptorSetCount] = fragUniformBufferWrite;
+		writeDescriptorSetCount++;
+	}
+
+	renderer->activeUniformBufferPoolUsage += uniformBufferLayoutCount;
+
+	if (renderer->activeDescriptorSetCount + writeDescriptorSetCount > renderer->activeDescriptorSetCapacity)
+	{
+		renderer->activeDescriptorSetCapacity *= 2;
+
+		renderer->activeDescriptorSets = SDL_realloc(
+			renderer->activeDescriptorSets,
+			sizeof(VkDescriptorSet) * renderer->activeDescriptorSetCapacity
+		);
+	}
+
+	/* vert samplers */
+	if (vertSamplerIndex != -1)
+	{
+		renderer->activeDescriptorSets[
+			renderer->activeDescriptorSetCount
+		] = samplerDescriptorSets[vertSamplerIndex];
+
+		renderer->activeDescriptorSetCount++;
+
+		renderer->currentVertSamplerDescriptorSet = samplerDescriptorSets[vertSamplerIndex];
+	}
+
+	/* frag samplers */
+	if (fragSamplerIndex != -1)
+	{
+		renderer->activeDescriptorSets[
+			renderer->activeDescriptorSetCount
+		] = samplerDescriptorSets[fragSamplerIndex];
+
+		renderer->activeDescriptorSetCount++;
+
+		renderer->currentFragSamplerDescriptorSet = samplerDescriptorSets[fragSamplerIndex];
+	}
+
+	uint32_t dynamicOffsets[2];
+	uint32_t dynamicOffsetsCount = 0;
+
+	/* vert ubo */
+	if (vertUniformBufferIndex != -1)
+	{
+		renderer->activeDescriptorSets[
+			renderer->activeDescriptorSetCount
+		] = uniformBufferDescriptorSets[vertUniformBufferIndex];
+
+		renderer->activeDescriptorSetCount++;
+
+		renderer->currentVertUniformBufferDescriptorSet = uniformBufferDescriptorSets[vertUniformBufferIndex];
+	}
+
+	if (renderer->currentPipelineLayoutHash.vertUniformBufferCount > 0)
+	{
+		dynamicOffsets[dynamicOffsetsCount] = renderer->ldVertUniformOffsets[
+			renderer->currentSwapChainIndex
+		];
+		dynamicOffsetsCount++;
+	}
+
+	/* frag ubo */
+	if (fragUniformBufferIndex != -1)
+	{
+		renderer->activeDescriptorSets[
+			renderer->activeDescriptorSetCount
+		] = uniformBufferDescriptorSets[fragUniformBufferIndex];
+
+		renderer->activeDescriptorSetCount++;
+
+		renderer->currentFragUniformBufferDescriptorSet = uniformBufferDescriptorSets[fragUniformBufferIndex];
+	}
+
+	if (renderer->currentPipelineLayoutHash.fragUniformBufferCount > 0)
+	{
+		dynamicOffsets[dynamicOffsetsCount] = renderer->ldFragUniformOffsets[
+			renderer->currentSwapChainIndex
+		];
+		dynamicOffsetsCount++;
 	}
 
 	renderer->vkUpdateDescriptorSets(
 		renderer->logicalDevice,
-		descriptorWriteCount,
-		descriptorWrites,
+		writeDescriptorSetCount,
+		writeDescriptorSets,
 		0,
 		NULL
 	);
 
-	/* finally, update the pipeline state if necessary */
+	VkDescriptorSet descriptorSetsToBind[4] = {
+		renderer->currentVertSamplerDescriptorSet,
+		renderer->currentFragSamplerDescriptorSet,
+		renderer->currentVertUniformBufferDescriptorSet,
+		renderer->currentFragUniformBufferDescriptorSet
+	};
 
-	PipelineHash hash = GetPipelineHash(renderer);
-
-	if (	renderer->currentPipelineHash.blendState.a != hash.blendState.a ||
-			renderer->currentPipelineHash.blendState.b != hash.blendState.b ||
-			renderer->currentPipelineHash.depthStencilState.a != hash.depthStencilState.a ||
-			renderer->currentPipelineHash.depthStencilState.b != hash.depthStencilState.b ||
-			renderer->currentPipelineHash.primitiveType != hash.primitiveType ||
-			renderer->currentPipelineHash.rasterizerState.a != hash.rasterizerState.a ||
-			renderer->currentPipelineHash.rasterizerState.b != hash.rasterizerState.b ||
-			renderer->currentPipelineHash.renderPass != hash.renderPass		)
-	{
-		BindPipeline(renderer);
-	}
+	/* TODO: update offsets for UBOs */	
+	renderer->vkCmdBindDescriptorSets(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		VK_PIPELINE_BIND_POINT_GRAPHICS,
+		renderer->currentPipelineLayout,
+		0,
+		4,
+		descriptorSetsToBind,
+		dynamicOffsetsCount,
+		dynamicOffsets
+	);
 }
 
 static void BindUserVertexBuffer(
@@ -1257,7 +1689,7 @@ static void BindUserVertexBuffer(
 	if (renderer->userVertexBuffer == NULL)
 	{
 		renderer->userVertexBuffer = CreateBuffer(
-			(FNA3D_Renderer*) renderer,
+			renderer,
 			FNA3D_BUFFERUSAGE_WRITEONLY,
 			len,
 			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
@@ -1296,17 +1728,20 @@ static void CheckPrimitiveTypeAndBindPipeline(
 	FNA3D_PrimitiveType primitiveType
 )
 {
-	/* topology is fixed in the pipeline so we need to
-	 * bind a new pipeline if it changes
-	 */
-	if (	!renderer->pipelineBoundThisFrame ||
-			primitiveType != renderer->currentPrimitiveType	)
+	if (primitiveType != renderer->currentPrimitiveType)
 	{
 		renderer->currentPrimitiveType = primitiveType;
-		BindPipeline(renderer);
+
+		if (renderer->renderPassInProgress)
+		{
+			BindPipeline(renderer);
+		}
 	}
 }
 
+/* vertex buffer bindings are fixed in the pipeline
+ * so we need to bind a new pipeline if it changes
+ */
 static void CheckVertexBufferBindingsAndBindPipeline(
 	FNAVulkanRenderer *renderer,
 	FNA3D_VertexBufferBinding *bindings,
@@ -1323,11 +1758,7 @@ static void CheckVertexBufferBindingsAndBindPipeline(
 		vertexShader
 	);
 
-	/* vertex buffer bindings are fixed in the pipeline
-	 * so we need to bind a new pipeline if it changes
-	 */
-	if (	!renderer->pipelineBoundThisFrame ||
-			renderer->userVertexBufferInUse ||
+	if (	renderer->userVertexBufferInUse ||
 			renderer->vertexBindings != bindings ||
 			renderer->numVertexBindings != numBindings ||
 			hash != renderer->currentVertexBufferBindingHash	)
@@ -1337,9 +1768,17 @@ static void CheckVertexBufferBindingsAndBindPipeline(
 		renderer->userVertexBufferInUse = 0;
 		renderer->currentVertexBufferBindingHash = hash;
 		renderer->currentUserVertexDeclarationHash = 0;
-		BindPipeline(renderer);	
+
+		if (renderer->renderPassInProgress)
+		{
+			BindPipeline(renderer);	
+		}
 	}
 }
+
+/* vertex buffer bindings are fixed in the pipeline
+ * so we need to bind a new pipeline if it changes
+ */
 
 static void CheckVertexDeclarationAndBindPipeline(
 	FNAVulkanRenderer *renderer,
@@ -1355,18 +1794,18 @@ static void CheckVertexDeclarationAndBindPipeline(
 		vertexShader
 	);
 
-	/* vertex buffer bindings are fixed in the pipeline
-	 * so we need to bind a new pipeline if it changes
-	 */
-	if (	!renderer->pipelineBoundThisFrame ||
-			renderer->userVertexBufferInUse ||
+	if (	renderer->userVertexBufferInUse ||
 			hash != renderer->currentUserVertexDeclarationHash	)
 	{
 		renderer->userVertexBufferInUse = 0;
 		renderer->currentUserVertexDeclarationHash = hash;
 		renderer->currentVertexBufferBindingHash = 0;
 		renderer->userVertexDeclaration = *vertexDeclaration;
-		BindPipeline(renderer);	
+
+		if (renderer->renderPassInProgress)
+		{
+			BindPipeline(renderer);	
+		}
 	}
 }
 
@@ -1376,8 +1815,10 @@ static void CreateBackingBuffer(
 	VkDeviceSize previousSize,
 	VkBufferUsageFlags usageFlags
 ) {
-	VkBuffer *oldBuffer = &buffer->handle;
+	VkResult vulkanResult;
+	VkBuffer oldBuffer = buffer->handle;
 	void *oldContents = buffer->contents;
+
 
 	VkBufferCreateInfo buffer_create_info = {
 		VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO
@@ -1395,7 +1836,14 @@ static void CreateBackingBuffer(
 		NULL,
 		&buffer->handle
 	);
-	buffer->contents = SDL_malloc(sizeof(buffer->internalBufferSize));
+
+	buffer->contents = SDL_malloc(buffer->internalBufferSize);
+
+	if (!buffer->contents)
+	{
+		SDL_OutOfMemory();
+		return;
+	}
 
 	VkMemoryRequirements memoryRequirements;
 	renderer->vkGetBufferMemoryRequirements(
@@ -1422,7 +1870,7 @@ static void CreateBackingBuffer(
 		return;
 	}
 
-	VkResult vulkanResult = renderer->vkAllocateMemory(
+	vulkanResult = renderer->vkAllocateMemory(
 		renderer->logicalDevice,
 		&allocInfo,
 		NULL,
@@ -1446,17 +1894,17 @@ static void CreateBackingBuffer(
 		LogVulkanResult("vkBindBufferMemory", vulkanResult);
 	}
 
-	renderer->vkMapMemory(
-		renderer->logicalDevice,
-		buffer->deviceMemory,
-		0,
-		buffer_create_info.size,
-		0,
-		buffer->contents
-	);
-
-	if (oldBuffer != NULL)
+	if (previousSize != -1)
 	{
+		renderer->vkMapMemory(
+			renderer->logicalDevice,
+			buffer->deviceMemory,
+			0,
+			buffer_create_info.size,
+			0,
+			&buffer->contents
+		);
+
 		SDL_memcpy(
 			buffer->contents,
 			oldContents,
@@ -1465,26 +1913,25 @@ static void CreateBackingBuffer(
 
 		renderer->vkDestroyBuffer(
 			renderer->logicalDevice,
-			*oldBuffer,
+			oldBuffer,
 			NULL
+		);
+
+		renderer->vkUnmapMemory(
+			renderer->logicalDevice,
+			buffer->deviceMemory
 		);
 
 		SDL_free(oldBuffer);
 	}
-
-	renderer->vkUnmapMemory(
-		renderer->logicalDevice,
-		buffer->deviceMemory
-	);
 }
 
 static VulkanBuffer* CreateBuffer(
-	FNA3D_Renderer *driverData,
+	FNAVulkanRenderer *renderer,
 	FNA3D_BufferUsage usage,
 	VkDeviceSize size,
 	VkBufferUsageFlags usageFlags
 ) {
-	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	VulkanBuffer *result, *curr;
 
 	result = SDL_malloc(sizeof(VulkanBuffer));
@@ -1548,30 +1995,45 @@ static void SetBufferData(
 		}
 	}
 
-	renderer->vkMapMemory(
-		renderer->logicalDevice,
-		vulkanBuffer->deviceMemory,
-		vulkanBuffer->internalOffset,
-		vulkanBuffer->internalBufferSize,
-		0,
-		vulkanBuffer->contents
-	);
-
 	/* Copy previous contents if necessary */
 	contentsPtr = (uint8_t*) vulkanBuffer->contents;
+
 	if (	dataLength < vulkanBuffer->size &&
 			vulkanBuffer->prevInternalOffset != vulkanBuffer->internalOffset)
 	{
+		renderer->vkMapMemory(
+			renderer->logicalDevice,
+			vulkanBuffer->deviceMemory,
+			vulkanBuffer->internalOffset,
+			vulkanBuffer->size,
+			0,
+			&vulkanBuffer->contents
+		);
+
 		SDL_memcpy(
 			contentsPtr + vulkanBuffer->internalOffset,
 			contentsPtr + vulkanBuffer->prevInternalOffset,
 			vulkanBuffer->size
 		);
+
+		renderer->vkUnmapMemory(
+			renderer->logicalDevice,
+			vulkanBuffer->deviceMemory
+		);
 	}
+
+	renderer->vkMapMemory(
+		renderer->logicalDevice,
+		vulkanBuffer->deviceMemory,
+		vulkanBuffer->internalOffset + (uint64_t) offsetInBytes,
+		dataLength,
+		0,
+		&vulkanBuffer->contents
+	);
 
 	/* Copy data into buffer */
 	SDL_memcpy(
-		contentsPtr + vulkanBuffer->internalOffset + offsetInBytes,
+		contentsPtr + vulkanBuffer->internalOffset + (uint64_t) offsetInBytes,
 		data,
 		dataLength
 	);
@@ -1713,35 +2175,47 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 		);
 	}
 
-	renderer->vkDestroyDescriptorSetLayout(
-		renderer->logicalDevice,
-		renderer->vertexSamplerDescriptorSetLayout,
-		NULL
-	);
+	for (uint32_t i = 0; i < MAX_VERTEXTEXTURE_SAMPLERS; i++)
+	{
+		renderer->vkDestroyDescriptorSetLayout(
+			renderer->logicalDevice,
+			renderer->vertSamplerDescriptorSetLayouts[i],
+			NULL
+		);
+	}
 
-	renderer->vkDestroyDescriptorSetLayout(
-		renderer->logicalDevice,
-		renderer->samplerDescriptorSetLayout,
-		NULL
-	);
+	for (uint32_t i = 0; i < MAX_TEXTURE_SAMPLERS; i++)
+	{
+		renderer->vkDestroyDescriptorSetLayout(
+			renderer->logicalDevice,
+			renderer->fragSamplerDescriptorSetLayouts[i],
+			NULL
+		);
+	}
 
-	renderer->vkDestroyDescriptorSetLayout(
-		renderer->logicalDevice,
-		renderer->vertexUniformBufferDescriptorSetLayout,
-		NULL
-	);
+	for (uint32_t i = 0; i < 2; i++)
+	{
+		renderer->vkDestroyDescriptorSetLayout(
+			renderer->logicalDevice,
+			renderer->vertUniformBufferDescriptorSetLayouts[i],
+			NULL
+		);
 
-	renderer->vkDestroyDescriptorSetLayout(
-		renderer->logicalDevice,
-		renderer->fragUniformBufferDescriptorSetLayout,
-		NULL
-	);
+		renderer->vkDestroyDescriptorSetLayout(
+			renderer->logicalDevice,
+			renderer->fragUniformBufferDescriptorSetLayouts[i],
+			NULL
+		);
+	}
 
-	renderer->vkDestroyPipelineLayout(
-		renderer->logicalDevice,
-		renderer->pipelineLayout,
-		NULL
-	);
+	for (uint32_t i = 0; i < hmlenu(renderer->pipelineLayoutHashMap); i++)
+	{
+		renderer->vkDestroyPipelineLayout(
+			renderer->logicalDevice,
+			renderer->pipelineLayoutHashMap[i].value,
+			NULL
+		);
+	}
 
 	renderer->vkDestroyPipelineCache(
 		renderer->logicalDevice,
@@ -1749,11 +2223,23 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 		NULL
 	);
 
-	renderer->vkDestroyDescriptorPool(
-		renderer->logicalDevice,
-		renderer->descriptorPool,
-		NULL
-	);
+	for (uint32_t i = 0; i < renderer->uniformBufferDescriptorPoolCount; i++)
+	{
+		renderer->vkDestroyDescriptorPool(
+			renderer->logicalDevice,
+			renderer->uniformBufferDescriptorPools[i],
+			NULL
+		);
+	}
+
+	for (uint32_t i = 0; i < renderer->samplerDescriptorPoolCount; i++)
+	{
+		renderer->vkDestroyDescriptorPool(
+			renderer->logicalDevice,
+			renderer->samplerDescriptorPools[i],
+			NULL
+		);
+	}
 
 	for (uint32_t i = 0; i < hmlenu(renderer->renderPassHashMap); i++)
 	{
@@ -1831,6 +2317,12 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 	renderer->vkDestroyInstance(renderer->instance, NULL);
 
+	hmfree(renderer->pipelineLayoutHashMap);
+	hmfree(renderer->pipelineHashMap);
+	hmfree(renderer->renderPassHashMap);
+	hmfree(renderer->framebufferHashMap);
+	hmfree(renderer->samplerStateHashMap);
+
 	SDL_free(renderer->ldVertexBuffers);
 	SDL_free(renderer->ldFragUniformBuffers);
 	SDL_free(renderer->ldVertexBufferOffsets);
@@ -1839,17 +2331,13 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 	SDL_free(renderer->samplers);
 	SDL_free(renderer->textureNeedsUpdate);
 	SDL_free(renderer->samplerNeedsUpdate);
-	SDL_free(renderer->vertexSamplerDescriptorSets);
-	SDL_free(renderer->samplerDescriptorSets);
-	SDL_free(renderer->vertexUniformBufferDescriptorSets);
-	SDL_free(renderer->fragUniformBufferDescriptorSets);
+	SDL_free(renderer->activeDescriptorSets);
 	SDL_free(renderer->commandBuffers);
 	SDL_free(renderer->swapChainImages);
 	SDL_free(renderer);
 	SDL_free(device);
 }
 
-/* NOTE: this should only be used for the swapchain for now */
 static uint8_t CreateImage(
 	FNAVulkanRenderer *renderer,
 	uint32_t width,
@@ -1859,6 +2347,7 @@ static uint8_t CreateImage(
 	VkComponentMapping swizzle,
 	VkImageAspectFlags aspectMask,
 	VkImageTiling tiling,
+	VkImageType imageType,
 	VkImageUsageFlags usage,
 	VkMemoryPropertyFlags memoryProperties,
 	FNAVulkanImageData *imageData
@@ -1870,7 +2359,7 @@ static uint8_t CreateImage(
 	};
 
 	imageCreateInfo.flags = 0;
-	imageCreateInfo.imageType = VK_IMAGE_TYPE_2D; /* FIXME */
+	imageCreateInfo.imageType = imageType;
 	imageCreateInfo.format = format;
 	imageCreateInfo.extent.width = width;
 	imageCreateInfo.extent.height = height;
@@ -1882,8 +2371,9 @@ static uint8_t CreateImage(
 	imageCreateInfo.usage = usage;
 	imageCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	imageCreateInfo.queueFamilyIndexCount = 0;
-	/* new images must be created with undefined layout */
-	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_PREINITIALIZED;
+
+	imageData->layout = VK_IMAGE_LAYOUT_PREINITIALIZED;
 
 	result = renderer->vkCreateImage(
 		renderer->logicalDevice,
@@ -2005,62 +2495,36 @@ static uint8_t CreateImage(
 
 static VulkanTexture* CreateTexture(
 	FNAVulkanRenderer *renderer,
-	VkImageCreateInfo textureCreateInfo,
 	FNA3D_SurfaceFormat format,
 	int32_t width,
 	int32_t height,
 	int32_t levelCount,
-	uint8_t isRenderTarget
+	uint8_t isRenderTarget,
+	VkImageType imageType
 ) {
 	VulkanTexture *result = SDL_malloc(sizeof(VulkanTexture));
+	SDL_memset(result, '\0', sizeof(VulkanTexture));
 
-	renderer->vkCreateImage(
-		renderer->logicalDevice,
-		&textureCreateInfo,
-		NULL,
-		&result->handle
-	);
+	FNAVulkanImageData *imageData = SDL_malloc(sizeof(FNAVulkanImageData));
+	SDL_memset(imageData, '\0', sizeof(FNAVulkanImageData));
+
+	result->imageData = imageData;
 
 	SurfaceFormatMapping surfaceFormatMapping = XNAToVK_SurfaceFormat[format];
-	VkImageViewType imageViewType;
-	switch (textureCreateInfo.imageType)
-	{
-		case VK_IMAGE_TYPE_1D:
-			imageViewType = VK_IMAGE_VIEW_TYPE_1D;
-			break;
 
-		case VK_IMAGE_TYPE_2D:
-			imageViewType = VK_IMAGE_VIEW_TYPE_2D;
-			break;
-
-		case VK_IMAGE_TYPE_3D:
-			imageViewType = VK_IMAGE_VIEW_TYPE_3D;
-			break;
-		
-		default:
-			/* this shouldn't happen */
-			imageViewType = VK_IMAGE_VIEW_TYPE_2D;
-	}
-
-	VkImageViewCreateInfo imageViewInfo = {
-		VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO
-	};
-	imageViewInfo.image = result->handle;
-	imageViewInfo.viewType = imageViewType;
-	imageViewInfo.format = surfaceFormatMapping.formatColor;
-	imageViewInfo.components = surfaceFormatMapping.swizzle;
-	/* FIXME: do we ever do depth/stencil stuff to a texture? */
-	imageViewInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	imageViewInfo.subresourceRange.baseMipLevel = 0;
-	imageViewInfo.subresourceRange.levelCount = levelCount;
-	imageViewInfo.subresourceRange.baseArrayLayer = 0;
-	imageViewInfo.subresourceRange.layerCount = 1;
-
-	renderer->vkCreateImageView(
-		renderer->logicalDevice,
-		&imageViewInfo,
-		NULL,
-		&result->imageView
+	CreateImage(
+		renderer,
+		width,
+		height,
+		VK_SAMPLE_COUNT_1_BIT,
+		surfaceFormatMapping.formatColor,
+		surfaceFormatMapping.swizzle,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_TILING_OPTIMAL,
+		imageType,
+		VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		result->imageData
 	);
 
 	result->width = width;
@@ -2079,22 +2543,21 @@ static VulkanTexture* CreateTexture(
 	return result;
 }
 
-static void ImageLayoutTransition(
+static void QueueImageLayoutTransition(
 	FNAVulkanRenderer *renderer,
 	FNAVulkanImageData *imageData,
-	VkImageLayout oldLayout,
 	VkImageLayout targetLayout,
 	VkImageAspectFlags aspectMask
 ) {
-	if (oldLayout != targetLayout)
+	if (imageData->layout != targetLayout)
 	{
 		VkImageMemoryBarrier barrier = {
 			VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
 		};
 
-		barrier.oldLayout = oldLayout;
-		barrier.subresourceRange.layerCount = 1;
-		barrier.subresourceRange.levelCount = 1;
+		barrier.oldLayout = imageData->layout;
+		barrier.subresourceRange.layerCount = 1; /* FIXME */
+		barrier.subresourceRange.levelCount = 1; /* FIXME */
 		barrier.image = imageData->image;
 
 		barrier.subresourceRange.aspectMask = aspectMask;
@@ -2103,52 +2566,41 @@ static void ImageLayoutTransition(
 
 		barrier.newLayout = targetLayout;
 
-		VkPipelineStageFlags srcStage = 0;
-		VkPipelineStageFlags dstStage = 0;
-
-		/* FIXME: a lot of these settings are probably broken */
+		/* FIXME: this is all broken garbage */
 
 		switch (barrier.oldLayout)
 		{
 			case VK_IMAGE_LAYOUT_UNDEFINED:
 			case VK_IMAGE_LAYOUT_PREINITIALIZED:
 				barrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
-				srcStage = VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
 				break;
 
 			case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
 				barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-				srcStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 				break;
 
 			case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
 				barrier.srcAccessMask = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-				srcStage = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 				break;
 
 			case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
 				barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-				srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 				break;
 
 			case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
 				barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-				srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 				break;
 
 			case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
 				barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-				srcStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT; /* FIXME: ?? */
 				break;
 
 			case VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR:
 				barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-				srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 				break;
 
 			case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
 				barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-				srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 				break;
 
 			default:
@@ -2165,27 +2617,21 @@ static void ImageLayoutTransition(
 		{
 			case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
 				barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-				dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 				break;
 
 			case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
 				barrier.srcAccessMask |= VK_ACCESS_TRANSFER_READ_BIT;
 				barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-				srcStage |= VK_PIPELINE_STAGE_TRANSFER_BIT;
-				dstStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
 				break;
 
 			case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
 				barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 				barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-				srcStage = VK_PIPELINE_STAGE_TRANSFER_BIT;
-				dstStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 				break;
 
 			case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
 				barrier.dstAccessMask |=
 					VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-				dstStage |= VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
 				break;
 
 			/* FIXME: check this */
@@ -2193,15 +2639,11 @@ static void ImageLayoutTransition(
 				barrier.srcAccessMask =
 					VK_ACCESS_HOST_WRITE_BIT | VK_ACCESS_TRANSFER_WRITE_BIT;
 				barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-				srcStage = VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT;
-				dstStage = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
 				break;
 
 			case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
 				barrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 				barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-				srcStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-				dstStage = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 				break;
 
 			default:
@@ -2214,18 +2656,58 @@ static void ImageLayoutTransition(
 				return;
 		}
 
+		if (renderer->imageMemoryBarrierCount >= renderer->imageMemoryBarrierCapacity)
+		{
+			renderer->imageMemoryBarrierCapacity *= 2;
+
+			renderer->imageMemoryBarriers = SDL_realloc(
+				renderer->imageMemoryBarriers,
+				sizeof(VkImageMemoryBarrier) *
+				renderer->imageMemoryBarrierCapacity
+			);
+		}
+
+		renderer->imageMemoryBarriers[renderer->imageMemoryBarrierCount] = barrier;
+		renderer->imageMemoryBarrierCount++;
+
+		imageData->layout = targetLayout;
+	}
+}
+
+static void PerformImageLayoutTransitions(
+	FNAVulkanRenderer *renderer
+) {
+	if (renderer->imageMemoryBarrierCount > 0)
+	{
+		uint8_t renderPassWasInProgress = renderer->renderPassInProgress;
+
+		if (renderPassWasInProgress)
+		{
+			EndPass(renderer);
+		}
+
+		/* 
+		 * FIXME: we need different barrier commands for different kinds of layout transitions
+		 */
 		renderer->vkCmdPipelineBarrier(
 			renderer->commandBuffers[renderer->commandBufferCount - 1],
-			srcStage,
-			dstStage,
+			VK_PIPELINE_STAGE_HOST_BIT | VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_VERTEX_SHADER_BIT,
 			0,
 			0,
 			NULL,
 			0,
 			NULL,
-			1,
-			&barrier
+			renderer->imageMemoryBarrierCount,
+			renderer->imageMemoryBarriers
 		);
+
+		renderer->imageMemoryBarrierCount = 0;
+
+		if (renderPassWasInProgress)
+		{
+			BeginRenderPass(renderer);
+		}
 	}
 }
 
@@ -2236,10 +2718,6 @@ static uint8_t BlitFramebuffer(
 	FNAVulkanImageData *dstImage,
 	FNA3D_Rect dstRect
 ) {
-	VkResult vulkanResult;
-
-	AllocateAndBeginCommandBuffer(renderer);
-
 	VkImageBlit blit;
 
 	blit.srcOffsets[0].x = srcRect.x;
@@ -2266,21 +2744,75 @@ static uint8_t BlitFramebuffer(
 	blit.dstSubresource.layerCount = 1;
 	blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; /* TODO: support depth/stencil */
 
-	ImageLayoutTransition(
-		renderer,
-		srcImage,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		VK_IMAGE_ASPECT_COLOR_BIT
-	);
+	if (srcImage->layout != VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
+	{
+		VkImageMemoryBarrier srcTransitionBarrier = {
+			VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
+		};
 
-	ImageLayoutTransition(
-		renderer,
-		dstImage,
-		VK_IMAGE_LAYOUT_UNDEFINED,
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		VK_IMAGE_ASPECT_COLOR_BIT
-	);
+		srcTransitionBarrier.image = srcImage->image;
+		srcTransitionBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		srcTransitionBarrier.subresourceRange.baseArrayLayer = 0;
+		srcTransitionBarrier.subresourceRange.baseMipLevel = 0;
+		srcTransitionBarrier.subresourceRange.layerCount = 1;
+		srcTransitionBarrier.subresourceRange.levelCount = 1;
+		srcTransitionBarrier.oldLayout = srcImage->layout;
+		srcTransitionBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+		srcTransitionBarrier.srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		srcTransitionBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		srcTransitionBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		srcTransitionBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+		srcImage->layout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+
+		renderer->vkCmdPipelineBarrier(
+			renderer->commandBuffers[renderer->commandBufferCount - 1],
+			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			0,
+			0,
+			NULL,
+			0,
+			NULL,
+			1,
+			&srcTransitionBarrier
+		);
+	}
+
+	if (dstImage->layout != VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+	{
+		VkImageMemoryBarrier dstTransitionBarrier = {
+			VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
+		};
+
+		dstTransitionBarrier.image = dstImage->image;
+		dstTransitionBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		dstTransitionBarrier.subresourceRange.baseArrayLayer = 0;
+		dstTransitionBarrier.subresourceRange.baseMipLevel = 0;
+		dstTransitionBarrier.subresourceRange.layerCount = 1;
+		dstTransitionBarrier.subresourceRange.levelCount = 1;
+		dstTransitionBarrier.oldLayout = dstImage->layout;
+		dstTransitionBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		dstTransitionBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		dstTransitionBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		dstTransitionBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		dstTransitionBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+		dstImage->layout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+
+		renderer->vkCmdPipelineBarrier(
+			renderer->commandBuffers[renderer->commandBufferCount - 1],
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			0,
+			0,
+			NULL,
+			0,
+			NULL,
+			1,
+			&dstTransitionBarrier
+		);
+	}
 
 	/* TODO: use vkCmdResolveImage for multisampled images */
 	/* TODO: blit depth/stencil buffer as well */
@@ -2295,44 +2827,146 @@ static uint8_t BlitFramebuffer(
 		VK_FILTER_LINEAR /* FIXME: where is the final blit filter defined? -cosmonaut */
 	);
 
-	ImageLayoutTransition(
-		renderer,
-		dstImage,
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-		VK_IMAGE_ASPECT_COLOR_BIT
-	);
+	if (dstImage->layout != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+	{
+		VkImageMemoryBarrier dstTransitionBarrier = {
+			VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
+		};
 
-	ImageLayoutTransition(
-		renderer,
-		srcImage,
-		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-		VK_IMAGE_ASPECT_COLOR_BIT
-	);
+		dstTransitionBarrier.image = dstImage->image;
+		dstTransitionBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		dstTransitionBarrier.subresourceRange.baseArrayLayer = 0;
+		dstTransitionBarrier.subresourceRange.baseMipLevel = 0;
+		dstTransitionBarrier.subresourceRange.layerCount = 1;
+		dstTransitionBarrier.subresourceRange.levelCount = 1;
+		dstTransitionBarrier.oldLayout = dstImage->layout;
+		dstTransitionBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+		dstTransitionBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+		dstTransitionBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		dstTransitionBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		dstTransitionBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 
-	vulkanResult = renderer->vkEndCommandBuffer(
-		renderer->commandBuffers[renderer->commandBufferCount - 1]
+		dstImage->layout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+		renderer->vkCmdPipelineBarrier(
+			renderer->commandBuffers[renderer->commandBufferCount - 1],
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			0,
+			0,
+			NULL,
+			0,
+			NULL,
+			1,
+			&dstTransitionBarrier
+		);
+	}
+
+	if (srcImage->layout != VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL)
+	{
+		VkImageMemoryBarrier srcTransitionBarrier = {
+			VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
+		};
+
+		srcTransitionBarrier.image = srcImage->image;
+		srcTransitionBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		srcTransitionBarrier.subresourceRange.baseArrayLayer = 0;
+		srcTransitionBarrier.subresourceRange.baseMipLevel = 0;
+		srcTransitionBarrier.subresourceRange.layerCount = 1;
+		srcTransitionBarrier.subresourceRange.levelCount = 1;
+		srcTransitionBarrier.oldLayout = srcImage->layout;
+		srcTransitionBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+		srcTransitionBarrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+		srcTransitionBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+		srcTransitionBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		srcTransitionBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+
+		srcImage->layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+		renderer->vkCmdPipelineBarrier(
+			renderer->commandBuffers[renderer->commandBufferCount - 1],
+			VK_PIPELINE_STAGE_TRANSFER_BIT,
+			VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+			0,
+			0,
+			NULL,
+			0,
+			NULL,
+			1,
+			&srcTransitionBarrier
+		);
+	}
+
+	return 1;
+}
+
+static PipelineLayoutHash GetPipelineLayoutHash(
+	FNAVulkanRenderer *renderer,
+	MOJOSHADER_vkShader *vertShader,
+	MOJOSHADER_vkShader *fragShader
+) {
+	PipelineLayoutHash hash;
+	hash.vertUniformBufferCount = MOJOSHADER_vkGetShaderParseData(vertShader)->uniform_count > 0;
+	hash.vertSamplerCount = MOJOSHADER_vkGetShaderParseData(vertShader)->sampler_count;
+	hash.fragUniformBufferCount = MOJOSHADER_vkGetShaderParseData(fragShader)->uniform_count > 0;
+	hash.fragSamplerCount = MOJOSHADER_vkGetShaderParseData(fragShader)->sampler_count;
+	return hash;
+}
+
+static VkPipelineLayout FetchPipelineLayout(
+	FNAVulkanRenderer *renderer,
+	MOJOSHADER_vkShader *vertShader,
+	MOJOSHADER_vkShader *fragShader
+) {
+	PipelineLayoutHash hash = GetPipelineLayoutHash(renderer, vertShader, fragShader);
+	renderer->currentPipelineLayoutHash = hash;
+
+	if (hmgeti(renderer->pipelineLayoutHashMap, hash) != -1)
+	{
+		return hmget(renderer->pipelineLayoutHashMap, hash);
+	}
+
+	VkDescriptorSetLayout setLayouts[4];
+
+	setLayouts[0] = renderer->vertSamplerDescriptorSetLayouts[hash.vertSamplerCount];
+	setLayouts[1] = renderer->fragSamplerDescriptorSetLayouts[hash.fragSamplerCount];
+	setLayouts[2] = renderer->vertUniformBufferDescriptorSetLayouts[hash.vertUniformBufferCount];
+	setLayouts[3] = renderer->fragUniformBufferDescriptorSetLayouts[hash.fragUniformBufferCount];
+
+	VkPipelineLayoutCreateInfo layoutCreateInfo = {
+		VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO
+	};
+
+	layoutCreateInfo.setLayoutCount = 4;
+	layoutCreateInfo.pSetLayouts = setLayouts;
+
+	VkPipelineLayout layout;
+	VkResult vulkanResult = renderer->vkCreatePipelineLayout(
+		renderer->logicalDevice,
+		&layoutCreateInfo,
+		NULL,
+		&layout
 	);
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkEndCommandBuffer", vulkanResult);
-		return 0;
+		LogVulkanResult("vkCreatePipelineLayout", vulkanResult);
+		return NULL;
 	}
 
-	return 1;
+	hmput(renderer->pipelineLayoutHashMap, hash, layout);
+	return layout;
 }
 
 static VkPipeline FetchPipeline(
 	FNAVulkanRenderer *renderer
 ) {
 	VkResult vulkanResult;
+
 	PipelineHash hash = GetPipelineHash(renderer);
 
 	if (hmgeti(renderer->pipelineHashMap, hash) != -1)
 	{
-		renderer->currentPipelineHash = hash;
 		return hmget(renderer->pipelineHashMap, hash);
 	}
 
@@ -2349,15 +2983,40 @@ static VkPipeline FetchPipeline(
 	inputAssemblyInfo.topology = XNAToVK_Topology[renderer->currentPrimitiveType];
 	inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
 
-	VkPipelineVertexInputStateCreateInfo vertexInputInfo;
+	VkVertexInputBindingDescription bindingDescriptions[renderer->numVertexBindings];
+	VkVertexInputAttributeDescription attributeDescriptions[renderer->numVertexBindings * MAX_VERTEX_ATTRIBUTES];
+	uint32_t attributeDescriptionCount;
+
+	VkPipelineVertexInputStateCreateInfo vertexInputInfo = {
+		VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
+	};
+
 	if (renderer->userVertexBufferInUse)
 	{
-		vertexInputInfo = GenerateUserVertexInputInfo(renderer);
+		GenerateUserVertexInputInfo(
+			renderer,
+			bindingDescriptions,
+			attributeDescriptions,
+			&attributeDescriptionCount
+		);
+
+		vertexInputInfo.vertexBindingDescriptionCount = 1;
 	}
 	else
 	{
-		vertexInputInfo = GenerateVertexInputInfo(renderer);
+		GenerateVertexInputInfo(
+			renderer,
+			bindingDescriptions,
+			attributeDescriptions,
+			&attributeDescriptionCount
+		);
+
+		vertexInputInfo.vertexBindingDescriptionCount = renderer->numVertexBindings;
 	}
+
+	vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions;
+	vertexInputInfo.vertexAttributeDescriptionCount = attributeDescriptionCount;
+	vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions;
 
 	VkPipelineRasterizationStateCreateInfo rasterizerInfo = { VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO };
 	rasterizerInfo.depthClampEnable = VK_FALSE;
@@ -2466,12 +3125,42 @@ static VkPipeline FetchPipeline(
 		VK_DYNAMIC_STATE_DEPTH_BIAS
 	};
 
-	VkPipelineDynamicStateCreateInfo dynamicStateInfo = { VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO };
+	VkPipelineDynamicStateCreateInfo dynamicStateInfo = { 
+		VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO 
+	};
 	dynamicStateInfo.dynamicStateCount = sizeof(dynamicStates)/sizeof(dynamicStates[0]);
 	dynamicStateInfo.pDynamicStates = dynamicStates;
 
-	VkGraphicsPipelineCreateInfo pipelineCreateInfo = { VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO };
-	pipelineCreateInfo.stageCount = 0;
+	MOJOSHADER_vkShader *vertShader, *fragShader;
+	MOJOSHADER_vkGetBoundShaders(&vertShader, &fragShader);
+
+	VkPipelineShaderStageCreateInfo vertShaderStageInfo = {
+		VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO
+	};
+
+	vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+	vertShaderStageInfo.module = (VkShaderModule) MOJOSHADER_vkGetShaderModule(vertShader);
+	vertShaderStageInfo.pName = MOJOSHADER_vkGetShaderParseData(vertShader)->mainfn;
+
+	VkPipelineShaderStageCreateInfo fragShaderStageInfo = {
+		VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO
+	};
+	fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+	fragShaderStageInfo.module = (VkShaderModule) MOJOSHADER_vkGetShaderModule(fragShader);
+	fragShaderStageInfo.pName = MOJOSHADER_vkGetShaderParseData(fragShader)->mainfn;
+
+	VkPipelineShaderStageCreateInfo stageInfos[2] = {
+		vertShaderStageInfo,
+		fragShaderStageInfo
+	};
+
+	VkPipelineLayout pipelineLayout = FetchPipelineLayout(renderer, vertShader, fragShader);
+
+	VkGraphicsPipelineCreateInfo pipelineCreateInfo = { 
+		VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO 
+	};
+	pipelineCreateInfo.stageCount = 2;
+	pipelineCreateInfo.pStages = stageInfos;
 	pipelineCreateInfo.pInputAssemblyState = &inputAssemblyInfo;
 	pipelineCreateInfo.pVertexInputState = &vertexInputInfo;
 	pipelineCreateInfo.pViewportState = &viewportStateInfo;
@@ -2480,7 +3169,7 @@ static VkPipeline FetchPipeline(
 	pipelineCreateInfo.pDepthStencilState = &depthStencilStateInfo;
 	pipelineCreateInfo.pColorBlendState = &colorBlendStateInfo;
 	pipelineCreateInfo.pDynamicState = &dynamicStateInfo;
-	pipelineCreateInfo.layout = renderer->pipelineLayout;
+	pipelineCreateInfo.layout = pipelineLayout;
 	pipelineCreateInfo.renderPass = renderer->renderPass;
 
 	vulkanResult = renderer->vkCreateGraphicsPipelines(
@@ -2503,8 +3192,10 @@ static VkPipeline FetchPipeline(
 		return NULL;
 	}
 
+	/* putting this here is kind of a kludge -cosmonaut */
+	renderer->currentPipelineLayout = pipelineLayout;
+
 	hmput(renderer->pipelineHashMap, hash, pipeline);
-	renderer->currentPipelineHash = hash;
 	return pipeline;
 }
 
@@ -2755,8 +3446,12 @@ static PipelineHash GetPipelineHash(
 	hash.vertexDeclarationHash = renderer->currentUserVertexDeclarationHash;
 	hash.vertexBufferBindingsHash = renderer->currentVertexBufferBindingHash;
 	hash.primitiveType = renderer->currentPrimitiveType;
-	hash.renderPass = renderer->renderPass;
 	hash.sampleMask = renderer->multiSampleMask[0];
+	MOJOSHADER_vkShader *vertShader, *fragShader;
+	MOJOSHADER_vkGetBoundShaders(&vertShader, &fragShader);
+	hash.vertShader = (uint64_t) vertShader;
+	hash.fragShader = (uint64_t) fragShader;
+	hash.renderPass = renderer->renderPass;
 	return hash;
 }
 
@@ -2817,6 +3512,8 @@ static uint8_t AllocateAndBeginCommandBuffer(
 		return 0;
 	}
 
+	renderer->commandBufferBegunThisPass = 1;
+
 	return 1;
 }
 
@@ -2824,65 +3521,26 @@ static void BeginRenderPass(
 	FNAVulkanRenderer *renderer
 )
 {
-	VkResult vulkanResult;
-
-	if (!renderer->commandBufferBegunThisPass)
-	{
-		renderer->commandBufferCount++;
-
-		if (renderer->commandBufferCount > renderer->commandBufferCapacity)
-		{
-			renderer->commandBufferCapacity *= 2;
-
-			renderer->commandBuffers = SDL_realloc(
-				renderer->commandBuffers,
-				sizeof(VkCommandBuffer) * renderer->commandBufferCapacity
-			);
-		}
-
-		VkCommandBufferAllocateInfo commandBufferAllocateInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-		commandBufferAllocateInfo.commandPool = renderer->commandPool;
-		commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-		commandBufferAllocateInfo.commandBufferCount = 1; /* TODO: change for frames in flight */
-
-		vulkanResult = renderer->vkAllocateCommandBuffers(
-			renderer->logicalDevice,
-			&commandBufferAllocateInfo,
-			&renderer->commandBuffers[renderer->commandBufferCount - 1]
-		);
-
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
-			return;
-		}
-	}
-
 	renderer->renderPass = FetchRenderPass(renderer);
 	renderer->framebuffer = FetchFramebuffer(renderer, renderer->renderPass);
 
-	if (!renderer->commandBufferBegunThisPass)
-	{
-		VkCommandBufferBeginInfo beginInfo = {
-			VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
-		};
+	VkRenderPassBeginInfo renderPassBeginInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
 
-		vulkanResult = renderer->vkBeginCommandBuffer(
-			renderer->commandBuffers[renderer->commandBufferCount - 1],
-			&beginInfo
-		);
+	/* FIXME: these values are not correct */
+	VkOffset2D offset = { 0, 0 };
+	renderPassBeginInfo.renderArea.offset = offset;
+	renderPassBeginInfo.renderArea.extent = renderer->swapChainExtent;
 
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
-			return;
-		}
+	renderPassBeginInfo.renderPass = renderer->renderPass;
+	renderPassBeginInfo.framebuffer = renderer->framebuffer;
 
-		renderer->commandBufferBegunThisPass = 1;
-	}
+	renderer->vkCmdBeginRenderPass(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		&renderPassBeginInfo,
+		VK_SUBPASS_CONTENTS_INLINE
+	);
 
 	renderer->renderPassInProgress = 1;
-	renderer->pipelineBoundThisFrame = 0;
 
 	VkViewport viewport;
 	viewport.x = renderer->viewport.x;
@@ -2944,7 +3602,8 @@ static void BeginRenderPass(
 	renderer->ldFragUniformOffsets[renderer->currentSwapChainIndex] = 0;
 	renderer->ldVertUniformBuffers[renderer->currentSwapChainIndex] = NULL;
 	renderer->ldVertUniformOffsets[renderer->currentSwapChainIndex] = 0;
-	
+	renderer->currentPipeline = NULL;
+
 	swapChainOffset = MAX_BOUND_VERTEX_BUFFERS * renderer->currentSwapChainIndex;
 
 	for (uint32_t i = swapChainOffset; i < swapChainOffset + MAX_BOUND_VERTEX_BUFFERS; i++)
@@ -2953,23 +3612,9 @@ static void BeginRenderPass(
 		renderer->ldVertexBufferOffsets[i] = 0;
 	}
 
-	VkRenderPassBeginInfo renderPassBeginInfo = { VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO };
-
-	/* FIXME: these values are not correct */
-	VkOffset2D offset = { 0, 0 };
-	renderPassBeginInfo.renderArea.offset = offset;
-	renderPassBeginInfo.renderArea.extent = renderer->swapChainExtent;
-
-	renderPassBeginInfo.renderPass = renderer->renderPass;
-	renderPassBeginInfo.framebuffer = renderer->framebuffer;
-
-	renderer->vkCmdBeginRenderPass(
-		renderer->commandBuffers[renderer->commandBufferCount - 1],
-		&renderPassBeginInfo,
-		VK_SUBPASS_CONTENTS_INLINE
-	);
-
 	renderer->needNewRenderPass = 0;
+
+	BindPipeline(renderer);
 }
 
 void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
@@ -3019,6 +3664,8 @@ void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 
 	renderer->frameInProgress = 1;
 	renderer->commandBufferCount = 0;
+
+	AllocateAndBeginCommandBuffer(renderer);
 }
 
 void VULKAN_SwapBuffers(
@@ -3035,7 +3682,7 @@ void VULKAN_SwapBuffers(
 
 	VULKAN_BeginFrame(driverData);
 	VULKAN_SetRenderTargets(driverData, NULL, 0, NULL, FNA3D_DEPTHFORMAT_NONE);
-	EndPass(renderer);
+	EndPass(renderer); /* must end render pass before blitting */
 
 	if (sourceRectangle != NULL)
 	{
@@ -3064,6 +3711,9 @@ void VULKAN_SwapBuffers(
 		dstRect.h = h;
 	}
 
+	/* special case because of the attachment description */
+	renderer->fauxBackbufferColorImageData.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
 	BlitFramebuffer(
 		renderer,
 		&renderer->fauxBackbufferColorImageData,
@@ -3071,6 +3721,16 @@ void VULKAN_SwapBuffers(
 		&renderer->swapChainImages[renderer->currentSwapChainIndex],
 		dstRect
 	);
+
+	VkResult vulkanResult = renderer->vkEndCommandBuffer(
+		renderer->commandBuffers[renderer->commandBufferCount - 1]
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkEndCommandBuffer", vulkanResult);
+		return;
+	}
 
 	VkSemaphore signalSemaphores[] = {
 		renderer->renderFinishedSemaphore
@@ -3122,6 +3782,17 @@ void VULKAN_SwapBuffers(
 	{
 		LogVulkanResult("vkQueuePresentKHR", result);
 	}
+
+	VulkanBuffer *buf = renderer->buffers;
+	while (buf != NULL)
+	{
+		buf->internalOffset = 0;
+		buf->boundThisFrame = 0;
+		buf->prevDataLength = 0;
+		buf = buf->next;
+	}
+	
+	MOJOSHADER_vkEndFrame();
 
 	renderer->frameInProgress = 0;
 }
@@ -3283,11 +3954,52 @@ void VULKAN_DrawInstancedPrimitives(
 		renderer, primitiveType
 	);
 
+	BindResources(renderer);
+
 	renderer->vkCmdBindIndexBuffer(
 		renderer->commandBuffers[renderer->commandBufferCount - 1],
 		indexBuffer->handle,
 		totalIndexOffset,
 		XNAToVK_IndexType[indexElementSize]
+	);
+
+	VulkanBuffer *vertexBuffer;
+	int32_t offset;
+
+	VkBuffer updatedVertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
+	VkDeviceSize updatedOffsets[MAX_BOUND_VERTEX_BUFFERS];
+	uint32_t updatedVertexBufferCount = 0;
+
+	for (uint32_t i = 0; i < renderer->numVertexBindings; i++)
+	{
+		vertexBuffer = (VulkanBuffer*) renderer->vertexBindings[i].vertexBuffer;
+		if (vertexBuffer == NULL)
+		{
+			continue;
+		}
+
+		offset = vertexBuffer->internalOffset + (
+			(renderer->vertexBindings[i].vertexOffset + baseVertex) *
+			renderer->vertexBindings[i].vertexDeclaration.vertexStride
+		);
+
+		vertexBuffer->boundThisFrame = 1;
+		if (	renderer->ldVertexBuffers[i] != &vertexBuffer->handle ||
+				renderer->ldVertexBufferOffsets[i] != offset	)
+		{
+			updatedVertexBuffers[updatedVertexBufferCount] = vertexBuffer->handle;
+			updatedOffsets[updatedVertexBufferCount] = offset;
+		}
+
+		updatedVertexBufferCount++;
+	}
+
+	renderer->vkCmdBindVertexBuffers(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		0,
+		updatedVertexBufferCount,
+		updatedVertexBuffers,
+		updatedOffsets
 	);
 
 	renderer->vkCmdDrawIndexed(
@@ -3337,6 +4049,8 @@ void VULKAN_DrawPrimitives(
 		renderer, primitiveType
 	);
 
+	BindResources(renderer);
+
 	renderer->vkCmdDraw(
 		renderer->commandBuffers[renderer->commandBufferCount - 1],
 		PrimitiveVerts(primitiveType, primitiveCount),
@@ -3362,6 +4076,10 @@ void VULKAN_DrawUserIndexedPrimitives(
 	uint32_t firstIndex;
 	VkDeviceSize len;
 
+	CheckPrimitiveTypeAndBindPipeline(renderer, primitiveType);
+
+	BindResources(renderer);
+
 	BindUserVertexBuffer(
 		renderer,
 		vertexData,
@@ -3376,7 +4094,7 @@ void VULKAN_DrawUserIndexedPrimitives(
 	if (renderer->userIndexBuffer == NULL)
 	{
 		renderer->userIndexBuffer = CreateBuffer(
-			driverData,
+			renderer,
 			FNA3D_BUFFERUSAGE_WRITEONLY,
 			len,
 			VK_BUFFER_USAGE_INDEX_BUFFER_BIT
@@ -3391,8 +4109,6 @@ void VULKAN_DrawUserIndexedPrimitives(
 		len,
 		VK_BUFFER_USAGE_INDEX_BUFFER_BIT
 	);
-
-	CheckPrimitiveTypeAndBindPipeline(renderer, primitiveType);
 
 	renderer->vkCmdBindIndexBuffer(
 		renderer->commandBuffers[renderer->commandBufferCount - 1],
@@ -3427,14 +4143,15 @@ void VULKAN_DrawUserPrimitives(
 		primitiveCount
 	);
 
+	CheckPrimitiveTypeAndBindPipeline(renderer, primitiveType);
+	BindResources(renderer);
+
 	BindUserVertexBuffer(
 		renderer,
 		vertexData,
 		numVerts,
 		vertexOffset
 	);
-
-	CheckPrimitiveTypeAndBindPipeline(renderer, primitiveType);
 
 	renderer->vkCmdDraw(
 		renderer->commandBuffers[renderer->commandBufferCount - 1],
@@ -3548,25 +4265,20 @@ void VULKAN_SetMultiSampleMask(FNA3D_Renderer *driverData, int32_t mask)
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	if (renderer->debugMode && renderer->rasterizerState.multiSampleAntiAlias > 32) {
 		SDL_LogWarn(
-				SDL_LOG_CATEGORY_APPLICATION,
-				"%s\n%s\n",
-				"Using a 32-bit multisample mask for a 64-sample rasterizer",
-				"Last 32 bits of the mask will all be 1"
+			SDL_LOG_CATEGORY_APPLICATION,
+			"%s\n%s\n",
+			"Using a 32-bit multisample mask for a 64-sample rasterizer",
+			"Last 32 bits of the mask will all be 1"
 		);
 	}
 	if (renderer->multiSampleMask[0] != mask)
 	{
-		if (renderer->debugMode && renderer->renderPassInProgress)
-		{
-			SDL_LogWarn(
-					SDL_LOG_CATEGORY_APPLICATION,
-					"%s\n%s\n",
-					"Binding new pipeline to change multisample mask mid-frame",
-					"This may cause performance degradation"
-			);
-		}
 		renderer->multiSampleMask[0] = mask;
-		BindPipeline(renderer);
+
+		if (renderer->renderPassInProgress)
+		{
+			BindPipeline(renderer);
+		}
 	}
 }
 
@@ -3626,48 +4338,18 @@ void VULKAN_ApplyRasterizerState(
 		SetDepthBiasCommand(renderer);
 	}
 
-	if (rasterizerState->cullMode != renderer->rasterizerState.cullMode ||
-				rasterizerState->fillMode != renderer->rasterizerState.fillMode ||
-				rasterizerState->multiSampleAntiAlias != renderer->rasterizerState.multiSampleAntiAlias)
+	if (	rasterizerState->cullMode != renderer->rasterizerState.cullMode ||
+			rasterizerState->fillMode != renderer->rasterizerState.fillMode ||
+			rasterizerState->multiSampleAntiAlias != renderer->rasterizerState.multiSampleAntiAlias	)
 	{
-		if (renderer->debugMode && renderer->renderPassInProgress)
-		{
-			if (rasterizerState->cullMode != renderer->rasterizerState.cullMode)
-			{
-				SDL_LogWarn(
-					SDL_LOG_CATEGORY_APPLICATION,
-					"%s\n%s\n",
-					"Binding new pipeline to change cull mode mid-frame",
-					"This may cause performance degradation"
-				);
-			}
-
-			if (rasterizerState->fillMode != renderer->rasterizerState.fillMode)
-			{
-				SDL_LogWarn(
-					SDL_LOG_CATEGORY_APPLICATION,
-					"%s\n%s\n",
-					"Binding new pipeline to change fill mode mid-frame",
-					"This may cause performance degradation"
-				);
-			}
-
-			if (rasterizerState->multiSampleAntiAlias != renderer->rasterizerState.multiSampleAntiAlias)
-			{
-				SDL_LogWarn(
-					SDL_LOG_CATEGORY_APPLICATION,
-					"%s\n%s\n",
-					"Binding new pipeline to change multisample count mid-frame",
-					"This may cause performance degradation"
-				);
-			}
-		}
-
 		renderer->rasterizerState.cullMode = rasterizerState->cullMode;
 		renderer->rasterizerState.fillMode = rasterizerState->fillMode;
 		renderer->rasterizerState.multiSampleAntiAlias = rasterizerState->multiSampleAntiAlias;
 		
-		BindPipeline(renderer);
+		if (renderer->renderPassInProgress)
+		{
+			BindPipeline(renderer);
+		}
 	}
 }
 
@@ -3681,15 +4363,18 @@ void VULKAN_VerifySampler(
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkSampler vkSamplerState;
 
+	uint32_t fragArrayOffset = (renderer->currentSwapChainIndex * MAX_TOTAL_SAMPLERS) + MAX_VERTEXTEXTURE_SAMPLERS;
+	uint32_t textureIndex = fragArrayOffset + index;
+
 	if (texture == NULL)
 	{
-		if (renderer->textures[index] != &NullTexture)
+		if (renderer->textures[textureIndex] != &NullTexture)
 		{
-			renderer->textures[index] = &NullTexture;
-			renderer->textureNeedsUpdate[index] = 1;
+			renderer->textures[textureIndex] = &NullTexture;
+			renderer->textureNeedsUpdate[textureIndex] = 1;
 		}
 
-		if (renderer->samplers[index] == NULL)
+		if (renderer->samplers[textureIndex] == NULL)
 		{
 			VkSampler samplerState = FetchSamplerState(
 				renderer,
@@ -3697,14 +4382,14 @@ void VULKAN_VerifySampler(
 				0
 			);
 
-			renderer->samplers[index] = &samplerState;
-			renderer->samplerNeedsUpdate[index] = 1;
+			renderer->samplers[textureIndex] = samplerState;
+			renderer->samplerNeedsUpdate[textureIndex] = 1;
 		}
 
 		return;
 	}
 
-	if (	vulkanTexture == renderer->textures[index] &&
+	if (	vulkanTexture == renderer->textures[textureIndex] &&
 			sampler->addressU == vulkanTexture->wrapS &&
 			sampler->addressV == vulkanTexture->wrapT &&
 			sampler->addressW == vulkanTexture->wrapR &&
@@ -3716,10 +4401,10 @@ void VULKAN_VerifySampler(
 		return;
 	}
 
-	if (vulkanTexture != renderer->textures[index])
+	if (vulkanTexture != renderer->textures[textureIndex])
 	{
-		renderer->textures[index] = vulkanTexture;
-		renderer->textureNeedsUpdate[index] = 1;
+		renderer->textures[textureIndex] = vulkanTexture;
+		renderer->textureNeedsUpdate[textureIndex] = 1;
 	}
 
 	vulkanTexture->wrapS = sampler->addressU;
@@ -3736,11 +4421,18 @@ void VULKAN_VerifySampler(
 		vulkanTexture->hasMipmaps
 	);
 
-	if (&vkSamplerState != renderer->samplers[index])
+	if (vkSamplerState != renderer->samplers[textureIndex])
 	{
-		renderer->samplers[index] = &vkSamplerState;
-		renderer->samplerNeedsUpdate[index] = 1;
+		renderer->samplers[textureIndex] = vkSamplerState;
+		renderer->samplerNeedsUpdate[textureIndex] = 1;
 	}
+
+	QueueImageLayoutTransition(
+		renderer,
+		vulkanTexture->imageData,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+		VK_IMAGE_ASPECT_COLOR_BIT
+	);
 }
 
 void VULKAN_VerifyVertexSampler(
@@ -3770,44 +4462,6 @@ void VULKAN_ApplyVertexBufferBindings(
 	);
 
 	UpdateRenderPass(driverData);
-	BindResources(renderer);
-
-	VulkanBuffer *vertexBuffer;
-	int32_t offset;
-
-	VkBuffer updatedVertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
-	VkDeviceSize updatedOffsets[MAX_BOUND_VERTEX_BUFFERS];
-	uint32_t updatedVertexBufferCount = 0;
-
-	for (uint32_t i = 0; i < numBindings; i++)
-	{
-		vertexBuffer = (VulkanBuffer*) bindings[i].vertexBuffer;
-		if (vertexBuffer == NULL)
-		{
-			continue;
-		}
-
-		offset = vertexBuffer->internalOffset + (
-			(bindings[i].vertexOffset + baseVertex) *
-			bindings[i].vertexDeclaration.vertexStride
-		);
-
-		vertexBuffer->boundThisFrame = 1;
-		if (	renderer->ldVertexBuffers[i] != &vertexBuffer->handle ||
-				renderer->ldVertexBufferOffsets[i] != offset	)
-		{
-			updatedVertexBuffers[updatedVertexBufferCount] = vertexBuffer->handle;
-			updatedOffsets[updatedVertexBufferCount] = offset;
-		}
-	}
-
-	renderer->vkCmdBindVertexBuffers(
-		renderer->commandBuffers[renderer->commandBufferCount - 1],
-		0,
-		updatedVertexBufferCount,
-		updatedVertexBuffers,
-		updatedOffsets
-	);
 }
 
 void VULKAN_ApplyVertexDeclaration(
@@ -3825,9 +4479,6 @@ void VULKAN_ApplyVertexDeclaration(
 	renderer->userVertexStride = vertexDeclaration->vertexStride;
 
 	UpdateRenderPass(driverData);
-	BindResources(renderer);
-
-	/* the rest happens in DrawUser[Indexed]Primitives */
 }
 
 /* Render Targets */
@@ -3903,17 +4554,7 @@ static void EndPass(
 			renderer->commandBuffers[renderer->commandBufferCount - 1]
 		);
 
-		VkResult result = renderer->vkEndCommandBuffer(
-			renderer->commandBuffers[renderer->commandBufferCount - 1]
-		);
-
-		if (result != VK_SUCCESS)
-		{
-			LogVulkanResult("vkEndCommandBuffer", result);
-		}
-
 		renderer->renderPassInProgress = 0;
-		renderer->commandBufferBegunThisPass = 0;
 	}
 }
 
@@ -4058,7 +4699,6 @@ static void Stall(FNAVulkanRenderer *renderer)
 
 	renderer->commandBufferCount = 0;
 	AllocateAndBeginCommandBuffer(renderer);
-	renderer->commandBufferBegunThisPass = 1;
 	renderer->needNewRenderPass = 1;
 
 	buf = renderer->buffers;
@@ -4138,36 +4778,16 @@ FNA3D_Texture* VULKAN_CreateTexture2D(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
-	/* TODO: incomplete */
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
-
-	SurfaceFormatMapping surfaceFormatMapping = XNAToVK_SurfaceFormat[format];
-	VkExtent3D extent;
-	extent.width = width;
-	extent.height = height;
-	extent.depth = 1;
-
-	VkImageCreateInfo createInfo = { VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO };
-	createInfo.format = surfaceFormatMapping.formatColor;
-	createInfo.extent = extent;
-	createInfo.mipLevels = levelCount;
-	createInfo.imageType = VK_IMAGE_TYPE_2D;
-
-	if (isRenderTarget)
-	{
-		createInfo.usage = 	VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-							VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-							VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-	}
 
 	return (FNA3D_Texture*) CreateTexture(
 		renderer,
-		createInfo,
 		format,
 		width,
 		height,
 		levelCount,
-		isRenderTarget
+		isRenderTarget,
+		VK_IMAGE_TYPE_2D
 	);
 }
 
@@ -4332,7 +4952,7 @@ FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 	dimensions.width = width;
 	dimensions.height = height;
 
-	imageViewInfo.image = vlkTexture->handle;
+	imageViewInfo.image = vlkTexture->imageData->image;
 	imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 	imageViewInfo.format = surfaceFormatMapping.formatColor;
 	imageViewInfo.components = surfaceFormatMapping.swizzle;
@@ -4394,6 +5014,7 @@ FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 			IDENTITY_SWIZZLE,
 			VK_IMAGE_ASPECT_DEPTH_BIT,
 			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_TYPE_2D,
 			VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			&renderbuffer->depthBuffer->handle
@@ -4480,8 +5101,10 @@ FNA3D_Buffer* VULKAN_GenVertexBuffer(
 	int32_t vertexCount,
 	int32_t vertexStride
 ) {
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+
 	return (FNA3D_Buffer*) CreateBuffer(
-		driverData,
+		renderer,
 		usage,
 		vertexCount * vertexStride,
 		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
@@ -4572,8 +5195,10 @@ FNA3D_Buffer* VULKAN_GenIndexBuffer(
 	int32_t indexCount,
 	FNA3D_IndexElementSize indexElementSize
 ) {
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+
 	return (FNA3D_Buffer*) CreateBuffer(
-		driverData,
+		renderer,
 		usage,
 		indexCount * IndexSize(indexElementSize),
 		VK_BUFFER_USAGE_INDEX_BUFFER_BIT
@@ -4629,9 +5254,44 @@ void VULKAN_CreateEffect(
 	uint8_t *effectCode,
 	uint32_t effectCodeLength,
 	FNA3D_Effect **effect,
-	MOJOSHADER_effect **result
+	MOJOSHADER_effect **effectData
 ) {
-	/* TODO */
+	MOJOSHADER_effectShaderContext shaderBackend;
+	VulkanEffect *result;
+
+	shaderBackend.compileShader = (MOJOSHADER_compileShaderFunc) MOJOSHADER_vkCompileShader;
+	shaderBackend.shaderAddRef = (MOJOSHADER_shaderAddRefFunc) MOJOSHADER_vkShaderAddRef;
+	shaderBackend.deleteShader = (MOJOSHADER_deleteShaderFunc) MOJOSHADER_vkDeleteShader;
+	shaderBackend.getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_vkGetShaderParseData;
+	shaderBackend.bindShaders = (MOJOSHADER_bindShadersFunc) MOJOSHADER_vkBindShaders;
+	shaderBackend.getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_vkGetBoundShaders;
+	shaderBackend.mapUniformBufferMemory = MOJOSHADER_vkMapUniformBufferMemory;
+	shaderBackend.unmapUniformBufferMemory = MOJOSHADER_vkUnmapUniformBufferMemory;
+	shaderBackend.m = NULL;
+	shaderBackend.f = NULL;
+	shaderBackend.malloc_data = NULL;
+
+	*effectData = MOJOSHADER_compileEffect(
+		effectCode,
+		effectCodeLength,
+		NULL,
+		0,
+		NULL,
+		0,
+		&shaderBackend
+	);
+
+	for (uint32_t i = 0; i < (*effectData)->error_count; i++)
+	{
+		FNA3D_LogError(
+			"MOJOSHADER_compileEffect Error: %s",
+			(*effectData)->errors[i].error
+		);
+	}
+
+	result = (VulkanEffect*) SDL_malloc(sizeof(VulkanEffect));
+	result->effect = *effectData;
+	*effect = (FNA3D_Effect*) result;
 }
 
 void VULKAN_CloneEffect(
@@ -4776,12 +5436,6 @@ void VULKAN_AddDisposeQuery(FNA3D_Renderer *driverData, FNA3D_Query *query)
 	/* Need to do this between passes */
 	EndPass(renderer);
 
-	if (!renderer->commandBufferBegunThisPass)
-	{
-		AllocateAndBeginCommandBuffer(renderer);
-		renderer->commandBufferBegunThisPass = 1;
-	}
-
 	renderer->vkCmdResetQueryPool(
 		renderer->commandBuffers[renderer->commandBufferCount - 1],
 		renderer->queryPool,
@@ -4800,12 +5454,6 @@ void VULKAN_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	VulkanQuery *vulkanQuery = (VulkanQuery*) query;
-
-	if (!renderer->commandBufferBegunThisPass)
-	{
-		AllocateAndBeginCommandBuffer(renderer);
-		renderer->commandBufferBegunThisPass = 1;
-	}
 
 	renderer->vkCmdBeginQuery(
 		renderer->commandBuffers[renderer->commandBufferCount - 1],
@@ -5407,19 +6055,20 @@ static uint8_t FindMemoryType(
 	return 0;
 }
 
-static VkPipelineVertexInputStateCreateInfo GenerateUserVertexInputInfo(
-	FNAVulkanRenderer *renderer
+static void GenerateUserVertexInputInfo(
+	FNAVulkanRenderer *renderer,
+	VkVertexInputBindingDescription *bindingDescriptions,
+	VkVertexInputAttributeDescription* attributeDescriptions,
+	uint32_t *attributeDescriptionCount
 ) {
 	MOJOSHADER_vkShader *vertexShader, *blah;
 	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
 
-	VkVertexInputBindingDescription bindingDescription;
-	bindingDescription.binding = 0;
-	bindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-	bindingDescription.stride = renderer->userVertexDeclaration.vertexStride;
+	bindingDescriptions[0].binding = 0;
+	bindingDescriptions[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+	bindingDescriptions[0].stride = renderer->userVertexDeclaration.vertexStride;
 
-	VkVertexInputAttributeDescription attributeDescriptions[renderer->numVertexBindings * MAX_VERTEX_ATTRIBUTES];
-	uint32_t attributeDescriptionCount = 0;
+	uint32_t attributeDescriptionCounter = 0;
 
 	for (uint32_t i = 0; i < renderer->userVertexDeclaration.elementCount; i++)
 	{
@@ -5470,31 +6119,23 @@ static VkPipelineVertexInputStateCreateInfo GenerateUserVertexInputInfo(
 		vInputAttribDescription.offset = element.offset;
 		vInputAttribDescription.binding = 0;
 
-		attributeDescriptions[attributeDescriptionCount] = vInputAttribDescription;
+		attributeDescriptions[attributeDescriptionCounter] = vInputAttribDescription;
 		attributeDescriptionCount++;
 	}
 
-	VkPipelineVertexInputStateCreateInfo vertexInputInfo = {
-		VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
-	};
-
-	vertexInputInfo.vertexBindingDescriptionCount = 1;
-	vertexInputInfo.vertexAttributeDescriptionCount = attributeDescriptionCount;
-	vertexInputInfo.pVertexBindingDescriptions = &bindingDescription;
-	vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions;
-
-	return vertexInputInfo;
+	*attributeDescriptionCount = attributeDescriptionCounter;
 }
 
-static VkPipelineVertexInputStateCreateInfo GenerateVertexInputInfo(
-	FNAVulkanRenderer *renderer
+static void GenerateVertexInputInfo(
+	FNAVulkanRenderer *renderer,
+	VkVertexInputBindingDescription *bindingDescriptions,
+	VkVertexInputAttributeDescription* attributeDescriptions,
+	uint32_t *attributeDescriptionCount
 ) {
 	MOJOSHADER_vkShader *vertexShader, *blah;
 	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
 
-	VkVertexInputBindingDescription bindingDescriptions[renderer->numVertexBindings];
-	VkVertexInputAttributeDescription attributeDescriptions[renderer->numVertexBindings * MAX_VERTEX_ATTRIBUTES];
-	uint32_t attributeDescriptionCount = 0;
+	uint32_t attributeDescriptionCounter = 0;
 
 	for (uint32_t i = 0; i < renderer->numVertexBindings; i++)
 	{
@@ -5549,8 +6190,8 @@ static VkPipelineVertexInputStateCreateInfo GenerateVertexInputInfo(
 			vInputAttribDescription.offset = element.offset;
 			vInputAttribDescription.binding = i;
 
-			attributeDescriptions[attributeDescriptionCount] = vInputAttribDescription;
-			attributeDescriptionCount++;
+			attributeDescriptions[attributeDescriptionCounter] = vInputAttribDescription;
+			attributeDescriptionCounter++;
 		}
 
 		VkVertexInputBindingDescription vertexInputBindingDescription;
@@ -5559,18 +6200,9 @@ static VkPipelineVertexInputStateCreateInfo GenerateVertexInputInfo(
 		vertexInputBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
 		bindingDescriptions[i] = vertexInputBindingDescription;
+
+		*attributeDescriptionCount = attributeDescriptionCounter;
 	}
-
-	VkPipelineVertexInputStateCreateInfo vertexInputInfo = {
-		VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
-	};
-
-	vertexInputInfo.vertexBindingDescriptionCount = renderer->numVertexBindings;
-	vertexInputInfo.vertexAttributeDescriptionCount = attributeDescriptionCount;
-	vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions;
-	vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions;
-
-	return vertexInputInfo;
 }
 
 FNA3D_Device* VULKAN_CreateDevice(
@@ -6046,6 +6678,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 			surfaceFormatMapping.swizzle,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_IMAGE_TILING_OPTIMAL,
+			VK_IMAGE_TYPE_2D,
 			/* FIXME: transfer bit probably only needs to be set on 0? */
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
@@ -6089,6 +6722,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 				IDENTITY_SWIZZLE,
 				VK_IMAGE_ASPECT_DEPTH_BIT,
 				VK_IMAGE_TILING_OPTIMAL,
+				VK_IMAGE_TYPE_2D,
 				VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
 				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 				&renderer->fauxBackbufferDepthStencil.handle
@@ -6119,6 +6753,23 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
+	/* initialize mojoshader */
+
+	renderer->mojoshaderContext = MOJOSHADER_vkCreateContext(
+		(MOJOSHADER_VkInstance*) &renderer->instance,
+		(MOJOSHADER_VkPhysicalDevice*) &renderer->physicalDevice,
+		(MOJOSHADER_VkDevice*) &renderer->logicalDevice,
+		1, /* TODO: multiple frames in flight */
+		(PFN_MOJOSHADER_vkGetInstanceProcAddr) vkGetInstanceProcAddr,
+		(PFN_MOJOSHADER_vkGetDeviceProcAddr) renderer->vkGetDeviceProcAddr,
+		renderer->queueFamilyIndices.graphicsFamily,
+		NULL,
+		NULL,
+		NULL
+	);
+
+	MOJOSHADER_vkMakeContextCurrent(renderer->mojoshaderContext);
+
 	/* set up sampler description */
 
 	renderer->numSamplers = SDL_min(
@@ -6136,177 +6787,184 @@ FNA3D_Device* VULKAN_CreateDevice(
 		MAX_VERTEXTEXTURE_SAMPLERS
 	);
 
-	/* define vertex sampler layout */
+	/* define descriptor set layouts */
 
+	for (uint32_t i = 0; i < 2; i++)
+	{
+		VkDescriptorSetLayoutBinding vertexUniformBufferLayoutBindings[i];
+
+		for (uint32_t j = 0; j < i; j++)
+		{
+			VkDescriptorSetLayoutBinding vertexUniformBufferLayoutBinding;
+			vertexUniformBufferLayoutBinding.binding = 0;
+			vertexUniformBufferLayoutBinding.descriptorCount = i;
+			vertexUniformBufferLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+			vertexUniformBufferLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+			vertexUniformBufferLayoutBinding.pImmutableSamplers = NULL;
+
+			vertexUniformBufferLayoutBindings[j] = vertexUniformBufferLayoutBinding;
+		}
+
+		VkDescriptorSetLayoutCreateInfo vertexUniformLayoutCreateInfo = {
+			VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
+		};
+
+		vertexUniformLayoutCreateInfo.bindingCount = i;
+		vertexUniformLayoutCreateInfo.pBindings = vertexUniformBufferLayoutBindings;
+
+		vulkanResult = renderer->vkCreateDescriptorSetLayout(
+			renderer->logicalDevice,
+			&vertexUniformLayoutCreateInfo,
+			NULL,
+			&renderer->vertUniformBufferDescriptorSetLayouts[i]
+		);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
+			return NULL;
+		}
+	}
+
+	/* define all possible vert sampler layouts */
 	for (uint32_t i = 0; i < MAX_VERTEXTEXTURE_SAMPLERS; i++)
 	{
-		VkDescriptorSetLayoutBinding vertexSamplerBinding;
-		vertexSamplerBinding.binding = i;
-		vertexSamplerBinding.descriptorCount = 1;
-		vertexSamplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		vertexSamplerBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-		vertexSamplerBinding.pImmutableSamplers = NULL;
+		VkDescriptorSetLayoutBinding vertexSamplerLayoutBindings[i];
 
-		renderer->vertexSamplerBindings[i] = vertexSamplerBinding;
+		for (uint32_t j = 0; j < i; j++)
+		{
+			VkDescriptorSetLayoutBinding vertexSamplerLayoutBinding;
+			vertexSamplerLayoutBinding.binding = j;
+			vertexSamplerLayoutBinding.descriptorCount = 1;
+			vertexSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			vertexSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+			vertexSamplerLayoutBinding.pImmutableSamplers = NULL;
+
+			vertexSamplerLayoutBindings[j] = vertexSamplerLayoutBinding;
+		}
+
+		VkDescriptorSetLayoutCreateInfo vertexSamplerLayoutCreateInfo = {
+			VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
+		};
+
+		vertexSamplerLayoutCreateInfo.bindingCount = i;
+		vertexSamplerLayoutCreateInfo.pBindings = vertexSamplerLayoutBindings;
+
+		vulkanResult = renderer->vkCreateDescriptorSetLayout(
+			renderer->logicalDevice,
+			&vertexSamplerLayoutCreateInfo,
+			NULL,
+			&renderer->vertSamplerDescriptorSetLayouts[i]
+		);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
+			return NULL;
+		}
 	}
-	
-	VkDescriptorSetLayoutCreateInfo vertexSamplerLayoutCreateInfo = {
-		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
-	};
-	vertexSamplerLayoutCreateInfo.bindingCount = MAX_VERTEXTEXTURE_SAMPLERS;
-	vertexSamplerLayoutCreateInfo.pBindings = renderer->vertexSamplerBindings;
 
-	vulkanResult = renderer->vkCreateDescriptorSetLayout(
-		renderer->logicalDevice,
-		&vertexSamplerLayoutCreateInfo,
-		NULL,
-		&renderer->vertexSamplerDescriptorSetLayout
-	);
-
-	if (vulkanResult != VK_SUCCESS)
+	for (uint32_t i = 0; i < 2; i++)
 	{
-		LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
-		return NULL;
+		VkDescriptorSetLayoutBinding fragUniformBufferLayoutBindings[i];
+
+		for (uint32_t j = 0; j < i; j++)
+		{
+			VkDescriptorSetLayoutBinding fragUniformBufferLayoutBinding;
+			fragUniformBufferLayoutBinding.binding = 0;
+			fragUniformBufferLayoutBinding.descriptorCount = 1;
+			fragUniformBufferLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+			fragUniformBufferLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+			fragUniformBufferLayoutBinding.pImmutableSamplers = NULL;
+
+			fragUniformBufferLayoutBindings[j] = fragUniformBufferLayoutBinding;
+		}
+
+		VkDescriptorSetLayoutCreateInfo fragUniformBufferLayoutCreateInfo = {
+			VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
+		};
+
+		fragUniformBufferLayoutCreateInfo.bindingCount = i;
+		fragUniformBufferLayoutCreateInfo.pBindings = fragUniformBufferLayoutBindings;
+
+		vulkanResult = renderer->vkCreateDescriptorSetLayout(
+			renderer->logicalDevice,
+			&fragUniformBufferLayoutCreateInfo,
+			NULL,
+			&renderer->fragUniformBufferDescriptorSetLayouts[i]
+		);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
+			return NULL;
+		}
 	}
 
-	/* define sampler layout */
-
+	/* define all possible frag sampler layouts */
 	for (uint32_t i = 0; i < MAX_TEXTURE_SAMPLERS; i++)
 	{
-		VkDescriptorSetLayoutBinding samplerBinding;
-		samplerBinding.binding = i;
-		samplerBinding.descriptorCount = 1;
-		samplerBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		samplerBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-		samplerBinding.pImmutableSamplers = NULL;
+		VkDescriptorSetLayoutBinding fragSamplerLayoutBindings[i];
 
-		renderer->samplerBindings[i] = samplerBinding;
+		for (uint32_t j = 0; j < i; j++)
+		{
+			VkDescriptorSetLayoutBinding fragSamplerLayoutBinding;
+			fragSamplerLayoutBinding.binding = j;
+			fragSamplerLayoutBinding.descriptorCount = 1;
+			fragSamplerLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			fragSamplerLayoutBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
+			fragSamplerLayoutBinding.pImmutableSamplers = NULL;
+
+			fragSamplerLayoutBindings[j] = fragSamplerLayoutBinding;
+		}
+
+		VkDescriptorSetLayoutCreateInfo fragSamplerLayoutCreateInfo = {
+			VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
+		};
+
+		fragSamplerLayoutCreateInfo.bindingCount = i;
+		fragSamplerLayoutCreateInfo.pBindings = fragSamplerLayoutBindings;
+
+		vulkanResult = renderer->vkCreateDescriptorSetLayout(
+			renderer->logicalDevice,
+			&fragSamplerLayoutCreateInfo,
+			NULL,
+			&renderer->fragSamplerDescriptorSetLayouts[i]
+		);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
+			return NULL;
+		}
 	}
-	
-	VkDescriptorSetLayoutCreateInfo samplerLayoutCreateInfo = {
-		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
-	};
-	samplerLayoutCreateInfo.bindingCount = MAX_TEXTURE_SAMPLERS;
-	samplerLayoutCreateInfo.pBindings = renderer->samplerBindings;
-	
-	vulkanResult = renderer->vkCreateDescriptorSetLayout(
-		renderer->logicalDevice,
-		&samplerLayoutCreateInfo,
-		NULL,
-		&renderer->samplerDescriptorSetLayout
+
+	/* set up descriptor pools */
+
+	renderer->samplerDescriptorPools = SDL_malloc(
+		sizeof(VkDescriptorPool)
 	);
 
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
-		return NULL;
-	}
-
-	/* define vertex UBO layout */
-
-	renderer->vertexUniformBufferBinding.binding = 0;
-	renderer->vertexUniformBufferBinding.descriptorCount = 1;
-	renderer->vertexUniformBufferBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	renderer->vertexUniformBufferBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-	renderer->vertexUniformBufferBinding.pImmutableSamplers = NULL;
-
-	VkDescriptorSetLayoutCreateInfo vertexUniformBufferLayoutCreateInfo = {
-		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
-	};
-
-	vertexUniformBufferLayoutCreateInfo.bindingCount = 1;
-	vertexUniformBufferLayoutCreateInfo.pBindings = &renderer->vertexUniformBufferBinding;
-
-	vulkanResult = renderer->vkCreateDescriptorSetLayout(
-		renderer->logicalDevice,
-		&vertexUniformBufferLayoutCreateInfo,
-		NULL,
-		&renderer->vertexUniformBufferDescriptorSetLayout
+	renderer->uniformBufferDescriptorPools = SDL_malloc(
+		sizeof(VkDescriptorPool)
 	);
 
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
-		return NULL;
-	}
+	VkDescriptorPoolSize uniformBufferPoolSize;
+	uniformBufferPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	uniformBufferPoolSize.descriptorCount = UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE;
 
-	/* define frag UBO layout */
-
-	renderer->fragUniformBufferBinding.binding = 0;
-	renderer->fragUniformBufferBinding.descriptorCount = 1;
-	renderer->fragUniformBufferBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	renderer->fragUniformBufferBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
-	renderer->fragUniformBufferBinding.pImmutableSamplers = NULL;
-
-	VkDescriptorSetLayoutCreateInfo fragUniformBufferLayoutCreateInfo = {
-		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO
-	};
-
-	fragUniformBufferLayoutCreateInfo.bindingCount = 1;
-	fragUniformBufferLayoutCreateInfo.pBindings = &renderer->fragUniformBufferBinding;
-
-	vulkanResult = renderer->vkCreateDescriptorSetLayout(
-		renderer->logicalDevice,
-		&fragUniformBufferLayoutCreateInfo,
-		NULL,
-		&renderer->fragUniformBufferDescriptorSetLayout
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
-		return NULL;
-	}
-
-	/* put all the layouts together into the PipelineLayout */
-
-	VkDescriptorSetLayout setLayouts[4] = {
-		renderer->vertexSamplerDescriptorSetLayout,
-		renderer->samplerDescriptorSetLayout,
-		renderer->vertexUniformBufferDescriptorSetLayout,
-		renderer->fragUniformBufferDescriptorSetLayout
-	};
-
-	VkPipelineLayoutCreateInfo pipelineLayoutInfo = {
-		VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO
-	};
-	pipelineLayoutInfo.setLayoutCount = 4;
-	pipelineLayoutInfo.pSetLayouts = setLayouts;
-
-	vulkanResult = renderer->vkCreatePipelineLayout(
-		renderer->logicalDevice,
-		&pipelineLayoutInfo,
-		NULL,
-		&renderer->pipelineLayout
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkCreatePipelineLayout", vulkanResult);
-		return NULL;
-	}
-
-	/* set up descriptor pool */
-
-	VkDescriptorPoolSize poolSizes[2];
-	poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-	poolSizes[0].descriptorCount = swapChainImageCount * 2;
-
-	poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	poolSizes[1].descriptorCount = swapChainImageCount * MAX_TOTAL_SAMPLERS;
-
-	VkDescriptorPoolCreateInfo poolInfo = {
+	VkDescriptorPoolCreateInfo uniformBufferPoolInfo = {
 		VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO
 	};
-	poolInfo.poolSizeCount = 2;
-	poolInfo.pPoolSizes = poolSizes;
-	poolInfo.maxSets = swapChainImageCount * (2 + (MAX_TOTAL_SAMPLERS));
+	uniformBufferPoolInfo.poolSizeCount = 1;
+	uniformBufferPoolInfo.pPoolSizes = &uniformBufferPoolSize;
+	uniformBufferPoolInfo.maxSets = UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE;
 
 	vulkanResult = renderer->vkCreateDescriptorPool(
 		renderer->logicalDevice,
-		&poolInfo,
+		&uniformBufferPoolInfo,
 		NULL,
-		&renderer->descriptorPool
+		&renderer->uniformBufferDescriptorPools[0]
 	);
 
 	if (vulkanResult != VK_SUCCESS)
@@ -6315,155 +6973,48 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
-	/* set up descriptor sets */
+	renderer->uniformBufferDescriptorPoolCount = 1;
+	renderer->activeUniformBufferDescriptorPoolIndex = 0;
+	renderer->activeUniformBufferPoolUsage = 0;
 
-	renderer->vertexSamplerCount = MAX_VERTEXTEXTURE_SAMPLERS * swapChainImageCount;
+	VkDescriptorPoolSize samplerPoolSize;
+	samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	samplerPoolSize.descriptorCount = SAMPLER_DESCRIPTOR_POOL_SIZE;
 
-	VkDescriptorSetLayout vertexSamplerLayouts[renderer->vertexSamplerCount];
-	for (uint32_t i = 0; i < renderer->vertexSamplerCount; i++)
-	{
-		vertexSamplerLayouts[i] = setLayouts[0];
-	}
-
-	VkDescriptorSetAllocateInfo vertexSamplerDescriptorAllocInfo = {
-		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
+	VkDescriptorPoolCreateInfo samplerPoolInfo = {
+		VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO
 	};
-	vertexSamplerDescriptorAllocInfo.descriptorPool = renderer->descriptorPool;
-	vertexSamplerDescriptorAllocInfo.descriptorSetCount = renderer->vertexSamplerCount;
-	vertexSamplerDescriptorAllocInfo.pSetLayouts = vertexSamplerLayouts;
+	samplerPoolInfo.poolSizeCount = 1;
+	samplerPoolInfo.pPoolSizes = &samplerPoolSize;
+	samplerPoolInfo.maxSets = SAMPLER_DESCRIPTOR_POOL_SIZE;
 
-	renderer->vertexSamplerDescriptorSets = SDL_malloc(
-		sizeof(VkDescriptorSet) * 
-		renderer->vertexSamplerCount
-	);
-
-	if (!renderer->vertexSamplerDescriptorSets)
-	{
-		SDL_OutOfMemory();
-		return NULL;
-	}
-
-	vulkanResult = renderer->vkAllocateDescriptorSets(
+	vulkanResult = renderer->vkCreateDescriptorPool(
 		renderer->logicalDevice,
-		&vertexSamplerDescriptorAllocInfo,
-		renderer->vertexSamplerDescriptorSets
+		&samplerPoolInfo,
+		NULL,
+		&renderer->samplerDescriptorPools[0]
 	);
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkAllocateDescriptorSets", vulkanResult);
+		LogVulkanResult("vkCreateDescriptorPool", vulkanResult);
 		return NULL;
 	}
 
-	renderer->fragSamplerCount = MAX_TEXTURE_SAMPLERS * swapChainImageCount;
+	renderer->samplerDescriptorPoolCount = 1;
+	renderer->activeSamplerDescriptorPoolIndex = 0;
+	renderer->activeSamplerPoolUsage = 0;
 
-	VkDescriptorSetLayout samplerLayouts[renderer->fragSamplerCount];
-	for (uint32_t i = 0; i < renderer->fragSamplerCount; i++)
-	{
-		samplerLayouts[i] = setLayouts[1];
-	}
+	/* allocate descriptor set memory */
 
-	VkDescriptorSetAllocateInfo samplerDescriptorAllocInfo = {
-		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
-	};
-	samplerDescriptorAllocInfo.descriptorPool = renderer->descriptorPool;
-	samplerDescriptorAllocInfo.descriptorSetCount = renderer->fragSamplerCount;
-	samplerDescriptorAllocInfo.pSetLayouts = samplerLayouts; 
+	renderer->activeDescriptorSetCapacity = swapChainImageCount * (MAX_TOTAL_SAMPLERS + 2);
 
-	renderer->samplerDescriptorSets = SDL_malloc(
+	renderer->activeDescriptorSets = SDL_malloc(
 		sizeof(VkDescriptorSet) *
-		renderer->fragSamplerCount
+		renderer->activeDescriptorSetCapacity
 	);
 
-	if (!renderer->samplerDescriptorSets)
-	{
-		SDL_OutOfMemory();
-		return NULL;
-	}
-
-	vulkanResult = renderer->vkAllocateDescriptorSets(
-		renderer->logicalDevice,
-		&samplerDescriptorAllocInfo,
-		renderer->samplerDescriptorSets
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkAllocateDescriptorSets", vulkanResult);
-		return NULL;
-	}
-
-	VkDescriptorSetLayout vertexUniformBufferLayouts[renderer->swapChainImageCount];
-	for (uint32_t i = 0; i < renderer->swapChainImageCount; i++)
-	{
-		vertexUniformBufferLayouts[i] = setLayouts[2];
-	}
-
-	VkDescriptorSetAllocateInfo vertexUniformBufferDescriptorAllocInfo = {
-		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
-	};
-	vertexUniformBufferDescriptorAllocInfo.descriptorPool = renderer->descriptorPool;
-	vertexUniformBufferDescriptorAllocInfo.descriptorSetCount = renderer->swapChainImageCount;
-	vertexUniformBufferDescriptorAllocInfo.pSetLayouts = vertexUniformBufferLayouts;
-
-	renderer->vertexUniformBufferDescriptorSets = SDL_malloc(
-		sizeof(VkDescriptorSet) *
-		renderer->swapChainImageCount
-	);
-
-	if (!renderer->vertexUniformBufferDescriptorSets)
-	{
-		SDL_OutOfMemory();
-		return NULL;
-	}
-
-	vulkanResult = renderer->vkAllocateDescriptorSets(
-		renderer->logicalDevice,
-		&vertexUniformBufferDescriptorAllocInfo,
-		renderer->vertexUniformBufferDescriptorSets
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkAllocateDescriptorSets", vulkanResult);
-		return NULL;
-	}
-
-	VkDescriptorSetLayout fragUniformBufferLayouts[renderer->swapChainImageCount];
-	for (uint32_t i = 0; i < renderer->swapChainImageCount; i++)
-	{
-		fragUniformBufferLayouts[i] = setLayouts[3];
-	}
-
-	VkDescriptorSetAllocateInfo fragUniformBufferDescriptorAllocInfo = {
-		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
-	};
-	fragUniformBufferDescriptorAllocInfo.descriptorPool = renderer->descriptorPool;
-	fragUniformBufferDescriptorAllocInfo.descriptorSetCount = renderer->swapChainImageCount;
-	fragUniformBufferDescriptorAllocInfo.pSetLayouts = fragUniformBufferLayouts;
-
-	renderer->fragUniformBufferDescriptorSets = SDL_malloc(
-		sizeof(VkDescriptorSet) *
-		renderer->swapChainImageCount
-	);
-
-	if (!renderer->fragUniformBufferDescriptorSets)
-	{
-		SDL_OutOfMemory();
-		return NULL;
-	}
-
-	vulkanResult = renderer->vkAllocateDescriptorSets(
-		renderer->logicalDevice,
-		&fragUniformBufferDescriptorAllocInfo,
-		renderer->fragUniformBufferDescriptorSets
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkAllocateDescriptorSets", vulkanResult);
-		return NULL;
-	}
+	renderer->activeDescriptorSetCount = 0;
 
 	/* set up UBO pointer storage */
 
@@ -6511,6 +7062,24 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
+	VkSamplerCreateInfo dummySamplerCreateInfo = {
+		VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO
+	};
+	dummySamplerCreateInfo.addressModeU = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	dummySamplerCreateInfo.addressModeV = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	dummySamplerCreateInfo.addressModeW = VK_SAMPLER_ADDRESS_MODE_REPEAT;
+	dummySamplerCreateInfo.magFilter = VK_FILTER_LINEAR;
+	dummySamplerCreateInfo.minFilter = VK_FILTER_LINEAR;
+	dummySamplerCreateInfo.mipmapMode = VK_SAMPLER_MIPMAP_MODE_NEAREST;
+	dummySamplerCreateInfo.flags = 0;
+
+	renderer->vkCreateSampler(
+		renderer->logicalDevice,
+		&dummySamplerCreateInfo,
+		NULL,
+		&DummySampler
+	);
+
 	/* set up texture storage */
 
 	renderer->ldVertexBufferCount = MAX_BOUND_VERTEX_BUFFERS * renderer->swapChainImageCount;
@@ -6551,7 +7120,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 	}
 
 	renderer->samplers = SDL_malloc(
-		sizeof(VkSampler*) *
+		sizeof(VkSampler) *
 		renderer->textureCount
 	);
 
@@ -6583,6 +7152,14 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	};
 
+	for (uint32_t i = 0; i < renderer->textureCount; i++)
+	{
+		renderer->textures[i] = &NullTexture;
+		renderer->samplers[i] = DummySampler;
+		renderer->textureNeedsUpdate[i] = 0;
+		renderer->samplerNeedsUpdate[i] = 0;
+	}
+
 	/* set up command pool */
 
 	VkCommandPoolCreateInfo commandPoolCreateInfo = { VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO };
@@ -6598,9 +7175,13 @@ FNA3D_Device* VULKAN_CreateDevice(
 
 	renderer->currentDepthFormat = presentationParameters->depthStencilFormat;
 
+	/* initialize various render object caches */
+
 	hmdefault(renderer->pipelineHashMap, NULL);
+	hmdefault(renderer->pipelineLayoutHashMap, NULL);
 	hmdefault(renderer->renderPassHashMap, NULL);
 	hmdefault(renderer->framebufferHashMap, NULL);
+	hmdefault(renderer->samplerStateHashMap, NULL);
 
 	/* create fence and semaphores */
 
@@ -6654,11 +7235,9 @@ FNA3D_Device* VULKAN_CreateDevice(
 	renderer->commandBufferCount = 0;
 	renderer->commandBufferCapacity = 1;
 
-	AllocateAndBeginCommandBuffer(renderer);
-
 	renderer->needNewRenderPass = 1;
 	renderer->frameInProgress = 0;
-	renderer->commandBufferBegunThisPass = 1;
+	renderer->commandBufferBegunThisPass = 0;
 
 	/* Set up query pool */
 	VkQueryPoolCreateInfo queryPoolCreateInfo = { VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO };
@@ -6679,21 +7258,98 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
-	renderer->vkCmdResetQueryPool(
-		renderer->commandBuffers[renderer->commandBufferCount - 1],
-		renderer->queryPool,
-		0,
-		MAX_QUERIES
-	);
-
 	/* Set up the stack, the value at each index is the next available index, or -1 if no such index exists. */
 	for (int i = 0; i < MAX_QUERIES - 1; ++i){
 		renderer->freeQueryIndexStack[i] = i + 1;
 	}
 	renderer->freeQueryIndexStack[MAX_QUERIES - 1] = -1;
 
+	renderer->currentPipeline = NULL;
+
 	/* Initialize renderer members not covered by SDL_memset('\0') */
 	SDL_memset(renderer->multiSampleMask, -1, sizeof(renderer->multiSampleMask)); /* AKA 0xFFFFFFFF */
+
+	/* initialize dummy data */
+	CreateImage(
+		renderer,
+		1,
+		1,
+		VK_SAMPLE_COUNT_1_BIT,
+		VK_FORMAT_R32G32B32A32_SFLOAT,
+		IDENTITY_SWIZZLE,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_TYPE_2D,
+		VK_IMAGE_USAGE_SAMPLED_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		&NullImageData
+	);
+
+	NullBuffer = *CreateBuffer(
+		renderer,
+		FNA3D_BUFFERUSAGE_NONE,
+		16,
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+	);
+
+	/* initialize binding infos */
+	renderer->vertSamplerImageInfoCount = renderer->swapChainImageCount * MAX_VERTEXTEXTURE_SAMPLERS;
+
+	renderer->vertSamplerImageInfos = SDL_malloc(
+		sizeof(VkDescriptorImageInfo) *
+		renderer->vertSamplerImageInfoCount
+	);
+
+	renderer->fragSamplerImageInfoCount = renderer->swapChainImageCount * MAX_TEXTURE_SAMPLERS;
+
+	renderer->fragSamplerImageInfos = SDL_malloc(
+		sizeof(VkDescriptorImageInfo) *
+		renderer->fragSamplerImageInfoCount
+	);
+
+	renderer->vertUniformBufferInfo = SDL_malloc(
+		sizeof(VkDescriptorBufferInfo) *
+		renderer->swapChainImageCount
+	);
+
+	renderer->fragUniformBufferInfo = SDL_malloc(
+		sizeof(VkDescriptorBufferInfo) *
+		renderer->swapChainImageCount
+	);
+
+	for (uint32_t i = 0; i < renderer->swapChainImageCount * MAX_VERTEXTEXTURE_SAMPLERS; i++)
+	{
+		renderer->vertSamplerImageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		renderer->vertSamplerImageInfos[i].imageView = NullImageData.view;
+		renderer->vertSamplerImageInfos[i].sampler = renderer->samplers[i];
+	}
+
+	for (uint32_t i = 0; i < renderer->swapChainImageCount * MAX_TEXTURE_SAMPLERS; i++)
+	{
+		renderer->fragSamplerImageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		renderer->fragSamplerImageInfos[i].imageView = NullImageData.view;
+		renderer->fragSamplerImageInfos[i].sampler = renderer->samplers[i];
+	}
+
+	for (uint32_t i = 0; i < renderer->swapChainImageCount; i++)
+	{
+		renderer->vertUniformBufferInfo[i].buffer = NullBuffer.handle;
+		renderer->vertUniformBufferInfo[i].offset = 0;
+		renderer->vertUniformBufferInfo[i].range = 0;
+
+		renderer->fragUniformBufferInfo[i].buffer = NullBuffer.handle;
+		renderer->fragUniformBufferInfo[i].offset = 0;
+		renderer->fragUniformBufferInfo[i].range = 0;
+	}
+
+	renderer->imageMemoryBarrierCapacity = 256;
+
+	renderer->imageMemoryBarriers = SDL_malloc(
+		sizeof(VkImageMemoryBarrier) *
+		renderer->imageMemoryBarrierCapacity
+	);
+
+	renderer->imageMemoryBarrierCount = 0;
 
 	return result;
 }

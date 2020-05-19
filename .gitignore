@@ -24,6 +24,7 @@ Makefile
 
 build/
 FNA3DMinimal/
+SpriteBatchTest/
 
 src/*_vert.h
 src/*_frag.h
