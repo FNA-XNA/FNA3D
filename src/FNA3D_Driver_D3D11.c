@@ -5029,12 +5029,9 @@ static PFN_D3DCOMPILE D3D11_PLATFORM_GetCompileFunc(void* module)
 
 static HRESULT D3D11_PLATFORM_CreateDXGIFactory(void** factory)
 {
-	CreateDXGIFactoryFunc = CreateDXGIFactory1;
-
-	/* Create the DXGIFactory2 */
-	return CreateDXGIFactoryFunc(
+	return CreateDXGIFactory1(
 		&D3D_IID_IDXGIFactory2,
-		&renderer->factory
+		factory
 	);
 }
 
@@ -5045,7 +5042,7 @@ static void D3D11_PLATFORM_GetDefaultAdapter(
 	IDXGIFactory2_EnumAdapters1(
 		(IDXGIFactory2*) factory,
 		0,
-		&adapter
+		adapter
 	);
 }
 
