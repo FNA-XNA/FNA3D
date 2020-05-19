@@ -3596,7 +3596,7 @@ static void D3D11_GetTextureDataCube(
 
 	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
 		format == FNA3D_SURFACEFORMAT_DXT3 ||
-		format == FNA3D_SURFACEFORMAT_DXT5)
+		format == FNA3D_SURFACEFORMAT_DXT5	)
 	{
 		FNA3D_LogError(
 			"GetData with compressed textures unsupported!"
