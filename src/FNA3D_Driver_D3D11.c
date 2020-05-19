@@ -2290,7 +2290,8 @@ static void D3D11_VerifySampler(
 		SDL_UnlockMutex(renderer->ctxLock);
 	}
 
-	if (	sampler->addressU == renderer->wrapS[index] &&
+	if (	renderer->samplers[index] != NULL &&
+		sampler->addressU == renderer->wrapS[index] &&
 		sampler->addressV == renderer->wrapT[index] &&
 		sampler->addressW == renderer->wrapR[index] &&
 		sampler->filter == renderer->filter[index] &&
