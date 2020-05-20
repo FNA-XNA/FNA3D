@@ -703,7 +703,7 @@ static ID3D11RasterizerState* FetchRasterizerState(
 	/* We have to make a new rasterizer state... */
 	desc.AntialiasedLineEnable = 0;
 	desc.CullMode = XNAToD3D_CullMode[state->cullMode];
-	desc.DepthBias = depthBias;
+	desc.DepthBias = (int32_t) depthBias;
 	desc.DepthBiasClamp = D3D11_FLOAT32_MAX;
 	desc.DepthClipEnable = 1;
 	desc.FillMode = XNAToD3D_FillMode[state->fillMode];
@@ -2362,7 +2362,7 @@ static void D3D11_VerifySampler(
 	renderer->wrapT[index] = sampler->addressV;
 	renderer->wrapR[index] = sampler->addressW;
 	renderer->filter[index] = sampler->filter;
-	renderer->anisotropy[index] = sampler->maxAnisotropy;
+	renderer->anisotropy[index] = (float) sampler->maxAnisotropy;
 	renderer->maxMipmapLevel[index] = sampler->maxMipLevel;
 	renderer->lodBias[index] = sampler->mipMapLevelOfDetailBias;
 
