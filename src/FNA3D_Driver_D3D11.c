@@ -177,6 +177,8 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	/* Persistent D3D11 Objects */
 	ID3D11Device *device;
 	ID3D11DeviceContext *context;
+	void* d3d11_dll;
+	void* dxgi_dll;
 	void* factory; /* IDXGIFactory1 or IDXGIFactory2 */
 	IDXGIAdapter1 *adapter;
 	IDXGISwapChain *swapchain;
@@ -1111,9 +1113,14 @@ static void D3D11_PLATFORM_UnloadD3D11(void* module);
 static PFN_D3D11_CREATE_DEVICE D3D11_PLATFORM_GetCreateDeviceFunc(void* module);
 
 static void* D3D11_PLATFORM_LoadCompiler();
+static void D3D11_PLATFORM_UnloadCompiler(void* module);
 static PFN_D3DCOMPILE D3D11_PLATFORM_GetCompileFunc(void* module);
 
-static HRESULT D3D11_PLATFORM_CreateDXGIFactory(void** factory);
+static HRESULT D3D11_PLATFORM_CreateDXGIFactory(
+	void** module,
+	void** factory
+);
+static void D3D11_PLATFORM_UnloadDXGI(void* module);
 static void D3D11_PLATFORM_GetDefaultAdapter(
 	void* factory,
 	IDXGIAdapter1 **adapter
@@ -1198,6 +1205,10 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 	/* Release the device */
 	ID3D11DeviceContext_Release(renderer->context);
 	ID3D11Device_Release(renderer->device);
+
+	/* Release the DLLs */
+	D3D11_PLATFORM_UnloadD3D11(renderer->d3d11_dll);
+	D3D11_PLATFORM_UnloadDXGI(renderer->dxgi_dll);
 
 	SDL_DestroyMutex(renderer->ctxLock);
 	SDL_free(renderer);
@@ -4650,7 +4661,6 @@ static void D3D11_INTERNAL_InitializeFauxBackbuffer(
 	{
 		FNA3D_LogError("Could not load function D3DCompile!");
 	}
-	/* FIXME: Unload compiler at Destroy? */
 
 	/* Create and compile the vertex shader */
 	res = D3DCompileFunc(
@@ -4723,6 +4733,9 @@ static void D3D11_INTERNAL_InitializeFauxBackbuffer(
 		NULL,
 		&renderer->fauxBlitPS
 	);
+
+	/* We're done with the compiler now */
+	D3D11_PLATFORM_UnloadCompiler(d3dCompilerModule);
 
 	/* Create the faux backbuffer sampler state */
 	samplerDesc.Filter = (
@@ -4820,7 +4833,6 @@ static FNA3D_Device* D3D11_CreateDevice(
 	FNA3D_Device *result;
 	D3D11Renderer *renderer;
 	DXGI_ADAPTER_DESC1 adapterDesc;
-	void* module;
 	PFN_D3D11_CREATE_DEVICE D3D11CreateDeviceFunc;
 	D3D_FEATURE_LEVEL levels[] =
 	{
@@ -4838,7 +4850,10 @@ static FNA3D_Device* D3D11_CreateDevice(
 	SDL_memset(renderer, '\0', sizeof(D3D11Renderer));
 
 	/* Load CreateDXGIFactory1 */
-	ret = D3D11_PLATFORM_CreateDXGIFactory(&renderer->factory);
+	ret = D3D11_PLATFORM_CreateDXGIFactory(
+		&renderer->dxgi_dll,
+		&renderer->factory
+	);
 	if (ret < 0)
 	{
 		FNA3D_LogError(
@@ -4851,24 +4866,24 @@ static FNA3D_Device* D3D11_CreateDevice(
 		renderer->factory,
 		&renderer->adapter
 	);
-	/* FIXME: Unload DXGI at Destroy? */
 
 	IDXGIAdapter1_GetDesc1(renderer->adapter, &adapterDesc);
 
 	/* Load D3D11CreateDevice */
-	module = D3D11_PLATFORM_LoadD3D11();
-	if (module == NULL)
+	renderer->d3d11_dll = D3D11_PLATFORM_LoadD3D11();
+	if (renderer->d3d11_dll == NULL)
 	{
 		FNA3D_LogError("Could not find " D3D11_DLL);
 		return NULL;
 	}
-	D3D11CreateDeviceFunc = D3D11_PLATFORM_GetCreateDeviceFunc(module);
+	D3D11CreateDeviceFunc = D3D11_PLATFORM_GetCreateDeviceFunc(
+		renderer->d3d11_dll
+	);
 	if (D3D11CreateDeviceFunc == NULL)
 	{
 		FNA3D_LogError("Could not load function D3D11CreateDevice!");
 		return NULL;
 	}
-	/* FIXME: Unload D3D11 at Destroy? */
 
 	/* Create the D3D11Device */
 	flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
@@ -5021,18 +5036,29 @@ static void* D3D11_PLATFORM_LoadCompiler()
 {
 	return (size_t) 42069;
 }
+static void D3D11_PLATFORM_UnloadCompiler(void* module)
+{
+	/* No-op */
+}
 
 static PFN_D3DCOMPILE D3D11_PLATFORM_GetCompileFunc(void* module)
 {
 	return D3DCompile;
 }
 
-static HRESULT D3D11_PLATFORM_CreateDXGIFactory(void** factory)
-{
+static HRESULT D3D11_PLATFORM_CreateDXGIFactory(
+	void** module,
+	void** factory
+) {
 	return CreateDXGIFactory1(
 		&D3D_IID_IDXGIFactory2,
 		factory
 	);
+}
+
+static void D3D11_PLATFORM_UnloadDXGI(void* module)
+{
+	/* No-op */
 }
 
 static void D3D11_PLATFORM_GetDefaultAdapter(
@@ -5119,6 +5145,11 @@ static void* D3D11_PLATFORM_LoadCompiler()
 	return SDL_LoadObject(D3DCOMPILER_DLL);
 }
 
+static void D3D11_PLATFORM_UnloadCompiler(void* module)
+{
+	SDL_UnloadObject(module);
+}
+
 static PFN_D3DCOMPILE D3D11_PLATFORM_GetCompileFunc(void* module)
 {
 #pragma GCC diagnostic push
@@ -5127,14 +5158,16 @@ static PFN_D3DCOMPILE D3D11_PLATFORM_GetCompileFunc(void* module)
 #pragma GCC diagnostic pop
 }
 
-static HRESULT D3D11_PLATFORM_CreateDXGIFactory(void** factory)
-{
+static HRESULT D3D11_PLATFORM_CreateDXGIFactory(
+	void** module,
+	void** factory
+) {
 	typedef HRESULT(WINAPI *PFN_CREATE_DXGI_FACTORY)(const GUID *riid, void **ppFactory);
 	PFN_CREATE_DXGI_FACTORY CreateDXGIFactoryFunc;
 
 	/* Load DXGI... */
-	void* module = SDL_LoadObject(DXGI_DLL);
-	if (module == NULL)
+	*module = SDL_LoadObject(DXGI_DLL);
+	if (*module == NULL)
 	{
 		FNA3D_LogError("Could not find " DXGI_DLL);
 		return -1;
@@ -5144,7 +5177,7 @@ static HRESULT D3D11_PLATFORM_CreateDXGIFactory(void** factory)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wpedantic"
 	CreateDXGIFactoryFunc = (PFN_CREATE_DXGI_FACTORY) SDL_LoadFunction(
-		module,
+		*module,
 		"CreateDXGIFactory1"
 	);
 #pragma GCC diagnostic pop
@@ -5159,6 +5192,11 @@ static HRESULT D3D11_PLATFORM_CreateDXGIFactory(void** factory)
 		&D3D_IID_IDXGIFactory1,
 		factory
 	);
+}
+
+static void D3D11_PLATFORM_UnloadDXGI(void* module)
+{
+	SDL_UnloadObject(module);
 }
 
 static void D3D11_PLATFORM_GetDefaultAdapter(
