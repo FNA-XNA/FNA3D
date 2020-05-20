@@ -200,6 +200,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	ID3D11BlendState *fauxBlendState;
 
 	/* Capabilities */
+	uint8_t debugMode;
 	uint32_t supportsDxt1;
 	uint32_t supportsS3tc;
 	int32_t maxMultiSampleCount;
@@ -3956,6 +3957,15 @@ static void D3D11_SetVertexBufferData(
 	SDL_LockMutex(renderer->ctxLock);
 	if (d3dBuffer->dynamic)
 	{
+		if (	renderer->debugMode &&
+			options == FNA3D_SETDATAOPTIONS_NONE &&
+			dataLen < d3dBuffer->size		)
+		{
+			FNA3D_LogWarn(
+				"Dynamic buffer using SetDataOptions.None, expect bad performance and broken output!"
+			);
+		}
+
 		ID3D11DeviceContext_Map(
 			renderer->context,
 			(ID3D11Resource*) d3dBuffer->handle,
@@ -4159,6 +4169,15 @@ static void D3D11_SetIndexBufferData(
 	SDL_LockMutex(renderer->ctxLock);
 	if (d3dBuffer->dynamic)
 	{
+		if (	renderer->debugMode &&
+			options == FNA3D_SETDATAOPTIONS_NONE &&
+			dataLength < d3dBuffer->size		)
+		{
+			FNA3D_LogWarn(
+				"Dynamic buffer using SetDataOptions.None, expect bad performance and broken output!"
+			);
+		}
+
 		ID3D11DeviceContext_Map(
 			renderer->context,
 			(ID3D11Resource*) d3dBuffer->handle,
@@ -5027,6 +5046,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 	}
 
 	/* Initialize renderer members not covered by SDL_memset('\0') */
+	renderer->debugMode = debugMode;
 	renderer->blendFactor.r = 0xFF;
 	renderer->blendFactor.g = 0xFF;
 	renderer->blendFactor.b = 0xFF;
