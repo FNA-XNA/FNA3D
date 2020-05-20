@@ -3323,7 +3323,23 @@ static void D3D11_SetTextureData2D(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
-	D3D11_BOX dstBox = {x, y, 0, x + w, y + h, 1};
+	D3D11_BOX dstBox;
+
+	/* DXT formats require w and h to be multiples of 4 */
+	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
+		format == FNA3D_SURFACEFORMAT_DXT3 ||
+		format == FNA3D_SURFACEFORMAT_DXT5	)
+	{
+		w = (w + 3) & ~3;
+		h = (h + 3) & ~3;
+	}
+
+	dstBox.left = x;
+	dstBox.top = y;
+	dstBox.front = 0;
+	dstBox.right = x + w;
+	dstBox.bottom = y + h;
+	dstBox.back = 1;
 
 	SDL_LockMutex(renderer->ctxLock);
 	ID3D11DeviceContext_UpdateSubresource(
@@ -3354,7 +3370,23 @@ static void D3D11_SetTextureData3D(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
-	D3D11_BOX dstBox = {x, y, z, x + w, y + h, z + d};
+	D3D11_BOX dstBox;
+
+	/* DXT formats require w and h to be multiples of 4 */
+	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
+		format == FNA3D_SURFACEFORMAT_DXT3 ||
+		format == FNA3D_SURFACEFORMAT_DXT5	)
+	{
+		w = (w + 3) & ~3;
+		h = (h + 3) & ~3;
+	}
+
+	dstBox.left = x;
+	dstBox.top = y;
+	dstBox.front = z;
+	dstBox.right = x + w;
+	dstBox.bottom = y + h;
+	dstBox.back = z + d;
 
 	SDL_LockMutex(renderer->ctxLock);
 	ID3D11DeviceContext_UpdateSubresource(
@@ -3384,7 +3416,23 @@ static void D3D11_SetTextureDataCube(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
-	D3D11_BOX dstBox = {x, y, 0, x + w, y + h, 1};
+	D3D11_BOX dstBox;
+
+	/* DXT formats require w and h to be multiples of 4 */
+	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
+		format == FNA3D_SURFACEFORMAT_DXT3 ||
+		format == FNA3D_SURFACEFORMAT_DXT5	)
+	{
+		w = (w + 3) & ~3;
+		h = (h + 3) & ~3;
+	}
+
+	dstBox.left = x;
+	dstBox.top = y;
+	dstBox.front = 0;
+	dstBox.right = x + w;
+	dstBox.bottom = y + h;
+	dstBox.back = 1;
 
 	SDL_LockMutex(renderer->ctxLock);
 	ID3D11DeviceContext_UpdateSubresource(
