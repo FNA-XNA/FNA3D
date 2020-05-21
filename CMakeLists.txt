@@ -5,6 +5,7 @@ project(FNA3D)
 
 # Options
 option(BUILD_SHARED_LIBS "Build shared library" ON)
+option(BUILD_DXVK_NATIVE "Build D3D11 with DXVK-Native" OFF)
 
 # Version
 SET(LIB_MAJOR_VERSION "0")
@@ -51,7 +52,6 @@ add_definitions(
 	-DSUPPORT_PROFILE_ARB1_NV=0
 	-DSUPPORT_PROFILE_BYTECODE=0
 	-DSUPPORT_PROFILE_D3D=0
-	-DSUPPORT_PROFILE_HLSL=0
 )
 if(APPLE)
 	add_definitions(
@@ -63,6 +63,24 @@ else()
 		-DFNA3D_DRIVER_MODERNGL
 		-DFNA3D_DRIVER_THREADEDGL
 		-DSUPPORT_PROFILE_METAL=0
+	)
+endif()
+
+if(WIN32 OR BUILD_DXVK_NATIVE)
+	add_definitions(
+		-DFNA3D_DRIVER_D3D11
+		-DSUPPORT_PROFILE_HLSL=1
+	)
+else()
+	add_definitions(
+		-DSUPPORT_PROFILE_HLSL=0
+	)
+endif()
+if(BUILD_DXVK_NATIVE)
+	add_definitions(-DFNA3D_DXVK_NATIVE)
+	include_directories(
+		${CMAKE_SOURCE_DIR}/../dxvk-native/include/native/directx
+		${CMAKE_SOURCE_DIR}/../dxvk-native/include/native/windows
 	)
 endif()
 
@@ -83,6 +101,7 @@ add_library(FNA3D
 	# Source Files
 	src/FNA3D.c
 	src/FNA3D_CommandStream.c
+	src/FNA3D_Driver_D3D11.c
 	src/FNA3D_Driver_OpenGL.c
 	src/FNA3D_Driver_Metal.c
 	src/FNA3D_Driver_ModernGL.c
@@ -94,10 +113,12 @@ add_library(mojoshader STATIC
 	MojoShader/mojoshader.c
 	MojoShader/mojoshader_effects.c
 	MojoShader/mojoshader_common.c
+	MojoShader/mojoshader_d3d11.c
 	MojoShader/mojoshader_opengl.c
 	MojoShader/mojoshader_metal.c
 	MojoShader/profiles/mojoshader_profile_common.c
 	MojoShader/profiles/mojoshader_profile_glsl.c
+	MojoShader/profiles/mojoshader_profile_hlsl.c
 	MojoShader/profiles/mojoshader_profile_metal.c
 	MojoShader/profiles/mojoshader_profile_spirv.c
 )
