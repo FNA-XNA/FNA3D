@@ -5794,9 +5794,22 @@ void VULKAN_CloneEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *cloneSource,
 	FNA3D_Effect **effect,
-	MOJOSHADER_effect **result
+	MOJOSHADER_effect **effectData
 ) {
-	/* TODO */
+	VulkanEffect *vulkanCloneSource = (VulkanEffect*) cloneSource;
+	VulkanEffect *result;
+
+	*effectData = MOJOSHADER_cloneEffect(vulkanCloneSource->effect);
+	if (*effectData == NULL)
+	{
+		FNA3D_LogError(
+			"%s", MOJOSHADER_vkGetError()
+		);
+	}
+
+	result = (VulkanEffect*) SDL_malloc(sizeof(VulkanEffect));
+	result->effect = *effectData;
+	*effect = (FNA3D_Effect*) result;
 }
 
 void VULKAN_AddDisposeEffect(
@@ -5823,7 +5836,8 @@ void VULKAN_SetEffectTechnique(
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectTechnique *technique
 ) {
-	/* TODO */
+	VulkanEffect *mtlEffect = (VulkanEffect*) effect;
+	MOJOSHADER_effectSetTechnique(mtlEffect->effect, technique);
 }
 
 void VULKAN_ApplyEffect(
@@ -6073,13 +6087,6 @@ void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 /* Buffer Objects */
 
 intptr_t VULKAN_GetBufferSize(FNA3D_Buffer *buffer)
-{
-	/* TODO */
-}
-
-/* Effect Objects */
-
-MOJOSHADER_effect* VULKAN_GetEffectData(FNA3D_Effect *effect)
 {
 	/* TODO */
 }
