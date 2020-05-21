@@ -4304,14 +4304,43 @@ void VULKAN_SetBlendState(
 	FNA3D_Renderer *driverData,
 	FNA3D_BlendState *blendState
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	SDL_memcpy(&renderer->blendState, blendState, sizeof(FNA3D_BlendState));
+
+	/* Dynamic state */
+	if (renderer->frameInProgress) {
+		const float blendConstants[] =
+			{
+				blendState->blendFactor.r,
+				blendState->blendFactor.g,
+				blendState->blendFactor.b,
+				blendState->blendFactor.a
+			};
+
+		renderer->vkCmdSetBlendConstants(
+			renderer->commandBuffers[renderer->commandBufferCount - 1],
+			blendConstants
+		);
+
+		if (renderer->renderPassInProgress)
+		{
+			BindPipeline(renderer);
+		}
+	}
 }
 
 void VULKAN_SetDepthStencilState(
 	FNA3D_Renderer *driverData,
 	FNA3D_DepthStencilState *depthStencilState
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	SDL_memcpy(&renderer->depthStencilState, depthStencilState, sizeof(FNA3D_DepthStencilState));
+
+	/* Dynamic state */
+	if (renderer->renderPassInProgress)
+	{
+		BindPipeline(renderer);
+	}
 }
 
 void VULKAN_ApplyRasterizerState(
