@@ -37,12 +37,12 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
-    <IncludePath>..\..\..\SDL2\include;..\..\MojoShader;..\..\include;$(DXSDK_DIR)\Include;$(IncludePath)</IncludePath>
-    <LibraryPath>..\..\..\SDL2\lib\x86;$(LibraryPath)</LibraryPath>
+    <IncludePath>..\..\SDL2\include;..\MojoShader;..\include;$(DXSDK_DIR)\Include;$(IncludePath)</IncludePath>
+    <LibraryPath>..\..\SDL2\lib\x86;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
-    <IncludePath>..\..\..\SDL2\include;..\..\MojoShader;..\..\include;$(DXSDK_DIR)\Include;$(IncludePath)</IncludePath>
-    <LibraryPath>..\..\..\SDL2\lib\x86;$(LibraryPath)</LibraryPath>
+    <IncludePath>..\..\SDL2\include;..\MojoShader;..\include;$(DXSDK_DIR)\Include;$(IncludePath)</IncludePath>
+    <LibraryPath>..\..\SDL2\lib\x86;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -70,70 +70,70 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\MojoShader\mojoshader.c">
+    <ClCompile Include="..\MojoShader\mojoshader.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileAsCpp</CompileAs>
     </ClCompile>
-    <ClCompile Include="..\..\MojoShader\mojoshader_common.c">
+    <ClCompile Include="..\MojoShader\mojoshader_common.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileAsCpp</CompileAs>
     </ClCompile>
-    <ClCompile Include="..\..\MojoShader\mojoshader_d3d11.c">
+    <ClCompile Include="..\MojoShader\mojoshader_d3d11.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileAsCpp</CompileAs>
     </ClCompile>
-    <ClCompile Include="..\..\MojoShader\mojoshader_effects.c">
+    <ClCompile Include="..\MojoShader\mojoshader_effects.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileAsCpp</CompileAs>
     </ClCompile>
-    <ClCompile Include="..\..\MojoShader\mojoshader_metal.c">
+    <ClCompile Include="..\MojoShader\mojoshader_metal.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileAsCpp</CompileAs>
     </ClCompile>
-    <ClCompile Include="..\..\MojoShader\mojoshader_opengl.c">
+    <ClCompile Include="..\MojoShader\mojoshader_opengl.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileAsCpp</CompileAs>
     </ClCompile>
-    <ClCompile Include="..\..\MojoShader\profiles\mojoshader_profile_common.c">
+    <ClCompile Include="..\MojoShader\profiles\mojoshader_profile_common.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileAsCpp</CompileAs>
     </ClCompile>
-    <ClCompile Include="..\..\MojoShader\profiles\mojoshader_profile_glsl.c">
+    <ClCompile Include="..\MojoShader\profiles\mojoshader_profile_glsl.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileAsCpp</CompileAs>
     </ClCompile>
-    <ClCompile Include="..\..\MojoShader\profiles\mojoshader_profile_hlsl.c">
+    <ClCompile Include="..\MojoShader\profiles\mojoshader_profile_hlsl.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileAsCpp</CompileAs>
     </ClCompile>
-    <ClCompile Include="..\..\MojoShader\profiles\mojoshader_profile_metal.c">
+    <ClCompile Include="..\MojoShader\profiles\mojoshader_profile_metal.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileAsCpp</CompileAs>
     </ClCompile>
-    <ClCompile Include="..\..\MojoShader\profiles\mojoshader_profile_spirv.c">
+    <ClCompile Include="..\MojoShader\profiles\mojoshader_profile_spirv.c">
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">CompileAsCpp</CompileAs>
       <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">CompileAsCpp</CompileAs>
     </ClCompile>
-    <ClCompile Include="..\..\src\FNA3D.c" />
-    <ClCompile Include="..\..\src\FNA3D_Driver_D3D11.c" />
-    <ClCompile Include="..\..\src\FNA3D_Image.c" />
-    <ClCompile Include="..\..\src\FNA3D_CommandStream.c" />
-    <ClCompile Include="..\..\src\FNA3D_Driver_OpenGL.c" />
-    <ClCompile Include="..\..\src\FNA3D_Driver_ModernGL.c" />
-    <ClCompile Include="..\..\src\FNA3D_Driver_ThreadedGL.c" />
-    <ClCompile Include="..\..\src\FNA3D_PipelineCache.c" />
+    <ClCompile Include="..\src\FNA3D.c" />
+    <ClCompile Include="..\src\FNA3D_Driver_D3D11.c" />
+    <ClCompile Include="..\src\FNA3D_Image.c" />
+    <ClCompile Include="..\src\FNA3D_CommandStream.c" />
+    <ClCompile Include="..\src\FNA3D_Driver_OpenGL.c" />
+    <ClCompile Include="..\src\FNA3D_Driver_ModernGL.c" />
+    <ClCompile Include="..\src\FNA3D_Driver_ThreadedGL.c" />
+    <ClCompile Include="..\src\FNA3D_PipelineCache.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\include\FNA3D.h" />
-    <ClInclude Include="..\..\include\FNA3D_Image.h" />
-    <ClInclude Include="..\..\src\FNA3D_CommandStream.h" />
-    <ClInclude Include="..\..\src\FNA3D_Driver.h" />
-    <ClInclude Include="..\..\src\FNA3D_Driver_D3D11.h" />
-    <ClInclude Include="..\..\src\FNA3D_Driver_OpenGL.h" />
-    <ClInclude Include="..\..\src\FNA3D_Driver_OpenGL_glfuncs.h" />
-    <ClInclude Include="..\..\src\FNA3D_Driver_ModernGL.h" />
-    <ClInclude Include="..\..\src\FNA3D_Driver_ModernGL_glfuncs.h" />
-    <ClInclude Include="..\..\src\FNA3D_PipelineCache.h" />
+    <ClInclude Include="..\include\FNA3D.h" />
+    <ClInclude Include="..\include\FNA3D_Image.h" />
+    <ClInclude Include="..\src\FNA3D_CommandStream.h" />
+    <ClInclude Include="..\src\FNA3D_Driver.h" />
+    <ClInclude Include="..\src\FNA3D_Driver_D3D11.h" />
+    <ClInclude Include="..\src\FNA3D_Driver_OpenGL.h" />
+    <ClInclude Include="..\src\FNA3D_Driver_OpenGL_glfuncs.h" />
+    <ClInclude Include="..\src\FNA3D_Driver_ModernGL.h" />
+    <ClInclude Include="..\src\FNA3D_Driver_ModernGL_glfuncs.h" />
+    <ClInclude Include="..\src\FNA3D_PipelineCache.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
