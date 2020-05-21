@@ -33,8 +33,6 @@
 		7BF820792445254300736AB0 /* FNA3D_Image.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF8206C2445254300736AB0 /* FNA3D_Image.c */; };
 		7BF8207C2445254300736AB0 /* FNA3D_PipelineCache.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF8206E2445254300736AB0 /* FNA3D_PipelineCache.c */; };
 		7BF8207D2445254300736AB0 /* FNA3D_PipelineCache.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF8206E2445254300736AB0 /* FNA3D_PipelineCache.c */; };
-		7BF8207E2445254300736AB0 /* FNA3D_CommandStream.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF8206F2445254300736AB0 /* FNA3D_CommandStream.c */; };
-		7BF8207F2445254300736AB0 /* FNA3D_CommandStream.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF8206F2445254300736AB0 /* FNA3D_CommandStream.c */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -76,7 +74,6 @@
 		7BF8206B2445254300736AB0 /* FNA3D_Driver_Metal.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = FNA3D_Driver_Metal.c; path = ../src/FNA3D_Driver_Metal.c; sourceTree = "<group>"; };
 		7BF8206C2445254300736AB0 /* FNA3D_Image.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = FNA3D_Image.c; path = ../src/FNA3D_Image.c; sourceTree = "<group>"; };
 		7BF8206E2445254300736AB0 /* FNA3D_PipelineCache.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = FNA3D_PipelineCache.c; path = ../src/FNA3D_PipelineCache.c; sourceTree = "<group>"; };
-		7BF8206F2445254300736AB0 /* FNA3D_CommandStream.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = FNA3D_CommandStream.c; path = ../src/FNA3D_CommandStream.c; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -119,7 +116,6 @@
 		7B1CDDA62190C50300175C7B /* Library Source */ = {
 			isa = PBXGroup;
 			children = (
-				7BF8206F2445254300736AB0 /* FNA3D_CommandStream.c */,
 				7BF8206B2445254300736AB0 /* FNA3D_Driver_Metal.c */,
 				7BF820692445254300736AB0 /* FNA3D_Driver_OpenGL.c */,
 				7BF8206C2445254300736AB0 /* FNA3D_Image.c */,
@@ -239,7 +235,6 @@
 				7B8B6CBE24452690001C08D6 /* mojoshader_common.c in Sources */,
 				7B8B6CCD244526A7001C08D6 /* mojoshader_profile_metal.c in Sources */,
 				7BF820762445254300736AB0 /* FNA3D_Driver_Metal.c in Sources */,
-				7BF8207E2445254300736AB0 /* FNA3D_CommandStream.c in Sources */,
 				7BF8207C2445254300736AB0 /* FNA3D_PipelineCache.c in Sources */,
 				7BF820722445254300736AB0 /* FNA3D_Driver_OpenGL.c in Sources */,
 				7B8B6CC024452690001C08D6 /* mojoshader_opengl.c in Sources */,
@@ -260,7 +255,6 @@
 				7B8B6CBF24452690001C08D6 /* mojoshader_common.c in Sources */,
 				7B8B6CCE244526A7001C08D6 /* mojoshader_profile_metal.c in Sources */,
 				7BF820772445254300736AB0 /* FNA3D_Driver_Metal.c in Sources */,
-				7BF8207F2445254300736AB0 /* FNA3D_CommandStream.c in Sources */,
 				7BF8207D2445254300736AB0 /* FNA3D_PipelineCache.c in Sources */,
 				7BF820732445254300736AB0 /* FNA3D_Driver_OpenGL.c in Sources */,
 				7B8B6CC124452690001C08D6 /* mojoshader_opengl.c in Sources */,

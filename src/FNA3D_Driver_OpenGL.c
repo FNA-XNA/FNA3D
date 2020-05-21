@@ -28,12 +28,13 @@
 
 #include "FNA3D_Driver.h"
 #include "FNA3D_Driver_OpenGL.h"
-#include "FNA3D_CommandStream.h"
 
 #include <SDL.h>
 #include <SDL_syswm.h>
 
 /* Internal Structures */
+
+typedef struct FNA3D_Command FNA3D_Command; /* See Threading Support section */
 
 typedef struct OpenGLTexture OpenGLTexture;
 typedef struct OpenGLRenderbuffer OpenGLRenderbuffer;
@@ -583,6 +584,469 @@ static int32_t XNAToGL_Primitive[] =
 	GL_LINE_STRIP,		/* PrimitiveType.LineStrip */
 	GL_POINTS		/* PrimitiveType.PointListEXT */
 };
+
+/* Threading Support */
+
+struct FNA3D_Command
+{
+	#define FNA3D_COMMAND_CREATEEFFECT 0
+	#define FNA3D_COMMAND_CLONEEFFECT 1
+	#define FNA3D_COMMAND_GENVERTEXBUFFER 2
+	#define FNA3D_COMMAND_GENINDEXBUFFER 3
+	#define FNA3D_COMMAND_SETVERTEXBUFFERDATA 4
+	#define FNA3D_COMMAND_SETINDEXBUFFERDATA 5
+	#define FNA3D_COMMAND_GETVERTEXBUFFERDATA 6
+	#define FNA3D_COMMAND_GETINDEXBUFFERDATA 7
+	#define FNA3D_COMMAND_CREATETEXTURE2D 8
+	#define FNA3D_COMMAND_CREATETEXTURE3D 9
+	#define FNA3D_COMMAND_CREATETEXTURECUBE 10
+	#define FNA3D_COMMAND_SETTEXTUREDATA2D 11
+	#define FNA3D_COMMAND_SETTEXTUREDATA3D 12
+	#define FNA3D_COMMAND_SETTEXTUREDATACUBE 13
+	#define FNA3D_COMMAND_GETTEXTUREDATA2D 14
+	#define FNA3D_COMMAND_GETTEXTUREDATA3D 15
+	#define FNA3D_COMMAND_GETTEXTUREDATACUBE 16
+	#define FNA3D_COMMAND_GENCOLORRENDERBUFFER 17
+	#define FNA3D_COMMAND_GENDEPTHRENDERBUFFER 18
+	uint8_t type;
+	FNA3DNAMELESS union
+	{
+		struct
+		{
+			uint8_t *effectCode;
+			uint32_t effectCodeLength;
+			FNA3D_Effect **effect;
+			MOJOSHADER_effect **effectData;
+		} createEffect;
+
+		struct
+		{
+			FNA3D_Effect *cloneSource;
+			FNA3D_Effect **effect;
+			MOJOSHADER_effect **effectData;
+		} cloneEffect;
+
+		struct
+		{
+			uint8_t dynamic;
+			FNA3D_BufferUsage usage;
+			int32_t vertexCount;
+			int32_t vertexStride;
+			FNA3D_Buffer *retval;
+		} genVertexBuffer;
+
+		struct
+		{
+			uint8_t dynamic;
+			FNA3D_BufferUsage usage;
+			int32_t indexCount;
+			FNA3D_IndexElementSize indexElementSize;
+			FNA3D_Buffer *retval;
+		} genIndexBuffer;
+
+		struct
+		{
+			FNA3D_Buffer *buffer;
+			int32_t offsetInBytes;
+			void* data;
+			int32_t elementCount;
+			int32_t elementSizeInBytes;
+			int32_t vertexStride;
+			FNA3D_SetDataOptions options;
+		} setVertexBufferData;
+
+		struct
+		{
+			FNA3D_Buffer *buffer;
+			int32_t offsetInBytes;
+			void* data;
+			int32_t dataLength;
+			FNA3D_SetDataOptions options;
+		} setIndexBufferData;
+
+		struct
+		{
+			FNA3D_Buffer *buffer;
+			int32_t offsetInBytes;
+			void* data;
+			int32_t elementCount;
+			int32_t elementSizeInBytes;
+			int32_t vertexStride;
+		} getVertexBufferData;
+
+		struct
+		{
+			FNA3D_Buffer *buffer;
+			int32_t offsetInBytes;
+			void* data;
+			int32_t dataLength;
+		} getIndexBufferData;
+
+		struct
+		{
+			FNA3D_SurfaceFormat format;
+			int32_t width;
+			int32_t height;
+			int32_t levelCount;
+			uint8_t isRenderTarget;
+			FNA3D_Texture *retval;
+		} createTexture2D;
+
+		struct
+		{
+			FNA3D_SurfaceFormat format;
+			int32_t width;
+			int32_t height;
+			int32_t depth;
+			int32_t levelCount;
+			FNA3D_Texture *retval;
+		} createTexture3D;
+
+		struct
+		{
+			FNA3D_SurfaceFormat format;
+			int32_t size;
+			int32_t levelCount;
+			uint8_t isRenderTarget;
+			FNA3D_Texture *retval;
+		} createTextureCube;
+
+		struct
+		{
+			FNA3D_Texture *texture;
+			FNA3D_SurfaceFormat format;
+			int32_t x;
+			int32_t y;
+			int32_t w;
+			int32_t h;
+			int32_t level;
+			void* data;
+			int32_t dataLength;
+		} setTextureData2D;
+
+		struct
+		{
+			FNA3D_Texture *texture;
+			FNA3D_SurfaceFormat format;
+			int32_t x;
+			int32_t y;
+			int32_t z;
+			int32_t w;
+			int32_t h;
+			int32_t d;
+			int32_t level;
+			void* data;
+			int32_t dataLength;
+		} setTextureData3D;
+
+		struct
+		{
+			FNA3D_Texture *texture;
+			FNA3D_SurfaceFormat format;
+			int32_t x;
+			int32_t y;
+			int32_t w;
+			int32_t h;
+			FNA3D_CubeMapFace cubeMapFace;
+			int32_t level;
+			void* data;
+			int32_t dataLength;
+		} setTextureDataCube;
+
+		struct
+		{
+			FNA3D_Texture *texture;
+			FNA3D_SurfaceFormat format;
+			int32_t x;
+			int32_t y;
+			int32_t w;
+			int32_t h;
+			int32_t level;
+			void* data;
+			int32_t dataLength;
+		} getTextureData2D;
+
+		struct
+		{
+			FNA3D_Texture *texture;
+			FNA3D_SurfaceFormat format;
+			int32_t x;
+			int32_t y;
+			int32_t z;
+			int32_t w;
+			int32_t h;
+			int32_t d;
+			int32_t level;
+			void* data;
+			int32_t dataLength;
+		} getTextureData3D;
+
+		struct
+		{
+			FNA3D_Texture *texture;
+			FNA3D_SurfaceFormat format;
+			int32_t x;
+			int32_t y;
+			int32_t w;
+			int32_t h;
+			FNA3D_CubeMapFace cubeMapFace;
+			int32_t level;
+			void* data;
+			int32_t dataLength;
+		} getTextureDataCube;
+
+		struct
+		{
+			int32_t width;
+			int32_t height;
+			FNA3D_SurfaceFormat format;
+			int32_t multiSampleCount;
+			FNA3D_Texture *texture;
+			FNA3D_Renderbuffer *retval;
+		} genColorRenderbuffer;
+
+		struct
+		{
+			int32_t width;
+			int32_t height;
+			FNA3D_DepthFormat format;
+			int32_t multiSampleCount;
+			FNA3D_Renderbuffer *retval;
+		} genDepthStencilRenderbuffer;
+	};
+	SDL_sem *semaphore;
+	FNA3D_Command *next;
+};
+
+static void FNA3D_ExecuteCommand(
+	FNA3D_Device *device,
+	FNA3D_Command *cmd
+) {
+	switch (cmd->type)
+	{
+		case FNA3D_COMMAND_CREATEEFFECT:
+			FNA3D_CreateEffect(
+				device,
+				cmd->createEffect.effectCode,
+				cmd->createEffect.effectCodeLength,
+				cmd->createEffect.effect,
+				cmd->createEffect.effectData
+			);
+			break;
+		case FNA3D_COMMAND_CLONEEFFECT:
+			FNA3D_CloneEffect(
+				device,
+				cmd->cloneEffect.cloneSource,
+				cmd->cloneEffect.effect,
+				cmd->cloneEffect.effectData
+			);
+			break;
+		case FNA3D_COMMAND_GENVERTEXBUFFER:
+			cmd->genVertexBuffer.retval = FNA3D_GenVertexBuffer(
+				device,
+				cmd->genVertexBuffer.dynamic,
+				cmd->genVertexBuffer.usage,
+				cmd->genVertexBuffer.vertexCount,
+				cmd->genVertexBuffer.vertexStride
+			);
+			break;
+		case FNA3D_COMMAND_GENINDEXBUFFER:
+			cmd->genIndexBuffer.retval = FNA3D_GenIndexBuffer(
+				device,
+				cmd->genIndexBuffer.dynamic,
+				cmd->genIndexBuffer.usage,
+				cmd->genIndexBuffer.indexCount,
+				cmd->genIndexBuffer.indexElementSize
+			);
+			break;
+		case FNA3D_COMMAND_SETVERTEXBUFFERDATA:
+			FNA3D_SetVertexBufferData(
+				device,
+				cmd->setVertexBufferData.buffer,
+				cmd->setVertexBufferData.offsetInBytes,
+				cmd->setVertexBufferData.data,
+				cmd->setVertexBufferData.elementCount,
+				cmd->setVertexBufferData.elementSizeInBytes,
+				cmd->setVertexBufferData.vertexStride,
+				cmd->setVertexBufferData.options
+			);
+			break;
+		case FNA3D_COMMAND_SETINDEXBUFFERDATA:
+			FNA3D_SetIndexBufferData(
+				device,
+				cmd->setIndexBufferData.buffer,
+				cmd->setIndexBufferData.offsetInBytes,
+				cmd->setIndexBufferData.data,
+				cmd->setIndexBufferData.dataLength,
+				cmd->setIndexBufferData.options
+			);
+			break;
+		case FNA3D_COMMAND_GETVERTEXBUFFERDATA:
+			FNA3D_GetVertexBufferData(
+				device,
+				cmd->getVertexBufferData.buffer,
+				cmd->getVertexBufferData.offsetInBytes,
+				cmd->getVertexBufferData.data,
+				cmd->getVertexBufferData.elementCount,
+				cmd->getVertexBufferData.elementSizeInBytes,
+				cmd->getVertexBufferData.vertexStride
+			);
+			break;
+		case FNA3D_COMMAND_GETINDEXBUFFERDATA:
+			FNA3D_GetIndexBufferData(
+				device,
+				cmd->getIndexBufferData.buffer,
+				cmd->getIndexBufferData.offsetInBytes,
+				cmd->getIndexBufferData.data,
+				cmd->getIndexBufferData.dataLength
+			);
+			break;
+		case FNA3D_COMMAND_CREATETEXTURE2D:
+			cmd->createTexture2D.retval = FNA3D_CreateTexture2D(
+				device,
+				cmd->createTexture2D.format,
+				cmd->createTexture2D.width,
+				cmd->createTexture2D.height,
+				cmd->createTexture2D.levelCount,
+				cmd->createTexture2D.isRenderTarget
+			);
+			break;
+		case FNA3D_COMMAND_CREATETEXTURE3D:
+			cmd->createTexture3D.retval = FNA3D_CreateTexture3D(
+				device,
+				cmd->createTexture3D.format,
+				cmd->createTexture3D.width,
+				cmd->createTexture3D.height,
+				cmd->createTexture3D.depth,
+				cmd->createTexture3D.levelCount
+			);
+			break;
+		case FNA3D_COMMAND_CREATETEXTURECUBE:
+			cmd->createTextureCube.retval = FNA3D_CreateTextureCube(
+				device,
+				cmd->createTextureCube.format,
+				cmd->createTextureCube.size,
+				cmd->createTextureCube.levelCount,
+				cmd->createTextureCube.isRenderTarget
+			);
+			break;
+		case FNA3D_COMMAND_SETTEXTUREDATA2D:
+			FNA3D_SetTextureData2D(
+				device,
+				cmd->setTextureData2D.texture,
+				cmd->setTextureData2D.format,
+				cmd->setTextureData2D.x,
+				cmd->setTextureData2D.y,
+				cmd->setTextureData2D.w,
+				cmd->setTextureData2D.h,
+				cmd->setTextureData2D.level,
+				cmd->setTextureData2D.data,
+				cmd->setTextureData2D.dataLength
+			);
+			break;
+		case FNA3D_COMMAND_SETTEXTUREDATA3D:
+			FNA3D_SetTextureData3D(
+				device,
+				cmd->setTextureData3D.texture,
+				cmd->setTextureData3D.format,
+				cmd->setTextureData3D.x,
+				cmd->setTextureData3D.y,
+				cmd->setTextureData3D.z,
+				cmd->setTextureData3D.w,
+				cmd->setTextureData3D.h,
+				cmd->setTextureData3D.d,
+				cmd->setTextureData3D.level,
+				cmd->setTextureData3D.data,
+				cmd->setTextureData3D.dataLength
+			);
+			break;
+		case FNA3D_COMMAND_SETTEXTUREDATACUBE:
+			FNA3D_SetTextureDataCube(
+				device,
+				cmd->setTextureDataCube.texture,
+				cmd->setTextureDataCube.format,
+				cmd->setTextureDataCube.x,
+				cmd->setTextureDataCube.y,
+				cmd->setTextureDataCube.w,
+				cmd->setTextureDataCube.h,
+				cmd->setTextureDataCube.cubeMapFace,
+				cmd->setTextureDataCube.level,
+				cmd->setTextureDataCube.data,
+				cmd->setTextureDataCube.dataLength
+			);
+			break;
+		case FNA3D_COMMAND_GETTEXTUREDATA2D:
+			FNA3D_GetTextureData2D(
+				device,
+				cmd->getTextureData2D.texture,
+				cmd->getTextureData2D.format,
+				cmd->getTextureData2D.x,
+				cmd->getTextureData2D.y,
+				cmd->getTextureData2D.w,
+				cmd->getTextureData2D.h,
+				cmd->getTextureData2D.level,
+				cmd->getTextureData2D.data,
+				cmd->getTextureData2D.dataLength
+			);
+			break;
+		case FNA3D_COMMAND_GETTEXTUREDATA3D:
+			FNA3D_GetTextureData3D(
+				device,
+				cmd->getTextureData3D.texture,
+				cmd->getTextureData3D.format,
+				cmd->getTextureData3D.x,
+				cmd->getTextureData3D.y,
+				cmd->getTextureData3D.z,
+				cmd->getTextureData3D.w,
+				cmd->getTextureData3D.h,
+				cmd->getTextureData3D.d,
+				cmd->getTextureData3D.level,
+				cmd->getTextureData3D.data,
+				cmd->getTextureData3D.dataLength
+			);
+			break;
+		case FNA3D_COMMAND_GETTEXTUREDATACUBE:
+			FNA3D_GetTextureDataCube(
+				device,
+				cmd->getTextureDataCube.texture,
+				cmd->getTextureDataCube.format,
+				cmd->getTextureDataCube.x,
+				cmd->getTextureDataCube.y,
+				cmd->getTextureDataCube.w,
+				cmd->getTextureDataCube.h,
+				cmd->getTextureDataCube.cubeMapFace,
+				cmd->getTextureDataCube.level,
+				cmd->getTextureDataCube.data,
+				cmd->getTextureDataCube.dataLength
+			);
+			break;
+		case FNA3D_COMMAND_GENCOLORRENDERBUFFER:
+			cmd->genColorRenderbuffer.retval = FNA3D_GenColorRenderbuffer(
+				device,
+				cmd->genColorRenderbuffer.width,
+				cmd->genColorRenderbuffer.height,
+				cmd->genColorRenderbuffer.format,
+				cmd->genColorRenderbuffer.multiSampleCount,
+				cmd->genColorRenderbuffer.texture
+			);
+			break;
+		case FNA3D_COMMAND_GENDEPTHRENDERBUFFER:
+			cmd->genDepthStencilRenderbuffer.retval = FNA3D_GenDepthStencilRenderbuffer(
+				device,
+				cmd->genDepthStencilRenderbuffer.width,
+				cmd->genDepthStencilRenderbuffer.height,
+				cmd->genDepthStencilRenderbuffer.format,
+				cmd->genDepthStencilRenderbuffer.multiSampleCount
+			);
+			break;
+		default:
+			FNA3D_LogError(
+				"Cannot execute unknown command (value = %d)",
+				cmd->type
+			);
+			break;
+	}
+}
 
 /* Inline Functions */
 

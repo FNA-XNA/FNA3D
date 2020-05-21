@@ -88,7 +88,6 @@ add_library(FNA3D
 	include/FNA3D.h
 	include/FNA3D_Image.h
 	# Internal Headers
-	src/FNA3D_CommandStream.h
 	src/FNA3D_Driver.h
 	src/FNA3D_Driver_OpenGL.h
 	src/FNA3D_Driver_OpenGL_glfuncs.h
@@ -96,7 +95,6 @@ add_library(FNA3D
 	src/FNA3D_PipelineCache.h
 	# Source Files
 	src/FNA3D.c
-	src/FNA3D_CommandStream.c
 	src/FNA3D_Driver_D3D11.c
 	src/FNA3D_Driver_OpenGL.c
 	src/FNA3D_Driver_Metal.c
