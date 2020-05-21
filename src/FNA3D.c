@@ -43,12 +43,6 @@ static const FNA3D_Driver *drivers[] = {
 #if FNA3D_DRIVER_OPENGL
 	&OpenGLDriver,
 #endif
-#if FNA3D_DRIVER_MODERNGL
-	&ModernGLDriver,
-#endif
-#if FNA3D_DRIVER_THREADEDGL
-	&ThreadedGLDriver,
-#endif
 #if FNA3D_DRIVER_GNMX
 	&GNMXDriver,
 #endif
