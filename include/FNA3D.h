@@ -554,7 +554,7 @@ FNA3DAPI void FNA3D_SetPresentationInterval(
  *
  * options:	Bitflags to specify color/depth/stencil buffers for clearing.
  * color:	The new value of the cleared color buffer. It is STRONGLY
- *		recommended to use 0x00 and 0xFF for all color channels!
+ *		recommended to use 0.0f and 1.0f for all color channels!
  * depth:	The new value of the cleared depth buffer.
  * stencil:	The new value of the cleared stencil buffer.
  */
