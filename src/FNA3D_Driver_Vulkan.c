@@ -1086,22 +1086,13 @@ static VkFormat XNAToVK_DepthFormat(
 	}
 }
 
-static float XNAToVK_DepthBiasScale(VkFormat format)
+static float XNAToVK_DepthBiasScale[] =
 {
-	switch(format)
-	{
-		case VK_FORMAT_D16_UNORM:
-			return (float) ((1 << 16) - 1);
-
-		case VK_FORMAT_D24_UNORM_S8_UINT:
-			return (float) ((1 << 24) - 1);
-
-		default:
-			return 0.0f;
-	}
-
-	SDL_assert(0 && "Invalid depth pixel format!");
-}
+	0.0f,						/* FNA3D_DEPTHFORMAT_NONE */
+	(float) ((1 << 16) - 1),	/* FNA3D_DEPTHFORMAT_D16*/
+	(float) ((1 << 24) - 1),	/* FNA3D_DEPTHFORMAT_D24 */
+	(float) ((1 << 24) - 1) 	/* FNA3D_DEPTHFORMAT_D24S8 */
+};
 
 static VkBlendFactor XNAToVK_BlendFactor[] =
 {
@@ -3711,7 +3702,10 @@ static PipelineHash GetPipelineHash(
 ) {
 	PipelineHash hash;
 	hash.blendState = GetBlendStateHash(renderer->blendState);
-	hash.rasterizerState = GetRasterizerStateHash(renderer->rasterizerState);
+	hash.rasterizerState = GetRasterizerStateHash(
+		renderer->rasterizerState,
+		renderer->rasterizerState.depthBias * XNAToVK_DepthBiasScale[renderer->currentDepthFormat]
+	);
 	hash.depthStencilState = GetDepthStencilStateHash(renderer->depthStencilState);
 	hash.vertexDeclarationHash = renderer->currentUserVertexDeclarationHash;
 	hash.vertexBufferBindingsHash = renderer->currentVertexBufferBindingHash;
@@ -4637,9 +4631,10 @@ void VULKAN_ApplyRasterizerState(
 		SetScissorRectCommand(renderer);
 	}
 
-	realDepthBias = rasterizerState->depthBias * XNAToVK_DepthBiasScale(
-		XNAToVK_DepthFormat(renderer->currentDepthFormat)
-	);
+	realDepthBias = rasterizerState->depthBias * XNAToVK_DepthBiasScale[
+		renderer->currentDepthFormat
+	];
+	
 	if (	realDepthBias != renderer->rasterizerState.depthBias ||
 			rasterizerState->slopeScaleDepthBias != renderer->rasterizerState.slopeScaleDepthBias	)
 	{
@@ -6060,8 +6055,11 @@ void VULKAN_GetMaxTextureSlots(
 	*vertexTextures = renderer->numVertexTextureSlots;
 }
 
-int32_t VULKAN_GetMaxMultiSampleCount(FNA3D_Renderer *driverData)
-{
+int32_t VULKAN_GetMaxMultiSampleCount(
+	FNA3D_Renderer *driverData,
+	FNA3D_SurfaceFormat format,
+	int32_t multiSampleCount
+) {
 	/* TODO */
 }
 
