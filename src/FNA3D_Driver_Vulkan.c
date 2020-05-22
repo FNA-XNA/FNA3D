@@ -2151,13 +2151,17 @@ static void CreateBackingBuffer(
 			buffer->deviceMemory
 		);
 
+		renderer->vkFreeMemory(
+			renderer->logicalDevice,
+			oldBufferMemory,
+			NULL
+		);
+
 		renderer->vkDestroyBuffer(
 			renderer->logicalDevice,
 			oldBuffer,
 			NULL
 		);
-
-		SDL_free(oldBuffer);
 	}
 }
 
