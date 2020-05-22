@@ -28,7 +28,6 @@
 
 #include "FNA3D_Driver.h"
 #include "FNA3D_Driver_Vulkan.h"
-#include "FNA3D_Driver_Vulkan_passthrough_vert.h"
 #include "FNA3D_PipelineCache.h"
 #include "stb_ds.h"
 
