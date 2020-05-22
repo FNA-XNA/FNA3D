@@ -97,6 +97,7 @@ VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkQueueSubmit, (VkQueue queue, uint32_t
 VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkQueueWaitIdle, (VkQueue queue))
 VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkResetCommandBuffer, (VkCommandBuffer commandBuffer, VkCommandBufferResetFlags flags))
 VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkResetCommandPool, (VkDevice device, VkCommandPool commandPool, VkCommandPoolResetFlags flags))
+VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkResetDescriptorPool, (VkDevice device, VkDescriptorPool descriptorPool, VkDescriptorPoolResetFlags flags))
 VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkResetFences, (VkDevice device, uint32_t fenceCount, const VkFence *pFences))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkUnmapMemory, (VkDevice device, VkDeviceMemory memory))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkUpdateDescriptorSets, (VkDevice device, uint32_t descriptorWriteCount, const VkWriteDescriptorSet *pDescriptorWrites, uint32_t descriptorCopyCount, const VkCopyDescriptorSet *pDescriptorCopies))
