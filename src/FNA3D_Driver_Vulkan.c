@@ -2372,17 +2372,11 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) device->driverData;
 
-	VkResult waitResult = renderer->vkWaitForFences(
-		renderer->logicalDevice,
-		1,
-		&renderer->renderQueueFence,
-		VK_TRUE,
-		UINT64_MAX
-	);
+	VkResult waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
 
 	if (waitResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkWaitForFences", waitResult);
+		LogVulkanResult("vkDeviceWaitIdle", waitResult);
 	}
 
 	renderer->vkDestroySemaphore(
@@ -4895,6 +4889,13 @@ static void DestroyBuffer(
 		prev
 	);
 
+	VkResult waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
+
+	if (waitResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkDeviceWaitIdle", waitResult);
+	}
+
 	renderer->vkDestroyBuffer(
 		renderer->logicalDevice,
 		vulkanBuffer->handle,
@@ -5541,6 +5542,13 @@ void VULKAN_AddDisposeRenderbuffer(
 	VulkanRenderbuffer *vlkRenderBuffer = (VulkanRenderbuffer*) renderbuffer;
 	uint8_t isDepthStencil = (vlkRenderBuffer->colorBuffer == NULL);
 
+	VkResult waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
+
+	if (waitResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkDeviceWaitIdle", waitResult);
+	}
+
 	if (isDepthStencil)
 	{
 		if (renderer->depthStencilAttachment == vlkRenderBuffer->depthBuffer)
@@ -5855,6 +5863,13 @@ void VULKAN_AddDisposeEffect(
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	VulkanEffect *fnaEffect = (VulkanEffect*) effect;
 	MOJOSHADER_effect *effectData = fnaEffect->effect;
+
+	VkResult waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
+
+	if (waitResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkDeviceWaitIdle", waitResult);
+	}
 
 	if (effectData == renderer->currentEffect) {
 		MOJOSHADER_effectEndPass(renderer->currentEffect);
