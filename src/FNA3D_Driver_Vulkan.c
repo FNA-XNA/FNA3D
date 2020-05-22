@@ -41,7 +41,7 @@
 #define PRIMITIVE_TYPES_COUNT 5
 
 #define SAMPLER_DESCRIPTOR_POOL_SIZE 256
-#define UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE 16
+#define UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE 32
 
 const VkComponentMapping IDENTITY_SWIZZLE =
 {
@@ -397,12 +397,12 @@ typedef struct FNAVulkanRenderer
 	VkDescriptorPool *samplerDescriptorPools;
 	uint32_t activeSamplerDescriptorPoolIndex;
 	uint32_t activeSamplerPoolUsage;
-	uint32_t samplerDescriptorPoolCount;
+	uint32_t samplerDescriptorPoolCapacity;
 
 	VkDescriptorPool *uniformBufferDescriptorPools;
 	uint32_t activeUniformBufferDescriptorPoolIndex;
 	uint32_t activeUniformBufferPoolUsage;
-	uint32_t uniformBufferDescriptorPoolCount;
+	uint32_t uniformBufferDescriptorPoolCapacity;
 
 	VkDescriptorImageInfo *vertSamplerImageInfos;
 	uint32_t vertSamplerImageInfoCount;
@@ -1422,13 +1422,13 @@ static void CheckSamplerDescriptorPool(
 		renderer->activeSamplerDescriptorPoolIndex++;
 
 		/* if we have used all the pools, allocate a new one */
-		if (renderer->activeSamplerDescriptorPoolIndex >= renderer->samplerDescriptorPoolCount)
+		if (renderer->activeSamplerDescriptorPoolIndex >= renderer->samplerDescriptorPoolCapacity)
 		{
-			renderer->samplerDescriptorPoolCount++;
+			renderer->samplerDescriptorPoolCapacity++;
 
 			renderer->samplerDescriptorPools = SDL_realloc(
 				renderer->samplerDescriptorPools,
-				sizeof(VkDescriptorPool) * renderer->samplerDescriptorPoolCount
+				sizeof(VkDescriptorPool) * renderer->samplerDescriptorPoolCapacity
 			);
 
 			VkDescriptorPoolSize samplerPoolSize;
@@ -1472,13 +1472,13 @@ static void CheckUniformBufferDescriptorPool(
 		renderer->activeUniformBufferDescriptorPoolIndex++;
 
 		/* if we have used all the pools, allocate a new one */
-		if (renderer->activeUniformBufferDescriptorPoolIndex >= renderer->uniformBufferDescriptorPoolCount)
+		if (renderer->activeUniformBufferDescriptorPoolIndex >= renderer->uniformBufferDescriptorPoolCapacity)
 		{
-			renderer->uniformBufferDescriptorPoolCount++;
+			renderer->uniformBufferDescriptorPoolCapacity++;
 
 			renderer->uniformBufferDescriptorPools = SDL_realloc(
 				renderer->uniformBufferDescriptorPools,
-				sizeof(VkDescriptorPool) * renderer->uniformBufferDescriptorPoolCount
+				sizeof(VkDescriptorPool) * renderer->uniformBufferDescriptorPoolCapacity
 			);
 
 			VkDescriptorPoolSize bufferPoolSize;
@@ -2487,7 +2487,7 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 		NULL
 	);
 
-	for (uint32_t i = 0; i < renderer->uniformBufferDescriptorPoolCount; i++)
+	for (uint32_t i = 0; i < renderer->uniformBufferDescriptorPoolCapacity; i++)
 	{
 		renderer->vkDestroyDescriptorPool(
 			renderer->logicalDevice,
@@ -2496,7 +2496,7 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 		);
 	}
 
-	for (uint32_t i = 0; i < renderer->samplerDescriptorPoolCount; i++)
+	for (uint32_t i = 0; i < renderer->samplerDescriptorPoolCapacity; i++)
 	{
 		renderer->vkDestroyDescriptorPool(
 			renderer->logicalDevice,
@@ -3922,6 +3922,39 @@ void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 			renderer->commandPool,
 			VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT
 		);
+	}
+
+	if (renderer->activeDescriptorSetCount != 0)
+	{
+		for (uint32_t i = 0; i < renderer->samplerDescriptorPoolCapacity; i++)
+		{
+			renderer->vkResetDescriptorPool(
+				renderer->logicalDevice,
+				renderer->samplerDescriptorPools[i],
+				0
+			);
+		}
+
+		renderer->activeUniformBufferDescriptorPoolIndex = 0;
+		renderer->activeSamplerPoolUsage = 0;
+
+		for (uint32_t i = 0; i < renderer->uniformBufferDescriptorPoolCapacity; i++)
+		{
+			renderer->vkResetDescriptorPool(
+				renderer->logicalDevice,
+				renderer->uniformBufferDescriptorPools[i],
+				0
+			);
+		}
+
+		renderer->activeUniformBufferDescriptorPoolIndex = 0;
+		renderer->activeUniformBufferPoolUsage = 0;
+
+		renderer->activeDescriptorSetCount = 0;
+		renderer->currentVertSamplerDescriptorSet = NULL;
+		renderer->currentFragSamplerDescriptorSet = NULL;
+		renderer->currentVertUniformBufferDescriptorSet = NULL;
+		renderer->currentFragUniformBufferDescriptorSet = NULL;
 	}
 
 	result = renderer->vkAcquireNextImageKHR(
@@ -7484,7 +7517,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
-	renderer->uniformBufferDescriptorPoolCount = 1;
+	renderer->uniformBufferDescriptorPoolCapacity = 1;
 	renderer->activeUniformBufferDescriptorPoolIndex = 0;
 	renderer->activeUniformBufferPoolUsage = 0;
 
@@ -7512,7 +7545,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
-	renderer->samplerDescriptorPoolCount = 1;
+	renderer->samplerDescriptorPoolCapacity = 1;
 	renderer->activeSamplerDescriptorPoolIndex = 0;
 	renderer->activeSamplerPoolUsage = 0;
 
@@ -7552,7 +7585,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 	}
 
 	renderer->ldVertUniformOffsets = SDL_malloc(
-		sizeof(int32_t) *
+		sizeof(VkDeviceSize) *
 		renderer->swapChainImageCount
 	);
 
@@ -7563,7 +7596,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 	}
 
 	renderer->ldFragUniformOffsets = SDL_malloc(
-		sizeof(int32_t) *
+		sizeof(VkDeviceSize) *
 		renderer->swapChainImageCount
 	);
 
@@ -7607,7 +7640,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 	}
 
 	renderer->ldVertexBufferOffsets = SDL_malloc(
-		sizeof(int32_t) * 
+		sizeof(VkDeviceSize) * 
 		renderer->ldVertexBufferCount
 	);
 
