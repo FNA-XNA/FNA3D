@@ -862,6 +862,7 @@ void VULKAN_SetRenderTargets(
 static void SetDepthBiasCommand(FNAVulkanRenderer *renderer);
 static void SetScissorRectCommand(FNAVulkanRenderer *renderer);
 static void SetStencilReferenceValueCommand(FNAVulkanRenderer *renderer);
+static void SetViewportCommand(FNAVulkanRenderer *renderer);
 
 static void Stall(FNAVulkanRenderer *renderer);
 
@@ -3249,7 +3250,8 @@ static VkPipeline FetchPipeline(
 	rasterizerInfo.polygonMode = XNAToVK_PolygonMode[renderer->rasterizerState.fillMode];
 	rasterizerInfo.lineWidth = 1.0f;
 	rasterizerInfo.cullMode = XNAToVK_CullMode[renderer->rasterizerState.cullMode];
-	rasterizerInfo.frontFace = VK_FRONT_FACE_COUNTER_CLOCKWISE;
+	/* this is reversed because we are flipping the viewport -cosmonaut */
+	rasterizerInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
 	rasterizerInfo.depthBiasEnable = VK_TRUE;
 
 	multisamplingInfo.sampleShadingEnable = VK_FALSE;
@@ -3733,7 +3735,6 @@ static void BeginRenderPass(
 		VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO
 	};
 	VkOffset2D offset = { 0, 0 }; /* FIXME: these values are not correct */
-	VkViewport viewport;
 	const float blendConstants[] =
 	{
 		ColorConvert(renderer->blendState.blendFactor.r),
@@ -3760,20 +3761,7 @@ static void BeginRenderPass(
 
 	renderer->renderPassInProgress = 1;
 
-	viewport.x = renderer->viewport.x;
-	viewport.y = renderer->viewport.y;
-	viewport.width = (float) renderer->viewport.w;
-	viewport.height = (float) renderer->viewport.h;
-	viewport.minDepth = (float) renderer->viewport.minDepth;
-	viewport.maxDepth = (float) renderer->viewport.maxDepth;
-
-	renderer->vkCmdSetViewport(
-		renderer->commandBuffers[renderer->commandBufferCount - 1],
-		0,
-		1,
-		&viewport
-	);
-
+	SetViewportCommand(renderer);
 	SetScissorRectCommand(renderer);
 	SetStencilReferenceValueCommand(renderer);
 
@@ -4417,7 +4405,6 @@ void VULKAN_SetViewport(
 	FNA3D_Viewport *viewport
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
-	VkViewport vulkanViewport;
 
 	if (	viewport->x != renderer->viewport.x ||
 			viewport->y != renderer->viewport.y ||
@@ -4427,24 +4414,7 @@ void VULKAN_SetViewport(
 			viewport->maxDepth != renderer->viewport.maxDepth	)
 	{
 		renderer->viewport = *viewport;
-
-		vulkanViewport.x = viewport->x;
-		vulkanViewport.y = viewport->y;
-		vulkanViewport.width = viewport->w;
-		vulkanViewport.height = viewport->h;
-		vulkanViewport.minDepth = viewport->minDepth;
-		vulkanViewport.maxDepth = viewport->maxDepth;
-
-		/* dynamic state */
-		if (renderer->frameInProgress)
-		{
-			renderer->vkCmdSetViewport(
-				renderer->commandBuffers[renderer->commandBufferCount - 1],
-				0,
-				1,
-				&vulkanViewport
-			);
-		}
+		SetViewportCommand(renderer);
 	}
 }
 
@@ -4960,8 +4930,9 @@ static void SetScissorRectCommand(FNAVulkanRenderer *renderer)
 	}
 }
 
-static void SetStencilReferenceValueCommand(FNAVulkanRenderer *renderer)
-{
+static void SetStencilReferenceValueCommand(
+	FNAVulkanRenderer *renderer
+) {
 	if (renderer->renderPassInProgress)
 	{
 		renderer->vkCmdSetStencilReference(
@@ -4972,6 +4943,29 @@ static void SetStencilReferenceValueCommand(FNAVulkanRenderer *renderer)
 	}
 }
 
+static void SetViewportCommand(
+	FNAVulkanRenderer *renderer
+) {
+	VkViewport vulkanViewport;
+
+	/* v-flipping the viewport for compatibility with other APIs -cosmonaut */
+	vulkanViewport.x = renderer->viewport.x;
+	vulkanViewport.y = renderer->viewport.h - renderer->viewport.y;
+	vulkanViewport.width = renderer->viewport.w;
+	vulkanViewport.height = -(renderer->viewport.h - renderer->viewport.y);
+	vulkanViewport.minDepth = renderer->viewport.minDepth;
+	vulkanViewport.maxDepth = renderer->viewport.maxDepth;
+
+	if (renderer->frameInProgress)
+	{
+		renderer->vkCmdSetViewport(
+			renderer->commandBuffers[renderer->commandBufferCount - 1],
+			0,
+			1,
+			&vulkanViewport
+		);
+	}
+}
 
 static void Stall(FNAVulkanRenderer *renderer)
 {
