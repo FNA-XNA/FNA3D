@@ -2189,6 +2189,8 @@ static VulkanBuffer* CreateBuffer(
 		usageFlags = VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	}
 
+	result->usageFlags = usageFlags;
+
 	CreateBackingBuffer(renderer, result, -1, usageFlags);
 
 	LinkedList_Add(renderer->buffers, result, curr);
