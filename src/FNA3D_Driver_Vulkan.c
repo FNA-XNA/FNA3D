@@ -2300,7 +2300,7 @@ static void SetBufferData(
 		renderer->vkMapMemory(
 			renderer->logicalDevice,
 			vulkanBuffer->deviceMemory,
-			vulkanBuffer->internalOffset,
+			0,
 			vulkanBuffer->size,
 			0,
 			&contents
@@ -2321,7 +2321,7 @@ static void SetBufferData(
 	renderer->vkMapMemory(
 		renderer->logicalDevice,
 		vulkanBuffer->deviceMemory,
-		vulkanBuffer->internalOffset + offsetInBytes,
+		0,
 		dataLength,
 		0,
 		&contents
@@ -2368,7 +2368,7 @@ static void SetUserBufferData(
 	renderer->vkMapMemory(
 		renderer->logicalDevice,
 		buffer->deviceMemory,
-		buffer->internalOffset,
+		0,
 		buffer->internalBufferSize,
 		0,
 		&contents
@@ -4300,9 +4300,11 @@ void VULKAN_DrawInstancedPrimitives(
 		{
 			updatedVertexBuffers[updatedVertexBufferCount] = vertexBuffer->handle;
 			updatedOffsets[updatedVertexBufferCount] = offset;
-		}
+			updatedVertexBufferCount++;
 
-		updatedVertexBufferCount++;
+			renderer->ldVertexBuffers[i] = &vertexBuffer->handle;
+			renderer->ldVertexBufferOffsets[i] = offset;
+		}
 	}
 
 	renderer->vkCmdBindVertexBuffers(
@@ -5848,7 +5850,7 @@ void VULKAN_GetVertexBufferData(
 	renderer->vkMapMemory(
 		renderer->logicalDevice,
 		vulkanBuffer->deviceMemory,
-		vulkanBuffer->internalOffset,
+		0,
 		vulkanBuffer->size,
 		0,
 		&contents
@@ -5937,7 +5939,7 @@ void VULKAN_GetIndexBufferData(
 	renderer->vkMapMemory(
 		renderer->logicalDevice,
 		vulkanBuffer->deviceMemory,
-		vulkanBuffer->internalOffset,
+		0,
 		vulkanBuffer->size,
 		0,
 		&contents
