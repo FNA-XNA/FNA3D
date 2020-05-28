@@ -273,6 +273,13 @@ struct VulkanBuffer
 	VulkanBuffer *next; /* linked list */
 };
 
+/* used to delay destruction until command buffer completes */
+typedef struct BufferMemoryWrapper
+{
+	VkBuffer buffer;
+	VkDeviceMemory deviceMemory;
+} BufferMemoryWrapper;
+
 typedef struct FNAVulkanRenderer
 {
 	FNA3D_Device *parentDevice;
@@ -457,6 +464,10 @@ typedef struct FNAVulkanRenderer
 	VulkanBuffer **buffersToDestroy;
 	uint32_t buffersToDestroyCount;
 	uint32_t buffersToDestroyCapacity;
+
+	BufferMemoryWrapper **bufferMemoryWrappersToDestroy;
+	uint32_t bufferMemoryWrappersToDestroyCount;
+	uint32_t bufferMemoryWrappersToDestroyCapacity;
 
 	VulkanEffect **effectsToDestroy;
 	uint32_t effectsToDestroyCount;
@@ -768,8 +779,13 @@ static VulkanTexture* CreateTexture(
 );
 
 static void DestroyBuffer(
-	FNAVulkanRenderer *driverData,
+	FNAVulkanRenderer *renderer,
 	VulkanBuffer *buffer
+);
+
+static void DestroyBufferAndMemory(
+	FNAVulkanRenderer *renderer,
+	BufferMemoryWrapper *bufferMemoryWrapper
 );
 
 static void DestroyEffect(
@@ -894,6 +910,22 @@ static void Stall(FNAVulkanRenderer *renderer);
 
 static void SubmitPipelineBarrier(
 	FNAVulkanRenderer *renderer
+);
+
+static void RemoveBuffer(
+	FNA3D_Renderer *driverData,
+	FNA3D_Buffer *buffer
+);
+
+static void QueueBufferAndMemoryDestroy(
+	FNAVulkanRenderer *renderer,
+	VkBuffer vkBuffer,
+	VkDeviceMemory vkDeviceMemory
+);
+
+static void QueueBufferDestroy(
+	FNAVulkanRenderer *renderer,
+	VulkanBuffer *vulkanBuffer
 );
 
 static uint8_t CreateFauxBackbuffer(
@@ -2162,17 +2194,7 @@ static void CreateBackingBuffer(
 			buffer->deviceMemory
 		);
 
-		renderer->vkFreeMemory(
-			renderer->logicalDevice,
-			oldBufferMemory,
-			NULL
-		);
-
-		renderer->vkDestroyBuffer(
-			renderer->logicalDevice,
-			oldBuffer,
-			NULL
-		);
+		QueueBufferAndMemoryDestroy(renderer, oldBuffer, oldBufferMemory);
 	}
 }
 
@@ -3887,10 +3909,17 @@ void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 	}
 	renderer->buffersToDestroyCount = 0;
 
+	for (i = 0; i < renderer->bufferMemoryWrappersToDestroyCount; i++)
+	{
+		DestroyBufferAndMemory(renderer, renderer->bufferMemoryWrappersToDestroy[i]);
+	}
+	renderer->bufferMemoryWrappersToDestroyCount = 0;
+
 	for (i = 0; i < renderer->effectsToDestroyCount; i++)
 	{
 		DestroyEffect(renderer, renderer->effectsToDestroy[i]);
 	}
+	renderer->effectsToDestroyCount = 0;
 
 	if (renderer->activeDescriptorSetCount != 0)
 	{
@@ -4852,6 +4881,25 @@ static void DestroyBuffer(
 	SDL_free(vulkanBuffer);
 }
 
+static void DestroyBufferAndMemory(
+	FNAVulkanRenderer *renderer,
+	BufferMemoryWrapper *bufferMemoryWrapper
+) {
+	renderer->vkDestroyBuffer(
+		renderer->logicalDevice,
+		bufferMemoryWrapper->buffer,
+		NULL
+	);
+
+	renderer->vkFreeMemory(
+		renderer->logicalDevice,
+		bufferMemoryWrapper->deviceMemory,
+		NULL
+	);
+
+	SDL_free(bufferMemoryWrapper);
+}
+
 static void EndPass(
 	FNAVulkanRenderer *renderer
 ) {
@@ -5681,6 +5729,47 @@ FNA3D_Buffer* VULKAN_GenVertexBuffer(
 	);
 }
 
+static void QueueBufferAndMemoryDestroy(
+	FNAVulkanRenderer *renderer,
+	VkBuffer vkBuffer,
+	VkDeviceMemory vkDeviceMemory
+) {
+	BufferMemoryWrapper *bufferMemoryWrapper = SDL_malloc(sizeof(BufferMemoryWrapper));
+	bufferMemoryWrapper->buffer = vkBuffer;
+	bufferMemoryWrapper->deviceMemory = vkDeviceMemory;
+
+	if (renderer->bufferMemoryWrappersToDestroyCount + 1 >= renderer->bufferMemoryWrappersToDestroyCapacity)
+	{
+		renderer->bufferMemoryWrappersToDestroyCapacity *= 2;
+		
+		renderer->bufferMemoryWrappersToDestroy = SDL_realloc(
+			renderer->bufferMemoryWrappersToDestroy,
+			sizeof(VkBuffer) * renderer->bufferMemoryWrappersToDestroyCapacity
+		);
+	}
+
+	renderer->bufferMemoryWrappersToDestroy[renderer->bufferMemoryWrappersToDestroyCount] = bufferMemoryWrapper;
+	renderer->bufferMemoryWrappersToDestroyCount++;
+}
+
+static void QueueBufferDestroy(
+	FNAVulkanRenderer *renderer,
+	VulkanBuffer *vulkanBuffer
+) {
+	if (renderer->buffersToDestroyCount + 1 >= renderer->buffersToDestroyCapacity)
+	{
+		renderer->buffersToDestroyCapacity *= 2;
+
+		renderer->buffersToDestroy = SDL_realloc(
+			renderer->buffersToDestroy,
+			sizeof(VulkanBuffer*) * renderer->buffersToDestroyCapacity
+		);
+	}
+
+	renderer->buffersToDestroy[renderer->buffersToDestroyCount] = vulkanBuffer;
+	renderer->buffersToDestroyCount++;
+}
+
 static void RemoveBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
@@ -5697,18 +5786,7 @@ static void RemoveBuffer(
 		prev
 	);
 
-	if (renderer->buffersToDestroyCount + 1 >= renderer->buffersToDestroyCapacity)
-	{
-		renderer->buffersToDestroyCapacity *= 2;
-
-		renderer->buffersToDestroy = SDL_realloc(
-			renderer->buffersToDestroy,
-			sizeof(VulkanBuffer*) * renderer->buffersToDestroyCapacity
-		);
-	}
-
-	renderer->buffersToDestroy[renderer->buffersToDestroyCount] = vulkanBuffer;
-	renderer->buffersToDestroyCount++;
+	QueueBufferDestroy(renderer, vulkanBuffer);
 }
 
 void VULKAN_AddDisposeVertexBuffer(
@@ -8311,6 +8389,14 @@ FNA3D_Device* VULKAN_CreateDevice(
 	renderer->buffersToDestroy = SDL_malloc(
 		sizeof(VulkanBuffer*) *
 		renderer->buffersToDestroyCapacity
+	);
+
+	renderer->bufferMemoryWrappersToDestroyCapacity = 16;
+	renderer->bufferMemoryWrappersToDestroyCount = 0;
+
+	renderer->bufferMemoryWrappersToDestroy = SDL_malloc(
+		sizeof(BufferMemoryWrapper*) *
+		renderer->bufferMemoryWrappersToDestroyCapacity
 	);
 
 	renderer->effectsToDestroyCapacity = 16;
