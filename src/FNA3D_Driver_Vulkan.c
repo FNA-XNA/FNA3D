@@ -1750,7 +1750,7 @@ static void BindResources(FNAVulkanRenderer *renderer)
 				vOff != renderer->ldVertUniformOffsets[renderer->currentSwapChainIndex]		)
 		{
 			renderer->vertUniformBufferInfo[renderer->currentSwapChainIndex].buffer = *vUniform;
-			renderer->vertUniformBufferInfo[renderer->currentSwapChainIndex].offset = vOff;
+			renderer->vertUniformBufferInfo[renderer->currentSwapChainIndex].offset = 0; /* because of dynamic offset */
 			renderer->vertUniformBufferInfo[renderer->currentSwapChainIndex].range = VK_WHOLE_SIZE;
 
 			vertUniformBufferDescriptorSetNeedsUpdate = 1;
@@ -1765,7 +1765,7 @@ static void BindResources(FNAVulkanRenderer *renderer)
 				fOff != renderer->ldFragUniformOffsets[renderer->currentSwapChainIndex]		)
 		{
 			renderer->fragUniformBufferInfo[renderer->currentSwapChainIndex].buffer = *fUniform;
-			renderer->fragUniformBufferInfo[renderer->currentSwapChainIndex].offset = fOff;
+			renderer->fragUniformBufferInfo[renderer->currentSwapChainIndex].offset = 0; /* because of dynamic offset */
 			renderer->fragUniformBufferInfo[renderer->currentSwapChainIndex].range = VK_WHOLE_SIZE;
 
 			fragUniformBufferDescriptorSetNeedsUpdate = 1;
