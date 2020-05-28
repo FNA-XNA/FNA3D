@@ -458,6 +458,10 @@ typedef struct FNAVulkanRenderer
 	uint32_t buffersToDestroyCount;
 	uint32_t buffersToDestroyCapacity;
 
+	VulkanEffect **effectsToDestroy;
+	uint32_t effectsToDestroyCount;
+	uint32_t effectsToDestroyCapacity;
+
 	uint8_t frameInProgress;
 	uint8_t renderPassInProgress;
 	uint8_t shouldClearColor;
@@ -766,6 +770,11 @@ static VulkanTexture* CreateTexture(
 static void DestroyBuffer(
 	FNAVulkanRenderer *driverData,
 	VulkanBuffer *buffer
+);
+
+static void DestroyEffect(
+	FNAVulkanRenderer *renderer,
+	VulkanEffect *effect
 );
 
 static void DestroyRenderbuffer(
@@ -3878,6 +3887,11 @@ void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 	}
 	renderer->buffersToDestroyCount = 0;
 
+	for (i = 0; i < renderer->effectsToDestroyCount; i++)
+	{
+		DestroyEffect(renderer, renderer->effectsToDestroy[i]);
+	}
+
 	if (renderer->activeDescriptorSetCount != 0)
 	{
 		for (i = 0; i < renderer->samplerDescriptorPoolCapacity; i++)
@@ -5933,20 +5947,11 @@ void VULKAN_CloneEffect(
 	*effect = (FNA3D_Effect*) result;
 }
 
-void VULKAN_AddDisposeEffect(
-	FNA3D_Renderer *driverData,
-	FNA3D_Effect *effect
+static void DestroyEffect(
+	FNAVulkanRenderer *renderer,
+	VulkanEffect *vulkanEffect
 ) {
-	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
-	VulkanEffect *fnaEffect = (VulkanEffect*) effect;
-	MOJOSHADER_effect *effectData = fnaEffect->effect;
-
-	VkResult waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
-
-	if (waitResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkDeviceWaitIdle", waitResult);
-	}
+	MOJOSHADER_effect *effectData = vulkanEffect->effect;
 
 	if (effectData == renderer->currentEffect) {
 		MOJOSHADER_effectEndPass(renderer->currentEffect);
@@ -5956,7 +5961,28 @@ void VULKAN_AddDisposeEffect(
 		renderer->currentPass = 0;
 	}
 	MOJOSHADER_deleteEffect(effectData);
-	SDL_free(effect);
+	SDL_free(vulkanEffect);
+}
+
+void VULKAN_AddDisposeEffect(
+	FNA3D_Renderer *driverData,
+	FNA3D_Effect *effect
+) {
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanEffect *vulkanEffect = (VulkanEffect*) effect;
+
+	if (renderer->effectsToDestroyCount + 1 >= renderer->effectsToDestroyCapacity)
+	{
+		renderer->effectsToDestroyCapacity *= 2;
+
+		renderer->effectsToDestroy = SDL_realloc(
+			renderer->effectsToDestroy,
+			sizeof(VulkanEffect*) * renderer->effectsToDestroyCapacity
+		);
+	}
+
+	renderer->effectsToDestroy[renderer->effectsToDestroyCount] = vulkanEffect;
+	renderer->effectsToDestroyCount++;
 }
 
 void VULKAN_SetEffectTechnique(
@@ -8285,6 +8311,14 @@ FNA3D_Device* VULKAN_CreateDevice(
 	renderer->buffersToDestroy = SDL_malloc(
 		sizeof(VulkanBuffer*) *
 		renderer->buffersToDestroyCapacity
+	);
+
+	renderer->effectsToDestroyCapacity = 16;
+	renderer->effectsToDestroyCount = 0;
+
+	renderer->effectsToDestroy = SDL_malloc(
+		sizeof(VulkanEffect*) *
+		renderer->effectsToDestroyCapacity
 	);
 
 	return result;
