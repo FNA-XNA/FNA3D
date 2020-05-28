@@ -446,6 +446,18 @@ typedef struct FNAVulkanRenderer
 	const MOJOSHADER_effectTechnique *currentTechnique;
 	uint32_t currentPass;
 
+	/* 
+	 * Storing references to objects that need to be destroyed
+	 * so we don't have to stall or invalidate the command buffer
+	 */
+	VulkanRenderbuffer **renderbuffersToDestroy;
+	uint32_t renderbuffersToDestroyCount;
+	uint32_t renderbuffersToDestroyCapacity;
+	
+	VulkanBuffer **buffersToDestroy;
+	uint32_t buffersToDestroyCount;
+	uint32_t buffersToDestroyCapacity;
+
 	uint8_t frameInProgress;
 	uint8_t renderPassInProgress;
 	uint8_t shouldClearColor;
@@ -752,8 +764,13 @@ static VulkanTexture* CreateTexture(
 );
 
 static void DestroyBuffer(
-	FNA3D_Renderer *driverData,
-	FNA3D_Buffer *buffer
+	FNAVulkanRenderer *driverData,
+	VulkanBuffer *buffer
+);
+
+static void DestroyRenderbuffer(
+	FNAVulkanRenderer *renderer,
+	VulkanRenderbuffer *framebuffer
 );
 
 static void EndPass(
@@ -2160,7 +2177,7 @@ static VulkanBuffer* CreateBuffer(
 	VulkanBuffer *result, *curr;
 
 	result = SDL_malloc(sizeof(VulkanBuffer));
-	SDL_memset(result, '\0', sizeof(VulkanBuffer));
+	SDL_memset(result, 0, sizeof(VulkanBuffer));
 
 	result->usage = usage;
 	result->size = size;
@@ -3849,6 +3866,18 @@ void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 		);
 	}
 
+	for (i = 0; i < renderer->renderbuffersToDestroyCount; i++)
+	{
+		DestroyRenderbuffer(renderer, renderer->renderbuffersToDestroy[i]);
+	}
+	renderer->renderbuffersToDestroyCount = 0;
+
+	for (i = 0; i < renderer->buffersToDestroyCount; i++)
+	{
+		DestroyBuffer(renderer, renderer->buffersToDestroy[i]);
+	}
+	renderer->buffersToDestroyCount = 0;
+
 	if (renderer->activeDescriptorSetCount != 0)
 	{
 		for (i = 0; i < renderer->samplerDescriptorPoolCapacity; i++)
@@ -4789,28 +4818,10 @@ static void UpdateRenderPass(
 }
 
 static void DestroyBuffer(
-	FNA3D_Renderer *driverData,
-	FNA3D_Buffer *buffer
+	FNAVulkanRenderer *renderer,
+	VulkanBuffer *buffer
 ) {
-	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
-	VulkanBuffer *vulkanBuffer, *curr, *prev;
-	VkResult waitResult;
-
-	vulkanBuffer = (VulkanBuffer*) buffer;
-
-	LinkedList_Remove(
-		renderer->buffers,
-		vulkanBuffer,
-		curr,
-		prev
-	);
-
-	waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
-
-	if (waitResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkDeviceWaitIdle", waitResult);
-	}
+	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
 
 	renderer->vkDestroyBuffer(
 		renderer->logicalDevice,
@@ -5549,6 +5560,50 @@ FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 	return (FNA3D_Renderbuffer*) renderbuffer;
 }
 
+static void DestroyRenderbuffer(
+	FNAVulkanRenderer *renderer,
+	VulkanRenderbuffer *renderbuffer
+) {
+	uint8_t isDepthStencil = (renderbuffer->colorBuffer == NULL);
+
+	if (isDepthStencil)
+	{
+		renderer->vkDestroyImageView(
+			renderer->logicalDevice,
+			renderbuffer->depthBuffer->handle.view,
+			NULL
+		);
+
+		renderer->vkDestroyImage(
+			renderer->logicalDevice,
+			renderbuffer->depthBuffer->handle.image,
+			NULL
+		);
+
+		renderer->vkFreeMemory(
+			renderer->logicalDevice,
+			renderbuffer->depthBuffer->handle.memory,
+			NULL
+		);
+
+		SDL_free(renderbuffer->depthBuffer);
+	}
+	else
+	{
+		renderer->vkDestroyImageView(
+			renderer->logicalDevice,
+			renderbuffer->colorBuffer->handle,
+			NULL
+		);
+
+		/* The image is owned by the texture it's from, so we don't free it here. */
+
+		SDL_free(renderbuffer->colorBuffer);
+	}
+
+	SDL_free(renderbuffer);
+}
+
 void VULKAN_AddDisposeRenderbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Renderbuffer *renderbuffer
@@ -5558,13 +5613,6 @@ void VULKAN_AddDisposeRenderbuffer(
 	uint8_t isDepthStencil = (vlkRenderBuffer->colorBuffer == NULL);
 	uint32_t i;
 
-	VkResult waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
-
-	if (waitResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkDeviceWaitIdle", waitResult);
-	}
-
 	if (isDepthStencil)
 	{
 		if (renderer->depthStencilAttachment == vlkRenderBuffer->depthBuffer)
@@ -5572,26 +5620,8 @@ void VULKAN_AddDisposeRenderbuffer(
 			renderer->depthStencilAttachment = NULL;
 			renderer->depthStencilAttachmentActive = 0;
 		}
-		renderer->vkDestroyImageView(
-			renderer->logicalDevice,
-			vlkRenderBuffer->depthBuffer->handle.view,
-			NULL
-		);
-
-		renderer->vkDestroyImage(
-			renderer->logicalDevice,
-			vlkRenderBuffer->depthBuffer->handle.image,
-			NULL
-		);
-
-		renderer->vkFreeMemory(
-			renderer->logicalDevice,
-			vlkRenderBuffer->depthBuffer->handle.memory,
-			NULL
-		);
-
-		SDL_free(vlkRenderBuffer->depthBuffer);
-	} else
+	} 
+	else
 	{
 		// Iterate through color attachments
 		for (i = 0; i < MAX_RENDERTARGET_BINDINGS; ++i)
@@ -5602,19 +5632,20 @@ void VULKAN_AddDisposeRenderbuffer(
 			}
 
 		}
-
-		renderer->vkDestroyImageView(
-			renderer->logicalDevice,
-			vlkRenderBuffer->colorBuffer->handle,
-			NULL
-		);
-
-		/* The image is owned by the texture it's from, so we don't free it here. */
-
-		SDL_free(vlkRenderBuffer->colorBuffer);
 	}
 
-	SDL_free(vlkRenderBuffer);
+	if (renderer->renderbuffersToDestroyCount + 1 >= renderer->renderbuffersToDestroyCapacity)
+	{
+		renderer->renderbuffersToDestroyCapacity *= 2;
+
+		renderer->renderbuffersToDestroy = SDL_realloc(
+			renderer->renderbuffersToDestroy,
+			sizeof(VulkanRenderbuffer*) * renderer->renderbuffersToDestroyCapacity
+		);
+	}
+
+	renderer->renderbuffersToDestroy[renderer->renderbuffersToDestroyCount] = vlkRenderBuffer;
+	renderer->renderbuffersToDestroyCount++;
 }
 
 /* Vertex Buffers */
@@ -5636,11 +5667,41 @@ FNA3D_Buffer* VULKAN_GenVertexBuffer(
 	);
 }
 
+static void RemoveBuffer(
+	FNA3D_Renderer *driverData,
+	FNA3D_Buffer *buffer
+) {
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanBuffer *vulkanBuffer, *curr, *prev;
+
+	vulkanBuffer = (VulkanBuffer*) buffer;
+
+	LinkedList_Remove(
+		renderer->buffers,
+		vulkanBuffer,
+		curr,
+		prev
+	);
+
+	if (renderer->buffersToDestroyCount + 1 >= renderer->buffersToDestroyCapacity)
+	{
+		renderer->buffersToDestroyCapacity *= 2;
+
+		renderer->buffersToDestroy = SDL_realloc(
+			renderer->buffersToDestroy,
+			sizeof(VulkanBuffer*) * renderer->buffersToDestroyCapacity
+		);
+	}
+
+	renderer->buffersToDestroy[renderer->buffersToDestroyCount] = vulkanBuffer;
+	renderer->buffersToDestroyCount++;
+}
+
 void VULKAN_AddDisposeVertexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
-	DestroyBuffer(driverData, buffer);
+	RemoveBuffer(driverData, buffer);
 }
 
 void VULKAN_SetVertexBufferData(
@@ -5745,11 +5806,11 @@ FNA3D_Buffer* VULKAN_GenIndexBuffer(
 	);
 }
 
-FNA3DAPI void VULKAN_AddDisposeIndexBuffer(
+void VULKAN_AddDisposeIndexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
-	/* TODO */
+	RemoveBuffer(driverData, buffer);
 }
 
 void VULKAN_SetIndexBufferData(
@@ -8209,6 +8270,22 @@ FNA3D_Device* VULKAN_CreateDevice(
 		FNA3D_LogError("Failed to create barrier storage");
 		return NULL;
 	}
+
+	renderer->renderbuffersToDestroyCapacity = 16;
+	renderer->renderbuffersToDestroyCount = 0;
+
+	renderer->renderbuffersToDestroy = SDL_malloc(
+		sizeof(VulkanRenderbuffer*) *
+		renderer->renderbuffersToDestroyCapacity
+	);
+
+	renderer->buffersToDestroyCapacity = 16;
+	renderer->buffersToDestroyCount = 0;
+
+	renderer->buffersToDestroy = SDL_malloc(
+		sizeof(VulkanBuffer*) *
+		renderer->buffersToDestroyCapacity
+	);
 
 	return result;
 }
