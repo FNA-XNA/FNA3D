@@ -1743,11 +1743,10 @@ static void BindResources(FNAVulkanRenderer *renderer)
 		&fSize
 	);
 
-	if (renderer->currentPipelineLayoutHash.vertUniformBufferCount)
+	/* TODO: we treat buffer pointer updates and offset updates differently for performance */
+	if (renderer->currentPipelineLayoutHash.vertUniformBufferCount > 0)
 	{
-		/* TODO: need to treat buffer pointer and offset changes differently */
-		if (	vUniform != renderer->ldVertUniformBuffers[renderer->currentSwapChainIndex] ||
-				vOff != renderer->ldVertUniformOffsets[renderer->currentSwapChainIndex]		)
+		if (vUniform != renderer->ldVertUniformBuffers[renderer->currentSwapChainIndex])
 		{
 			renderer->vertUniformBufferInfo[renderer->currentSwapChainIndex].buffer = *vUniform;
 			renderer->vertUniformBufferInfo[renderer->currentSwapChainIndex].offset = 0; /* because of dynamic offset */
@@ -1757,12 +1756,15 @@ static void BindResources(FNAVulkanRenderer *renderer)
 			renderer->ldVertUniformBuffers[renderer->currentSwapChainIndex] = vUniform;
 			renderer->ldVertUniformOffsets[renderer->currentSwapChainIndex] = vOff;
 		}
+		else if (vOff != renderer->ldVertUniformOffsets[renderer->currentSwapChainIndex])
+		{
+			renderer->ldVertUniformOffsets[renderer->currentSwapChainIndex] = vOff;
+		}
 	}
 
-	if (renderer->currentPipelineLayoutHash.fragUniformBufferCount)
+	if (renderer->currentPipelineLayoutHash.fragUniformBufferCount > 0)
 	{
-		if (	fUniform != renderer->ldFragUniformBuffers[renderer->currentSwapChainIndex] ||
-				fOff != renderer->ldFragUniformOffsets[renderer->currentSwapChainIndex]		)
+		if (fUniform != renderer->ldFragUniformBuffers[renderer->currentSwapChainIndex])
 		{
 			renderer->fragUniformBufferInfo[renderer->currentSwapChainIndex].buffer = *fUniform;
 			renderer->fragUniformBufferInfo[renderer->currentSwapChainIndex].offset = 0; /* because of dynamic offset */
@@ -1770,6 +1772,10 @@ static void BindResources(FNAVulkanRenderer *renderer)
 
 			fragUniformBufferDescriptorSetNeedsUpdate = 1;
 			renderer->ldFragUniformBuffers[renderer->currentSwapChainIndex] = fUniform;
+			renderer->ldFragUniformOffsets[renderer->currentSwapChainIndex] = fOff;
+		}
+		else if (fOff != renderer->ldFragUniformOffsets[renderer->currentSwapChainIndex])
+		{
 			renderer->ldFragUniformOffsets[renderer->currentSwapChainIndex] = fOff;
 		}
 	}
@@ -1937,7 +1943,6 @@ static void BindResources(FNAVulkanRenderer *renderer)
 	descriptorSetsToBind[2] = renderer->currentVertUniformBufferDescriptorSet;
 	descriptorSetsToBind[3] = renderer->currentFragUniformBufferDescriptorSet;
 
-	/* TODO: update offsets for UBOs */	
 	renderer->vkCmdBindDescriptorSets(
 		renderer->commandBuffers[renderer->commandBufferCount - 1],
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
