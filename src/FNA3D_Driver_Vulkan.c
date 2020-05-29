@@ -6419,14 +6419,12 @@ uint8_t VULKAN_SupportsS3TC(FNA3D_Renderer *driverData)
 
 uint8_t VULKAN_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
 {
-	/* TODO */
-	return 0;
+	return 1;
 }
 
 uint8_t VULKAN_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 {
-	/* TODO */
-	return 0;
+	return 1;
 }
 
 void VULKAN_GetMaxTextureSlots(
