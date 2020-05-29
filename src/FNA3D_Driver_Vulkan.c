@@ -273,6 +273,13 @@ struct VulkanBuffer
 	VulkanBuffer *next; /* linked list */
 };
 
+/* used to delay destruction until command buffer completes */
+typedef struct BufferMemoryWrapper
+{
+	VkBuffer buffer;
+	VkDeviceMemory deviceMemory;
+} BufferMemoryWrapper;
+
 typedef struct FNAVulkanRenderer
 {
 	FNA3D_Device *parentDevice;
@@ -287,7 +294,7 @@ typedef struct FNAVulkanRenderer
 
 	VkSurfaceKHR surface;
 	VkSwapchainKHR swapChain;
-	FNAVulkanImageData *swapChainImages;
+	FNAVulkanImageData **swapChainImages; /* NOTE: these do not have memory; special case */
 	uint32_t swapChainImageCount;
 	VkExtent2D swapChainExtent;
 	uint32_t currentSwapChainIndex;
@@ -364,7 +371,7 @@ typedef struct FNAVulkanRenderer
 	VkDeviceSize *ldFragUniformOffsets;
 
 	/* needs to be dynamic because of swap chain count */
-	VkBuffer **ldVertexBuffers;
+	VkBuffer *ldVertexBuffers;
 	VkDeviceSize *ldVertexBufferOffsets;
 	uint32_t ldVertexBufferCount;
 
@@ -427,9 +434,6 @@ typedef struct FNAVulkanRenderer
 	VkPipelineStageFlags currentSrcStageMask;
 	VkPipelineStageFlags currentDstStageMask;
 
-	FNAVulkanFramebuffer *framebuffers;
-	uint32_t framebufferCount;
-
 	PipelineLayoutHashMap *pipelineLayoutHashMap;
 	PipelineHashMap *pipelineHashMap;
 	RenderPassHashMap *renderPassHashMap;
@@ -445,6 +449,30 @@ typedef struct FNAVulkanRenderer
 	MOJOSHADER_effect *currentEffect;
 	const MOJOSHADER_effectTechnique *currentTechnique;
 	uint32_t currentPass;
+
+	/* 
+	 * Storing references to objects that need to be destroyed
+	 * so we don't have to stall or invalidate the command buffer
+	 */
+	VulkanRenderbuffer **renderbuffersToDestroy;
+	uint32_t renderbuffersToDestroyCount;
+	uint32_t renderbuffersToDestroyCapacity;
+	
+	VulkanBuffer **buffersToDestroy;
+	uint32_t buffersToDestroyCount;
+	uint32_t buffersToDestroyCapacity;
+
+	BufferMemoryWrapper **bufferMemoryWrappersToDestroy;
+	uint32_t bufferMemoryWrappersToDestroyCount;
+	uint32_t bufferMemoryWrappersToDestroyCapacity;
+
+	VulkanEffect **effectsToDestroy;
+	uint32_t effectsToDestroyCount;
+	uint32_t effectsToDestroyCapacity;
+
+	FNAVulkanImageData **imageDatasToDestroy;
+	uint32_t imageDatasToDestroyCount;
+	uint32_t imageDatasToDestroyCapacity;
 
 	uint8_t frameInProgress;
 	uint8_t renderPassInProgress;
@@ -751,9 +779,37 @@ static VulkanTexture* CreateTexture(
 	VkImageType imageType
 );
 
+static void PerformDeferredDestroys(
+	FNAVulkanRenderer *renderer
+);
+
 static void DestroyBuffer(
-	FNA3D_Renderer *driverData,
-	FNA3D_Buffer *buffer
+	FNAVulkanRenderer *renderer,
+	VulkanBuffer *buffer
+);
+
+static void DestroyBufferAndMemory(
+	FNAVulkanRenderer *renderer,
+	BufferMemoryWrapper *bufferMemoryWrapper
+);
+
+static void DestroyEffect(
+	FNAVulkanRenderer *renderer,
+	VulkanEffect *effect
+);
+
+static void DestroyFauxBackbuffer(
+	FNAVulkanRenderer *renderer
+);
+
+static void DestroyRenderbuffer(
+	FNAVulkanRenderer *renderer,
+	VulkanRenderbuffer *framebuffer
+);
+
+static void DestroyImageData(
+	FNAVulkanRenderer *renderer,
+	FNAVulkanImageData *imageData
 );
 
 static void EndPass(
@@ -868,6 +924,27 @@ static void Stall(FNAVulkanRenderer *renderer);
 
 static void SubmitPipelineBarrier(
 	FNAVulkanRenderer *renderer
+);
+
+static void RemoveBuffer(
+	FNA3D_Renderer *driverData,
+	FNA3D_Buffer *buffer
+);
+
+static void QueueBufferAndMemoryDestroy(
+	FNAVulkanRenderer *renderer,
+	VkBuffer vkBuffer,
+	VkDeviceMemory vkDeviceMemory
+);
+
+static void QueueBufferDestroy(
+	FNAVulkanRenderer *renderer,
+	VulkanBuffer *vulkanBuffer
+);
+
+static void QueueImageDestroy(
+	FNAVulkanRenderer *renderer,
+	FNAVulkanImageData *imageData
 );
 
 static uint8_t CreateFauxBackbuffer(
@@ -1685,33 +1762,39 @@ static void BindResources(FNAVulkanRenderer *renderer)
 		&fSize
 	);
 
-	if (renderer->currentPipelineLayoutHash.vertUniformBufferCount)
+	/* TODO: we treat buffer pointer updates and offset updates differently for performance */
+	if (renderer->currentPipelineLayoutHash.vertUniformBufferCount > 0)
 	{
-		/* TODO: need to treat buffer pointer and offset changes differently */
-		if (	vUniform != renderer->ldVertUniformBuffers[renderer->currentSwapChainIndex] ||
-				vOff != renderer->ldVertUniformOffsets[renderer->currentSwapChainIndex]		)
+		if (vUniform != renderer->ldVertUniformBuffers[renderer->currentSwapChainIndex])
 		{
 			renderer->vertUniformBufferInfo[renderer->currentSwapChainIndex].buffer = *vUniform;
-			renderer->vertUniformBufferInfo[renderer->currentSwapChainIndex].offset = vOff;
+			renderer->vertUniformBufferInfo[renderer->currentSwapChainIndex].offset = 0; /* because of dynamic offset */
 			renderer->vertUniformBufferInfo[renderer->currentSwapChainIndex].range = VK_WHOLE_SIZE;
 
 			vertUniformBufferDescriptorSetNeedsUpdate = 1;
 			renderer->ldVertUniformBuffers[renderer->currentSwapChainIndex] = vUniform;
 			renderer->ldVertUniformOffsets[renderer->currentSwapChainIndex] = vOff;
 		}
+		else if (vOff != renderer->ldVertUniformOffsets[renderer->currentSwapChainIndex])
+		{
+			renderer->ldVertUniformOffsets[renderer->currentSwapChainIndex] = vOff;
+		}
 	}
 
-	if (renderer->currentPipelineLayoutHash.fragUniformBufferCount)
+	if (renderer->currentPipelineLayoutHash.fragUniformBufferCount > 0)
 	{
-		if (	fUniform != renderer->ldFragUniformBuffers[renderer->currentSwapChainIndex] ||
-				fOff != renderer->ldFragUniformOffsets[renderer->currentSwapChainIndex]		)
+		if (fUniform != renderer->ldFragUniformBuffers[renderer->currentSwapChainIndex])
 		{
 			renderer->fragUniformBufferInfo[renderer->currentSwapChainIndex].buffer = *fUniform;
-			renderer->fragUniformBufferInfo[renderer->currentSwapChainIndex].offset = fOff;
+			renderer->fragUniformBufferInfo[renderer->currentSwapChainIndex].offset = 0; /* because of dynamic offset */
 			renderer->fragUniformBufferInfo[renderer->currentSwapChainIndex].range = VK_WHOLE_SIZE;
 
 			fragUniformBufferDescriptorSetNeedsUpdate = 1;
 			renderer->ldFragUniformBuffers[renderer->currentSwapChainIndex] = fUniform;
+			renderer->ldFragUniformOffsets[renderer->currentSwapChainIndex] = fOff;
+		}
+		else if (fOff != renderer->ldFragUniformOffsets[renderer->currentSwapChainIndex])
+		{
 			renderer->ldFragUniformOffsets[renderer->currentSwapChainIndex] = fOff;
 		}
 	}
@@ -1879,7 +1962,6 @@ static void BindResources(FNAVulkanRenderer *renderer)
 	descriptorSetsToBind[2] = renderer->currentVertUniformBufferDescriptorSet;
 	descriptorSetsToBind[3] = renderer->currentFragUniformBufferDescriptorSet;
 
-	/* TODO: update offsets for UBOs */	
 	renderer->vkCmdBindDescriptorSets(
 		renderer->commandBuffers[renderer->commandBufferCount - 1],
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -1899,7 +1981,7 @@ static void BindUserVertexBuffer(
 	int32_t vertexOffset
 ) {
 	VkDeviceSize len, offset;
-	VkBuffer *handle;
+	VkBuffer handle;
 
 	len = vertexCount * renderer->userVertexStride;
 	if (renderer->userVertexBuffer == NULL)
@@ -1921,7 +2003,7 @@ static void BindUserVertexBuffer(
 	);
 
 	offset = renderer->userVertexBuffer->internalOffset;
-	handle = &renderer->userVertexBuffer->handle;
+	handle = renderer->userVertexBuffer->handle;
 
 	if (	renderer->ldVertexBuffers[0] != handle ||
 			renderer->ldVertexBufferOffsets[0] != offset	)
@@ -1930,7 +2012,7 @@ static void BindUserVertexBuffer(
 			renderer->commandBuffers[renderer->commandBufferCount - 1],
 			0,
 			1,
-			handle,
+			&handle,
 			&offset
 		);
 		renderer->ldVertexBuffers[0] = handle;
@@ -2136,17 +2218,7 @@ static void CreateBackingBuffer(
 			buffer->deviceMemory
 		);
 
-		renderer->vkFreeMemory(
-			renderer->logicalDevice,
-			oldBufferMemory,
-			NULL
-		);
-
-		renderer->vkDestroyBuffer(
-			renderer->logicalDevice,
-			oldBuffer,
-			NULL
-		);
+		QueueBufferAndMemoryDestroy(renderer, oldBuffer, oldBufferMemory);
 	}
 }
 
@@ -2160,7 +2232,7 @@ static VulkanBuffer* CreateBuffer(
 	VulkanBuffer *result, *curr;
 
 	result = SDL_malloc(sizeof(VulkanBuffer));
-	SDL_memset(result, '\0', sizeof(VulkanBuffer));
+	SDL_memset(result, 0, sizeof(VulkanBuffer));
 
 	result->usage = usage;
 	result->size = size;
@@ -2252,7 +2324,7 @@ static void SetBufferData(
 		renderer->vkMapMemory(
 			renderer->logicalDevice,
 			vulkanBuffer->deviceMemory,
-			vulkanBuffer->internalOffset,
+			0,
 			vulkanBuffer->size,
 			0,
 			&contents
@@ -2273,7 +2345,7 @@ static void SetBufferData(
 	renderer->vkMapMemory(
 		renderer->logicalDevice,
 		vulkanBuffer->deviceMemory,
-		vulkanBuffer->internalOffset + offsetInBytes,
+		0,
 		dataLength,
 		0,
 		&contents
@@ -2320,7 +2392,7 @@ static void SetUserBufferData(
 	renderer->vkMapMemory(
 		renderer->logicalDevice,
 		buffer->deviceMemory,
-		buffer->internalOffset,
+		0,
 		buffer->internalBufferSize,
 		0,
 		&contents
@@ -2356,6 +2428,7 @@ void VULKAN_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 void VULKAN_DestroyDevice(FNA3D_Device *device)
 {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) device->driverData;
+	VulkanBuffer *currentBuffer, *nextBuffer;
 	uint32_t i;
 
 	VkResult waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
@@ -2364,6 +2437,28 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 	{
 		LogVulkanResult("vkDeviceWaitIdle", waitResult);
 	}
+
+	if (renderer->userVertexBuffer != NULL)
+	{
+		DestroyBuffer(renderer, renderer->userVertexBuffer);
+	}
+
+	if (renderer->userIndexBuffer != NULL)
+	{
+		DestroyBuffer(renderer, renderer->userIndexBuffer);
+	}
+
+	currentBuffer = renderer->buffers;
+	while (currentBuffer != NULL)
+	{
+		nextBuffer = currentBuffer->next;
+		DestroyBuffer(renderer, currentBuffer);
+		currentBuffer = nextBuffer;
+	}
+
+	PerformDeferredDestroys(renderer);
+
+	DestroyFauxBackbuffer(renderer);
 
 	renderer->vkDestroySemaphore(
 		renderer->logicalDevice,
@@ -2488,7 +2583,31 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 		);
 	}
 
-	renderer->vkDestroyDevice(renderer->logicalDevice, NULL);
+	for (i = 0; i < hmlenu(renderer->samplerStateHashMap); i++)
+	{
+		renderer->vkDestroySampler(
+			renderer->logicalDevice,
+			renderer->samplerStateHashMap[i].value,
+			NULL
+		);
+	}
+
+	for (i = 0; i < renderer->swapChainImageCount; i++)
+	{
+		renderer->vkDestroyImageView(
+			renderer->logicalDevice,
+			renderer->swapChainImages[i]->view,
+			NULL
+		);
+
+		SDL_free(renderer->swapChainImages[i]);
+	}
+
+	renderer->vkDestroySwapchainKHR(
+		renderer->logicalDevice,
+		renderer->swapChain,
+		NULL
+	);
 
 	renderer->vkDestroySurfaceKHR(
 		renderer->instance,
@@ -2496,6 +2615,7 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 		NULL
 	);
 
+	renderer->vkDestroyDevice(renderer->logicalDevice, NULL);
 	renderer->vkDestroyInstance(renderer->instance, NULL);
 
 	hmfree(renderer->pipelineLayoutHashMap);
@@ -2514,8 +2634,14 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 	SDL_free(renderer->samplerNeedsUpdate);
 	SDL_free(renderer->activeDescriptorSets);
 	SDL_free(renderer->imageMemoryBarriers);
+	SDL_free(renderer->bufferMemoryBarriers);
 	SDL_free(renderer->commandBuffers);
 	SDL_free(renderer->swapChainImages);
+	SDL_free(renderer->renderbuffersToDestroy);
+	SDL_free(renderer->buffersToDestroy);
+	SDL_free(renderer->bufferMemoryWrappersToDestroy);
+	SDL_free(renderer->effectsToDestroy);
+	SDL_free(renderer->imageDatasToDestroy);
 	SDL_free(renderer);
 	SDL_free(device);
 }
@@ -2969,10 +3095,6 @@ static uint8_t BlitFramebuffer(
 			memoryBarrierCreateInfo
 		);
 
-		SubmitPipelineBarrier(
-			renderer
-		);
-
 		srcImage->resourceAccessType = RESOURCE_ACCESS_TRANSFER_READ;
 	}
 
@@ -2999,13 +3121,10 @@ static uint8_t BlitFramebuffer(
 			memoryBarrierCreateInfo
 		);
 
-		/* FIXME: this can be batched with the above call */
-		SubmitPipelineBarrier(
-			renderer
-		);
-
 		dstImage->resourceAccessType = RESOURCE_ACCESS_TRANSFER_WRITE;
 	}
+
+	SubmitPipelineBarrier(renderer);
 
 	/* TODO: use vkCmdResolveImage for multisampled images */
 	/* TODO: blit depth/stencil buffer as well */
@@ -3043,10 +3162,6 @@ static uint8_t BlitFramebuffer(
 			memoryBarrierCreateInfo
 		);
 
-		SubmitPipelineBarrier(
-			renderer
-		);
-
 		dstImage->resourceAccessType = RESOURCE_ACCESS_PRESENT;
 	}
 
@@ -3073,12 +3188,10 @@ static uint8_t BlitFramebuffer(
 			memoryBarrierCreateInfo
 		);
 
-		SubmitPipelineBarrier(
-			renderer
-		);
-
 		srcImage->resourceAccessType = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
 	}
+
+	SubmitPipelineBarrier(renderer);
 
 	return 1;
 }
@@ -3849,6 +3962,8 @@ void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 		);
 	}
 
+	PerformDeferredDestroys(renderer);
+
 	if (renderer->activeDescriptorSetCount != 0)
 	{
 		for (i = 0; i < renderer->samplerDescriptorPoolCapacity; i++)
@@ -3966,7 +4081,7 @@ void VULKAN_SwapBuffers(
 		renderer,
 		&renderer->fauxBackbufferColorImageData,
 		srcRect,
-		&renderer->swapChainImages[renderer->currentSwapChainIndex],
+		renderer->swapChainImages[renderer->currentSwapChainIndex],
 		dstRect
 	);
 
@@ -4183,12 +4298,7 @@ void VULKAN_DrawInstancedPrimitives(
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	VulkanBuffer *indexBuffer = (VulkanBuffer*) indices;
-	int32_t totalIndexOffset, offset;
-	VulkanBuffer *vertexBuffer;
-	VkBuffer updatedVertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
-	VkDeviceSize updatedOffsets[MAX_BOUND_VERTEX_BUFFERS];
-	uint32_t updatedVertexBufferCount = 0;
-	uint32_t i;
+	int32_t totalIndexOffset;
 
 	indexBuffer->boundThisFrame = 1;
 	totalIndexOffset = (
@@ -4207,38 +4317,6 @@ void VULKAN_DrawInstancedPrimitives(
 		indexBuffer->handle,
 		totalIndexOffset,
 		XNAToVK_IndexType[indexElementSize]
-	);
-
-	for (i = 0; i < renderer->numVertexBindings; i++)
-	{
-		vertexBuffer = (VulkanBuffer*) renderer->vertexBindings[i].vertexBuffer;
-		if (vertexBuffer == NULL)
-		{
-			continue;
-		}
-
-		offset = vertexBuffer->internalOffset + (
-			(renderer->vertexBindings[i].vertexOffset + baseVertex) *
-			renderer->vertexBindings[i].vertexDeclaration.vertexStride
-		);
-
-		vertexBuffer->boundThisFrame = 1;
-		if (	renderer->ldVertexBuffers[i] != &vertexBuffer->handle ||
-				renderer->ldVertexBufferOffsets[i] != offset	)
-		{
-			updatedVertexBuffers[updatedVertexBufferCount] = vertexBuffer->handle;
-			updatedOffsets[updatedVertexBufferCount] = offset;
-		}
-
-		updatedVertexBufferCount++;
-	}
-
-	renderer->vkCmdBindVertexBuffers(
-		renderer->commandBuffers[renderer->commandBufferCount - 1],
-		0,
-		updatedVertexBufferCount,
-		updatedVertexBuffers,
-		updatedOffsets
 	);
 
 	renderer->vkCmdDrawIndexed(
@@ -4724,6 +4802,9 @@ void VULKAN_ApplyVertexBufferBindings(
 	int32_t baseVertex
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanBuffer* vertexBuffer;
+	VkDeviceSize offset;
+	uint32_t i;
 
 	CheckVertexBufferBindingsAndBindPipeline(
 		renderer,
@@ -4732,6 +4813,36 @@ void VULKAN_ApplyVertexBufferBindings(
 	);
 
 	UpdateRenderPass(driverData);
+
+	for (i = 0; i < renderer->numVertexBindings; i++)
+	{
+		vertexBuffer = (VulkanBuffer*) renderer->vertexBindings[i].vertexBuffer;
+		if (vertexBuffer == NULL)
+		{
+			continue;
+		}
+
+		offset = vertexBuffer->internalOffset + (
+			(renderer->vertexBindings[i].vertexOffset + baseVertex) *
+			renderer->vertexBindings[i].vertexDeclaration.vertexStride
+		);
+
+		vertexBuffer->boundThisFrame = 1;
+		if (	renderer->ldVertexBuffers[i] != vertexBuffer->handle ||
+				renderer->ldVertexBufferOffsets[i] != offset	)
+		{
+			renderer->ldVertexBuffers[i] = vertexBuffer->handle;
+			renderer->ldVertexBufferOffsets[i] = offset;
+		}
+	}
+
+	renderer->vkCmdBindVertexBuffers(
+		renderer->commandBuffers[renderer->commandBufferCount - 1],
+		0,
+		renderer->numVertexBindings,
+		renderer->ldVertexBuffers,
+		renderer->ldVertexBufferOffsets
+	);
 }
 
 void VULKAN_ApplyVertexDeclaration(
@@ -4788,29 +4899,49 @@ static void UpdateRenderPass(
 	renderer->shouldClearStencil = 0;
 }
 
-static void DestroyBuffer(
-	FNA3D_Renderer *driverData,
-	FNA3D_Buffer *buffer
+static void PerformDeferredDestroys(
+	FNAVulkanRenderer *renderer
 ) {
-	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
-	VulkanBuffer *vulkanBuffer, *curr, *prev;
-	VkResult waitResult;
+	uint32_t i;
 
-	vulkanBuffer = (VulkanBuffer*) buffer;
-
-	LinkedList_Remove(
-		renderer->buffers,
-		vulkanBuffer,
-		curr,
-		prev
-	);
-
-	waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
-
-	if (waitResult != VK_SUCCESS)
+	for (i = 0; i < renderer->renderbuffersToDestroyCount; i++)
 	{
-		LogVulkanResult("vkDeviceWaitIdle", waitResult);
+		DestroyRenderbuffer(renderer, renderer->renderbuffersToDestroy[i]);
 	}
+	renderer->renderbuffersToDestroyCount = 0;
+
+	for (i = 0; i < renderer->buffersToDestroyCount; i++)
+	{
+		DestroyBuffer(renderer, renderer->buffersToDestroy[i]);
+	}
+	renderer->buffersToDestroyCount = 0;
+
+	for (i = 0; i < renderer->bufferMemoryWrappersToDestroyCount; i++)
+	{
+		DestroyBufferAndMemory(renderer, renderer->bufferMemoryWrappersToDestroy[i]);
+	}
+	renderer->bufferMemoryWrappersToDestroyCount = 0;
+
+	for (i = 0; i < renderer->effectsToDestroyCount; i++)
+	{
+		DestroyEffect(renderer, renderer->effectsToDestroy[i]);
+	}
+	renderer->effectsToDestroyCount = 0;
+
+	for (i = 0; i < renderer->imageDatasToDestroyCount; i++)
+	{
+		DestroyImageData(renderer, renderer->imageDatasToDestroy[i]);
+	}
+	renderer->imageDatasToDestroyCount = 0;
+
+	MOJOSHADER_vkFreeBuffers();
+}
+
+static void DestroyBuffer(
+	FNAVulkanRenderer *renderer,
+	VulkanBuffer *buffer
+) {
+	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
 
 	renderer->vkDestroyBuffer(
 		renderer->logicalDevice,
@@ -4825,6 +4956,25 @@ static void DestroyBuffer(
 	);
 
 	SDL_free(vulkanBuffer);
+}
+
+static void DestroyBufferAndMemory(
+	FNAVulkanRenderer *renderer,
+	BufferMemoryWrapper *bufferMemoryWrapper
+) {
+	renderer->vkDestroyBuffer(
+		renderer->logicalDevice,
+		bufferMemoryWrapper->buffer,
+		NULL
+	);
+
+	renderer->vkFreeMemory(
+		renderer->logicalDevice,
+		bufferMemoryWrapper->deviceMemory,
+		NULL
+	);
+
+	SDL_free(bufferMemoryWrapper);
 }
 
 static void EndPass(
@@ -5070,8 +5220,6 @@ void VULKAN_ResolveTarget(
 
 static void DestroyFauxBackbuffer(FNAVulkanRenderer *renderer)
 {
-	uint32_t i;
-
 	renderer->vkDestroyFramebuffer(
 		renderer->logicalDevice,
 		renderer->fauxBackbufferFramebuffer,
@@ -5119,15 +5267,6 @@ static void DestroyFauxBackbuffer(FNAVulkanRenderer *renderer)
 		renderer->fauxBackbufferDepthStencil.handle.memory,
 		NULL
 	);
-
-	for (i = 0; i < renderer->swapChainImageCount; i++)
-	{
-		renderer->vkDestroyImageView(
-			renderer->logicalDevice,
-			renderer->swapChainImages[i].view,
-			NULL
-		);
-	}
 }
 
 void VULKAN_ResetBackbuffer(
@@ -5234,7 +5373,30 @@ void VULKAN_AddDisposeTexture(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
+	uint32_t i;
+
+	for (i = 0; i < renderer->colorAttachmentCount; i++)
+	{
+		if (vulkanTexture->imageData->view == renderer->colorAttachments[i]->handle)
+		{
+			renderer->colorAttachments[i] = NULL;
+		}
+	}
+
+	for (i = 0; i < renderer->textureCount; i++)
+	{
+		if (vulkanTexture == renderer->textures[i])
+		{
+			renderer->textures[i] = &NullTexture;
+			renderer->textureNeedsUpdate[i] = 1;
+		}
+	}
+
+	QueueImageDestroy(renderer, vulkanTexture->imageData);
+	vulkanTexture->imageData = NULL;
+	SDL_free(vulkanTexture);
 }
 
 void VULKAN_SetTextureData2D(
@@ -5549,6 +5711,94 @@ FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 	return (FNA3D_Renderbuffer*) renderbuffer;
 }
 
+static void DestroyRenderbuffer(
+	FNAVulkanRenderer *renderer,
+	VulkanRenderbuffer *renderbuffer
+) {
+	uint8_t isDepthStencil = (renderbuffer->colorBuffer == NULL);
+
+	if (isDepthStencil)
+	{
+		renderer->vkDestroyImageView(
+			renderer->logicalDevice,
+			renderbuffer->depthBuffer->handle.view,
+			NULL
+		);
+
+		renderer->vkDestroyImage(
+			renderer->logicalDevice,
+			renderbuffer->depthBuffer->handle.image,
+			NULL
+		);
+
+		renderer->vkFreeMemory(
+			renderer->logicalDevice,
+			renderbuffer->depthBuffer->handle.memory,
+			NULL
+		);
+
+		SDL_free(renderbuffer->depthBuffer);
+	}
+	else
+	{
+		renderer->vkDestroyImageView(
+			renderer->logicalDevice,
+			renderbuffer->colorBuffer->handle,
+			NULL
+		);
+
+		/* The image is owned by the texture it's from, so we don't free it here. */
+
+		SDL_free(renderbuffer->colorBuffer);
+	}
+
+	SDL_free(renderbuffer);
+}
+
+static void QueueImageDestroy(
+	FNAVulkanRenderer *renderer,
+	FNAVulkanImageData *imageData
+) {
+	if (renderer->imageDatasToDestroyCount + 1 >= renderer->imageDatasToDestroyCapacity)
+	{
+		renderer->imageDatasToDestroyCapacity *= 2;
+
+		renderer->imageDatasToDestroy = SDL_realloc(
+			renderer->imageDatasToDestroy,
+			sizeof(FNAVulkanImageData*) * renderer->imageDatasToDestroyCapacity
+		);
+	}
+
+	renderer->imageDatasToDestroy[renderer->imageDatasToDestroyCount] = imageData;
+	renderer->imageDatasToDestroyCount++;
+}
+
+static void DestroyImageData(
+	FNAVulkanRenderer *renderer,
+	FNAVulkanImageData *imageData
+) {
+
+	renderer->vkFreeMemory(
+		renderer->logicalDevice,
+		imageData->memory,
+		NULL
+	);
+
+	renderer->vkDestroyImageView(
+		renderer->logicalDevice,
+		imageData->view,
+		NULL
+	);
+
+	renderer->vkDestroyImage(
+		renderer->logicalDevice,
+		imageData->image,
+		NULL
+	);
+
+	SDL_free(imageData);
+}
+
 void VULKAN_AddDisposeRenderbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Renderbuffer *renderbuffer
@@ -5558,13 +5808,6 @@ void VULKAN_AddDisposeRenderbuffer(
 	uint8_t isDepthStencil = (vlkRenderBuffer->colorBuffer == NULL);
 	uint32_t i;
 
-	VkResult waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
-
-	if (waitResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkDeviceWaitIdle", waitResult);
-	}
-
 	if (isDepthStencil)
 	{
 		if (renderer->depthStencilAttachment == vlkRenderBuffer->depthBuffer)
@@ -5572,26 +5815,8 @@ void VULKAN_AddDisposeRenderbuffer(
 			renderer->depthStencilAttachment = NULL;
 			renderer->depthStencilAttachmentActive = 0;
 		}
-		renderer->vkDestroyImageView(
-			renderer->logicalDevice,
-			vlkRenderBuffer->depthBuffer->handle.view,
-			NULL
-		);
-
-		renderer->vkDestroyImage(
-			renderer->logicalDevice,
-			vlkRenderBuffer->depthBuffer->handle.image,
-			NULL
-		);
-
-		renderer->vkFreeMemory(
-			renderer->logicalDevice,
-			vlkRenderBuffer->depthBuffer->handle.memory,
-			NULL
-		);
-
-		SDL_free(vlkRenderBuffer->depthBuffer);
-	} else
+	} 
+	else
 	{
 		// Iterate through color attachments
 		for (i = 0; i < MAX_RENDERTARGET_BINDINGS; ++i)
@@ -5602,19 +5827,20 @@ void VULKAN_AddDisposeRenderbuffer(
 			}
 
 		}
-
-		renderer->vkDestroyImageView(
-			renderer->logicalDevice,
-			vlkRenderBuffer->colorBuffer->handle,
-			NULL
-		);
-
-		/* The image is owned by the texture it's from, so we don't free it here. */
-
-		SDL_free(vlkRenderBuffer->colorBuffer);
 	}
 
-	SDL_free(vlkRenderBuffer);
+	if (renderer->renderbuffersToDestroyCount + 1 >= renderer->renderbuffersToDestroyCapacity)
+	{
+		renderer->renderbuffersToDestroyCapacity *= 2;
+
+		renderer->renderbuffersToDestroy = SDL_realloc(
+			renderer->renderbuffersToDestroy,
+			sizeof(VulkanRenderbuffer*) * renderer->renderbuffersToDestroyCapacity
+		);
+	}
+
+	renderer->renderbuffersToDestroy[renderer->renderbuffersToDestroyCount] = vlkRenderBuffer;
+	renderer->renderbuffersToDestroyCount++;
 }
 
 /* Vertex Buffers */
@@ -5636,11 +5862,71 @@ FNA3D_Buffer* VULKAN_GenVertexBuffer(
 	);
 }
 
+static void QueueBufferAndMemoryDestroy(
+	FNAVulkanRenderer *renderer,
+	VkBuffer vkBuffer,
+	VkDeviceMemory vkDeviceMemory
+) {
+	BufferMemoryWrapper *bufferMemoryWrapper = SDL_malloc(sizeof(BufferMemoryWrapper));
+	bufferMemoryWrapper->buffer = vkBuffer;
+	bufferMemoryWrapper->deviceMemory = vkDeviceMemory;
+
+	if (renderer->bufferMemoryWrappersToDestroyCount + 1 >= renderer->bufferMemoryWrappersToDestroyCapacity)
+	{
+		renderer->bufferMemoryWrappersToDestroyCapacity *= 2;
+		
+		renderer->bufferMemoryWrappersToDestroy = SDL_realloc(
+			renderer->bufferMemoryWrappersToDestroy,
+			sizeof(BufferMemoryWrapper*) * renderer->bufferMemoryWrappersToDestroyCapacity
+		);
+	}
+
+	renderer->bufferMemoryWrappersToDestroy[renderer->bufferMemoryWrappersToDestroyCount] = bufferMemoryWrapper;
+	renderer->bufferMemoryWrappersToDestroyCount++;
+}
+
+static void QueueBufferDestroy(
+	FNAVulkanRenderer *renderer,
+	VulkanBuffer *vulkanBuffer
+) {
+	if (renderer->buffersToDestroyCount + 1 >= renderer->buffersToDestroyCapacity)
+	{
+		renderer->buffersToDestroyCapacity *= 2;
+
+		renderer->buffersToDestroy = SDL_realloc(
+			renderer->buffersToDestroy,
+			sizeof(VulkanBuffer*) * renderer->buffersToDestroyCapacity
+		);
+	}
+
+	renderer->buffersToDestroy[renderer->buffersToDestroyCount] = vulkanBuffer;
+	renderer->buffersToDestroyCount++;
+}
+
+static void RemoveBuffer(
+	FNA3D_Renderer *driverData,
+	FNA3D_Buffer *buffer
+) {
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanBuffer *vulkanBuffer, *curr, *prev;
+
+	vulkanBuffer = (VulkanBuffer*) buffer;
+
+	LinkedList_Remove(
+		renderer->buffers,
+		vulkanBuffer,
+		curr,
+		prev
+	);
+
+	QueueBufferDestroy(renderer, vulkanBuffer);
+}
+
 void VULKAN_AddDisposeVertexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
-	DestroyBuffer(driverData, buffer);
+	RemoveBuffer(driverData, buffer);
 }
 
 void VULKAN_SetVertexBufferData(
@@ -5695,7 +5981,7 @@ void VULKAN_GetVertexBufferData(
 	renderer->vkMapMemory(
 		renderer->logicalDevice,
 		vulkanBuffer->deviceMemory,
-		vulkanBuffer->internalOffset,
+		0,
 		vulkanBuffer->size,
 		0,
 		&contents
@@ -5745,11 +6031,11 @@ FNA3D_Buffer* VULKAN_GenIndexBuffer(
 	);
 }
 
-FNA3DAPI void VULKAN_AddDisposeIndexBuffer(
+void VULKAN_AddDisposeIndexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
-	/* TODO */
+	RemoveBuffer(driverData, buffer);
 }
 
 void VULKAN_SetIndexBufferData(
@@ -5784,7 +6070,7 @@ void VULKAN_GetIndexBufferData(
 	renderer->vkMapMemory(
 		renderer->logicalDevice,
 		vulkanBuffer->deviceMemory,
-		vulkanBuffer->internalOffset,
+		0,
 		vulkanBuffer->size,
 		0,
 		&contents
@@ -5872,20 +6158,11 @@ void VULKAN_CloneEffect(
 	*effect = (FNA3D_Effect*) result;
 }
 
-void VULKAN_AddDisposeEffect(
-	FNA3D_Renderer *driverData,
-	FNA3D_Effect *effect
+static void DestroyEffect(
+	FNAVulkanRenderer *renderer,
+	VulkanEffect *vulkanEffect
 ) {
-	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
-	VulkanEffect *fnaEffect = (VulkanEffect*) effect;
-	MOJOSHADER_effect *effectData = fnaEffect->effect;
-
-	VkResult waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
-
-	if (waitResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkDeviceWaitIdle", waitResult);
-	}
+	MOJOSHADER_effect *effectData = vulkanEffect->effect;
 
 	if (effectData == renderer->currentEffect) {
 		MOJOSHADER_effectEndPass(renderer->currentEffect);
@@ -5895,7 +6172,28 @@ void VULKAN_AddDisposeEffect(
 		renderer->currentPass = 0;
 	}
 	MOJOSHADER_deleteEffect(effectData);
-	SDL_free(effect);
+	SDL_free(vulkanEffect);
+}
+
+void VULKAN_AddDisposeEffect(
+	FNA3D_Renderer *driverData,
+	FNA3D_Effect *effect
+) {
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanEffect *vulkanEffect = (VulkanEffect*) effect;
+
+	if (renderer->effectsToDestroyCount + 1 >= renderer->effectsToDestroyCapacity)
+	{
+		renderer->effectsToDestroyCapacity *= 2;
+
+		renderer->effectsToDestroy = SDL_realloc(
+			renderer->effectsToDestroy,
+			sizeof(VulkanEffect*) * renderer->effectsToDestroyCapacity
+		);
+	}
+
+	renderer->effectsToDestroy[renderer->effectsToDestroyCount] = vulkanEffect;
+	renderer->effectsToDestroyCount++;
 }
 
 void VULKAN_SetEffectTechnique(
@@ -7208,7 +7506,7 @@ static uint8_t CreateSwapChain(
 
 	renderer->vkGetSwapchainImagesKHR(renderer->logicalDevice, renderer->swapChain, &swapChainImageCount, NULL);
 
-	renderer->swapChainImages = SDL_malloc(sizeof(FNAVulkanImageData) * swapChainImageCount);
+	renderer->swapChainImages = SDL_malloc(sizeof(FNAVulkanImageData*) * swapChainImageCount);
 	if (!renderer->swapChainImages)
 	{
 		SDL_OutOfMemory();
@@ -7246,12 +7544,11 @@ static uint8_t CreateSwapChain(
 			return 0;
 		}
 
-		renderer->swapChainImages[i].image = swapChainImages[i];
-		renderer->swapChainImages[i].view = swapChainImageView;
-		renderer->swapChainImages[i].memory = NULL;
-		renderer->swapChainImages[i].memorySize = 0; /* FIXME: is this correct? */
-		renderer->swapChainImages[i].dimensions = renderer->swapChainExtent;
-		renderer->swapChainImages[i].resourceAccessType = RESOURCE_ACCESS_NONE;
+		renderer->swapChainImages[i] = SDL_malloc(sizeof(FNAVulkanImageData));
+		SDL_zerop(renderer->swapChainImages[i]);
+
+		renderer->swapChainImages[i]->image = swapChainImages[i];
+		renderer->swapChainImages[i]->view = swapChainImageView;
 	}
 
 	SDL_stack_free(swapChainImages);
@@ -7695,7 +7992,7 @@ static uint8_t AllocateBuffersAndOffsets(
 	renderer->ldVertexBufferCount = MAX_BOUND_VERTEX_BUFFERS * renderer->swapChainImageCount;
 
 	renderer->ldVertexBuffers = SDL_malloc(
-		sizeof(VkBuffer*) * 
+		sizeof(VkBuffer) * 
 		renderer->ldVertexBufferCount
 	);
 	
@@ -8209,6 +8506,46 @@ FNA3D_Device* VULKAN_CreateDevice(
 		FNA3D_LogError("Failed to create barrier storage");
 		return NULL;
 	}
+
+	renderer->renderbuffersToDestroyCapacity = 16;
+	renderer->renderbuffersToDestroyCount = 0;
+
+	renderer->renderbuffersToDestroy = SDL_malloc(
+		sizeof(VulkanRenderbuffer*) *
+		renderer->renderbuffersToDestroyCapacity
+	);
+
+	renderer->buffersToDestroyCapacity = 16;
+	renderer->buffersToDestroyCount = 0;
+
+	renderer->buffersToDestroy = SDL_malloc(
+		sizeof(VulkanBuffer*) *
+		renderer->buffersToDestroyCapacity
+	);
+
+	renderer->bufferMemoryWrappersToDestroyCapacity = 16;
+	renderer->bufferMemoryWrappersToDestroyCount = 0;
+
+	renderer->bufferMemoryWrappersToDestroy = SDL_malloc(
+		sizeof(BufferMemoryWrapper*) *
+		renderer->bufferMemoryWrappersToDestroyCapacity
+	);
+
+	renderer->effectsToDestroyCapacity = 16;
+	renderer->effectsToDestroyCount = 0;
+
+	renderer->effectsToDestroy = SDL_malloc(
+		sizeof(VulkanEffect*) *
+		renderer->effectsToDestroyCapacity
+	);
+
+	renderer->imageDatasToDestroyCapacity = 16;
+	renderer->imageDatasToDestroyCount = 0;
+
+	renderer->imageDatasToDestroy = SDL_malloc(
+		sizeof(FNAVulkanImageData*) *
+		renderer->imageDatasToDestroyCapacity
+	);
 
 	return result;
 }
