@@ -434,9 +434,6 @@ typedef struct FNAVulkanRenderer
 	VkPipelineStageFlags currentSrcStageMask;
 	VkPipelineStageFlags currentDstStageMask;
 
-	FNAVulkanFramebuffer *framebuffers;
-	uint32_t framebufferCount;
-
 	PipelineLayoutHashMap *pipelineLayoutHashMap;
 	PipelineHashMap *pipelineHashMap;
 	RenderPassHashMap *renderPassHashMap;
@@ -782,7 +779,7 @@ static VulkanTexture* CreateTexture(
 	VkImageType imageType
 );
 
-static void PerformDestroys(
+static void PerformDeferredDestroys(
 	FNAVulkanRenderer *renderer
 );
 
@@ -2459,7 +2456,9 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 		currentBuffer = nextBuffer;
 	}
 
-	PerformDestroys(renderer);
+	PerformDeferredDestroys(renderer);
+
+	DestroyFauxBackbuffer(renderer);
 
 	renderer->vkDestroySemaphore(
 		renderer->logicalDevice,
@@ -2584,7 +2583,25 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 		);
 	}
 
-	DestroyFauxBackbuffer(renderer);
+	for (i = 0; i < hmlenu(renderer->samplerStateHashMap); i++)
+	{
+		renderer->vkDestroySampler(
+			renderer->logicalDevice,
+			renderer->samplerStateHashMap[i].value,
+			NULL
+		);
+	}
+
+	for (i = 0; i < renderer->swapChainImageCount; i++)
+	{
+		renderer->vkDestroyImageView(
+			renderer->logicalDevice,
+			renderer->swapChainImages[i]->view,
+			NULL
+		);
+
+		SDL_free(renderer->swapChainImages[i]);
+	}
 
 	renderer->vkDestroySwapchainKHR(
 		renderer->logicalDevice,
@@ -2617,8 +2634,14 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 	SDL_free(renderer->samplerNeedsUpdate);
 	SDL_free(renderer->activeDescriptorSets);
 	SDL_free(renderer->imageMemoryBarriers);
+	SDL_free(renderer->bufferMemoryBarriers);
 	SDL_free(renderer->commandBuffers);
 	SDL_free(renderer->swapChainImages);
+	SDL_free(renderer->renderbuffersToDestroy);
+	SDL_free(renderer->buffersToDestroy);
+	SDL_free(renderer->bufferMemoryWrappersToDestroy);
+	SDL_free(renderer->effectsToDestroy);
+	SDL_free(renderer->imageDatasToDestroy);
 	SDL_free(renderer);
 	SDL_free(device);
 }
@@ -3939,7 +3962,7 @@ void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 		);
 	}
 
-	PerformDestroys(renderer);
+	PerformDeferredDestroys(renderer);
 
 	if (renderer->activeDescriptorSetCount != 0)
 	{
@@ -4876,7 +4899,7 @@ static void UpdateRenderPass(
 	renderer->shouldClearStencil = 0;
 }
 
-static void PerformDestroys(
+static void PerformDeferredDestroys(
 	FNAVulkanRenderer *renderer
 ) {
 	uint32_t i;
@@ -8523,7 +8546,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 		sizeof(FNAVulkanImageData*) *
 		renderer->imageDatasToDestroyCapacity
 	);
-	
+
 	return result;
 }
 
