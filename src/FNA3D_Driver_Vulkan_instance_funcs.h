@@ -33,6 +33,7 @@ VULKAN_INSTANCE_FUNCTION(BaseVK, VkResult, vkEnumeratePhysicalDevices, (VkInstan
 VULKAN_INSTANCE_FUNCTION(BaseVK, void, vkGetPhysicalDeviceFeatures, (VkPhysicalDevice physicalDevice, VkPhysicalDeviceFeatures *pFeatures))
 VULKAN_INSTANCE_FUNCTION(BaseVK, void, vkGetPhysicalDeviceMemoryProperties, (VkPhysicalDevice physicalDevice, VkPhysicalDeviceMemoryProperties *pMemoryProperties))
 VULKAN_INSTANCE_FUNCTION(BaseVK, void, vkGetPhysicalDeviceProperties, (VkPhysicalDevice physicalDevice, VkPhysicalDeviceProperties *pProperties))
+VULKAN_INSTANCE_FUNCTION(BaseVK, void, vkGetPhysicalDeviceProperties2, (VkPhysicalDevice physicalDevice, VkPhysicalDeviceProperties2 *pProperties))
 VULKAN_INSTANCE_FUNCTION(BaseVK, void, vkGetPhysicalDeviceQueueFamilyProperties, (VkPhysicalDevice physicalDevice, uint32_t *pQueueFamilyPropertyCount, VkQueueFamilyProperties *pQueueFamilyProperties))
 VULKAN_INSTANCE_FUNCTION(BaseVK, VkResult, vkGetPhysicalDeviceSurfaceCapabilitiesKHR, (VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, VkSurfaceCapabilitiesKHR *pSurfaceCapabilities))
 VULKAN_INSTANCE_FUNCTION(BaseVK, VkResult, vkGetPhysicalDeviceSurfaceFormatsKHR, (VkPhysicalDevice physicalDevice, VkSurfaceKHR surface, uint32_t *pSurfaceFormatCount, VkSurfaceFormatKHR *pSurfaceFormats))

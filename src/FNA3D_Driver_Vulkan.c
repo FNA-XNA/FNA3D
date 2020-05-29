@@ -285,7 +285,8 @@ typedef struct FNAVulkanRenderer
 	FNA3D_Device *parentDevice;
 	VkInstance instance;
 	VkPhysicalDevice physicalDevice;
-	VkPhysicalDeviceProperties physicalDeviceProperties;
+	VkPhysicalDeviceProperties2 physicalDeviceProperties;
+	VkPhysicalDeviceDriverProperties physicalDeviceDriverProperties;
 	VkDevice logicalDevice;
 
 	QueueFamilyIndices queueFamilyIndices;
@@ -7317,9 +7318,27 @@ static uint8_t DeterminePhysicalDevice(
 	renderer->physicalDevice = physicalDevice;
 	renderer->queueFamilyIndices = queueFamilyIndices;
 
-	renderer->vkGetPhysicalDeviceProperties(
+	renderer->physicalDeviceDriverProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+
+	renderer->physicalDeviceProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+	renderer->physicalDeviceProperties.pNext = &renderer->physicalDeviceDriverProperties;
+
+	renderer->vkGetPhysicalDeviceProperties2(
 		renderer->physicalDevice,
 		&renderer->physicalDeviceProperties
+	);
+
+	FNA3D_LogInfo("FNA3D Driver: VULKAN");
+	FNA3D_LogInfo(
+		"Vulkan Driver: %s %s", 
+		renderer->physicalDeviceDriverProperties.driverName,
+		renderer->physicalDeviceDriverProperties.driverInfo
+	);
+	FNA3D_LogInfo(
+		"Conformance Version: %u.%u.%u",
+		renderer->physicalDeviceDriverProperties.conformanceVersion.major,
+		renderer->physicalDeviceDriverProperties.conformanceVersion.minor,
+		renderer->physicalDeviceDriverProperties.conformanceVersion.patch
 	);
 
 	SDL_stack_free(physicalDevices);
@@ -8419,7 +8438,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 	/* define sampler counts */
 
 	renderer->numSamplers = SDL_min(
-		renderer->physicalDeviceProperties.limits.maxSamplerAllocationCount,
+		renderer->physicalDeviceProperties.properties.limits.maxSamplerAllocationCount,
 		MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS
 	);
 
