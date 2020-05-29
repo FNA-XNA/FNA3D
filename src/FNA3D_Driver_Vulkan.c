@@ -1983,6 +1983,7 @@ static void BindUserVertexBuffer(
 ) {
 	VkDeviceSize len, offset;
 	VkBuffer handle;
+	uint32_t swapChainOffset;
 
 	len = vertexCount * renderer->userVertexStride;
 	if (renderer->userVertexBuffer == NULL)
@@ -2006,8 +2007,10 @@ static void BindUserVertexBuffer(
 	offset = renderer->userVertexBuffer->internalOffset;
 	handle = renderer->userVertexBuffer->handle;
 
-	if (	renderer->ldVertexBuffers[0] != handle ||
-			renderer->ldVertexBufferOffsets[0] != offset	)
+	swapChainOffset = MAX_TOTAL_SAMPLERS * renderer->currentSwapChainIndex;
+
+	if (	renderer->ldVertexBuffers[swapChainOffset] != handle ||
+			renderer->ldVertexBufferOffsets[swapChainOffset] != offset	)
 	{
 		renderer->vkCmdBindVertexBuffers(
 			renderer->commandBuffers[renderer->commandBufferCount - 1],
@@ -2016,8 +2019,8 @@ static void BindUserVertexBuffer(
 			&handle,
 			&offset
 		);
-		renderer->ldVertexBuffers[0] = handle;
-		renderer->ldVertexBufferOffsets[0] = offset;
+		renderer->ldVertexBuffers[swapChainOffset] = handle;
+		renderer->ldVertexBufferOffsets[swapChainOffset] = offset;
 	}
 }
 
@@ -4805,7 +4808,10 @@ void VULKAN_ApplyVertexBufferBindings(
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	VulkanBuffer* vertexBuffer;
 	VkDeviceSize offset;
-	uint32_t i;
+	VkBuffer buffers[MAX_BOUND_VERTEX_BUFFERS];
+	VkDeviceSize offsets[MAX_BOUND_VERTEX_BUFFERS];
+	uint32_t i, firstVertexBufferIndex, vertexBufferIndex, bufferCount;
+	uint8_t needsRebind = 0;
 
 	CheckVertexBufferBindingsAndBindPipeline(
 		renderer,
@@ -4815,11 +4821,26 @@ void VULKAN_ApplyVertexBufferBindings(
 
 	UpdateRenderPass(driverData);
 
+	firstVertexBufferIndex = MAX_BOUND_VERTEX_BUFFERS * renderer->currentSwapChainIndex;
+	bufferCount = 0;
+	
 	for (i = 0; i < renderer->numVertexBindings; i++)
 	{
+		vertexBufferIndex = firstVertexBufferIndex + i;
+
 		vertexBuffer = (VulkanBuffer*) renderer->vertexBindings[i].vertexBuffer;
 		if (vertexBuffer == NULL)
 		{
+			buffers[bufferCount] = NULL;
+			offsets[bufferCount] = 0;
+			bufferCount++;
+
+			if (renderer->ldVertexBuffers[vertexBufferIndex] != NULL)
+			{
+				renderer->ldVertexBuffers[vertexBufferIndex] = NULL;
+				needsRebind = 1;
+			}
+
 			continue;
 		}
 
@@ -4829,21 +4850,29 @@ void VULKAN_ApplyVertexBufferBindings(
 		);
 
 		vertexBuffer->boundThisFrame = 1;
-		if (	renderer->ldVertexBuffers[i] != vertexBuffer->handle ||
-				renderer->ldVertexBufferOffsets[i] != offset	)
+		if (	renderer->ldVertexBuffers[vertexBufferIndex] != vertexBuffer->handle ||
+				renderer->ldVertexBufferOffsets[vertexBufferIndex] != offset	)
 		{
-			renderer->ldVertexBuffers[i] = vertexBuffer->handle;
-			renderer->ldVertexBufferOffsets[i] = offset;
+			renderer->ldVertexBuffers[vertexBufferIndex] = vertexBuffer->handle;
+			renderer->ldVertexBufferOffsets[vertexBufferIndex] = offset;
+			needsRebind = 1;
 		}
+
+		buffers[bufferCount] = vertexBuffer->handle;
+		offsets[bufferCount] = offset;
+		bufferCount++;
 	}
 
-	renderer->vkCmdBindVertexBuffers(
-		renderer->commandBuffers[renderer->commandBufferCount - 1],
-		0,
-		renderer->numVertexBindings,
-		renderer->ldVertexBuffers,
-		renderer->ldVertexBufferOffsets
-	);
+	if (needsRebind)
+	{
+		renderer->vkCmdBindVertexBuffers(
+			renderer->commandBuffers[renderer->commandBufferCount - 1],
+			0,
+			bufferCount,
+			buffers,
+			offsets
+		);
+	}
 }
 
 void VULKAN_ApplyVertexDeclaration(
