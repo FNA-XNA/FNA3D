@@ -79,6 +79,7 @@ VULKAN_DEVICE_FUNCTION(BaseVK, void, vkDestroyPipeline, (VkDevice device, VkPipe
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkDestroyPipelineCache, (VkDevice device, VkPipelineCache pipelineCache, const VkAllocationCallbacks *pAllocator))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkDestroyPipelineLayout, (VkDevice device, VkPipelineLayout pipelineLayout, const VkAllocationCallbacks *pAllocator))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkDestroyRenderPass, (VkDevice device, VkRenderPass renderPass, const VkAllocationCallbacks *pAllocator))
+VULKAN_DEVICE_FUNCTION(BaseVK, void, vkDestroySampler, (VkDevice device, VkSampler sampler, const VkAllocationCallbacks *pAllocator))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkDestroySemaphore, (VkDevice device, VkSemaphore semaphore, const VkAllocationCallbacks *pAllocator))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkDestroySwapchainKHR, (VkDevice device, VkSwapchainKHR swapchain, const VkAllocationCallbacks *pAllocator))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkDestroyQueryPool, (VkDevice device, VkQueryPool queryPool, const VkAllocationCallbacks *pAllocator))
