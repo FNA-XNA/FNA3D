@@ -224,11 +224,6 @@ struct FNA3D_Device
 		void* overrideWindowHandle
 	);
 
-	void (*SetPresentationInterval)(
-		FNA3D_Renderer *driverData,
-		FNA3D_PresentInterval presentInterval
-	);
-
 	/* Drawing */
 
 	void (*Clear)(
@@ -683,8 +678,6 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(DestroyDevice, name) \
 	ASSIGN_DRIVER_FUNC(BeginFrame, name) \
 	ASSIGN_DRIVER_FUNC(SwapBuffers, name) \
-	ASSIGN_DRIVER_FUNC(SetPresentationInterval, name) \
-	ASSIGN_DRIVER_FUNC(SetPresentationInterval, name) \
 	ASSIGN_DRIVER_FUNC(Clear, name) \
 	ASSIGN_DRIVER_FUNC(DrawIndexedPrimitives, name) \
 	ASSIGN_DRIVER_FUNC(DrawInstancedPrimitives, name) \

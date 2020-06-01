@@ -63,6 +63,10 @@ typedef struct FNA3D_Query FNA3D_Query;
 
 typedef enum FNA3D_PresentInterval
 {
+	/* For the default presentation interval, we try to use an OS-provided
+	 * feature (if available) to sync when meeting the target framerate
+	 * while tearing if the program misses vblank.
+	 */
 	FNA3D_PRESENTINTERVAL_DEFAULT,
 	FNA3D_PRESENTINTERVAL_ONE,
 	FNA3D_PRESENTINTERVAL_TWO,
@@ -535,17 +539,6 @@ FNA3DAPI void FNA3D_SwapBuffers(
 	FNA3D_Rect *sourceRectangle,
 	FNA3D_Rect *destinationRectangle,
 	void* overrideWindowHandle
-);
-
-/* Sets the swap interval of the device. For the default presentation interval,
- * we try to use an OS-provided feature (if available) to sync when meeting the
- * target framerate while tearing if the program misses vblank.
- *
- * presentInterval: The requested interval for presenting frames.
- */
-FNA3DAPI void FNA3D_SetPresentationInterval(
-	FNA3D_Device *device,
-	FNA3D_PresentInterval presentInterval
 );
 
 /* Drawing */

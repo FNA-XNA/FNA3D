@@ -235,17 +235,6 @@ void FNA3D_SwapBuffers(
 	);
 }
 
-void FNA3D_SetPresentationInterval(
-	FNA3D_Device *device,
-	FNA3D_PresentInterval presentInterval
-) {
-	if (device == NULL)
-	{
-		return;
-	}
-	device->SetPresentationInterval(device->driverData, presentInterval);
-}
-
 /* Drawing */
 
 void FNA3D_Clear(

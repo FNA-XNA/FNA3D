@@ -1443,62 +1443,6 @@ static void OPENGL_SwapBuffers(
 	DisposeResources(renderer);
 }
 
-static void OPENGL_SetPresentationInterval(
-	FNA3D_Renderer *driverData,
-	FNA3D_PresentInterval presentInterval
-) {
-	const char *osVersion;
-	int32_t disableLateSwapTear;
-
-	if (	presentInterval == FNA3D_PRESENTINTERVAL_DEFAULT ||
-		presentInterval == FNA3D_PRESENTINTERVAL_ONE	)
-	{
-		osVersion = SDL_GetPlatform();
-		disableLateSwapTear = (
-			(SDL_strcmp(osVersion, "Mac OS X") == 0) ||
-			(SDL_strcmp(osVersion, "WinRT") == 0) ||
-			SDL_GetHintBoolean("FNA_OPENGL_DISABLE_LATESWAPTEAR", 0)
-		);
-		if (disableLateSwapTear)
-		{
-			SDL_GL_SetSwapInterval(1);
-		}
-		else
-		{
-			if (SDL_GL_SetSwapInterval(-1) != -1)
-			{
-				FNA3D_LogInfo(
-					"Using EXT_swap_control_tear VSync!"
-				);
-			}
-			else
-			{
-				FNA3D_LogInfo(
-					"EXT_swap_control_tear unsupported."
-					" Fall back to standard VSync."
-				);
-				SDL_ClearError();
-				SDL_GL_SetSwapInterval(1);
-			}
-		}
-	}
-	else if (presentInterval == FNA3D_PRESENTINTERVAL_IMMEDIATE)
-	{
-		SDL_GL_SetSwapInterval(0);
-	}
-	else if (presentInterval == FNA3D_PRESENTINTERVAL_TWO)
-	{
-		SDL_GL_SetSwapInterval(2);
-	}
-	else
-	{
-		FNA3D_LogError(
-			"Unrecognized PresentInterval: %d",
-			presentInterval
-		);
-	}
-}
-
 /* Drawing */
 
 static void OPENGL_Clear(
@@ -3491,12 +3435,70 @@ static uint8_t OPENGL_INTERNAL_ReadTargetIfApplicable(
 	return 1;
 }
 
+static void OPENGL_INTERNAL_SetPresentationInterval(
+	FNA3D_PresentInterval presentInterval
+) {
+	const char *osVersion;
+	int32_t disableLateSwapTear;
+
+	if (	presentInterval == FNA3D_PRESENTINTERVAL_DEFAULT ||
+		presentInterval == FNA3D_PRESENTINTERVAL_ONE	)
+	{
+		osVersion = SDL_GetPlatform();
+		disableLateSwapTear = (
+			(SDL_strcmp(osVersion, "Mac OS X") == 0) ||
+			(SDL_strcmp(osVersion, "WinRT") == 0) ||
+			SDL_GetHintBoolean("FNA_OPENGL_DISABLE_LATESWAPTEAR", 0)
+		);
+		if (disableLateSwapTear)
+		{
+			SDL_GL_SetSwapInterval(1);
+		}
+		else
+		{
+			if (SDL_GL_SetSwapInterval(-1) != -1)
+			{
+				FNA3D_LogInfo(
+					"Using EXT_swap_control_tear VSync!"
+				);
+			}
+			else
+			{
+				FNA3D_LogInfo(
+					"EXT_swap_control_tear unsupported."
+					" Fall back to standard VSync."
+				);
+				SDL_ClearError();
+				SDL_GL_SetSwapInterval(1);
+			}
+		}
+	}
+	else if (presentInterval == FNA3D_PRESENTINTERVAL_IMMEDIATE)
+	{
+		SDL_GL_SetSwapInterval(0);
+	}
+	else if (presentInterval == FNA3D_PRESENTINTERVAL_TWO)
+	{
+		SDL_GL_SetSwapInterval(2);
+	}
+	else
+	{
+		FNA3D_LogError(
+			"Unrecognized PresentInterval: %d",
+			presentInterval
+		);
+	}
+}
+
 static void OPENGL_ResetBackbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_PresentationParameters *presentationParameters
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OPENGL_INTERNAL_CreateBackbuffer(renderer, presentationParameters);
+	OPENGL_INTERNAL_SetPresentationInterval(
+		presentationParameters->presentationInterval
+	);
 }
 
 static void OPENGL_ReadBackbuffer(
@@ -5887,6 +5889,9 @@ FNA3D_Device* OPENGL_CreateDevice(
 	/* Create OpenGL context */
 	renderer->context = SDL_GL_CreateContext(
 		(SDL_Window*) presentationParameters->deviceWindowHandle
+	);
+	OPENGL_INTERNAL_SetPresentationInterval(
+		presentationParameters->presentationInterval
 	);
 
 	/* Check for a possible ES/Core context */

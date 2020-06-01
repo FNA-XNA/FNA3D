@@ -2277,48 +2277,6 @@ static void METAL_SwapBuffers(
 	renderer->frameInProgress = 0;
 }
 
-static void METAL_SetPresentationInterval(
-	FNA3D_Renderer *driverData,
-	FNA3D_PresentInterval presentInterval
-) {
-	MetalRenderer *renderer = (MetalRenderer*) driverData;
-
-	/* Toggling vsync is only supported on macOS 10.13+ */
-	if (!RespondsToSelector(renderer->layer, selDisplaySyncEnabled))
-	{
-		FNA3D_LogWarn(
-			"Cannot set presentation interval! "
-			"Only vsync is supported."
-		);
-		return;
-	}
-
-	if (	presentInterval == FNA3D_PRESENTINTERVAL_DEFAULT ||
-		presentInterval == FNA3D_PRESENTINTERVAL_ONE	)
-	{
-		mtlSetDisplaySyncEnabled(renderer->layer, 1);
-	}
-	else if (presentInterval == FNA3D_PRESENTINTERVAL_IMMEDIATE)
-	{
-		mtlSetDisplaySyncEnabled(renderer->layer, 0);
-	}
-	else if (presentInterval == FNA3D_PRESENTINTERVAL_TWO)
-	{
-		/* FIXME:
-		 * There is no built-in support for
-		 * present-every-other-frame in Metal.
-		 * We could work around this, but do
-		 * any games actually use this mode...?
-		 * -caleb
-		 */
-		mtlSetDisplaySyncEnabled(renderer->layer, 1);
-	}
-	else
-	{
-		SDL_assert(0 && "Unrecognized PresentInterval!");
-	}
-}
-
 /* Drawing */
 
 static void METAL_Clear(
@@ -3203,6 +3161,46 @@ static void DestroyFramebuffer(MetalRenderer *renderer)
 	renderer->backbuffer->depthStencilBuffer = NULL;
 }
 
+static void METAL_INTERNAL_SetPresentationInterval(
+	MetalRenderer *renderer,
+	FNA3D_PresentInterval presentInterval
+) {
+	/* Toggling vsync is only supported on macOS 10.13+ */
+	if (!RespondsToSelector(renderer->layer, selDisplaySyncEnabled))
+	{
+		FNA3D_LogWarn(
+			"Cannot set presentation interval! "
+			"Only vsync is supported."
+		);
+		return;
+	}
+
+	if (	presentInterval == FNA3D_PRESENTINTERVAL_DEFAULT ||
+		presentInterval == FNA3D_PRESENTINTERVAL_ONE	)
+	{
+		mtlSetDisplaySyncEnabled(renderer->layer, 1);
+	}
+	else if (presentInterval == FNA3D_PRESENTINTERVAL_IMMEDIATE)
+	{
+		mtlSetDisplaySyncEnabled(renderer->layer, 0);
+	}
+	else if (presentInterval == FNA3D_PRESENTINTERVAL_TWO)
+	{
+		/* FIXME:
+		 * There is no built-in support for
+		 * present-every-other-frame in Metal.
+		 * We could work around this, but do
+		 * any games actually use this mode...?
+		 * -caleb
+		 */
+		mtlSetDisplaySyncEnabled(renderer->layer, 1);
+	}
+	else
+	{
+		SDL_assert(0 && "Unrecognized PresentInterval!");
+	}
+}
+
 static void METAL_ResetBackbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_PresentationParameters *presentationParameters
@@ -3212,6 +3210,10 @@ static void METAL_ResetBackbuffer(
 	CreateFramebuffer(
 		renderer,
 		presentationParameters
+	);
+	METAL_INTERNAL_SetPresentationInterval(
+		renderer,
+		presentationParameters->presentationInterval
 	);
 }
 
@@ -4750,6 +4752,10 @@ FNA3D_Device* METAL_CreateDevice(
 	SDL_memset(renderer->backbuffer, '\0', sizeof(MetalBackbuffer));
 	CreateFramebuffer(renderer, presentationParameters);
 	InitializeFauxBackbuffer(renderer);
+	METAL_INTERNAL_SetPresentationInterval(
+		renderer,
+		presentationParameters->presentationInterval
+	);
 
 	/* Initialize PSO caches */
 	hmdefault(renderer->pipelineStateCache, NULL);

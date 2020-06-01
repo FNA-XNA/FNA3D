@@ -1584,33 +1584,6 @@ static void D3D11_SwapBuffers(
 
 }
 
-static void D3D11_SetPresentationInterval(
-	FNA3D_Renderer *driverData,
-	FNA3D_PresentInterval presentInterval
-) {
-	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	if (	presentInterval == FNA3D_PRESENTINTERVAL_DEFAULT ||
-		presentInterval == FNA3D_PRESENTINTERVAL_ONE	)
-	{
-		renderer->syncInterval = 1;
-	}
-	else if (presentInterval == FNA3D_PRESENTINTERVAL_TWO)
-	{
-		renderer->syncInterval = 2;
-	}
-	else if (presentInterval == FNA3D_PRESENTINTERVAL_IMMEDIATE)
-	{
-		renderer->syncInterval = 0;
-	}
-	else
-	{
-		FNA3D_LogError(
-			"Unrecognized PresentInterval: %d",
-			presentInterval
-		);
-	}
-}
-
 /* Drawing */
 
 static void D3D11_Clear(
@@ -2937,6 +2910,32 @@ static void D3D11_INTERNAL_DestroyFramebuffer(D3D11Renderer *renderer)
 	#undef BB
 }
 
+static void D3D11_INTERNAL_SetPresentationInterval(
+	D3D11Renderer *renderer,
+	FNA3D_PresentInterval presentInterval
+) {
+	if (	presentInterval == FNA3D_PRESENTINTERVAL_DEFAULT ||
+		presentInterval == FNA3D_PRESENTINTERVAL_ONE	)
+	{
+		renderer->syncInterval = 1;
+	}
+	else if (presentInterval == FNA3D_PRESENTINTERVAL_TWO)
+	{
+		renderer->syncInterval = 2;
+	}
+	else if (presentInterval == FNA3D_PRESENTINTERVAL_IMMEDIATE)
+	{
+		renderer->syncInterval = 0;
+	}
+	else
+	{
+		FNA3D_LogError(
+			"Unrecognized PresentInterval: %d",
+			presentInterval
+		);
+	}
+}
+
 static void D3D11_ResetBackbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_PresentationParameters *presentationParameters
@@ -2947,6 +2946,10 @@ static void D3D11_ResetBackbuffer(
 	D3D11_INTERNAL_CreateFramebuffer(
 		renderer,
 		presentationParameters
+	);
+	D3D11_INTERNAL_SetPresentationInterval(
+		renderer,
+		presentationParameters->presentationInterval
 	);
 }
 
@@ -5063,6 +5066,10 @@ static FNA3D_Device* D3D11_CreateDevice(
 	D3D11_INTERNAL_InitializeFauxBackbuffer(
 		renderer,
 		SDL_GetHintBoolean("FNA3D_BACKBUFFER_SCALE_NEAREST", SDL_FALSE)
+	);
+	D3D11_INTERNAL_SetPresentationInterval(
+		renderer,
+		presentationParameters->presentationInterval
 	);
 
 	/* A mutex, for ID3D11Context */
