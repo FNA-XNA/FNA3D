@@ -4154,13 +4154,6 @@ void VULKAN_SwapBuffers(
 	renderer->frameInProgress = 0;
 }
 
-void VULKAN_SetPresentationInterval(
-	FNA3D_Renderer *driverData,
-	FNA3D_PresentInterval presentInterval
-) {
-	/* TODO */
-}
-
 /* Drawing */
 
 static void InternalClear(
