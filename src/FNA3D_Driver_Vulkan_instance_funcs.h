@@ -31,6 +31,7 @@ VULKAN_INSTANCE_FUNCTION(BaseVK, void, vkDestroySurfaceKHR, (VkInstance instance
 VULKAN_INSTANCE_FUNCTION(BaseVK, VkResult, vkEnumerateDeviceExtensionProperties, (VkPhysicalDevice physicalDevice, const char *pLayerName, uint32_t *pPropertyCount, VkExtensionProperties *pProperties))
 VULKAN_INSTANCE_FUNCTION(BaseVK, VkResult, vkEnumeratePhysicalDevices, (VkInstance instance, uint32_t *pPhysicalDeviceCount, VkPhysicalDevice *pPhysicalDevices))
 VULKAN_INSTANCE_FUNCTION(BaseVK, void, vkGetPhysicalDeviceFeatures, (VkPhysicalDevice physicalDevice, VkPhysicalDeviceFeatures *pFeatures))
+VULKAN_INSTANCE_FUNCTION(BaseVK, void, vkGetPhysicalDeviceFormatProperties, (VkPhysicalDevice physicalDevice, VkFormat format, VkFormatProperties* pFormatProperties))
 VULKAN_INSTANCE_FUNCTION(BaseVK, void, vkGetPhysicalDeviceMemoryProperties, (VkPhysicalDevice physicalDevice, VkPhysicalDeviceMemoryProperties *pMemoryProperties))
 VULKAN_INSTANCE_FUNCTION(BaseVK, void, vkGetPhysicalDeviceProperties, (VkPhysicalDevice physicalDevice, VkPhysicalDeviceProperties *pProperties))
 VULKAN_INSTANCE_FUNCTION(BaseVK, void, vkGetPhysicalDeviceProperties2, (VkPhysicalDevice physicalDevice, VkPhysicalDeviceProperties2 *pProperties))
