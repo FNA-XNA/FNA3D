@@ -1652,8 +1652,8 @@ static void BindResources(FNAVulkanRenderer *renderer)
 			renderer->vertSamplerImageInfos[vertArrayOffset + i].sampler = renderer->samplers[vertArrayOffset + i];
 
 			vertexSamplerDescriptorSetNeedsUpdate = 1;
-			renderer->textureNeedsUpdate[vertArrayOffset + 1] = 0;
-			renderer->samplerNeedsUpdate[vertArrayOffset + 1] = 0;
+			renderer->textureNeedsUpdate[vertArrayOffset + i] = 0;
+			renderer->samplerNeedsUpdate[vertArrayOffset + i] = 0;
 		}
 	}
 
@@ -1667,8 +1667,8 @@ static void BindResources(FNAVulkanRenderer *renderer)
 			renderer->fragSamplerImageInfos[fragArrayOffset + i].sampler = renderer->samplers[fragArrayOffset + i];
 
 			fragSamplerDescriptorSetNeedsUpdate = 1;
-			renderer->textureNeedsUpdate[fragArrayOffset + 1] = 0;
-			renderer->samplerNeedsUpdate[fragArrayOffset + 1] = 0;
+			renderer->textureNeedsUpdate[fragArrayOffset + i] = 0;
+			renderer->samplerNeedsUpdate[fragArrayOffset + i] = 0;
 		}
 	}
 
@@ -3548,11 +3548,11 @@ static VkRenderPass FetchRenderPass(
 		attachmentDescriptions[i].flags = 0;
 		attachmentDescriptions[i].format = renderer->surfaceFormatMapping.formatColor;
 		attachmentDescriptions[i].samples = VK_SAMPLE_COUNT_1_BIT;
-		attachmentDescriptions[i].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		attachmentDescriptions[i].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 		attachmentDescriptions[i].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		attachmentDescriptions[i].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-		attachmentDescriptions[i].stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-		attachmentDescriptions[i].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		attachmentDescriptions[i].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+		attachmentDescriptions[i].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
+		attachmentDescriptions[i].initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 		attachmentDescriptions[i].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	}
 
@@ -3572,11 +3572,11 @@ static VkRenderPass FetchRenderPass(
 		attachmentDescriptions[renderer->colorAttachmentCount].flags = 0;
 		attachmentDescriptions[renderer->colorAttachmentCount].format = XNAToVK_DepthFormat(renderer->currentDepthFormat);
 		attachmentDescriptions[renderer->colorAttachmentCount].samples = VK_SAMPLE_COUNT_1_BIT;
-		attachmentDescriptions[renderer->colorAttachmentCount].loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		attachmentDescriptions[renderer->colorAttachmentCount].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 		attachmentDescriptions[renderer->colorAttachmentCount].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-		attachmentDescriptions[renderer->colorAttachmentCount].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+		attachmentDescriptions[renderer->colorAttachmentCount].stencilLoadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 		attachmentDescriptions[renderer->colorAttachmentCount].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
-		attachmentDescriptions[renderer->colorAttachmentCount].initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+		attachmentDescriptions[renderer->colorAttachmentCount].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		attachmentDescriptions[renderer->colorAttachmentCount].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		renderer->depthStencilAttachmentActive = 1;
 	}
@@ -3848,8 +3848,7 @@ static uint8_t AllocateAndBeginCommandBuffer(
 
 static void BeginRenderPass(
 	FNAVulkanRenderer *renderer
-)
-{
+) {
 	VkRenderPassBeginInfo renderPassBeginInfo = {
 		VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO
 	};
@@ -5398,7 +5397,8 @@ void VULKAN_AddDisposeTexture(
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
-	uint32_t i;
+	uint32_t fragArrayOffset = (renderer->currentSwapChainIndex * MAX_TOTAL_SAMPLERS) + MAX_VERTEXTEXTURE_SAMPLERS;
+	uint32_t i, textureIndex;
 
 	for (i = 0; i < renderer->colorAttachmentCount; i++)
 	{
@@ -5410,10 +5410,12 @@ void VULKAN_AddDisposeTexture(
 
 	for (i = 0; i < renderer->textureCount; i++)
 	{
-		if (vulkanTexture == renderer->textures[i])
+		textureIndex = fragArrayOffset + i;
+
+		if (vulkanTexture == renderer->textures[textureIndex])
 		{
-			renderer->textures[i] = &NullTexture;
-			renderer->textureNeedsUpdate[i] = 1;
+			renderer->textures[textureIndex] = &NullTexture;
+			renderer->textureNeedsUpdate[textureIndex] = 1;
 		}
 	}
 
