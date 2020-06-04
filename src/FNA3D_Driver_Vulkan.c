@@ -77,6 +77,7 @@ typedef enum VulkanResourceAccessType {
 	RESOURCE_ACCESS_TRANSFER_WRITE,
 	RESOURCE_ACCESS_HOST_WRITE,
 	RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
+	RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
 	RESOURCE_ACCESS_GENERAL,
 
 	/* count */
@@ -679,6 +680,13 @@ static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] = {
 		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
 		VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
 		VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL
+	},
+
+	/* RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE */
+	{
+		VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+		VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+		VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL
 	},
 
 	/* RESOURCE_ACCESS_GENERAL */
@@ -3556,9 +3564,8 @@ static VkRenderPass FetchRenderPass(
 		attachmentDescriptions[i].finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 	}
 
-	colorAttachmentReferences = (VkAttachmentReference*) SDL_malloc(
-		renderer->colorAttachmentCount * sizeof(VkAttachmentReference)
-	);
+	colorAttachmentReferences = (VkAttachmentReference*) SDL_stack_alloc(VkAttachmentReference, renderer->colorAttachmentCount);
+
 	for (i = 0; i < renderer->colorAttachmentCount; i++)
 	{
 		colorAttachmentReferences[i].attachment = i;
@@ -3604,8 +3611,6 @@ static VkRenderPass FetchRenderPass(
 		subpass.pDepthStencilAttachment = &depthStencilAttachmentReference;
 	}
 
-	/* FIXME: what happens here with depth stencil? */
-
 	subpassDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
 	subpassDependency.dstSubpass = 0;
 	subpassDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
@@ -3629,7 +3634,7 @@ static VkRenderPass FetchRenderPass(
 		&renderPass
 	);
 
-	SDL_free(colorAttachmentReferences);
+	SDL_stack_free(colorAttachmentReferences);
 
 	if (vulkanResult != VK_SUCCESS)
 	{
@@ -3861,6 +3866,56 @@ static void BeginRenderPass(
 		ColorConvert(renderer->blendState.blendFactor.a)
 	};
 	uint32_t swapChainOffset, i;
+	VulkanResourceAccessType nextAccessType;
+	ImageMemoryBarrierCreateInfo barrierCreateInfo;
+
+	/* layout transition faux backbuffer attachments if necessary */
+
+	nextAccessType = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
+
+	if (renderer->fauxBackbufferColorImageData.resourceAccessType != nextAccessType)
+	{
+		barrierCreateInfo.pPrevAccesses = &renderer->fauxBackbufferColorImageData.resourceAccessType;
+		barrierCreateInfo.prevAccessCount = 1;
+		barrierCreateInfo.pNextAccesses = &nextAccessType;
+		barrierCreateInfo.nextAccessCount = 1;
+		barrierCreateInfo.image = renderer->fauxBackbufferColorImageData.image;
+		barrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		barrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+		barrierCreateInfo.subresourceRange.baseMipLevel = 0;
+		barrierCreateInfo.subresourceRange.layerCount = 1;
+		barrierCreateInfo.subresourceRange.levelCount = 1;
+		barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrierCreateInfo.discardContents = 0;
+
+		CreateImageMemoryBarrier(renderer, barrierCreateInfo);
+		renderer->fauxBackbufferColorImageData.resourceAccessType = nextAccessType;
+	}
+
+	nextAccessType = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
+
+	if (renderer->fauxBackbufferDepthStencil.handle.resourceAccessType != nextAccessType)
+	{
+		barrierCreateInfo.pPrevAccesses = &renderer->fauxBackbufferDepthStencil.handle.resourceAccessType;
+		barrierCreateInfo.prevAccessCount = 1;
+		barrierCreateInfo.pNextAccesses = &nextAccessType;
+		barrierCreateInfo.nextAccessCount = 1;
+		barrierCreateInfo.image = renderer->fauxBackbufferDepthStencil.handle.image;
+		barrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+		barrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+		barrierCreateInfo.subresourceRange.baseMipLevel = 0;
+		barrierCreateInfo.subresourceRange.layerCount = 1;
+		barrierCreateInfo.subresourceRange.levelCount = 1;
+		barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrierCreateInfo.discardContents = 0;
+
+		CreateImageMemoryBarrier(renderer, barrierCreateInfo);
+		renderer->fauxBackbufferDepthStencil.handle.resourceAccessType = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
+	}
+
+	SubmitPipelineBarrier(renderer);
 
 	renderer->renderPass = FetchRenderPass(renderer);
 	renderer->framebuffer = FetchFramebuffer(renderer, renderer->renderPass);
@@ -4208,7 +4263,7 @@ static void InternalClear(
 	{
 		if (renderer->depthStencilAttachmentActive)
 		{
-			clearAttachments[renderer->colorAttachmentCount].aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+			clearAttachments[renderer->colorAttachmentCount].aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
 
 			clearRect.rect.extent.width = SDL_max(
 				clearRect.rect.extent.width,
@@ -5716,7 +5771,7 @@ FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 			XNAToVK_SampleCount(multiSampleCount),
 			depthFormat,
 			IDENTITY_SWIZZLE,
-			VK_IMAGE_ASPECT_DEPTH_BIT,
+			VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_TYPE_2D,
 			VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
@@ -7819,7 +7874,7 @@ static uint8_t CreateFauxBackbuffer(
 				XNAToVK_SampleCount(presentationParameters->multiSampleCount),
 				vulkanDepthStencilFormat,
 				IDENTITY_SWIZZLE,
-				VK_IMAGE_ASPECT_DEPTH_BIT,
+				VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
 				VK_IMAGE_TILING_OPTIMAL,
 				VK_IMAGE_TYPE_2D,
 				VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
