@@ -483,6 +483,9 @@ typedef struct FNAVulkanRenderer
 	uint8_t shouldClearStencil;
 	uint8_t needNewRenderPass;
 
+	/* Capabilities */
+	uint8_t supportsDxt1;
+	uint8_t supportsS3tc;
 	uint8_t debugMode;
 
 	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
@@ -523,9 +526,9 @@ typedef struct ImageMemoryBarrierCreateInfo {
 } ImageMemoryBarrierCreateInfo;
 
 typedef struct VulkanResourceAccessInfo {
-    VkPipelineStageFlags    stageMask;
-    VkAccessFlags           accessMask;
-    VkImageLayout           imageLayout;
+	VkPipelineStageFlags stageMask;
+	VkAccessFlags accessMask;
+	VkImageLayout imageLayout;
 } VulkanResourceAccessInfo;
 
 static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] = {
@@ -628,9 +631,10 @@ static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] = {
 	},
 
 	/* RESOURCE_ACCESS_END_OF_READ */
-    {   0,
-        0,
-        VK_IMAGE_LAYOUT_UNDEFINED
+	{
+		0,
+		0,
+		VK_IMAGE_LAYOUT_UNDEFINED
 	},
 
 	/* RESOURCE_ACCESS_VERTEX_SHADER_WRITE */
@@ -1384,59 +1388,59 @@ static const char* VkImageLayoutString(VkImageLayout layout)
 			layoutString = "VK_IMAGE_LAYOUT_UNDEFINED";
 			break;
 
-    	case VK_IMAGE_LAYOUT_GENERAL:
+		case VK_IMAGE_LAYOUT_GENERAL:
 			layoutString = "VK_IMAGE_LAYOUT_GENERAL";
 			break;
 
-    	case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
 			layoutString = "VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL";
 			break;
 
-    	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
+		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
 			layoutString = "VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL";
 			break;
 
-    	case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
+		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
 			layoutString = "VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL";
 			break;
 
-    	case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
 			layoutString = "VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL";
 			break;
 
-    	case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
 			layoutString = "VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL";
 			break;
 
-    	case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+		case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
 			layoutString = "VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL";
 			break;
 
-    	case VK_IMAGE_LAYOUT_PREINITIALIZED:
+		case VK_IMAGE_LAYOUT_PREINITIALIZED:
 			layoutString = "VK_IMAGE_LAYOUT_PREINITIALIZED";
 			break;
 
-    	case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL:
+		case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL:
 			layoutString = "VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL";
 			break;
 
-    	case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL:
+		case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL:
 			layoutString = "VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL";
 			break;
 
-    	case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
+		case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
 			layoutString = "VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL";
 			break;
 
-    	case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL:
+		case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL:
 			layoutString = "VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL";
 			break;
 
-    	case VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL:
+		case VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL:
 			layoutString = "VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL";
 			break;
 
-    	case VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL:
+		case VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL:
 			layoutString = "VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL";
 			break;
 
@@ -1444,15 +1448,15 @@ static const char* VkImageLayoutString(VkImageLayout layout)
 			layoutString = "VK_IMAGE_LAYOUT_PRESENT_SRC_KHR";
 			break;
 
-    	case VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR:
+		case VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR:
 			layoutString = "VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR";
 			break;
 
-    	case VK_IMAGE_LAYOUT_SHADING_RATE_OPTIMAL_NV:
+		case VK_IMAGE_LAYOUT_SHADING_RATE_OPTIMAL_NV:
 			layoutString = "VK_IMAGE_LAYOUT_SHADING_RATE_OPTIMAL_NV";
 			break;
 
-    	case VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT:
+		case VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT:
 			layoutString = "VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT";
 			break;
 
@@ -1470,7 +1474,7 @@ static void LogVulkanResult(
 	if (result != VK_SUCCESS)
 	{
 		FNA3D_LogError(
-			"%s: %s\n",
+			"%s: %s",
 			vulkanFunctionName,
 			VkErrorMessages(result)
 		);
@@ -2243,7 +2247,7 @@ static VulkanBuffer* CreateBuffer(
 	VkBufferUsageFlags usageFlags = 0;
 	VulkanBuffer *result, *curr;
 
-	result = SDL_malloc(sizeof(VulkanBuffer));
+	result = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
 	SDL_memset(result, 0, sizeof(VulkanBuffer));
 
 	result->usage = usage;
@@ -2300,11 +2304,9 @@ static void SetBufferData(
 		{
 			if (renderer->debugMode)
 			{
-				SDL_LogWarn(
-					SDL_LOG_CATEGORY_APPLICATION,
-					"%s\n%s\n",
-					"Pipeline stall triggered by binding buffer with FNA3D_SETDATAOPTIONS_NONE multiple times in a frame",
-					"This is discouraged and will cause performance degradation"
+				FNA3D_LogWarn(
+					"Pipeline stall triggered by binding buffer with FNA3D_SETDATAOPTIONS_NONE multiple times in a frame. "
+					"This is discouraged and will cause performance degradation."
 				);
 			}
 
@@ -2886,13 +2888,7 @@ static uint8_t CreateImage(
 	if (result != VK_SUCCESS)
 	{
 		LogVulkanResult("vkCreateImage", result);
-
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
-			"%s\n",
-			"Failed to create image"
-		);
-
+		FNA3D_LogError("Failed to create image");
 		return 0;
 	}
 
@@ -2913,12 +2909,7 @@ static uint8_t CreateImage(
 			&allocInfo.memoryTypeIndex
 		)
 	) {
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
-			"%s\n",
-			"Could not find valid memory type for image creation"
-		);
-
+		FNA3D_LogError("Could not find valid memory type for image creation");
 		return 0;
 	}
 
@@ -2969,13 +2960,7 @@ static uint8_t CreateImage(
 	if (result != VK_SUCCESS)
 	{
 		LogVulkanResult("vkCreateImageView", result);
-
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
-			"%s\n",
-			"Failed to create color attachment image view"
-		);
-
+		FNA3D_LogError("Failed to create color attachment image view");
 		return 0;
 	}
 
@@ -2998,17 +2983,23 @@ static VulkanTexture* CreateTexture(
 	FNAVulkanImageData *imageData;
 	VulkanBuffer *stagingBuffer;
 	SurfaceFormatMapping surfaceFormatMapping = XNAToVK_SurfaceFormat[format];
+	uint32_t usageFlags = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
-	result = SDL_malloc(sizeof(VulkanTexture));
+	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
 	SDL_memset(result, '\0', sizeof(VulkanTexture));
 
-	imageData = SDL_malloc(sizeof(FNAVulkanImageData));
+	imageData = (FNAVulkanImageData*) SDL_malloc(sizeof(FNAVulkanImageData));
 	SDL_memset(imageData, '\0', sizeof(FNAVulkanImageData));
 
-	stagingBuffer = SDL_malloc(sizeof(VulkanBuffer));
+	stagingBuffer = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
 	SDL_memset(stagingBuffer, '\0', sizeof(VulkanBuffer));
 
 	result->imageData = imageData;
+
+	if (isRenderTarget)
+	{
+		usageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	}
 
 	CreateImage(
 		renderer,
@@ -3020,7 +3011,7 @@ static VulkanTexture* CreateTexture(
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_TILING_OPTIMAL,
 		imageType,
-		VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_SAMPLED_BIT,
+		usageFlags,
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		result->imageData
 	);
@@ -3506,11 +3497,7 @@ static VkPipeline FetchPipeline(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		LogVulkanResult("vkCreateGraphicsPipelines", vulkanResult);
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
-			"%s\n",
-			"Something has gone very wrong"
-		);
+		FNA3D_LogError("Something has gone very wrong!");
 		return NULL;
 	}
 
@@ -3639,11 +3626,7 @@ static VkRenderPass FetchRenderPass(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		LogVulkanResult("vkCreateRenderPass", vulkanResult);
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
-			"%s\n",
-			"Error during render pass creation. Something has gone very wrong"
-		);
+		FNA3D_LogError("Error during render pass creation. Something has gone very wrong!");
 		return NULL;
 	}
 
@@ -4613,11 +4596,9 @@ void VULKAN_SetMultiSampleMask(FNA3D_Renderer *driverData, int32_t mask)
 {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	if (renderer->debugMode && renderer->rasterizerState.multiSampleAntiAlias > 32) {
-		SDL_LogWarn(
-			SDL_LOG_CATEGORY_APPLICATION,
-			"%s\n%s\n",
-			"Using a 32-bit multisample mask for a 64-sample rasterizer",
-			"Last 32 bits of the mask will all be 1"
+		FNA3D_LogWarn(
+			"Using a 32-bit multisample mask for a 64-sample rasterizer. "
+			"Last 32 bits of the mask will all be 1."
 		);
 	}
 	if (renderer->multiSampleMask[0] != mask)
@@ -5722,9 +5703,9 @@ FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 	imageViewInfo.subresourceRange.layerCount = 1;
 
 	/* Create and return the renderbuffer */
-	renderbuffer = SDL_malloc(sizeof(VulkanRenderbuffer));
+	renderbuffer = (VulkanRenderbuffer*) SDL_malloc(sizeof(VulkanRenderbuffer));
 	renderbuffer->depthBuffer = NULL;
-	renderbuffer->colorBuffer = SDL_malloc(sizeof(VulkanColorBuffer));
+	renderbuffer->colorBuffer = (VulkanColorBuffer*) SDL_malloc(sizeof(VulkanColorBuffer));
 	renderbuffer->colorBuffer->dimensions = dimensions;
 
 	result = renderer->vkCreateImageView(
@@ -5734,15 +5715,10 @@ FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 		&renderbuffer->colorBuffer->handle
 	);
 
-	if (result != VK_SUCCESS) {
+	if (result != VK_SUCCESS)
+	{
 		LogVulkanResult("vkCreateImageView", result);
-
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
-			"%s\n",
-			"Failed to create color renderbuffer image view"
-		);
-
+		FNA3D_LogError("Failed to create color renderbuffer image view");
 		return NULL;
 	}
 
@@ -5759,9 +5735,9 @@ FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	VkFormat depthFormat = XNAToVK_DepthFormat(format);
 
-	VulkanRenderbuffer *renderbuffer = SDL_malloc(sizeof(VulkanRenderbuffer));
+	VulkanRenderbuffer *renderbuffer = (VulkanRenderbuffer*) SDL_malloc(sizeof(VulkanRenderbuffer));
 	renderbuffer->colorBuffer = NULL;
-	renderbuffer->depthBuffer = SDL_malloc(sizeof(VulkanDepthStencilBuffer));
+	renderbuffer->depthBuffer = (VulkanDepthStencilBuffer*) SDL_malloc(sizeof(VulkanDepthStencilBuffer));
 
 	if (
 		!CreateImage(
@@ -5779,12 +5755,7 @@ FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 			&renderbuffer->depthBuffer->handle
 		)
 	) {
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
-			"%s\n",
-			"Failed to create depth stencil image"
-		);
-
+		FNA3D_LogError("Failed to create depth stencil image");
 		return NULL;
 	}
 
@@ -5947,7 +5918,7 @@ static void QueueBufferAndMemoryDestroy(
 	VkBuffer vkBuffer,
 	VkDeviceMemory vkDeviceMemory
 ) {
-	BufferMemoryWrapper *bufferMemoryWrapper = SDL_malloc(sizeof(BufferMemoryWrapper));
+	BufferMemoryWrapper *bufferMemoryWrapper = (BufferMemoryWrapper*) SDL_malloc(sizeof(BufferMemoryWrapper));
 	bufferMemoryWrapper->buffer = vkBuffer;
 	bufferMemoryWrapper->deviceMemory = vkDeviceMemory;
 
@@ -6228,9 +6199,7 @@ void VULKAN_CloneEffect(
 	*effectData = MOJOSHADER_cloneEffect(vulkanCloneSource->effect);
 	if (*effectData == NULL)
 	{
-		FNA3D_LogError(
-			"%s", MOJOSHADER_vkGetError()
-		);
+		FNA3D_LogError(MOJOSHADER_vkGetError());
 	}
 
 	result = (VulkanEffect*) SDL_malloc(sizeof(VulkanEffect));
@@ -6367,12 +6336,11 @@ void VULKAN_EndPassRestore(
 FNA3D_Query* VULKAN_CreateQuery(FNA3D_Renderer *driverData)
 {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer *) driverData;
-	VulkanQuery *query = SDL_malloc(sizeof(VulkanQuery));
+	VulkanQuery *query = (VulkanQuery*) SDL_malloc(sizeof(VulkanQuery));
 
 	if (renderer->freeQueryIndexStackHead == -1) {
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
-			"Query limit of %d has been exceeded",
+		FNA3D_LogError(
+			"Query limit of %d has been exceeded!",
 			MAX_QUERIES
 		);
 		return NULL;
@@ -6486,14 +6454,14 @@ int32_t VULKAN_QueryPixelCount(
 
 uint8_t VULKAN_SupportsDXT1(FNA3D_Renderer *driverData)
 {
-	/* TODO */
-	return 0;
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	return renderer->supportsDxt1;
 }
 
 uint8_t VULKAN_SupportsS3TC(FNA3D_Renderer *driverData)
 {
-	/* TODO */
-	return 0;
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	return renderer->supportsS3tc;
 }
 
 uint8_t VULKAN_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
@@ -6521,8 +6489,36 @@ int32_t VULKAN_GetMaxMultiSampleCount(
 	FNA3D_SurfaceFormat format,
 	int32_t multiSampleCount
 ) {
-	/* TODO */
-	return 0;
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VkSampleCountFlags flags = renderer->physicalDeviceProperties.properties.limits.framebufferColorSampleCounts;
+	uint32_t maxSupported = 1;
+
+	if (flags & VK_SAMPLE_COUNT_64_BIT)
+	{
+		maxSupported = 64;
+	}
+	else if (flags & VK_SAMPLE_COUNT_32_BIT)
+	{
+		maxSupported = 32;
+	}
+	else if (flags & VK_SAMPLE_COUNT_16_BIT)
+	{
+		maxSupported = 16;
+	}
+	else if (flags & VK_SAMPLE_COUNT_8_BIT)
+	{
+		maxSupported = 8;
+	}
+	else if (flags & VK_SAMPLE_COUNT_4_BIT)
+	{
+		maxSupported = 4;
+	}
+	else if (flags & VK_SAMPLE_COUNT_2_BIT)
+	{
+		maxSupported = 2;
+	}
+
+	return SDL_min(multiSampleCount, maxSupported);
 }
 
 /* Debugging */
@@ -6536,25 +6532,22 @@ void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 
 static uint8_t LoadGlobalFunctions(void)
 {
-    vkGetInstanceProcAddr = SDL_Vulkan_GetVkGetInstanceProcAddr();
-    if(!vkGetInstanceProcAddr)
-    {
-        SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
-			"SDL_Vulkan_GetVkGetInstanceProcAddr(): %s\n",
-            SDL_GetError()
+	vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr) SDL_Vulkan_GetVkGetInstanceProcAddr();
+	if (!vkGetInstanceProcAddr)
+	{
+		FNA3D_LogError(
+			"SDL_Vulkan_GetVkGetInstanceProcAddr(): %s",
+			SDL_GetError()
 		);
+		return 0;
+	}
 
-        return 0;
-    }
-
-	#define VULKAN_GLOBAL_FUNCTION(name)                                               		\
-		name = (PFN_##name)vkGetInstanceProcAddr(VK_NULL_HANDLE, #name);                  	\
-		if(!name)                                                                         	\
-		{                                                                                 	\
-			SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,                                    	\
-						"vkGetInstanceProcAddr(VK_NULL_HANDLE, \"" #name "\") failed\n");	\
-			return 0;                                                             		   	\
+	#define VULKAN_GLOBAL_FUNCTION(name)								\
+		name = (PFN_##name) vkGetInstanceProcAddr(VK_NULL_HANDLE, #name);			\
+		if (!name)										\
+		{											\
+			FNA3D_LogError("vkGetInstanceProcAddr(VK_NULL_HANDLE, \"" #name "\") failed");	\
+			return 0;									\
 		}
 
 	#include "FNA3D_Driver_Vulkan_global_funcs.h"
@@ -6673,7 +6666,7 @@ static uint8_t QuerySwapChainSupport(
 	if (result != VK_SUCCESS)
 	{
 		FNA3D_LogError(
-			"vkGetPhysicalDeviceSurfaceCapabilitiesKHR: %s\n",
+			"vkGetPhysicalDeviceSurfaceCapabilitiesKHR: %s",
 			VkErrorMessages(result)
 		);
 
@@ -6684,7 +6677,7 @@ static uint8_t QuerySwapChainSupport(
 
 	if (formatCount != 0)
 	{
-		outputDetails->formats = SDL_malloc(sizeof(VkSurfaceFormatKHR) * formatCount);
+		outputDetails->formats = (VkSurfaceFormatKHR*) SDL_malloc(sizeof(VkSurfaceFormatKHR) * formatCount);
 		outputDetails->formatsLength = formatCount;
 
 		if (!outputDetails->formats)
@@ -6697,7 +6690,7 @@ static uint8_t QuerySwapChainSupport(
 		if (result != VK_SUCCESS)
 		{
 			FNA3D_LogError(
-				"vkGetPhysicalDeviceSurfaceFormatsKHR: %s\n",
+				"vkGetPhysicalDeviceSurfaceFormatsKHR: %s",
 				VkErrorMessages(result)
 			);
 
@@ -6710,7 +6703,7 @@ static uint8_t QuerySwapChainSupport(
 
 	if (presentModeCount != 0)
 	{
-		outputDetails->presentModes = SDL_malloc(sizeof(VkPresentModeKHR) * presentModeCount);
+		outputDetails->presentModes = (VkPresentModeKHR*) SDL_malloc(sizeof(VkPresentModeKHR) * presentModeCount);
 		outputDetails->presentModesLength = presentModeCount;
 
 		if (!outputDetails->presentModes)
@@ -6723,7 +6716,7 @@ static uint8_t QuerySwapChainSupport(
 		if (result != VK_SUCCESS)
 		{
 			FNA3D_LogError(
-				"vkGetPhysicalDeviceSurfacePresentModesKHR: %s\n",
+				"vkGetPhysicalDeviceSurfacePresentModesKHR: %s",
 				VkErrorMessages(result)
 			);
 
@@ -6945,11 +6938,7 @@ static uint8_t ChooseSwapPresentMode(
 	}
 	else if (desiredPresentInterval == FNA3D_PRESENTINTERVAL_TWO)
 	{
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
-			"%s\n",
-			"FNA3D_PRESENTINTERVAL_TWO not supported in Vulkan"
-		);
+		FNA3D_LogError("FNA3D_PRESENTINTERVAL_TWO not supported in Vulkan");
 	}
 	else /* FNA3D_PRESENTINTERVAL_IMMEDIATE */
 	{
@@ -6963,11 +6952,7 @@ static uint8_t ChooseSwapPresentMode(
 		}
 	}
 
-	SDL_LogInfo(
-		SDL_LOG_CATEGORY_APPLICATION,
-		"%s\n",
-		"Could not find desired presentation interval, falling back to VK_PRESENT_MODE_FIFO_KHR"
-	);
+	FNA3D_LogInfo("Could not find desired presentation interval, falling back to VK_PRESENT_MODE_FIFO_KHR");
 
 	*outputPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 	return 1;
@@ -7026,11 +7011,7 @@ static uint8_t FindMemoryType(
 		}
 	}
 
-	SDL_LogError(
-		SDL_LOG_CATEGORY_APPLICATION,
-		"%s\n",
-		"Failed to find suitable memory type"
-	);
+	FNA3D_LogError("Failed to find suitable memory type");
 
 	return 0;
 }
@@ -7213,13 +7194,13 @@ static uint8_t CreateInstance(
 
 	if (
 		!SDL_Vulkan_GetInstanceExtensions(
-			presentationParameters->deviceWindowHandle,
+			(SDL_Window*) presentationParameters->deviceWindowHandle,
 			&instanceExtensionCount,
 			NULL
 		)
 	) {
 		FNA3D_LogError(
-			"SDL_Vulkan_GetInstanceExtensions(): getExtensionCount: %s\n",
+			"SDL_Vulkan_GetInstanceExtensions(): getExtensionCount: %s",
 			SDL_GetError()
 		);
 
@@ -7230,31 +7211,25 @@ static uint8_t CreateInstance(
 
 	if (
 		!SDL_Vulkan_GetInstanceExtensions(
-			presentationParameters->deviceWindowHandle,
+			(SDL_Window*) presentationParameters->deviceWindowHandle,
 			&instanceExtensionCount,
 			instanceExtensionNames
 		)
 	) {
-        FNA3D_LogError(
-			"SDL_Vulkan_GetInstanceExtensions(): getExtensions %s\n",
+		FNA3D_LogError(
+			"SDL_Vulkan_GetInstanceExtensions(): getExtensions %s",
 			SDL_GetError()
 		);
-
 		goto create_instance_fail;
 	}
 
 	if (!CheckInstanceExtensionSupport(instanceExtensionNames, instanceExtensionCount))
 	{
-		FNA3D_LogError(
-			"%s\n",
-			"Required Vulkan instance extensions not supported"
-		);
-
+		FNA3D_LogError("Required Vulkan instance extensions not supported");
 		goto create_instance_fail;
 	}
 
 	/* create info structure */
-
 
 	createInfo.pApplicationInfo = &appInfo;
 	createInfo.enabledExtensionCount = instanceExtensionCount;
@@ -7266,11 +7241,7 @@ static uint8_t CreateInstance(
 		createInfo.enabledLayerCount = sizeof(layerNames)/sizeof(layerNames[0]);
 		if (!CheckValidationLayerSupport(layerNames, createInfo.enabledLayerCount))
 		{
-			FNA3D_LogWarn(
-				"%s\n",
-				"Validation layers not found, continuing without validation"
-			);
-
+			FNA3D_LogWarn("Validation layers not found, continuing without validation");
 			createInfo.enabledLayerCount = 0;
 		}
 	}
@@ -7283,10 +7254,9 @@ static uint8_t CreateInstance(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		FNA3D_LogError(
-			"vkCreateInstance failed: %s\n",
+			"vkCreateInstance failed: %s",
 			VkErrorMessages(vulkanResult)
 		);
-
 		goto create_instance_fail;
 	}
 
@@ -7322,19 +7292,15 @@ static uint8_t DeterminePhysicalDevice(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		FNA3D_LogError(
-			"vkEnumeratePhysicalDevices failed: %s\n",
+			"vkEnumeratePhysicalDevices failed: %s",
 			VkErrorMessages(vulkanResult)
 		);
-
 		return 0;
 	}
 
 	if (physicalDeviceCount == 0)
 	{
-		FNA3D_LogError(
-			"%s\n",
-			"Failed to find any GPUs with Vulkan support"
-		);
+		FNA3D_LogError("Failed to find any GPUs with Vulkan support");
 		return 0;
 	}
 
@@ -7348,12 +7314,10 @@ static uint8_t DeterminePhysicalDevice(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
-			"vkEnumeratePhysicalDevices failed: %s\n",
+		FNA3D_LogError(
+			"vkEnumeratePhysicalDevices failed: %s",
 			VkErrorMessages(vulkanResult)
 		);
-
 		SDL_stack_free(physicalDevices);
 		return 0;
 	}
@@ -7383,11 +7347,7 @@ static uint8_t DeterminePhysicalDevice(
 
 	if (!physicalDeviceAssigned)
 	{
-		SDL_LogError(
-			SDL_LOG_CATEGORY_APPLICATION,
-			"No suitable physical devices found."
-		);
-
+		FNA3D_LogError("No suitable physical devices found.");
 		SDL_stack_free(physicalDevices);
 		return 0;
 	}
@@ -7405,7 +7365,7 @@ static uint8_t DeterminePhysicalDevice(
 		&renderer->physicalDeviceProperties
 	);
 
-	FNA3D_LogInfo("FNA3D Driver: VULKAN");
+	FNA3D_LogInfo("FNA3D Driver: Vulkan");
 	FNA3D_LogInfo(
 		"Vulkan Driver: %s %s", 
 		renderer->physicalDeviceDriverProperties.driverName,
@@ -7475,13 +7435,12 @@ static uint8_t CreateLogicalDevice(
 	deviceCreateInfo.enabledExtensionCount = deviceExtensionCount;
 
 	vulkanResult = renderer->vkCreateDevice(renderer->physicalDevice, &deviceCreateInfo, NULL, &renderer->logicalDevice);
-   	if (vulkanResult != VK_SUCCESS)
+	if (vulkanResult != VK_SUCCESS)
 	{
 		FNA3D_LogError(
-			"vkCreateDevice failed: %s\n",
+			"vkCreateDevice failed: %s",
 			VkErrorMessages(vulkanResult)
 		);
-
 		return 0;
 	}
 
@@ -7602,7 +7561,7 @@ static uint8_t CreateSwapChain(
 
 	renderer->vkGetSwapchainImagesKHR(renderer->logicalDevice, renderer->swapChain, &swapChainImageCount, NULL);
 
-	renderer->swapChainImages = SDL_malloc(sizeof(FNAVulkanImageData*) * swapChainImageCount);
+	renderer->swapChainImages = (FNAVulkanImageData**) SDL_malloc(sizeof(FNAVulkanImageData*) * swapChainImageCount);
 	if (!renderer->swapChainImages)
 	{
 		SDL_OutOfMemory();
@@ -7640,7 +7599,7 @@ static uint8_t CreateSwapChain(
 			return 0;
 		}
 
-		renderer->swapChainImages[i] = SDL_malloc(sizeof(FNAVulkanImageData));
+		renderer->swapChainImages[i] = (FNAVulkanImageData*) SDL_malloc(sizeof(FNAVulkanImageData));
 		SDL_zerop(renderer->swapChainImages[i]);
 
 		renderer->swapChainImages[i]->image = swapChainImages[i];
@@ -7838,11 +7797,7 @@ static uint8_t CreateFauxBackbuffer(
 			&renderer->fauxBackbufferColorImageData
 		)
 	) {
-		FNA3D_LogError(
-			"%s\n",
-			"Failed to create color attachment image"
-		);
-
+		FNA3D_LogError("Failed to create color attachment image");
 		return 0;
 	}
 
@@ -7882,11 +7837,7 @@ static uint8_t CreateFauxBackbuffer(
 				&renderer->fauxBackbufferDepthStencil.handle
 			)
 		) {
-			FNA3D_LogError(
-				"%s\n",
-				"Failed to create depth stencil image"
-			);
-
+			FNA3D_LogError("Failed to create depth stencil image");
 			return 0;
 		}
 
@@ -7965,11 +7916,11 @@ static uint8_t CreateDescriptorPools(
 		VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO
 	};
 
-	renderer->samplerDescriptorPools = SDL_malloc(
+	renderer->samplerDescriptorPools = (VkDescriptorPool*) SDL_malloc(
 		sizeof(VkDescriptorPool)
 	);
 
-	renderer->uniformBufferDescriptorPools = SDL_malloc(
+	renderer->uniformBufferDescriptorPools = (VkDescriptorPool*) SDL_malloc(
 		sizeof(VkDescriptorPool)
 	);
 
@@ -8024,7 +7975,7 @@ static uint8_t CreateDescriptorPools(
 	renderer->activeDescriptorSetCapacity = renderer->swapChainImageCount * (MAX_TOTAL_SAMPLERS + 2);
 	renderer->activeDescriptorSetCount = 0;
 
-	renderer->activeDescriptorSets = SDL_malloc(
+	renderer->activeDescriptorSets = (VkDescriptorSet*) SDL_malloc(
 		sizeof(VkDescriptorSet) *
 		renderer->activeDescriptorSetCapacity
 	);
@@ -8041,7 +7992,7 @@ static uint8_t CreateDescriptorPools(
 static uint8_t AllocateBuffersAndOffsets(
 	FNAVulkanRenderer *renderer
 ) {
-	renderer->ldVertUniformBuffers = SDL_malloc(
+	renderer->ldVertUniformBuffers = (VkBuffer**) SDL_malloc(
 		sizeof(VkBuffer*) *
 		renderer->swapChainImageCount
 	);
@@ -8052,7 +8003,7 @@ static uint8_t AllocateBuffersAndOffsets(
 		return 0;
 	}
 
-	renderer->ldFragUniformBuffers = SDL_malloc(
+	renderer->ldFragUniformBuffers = (VkBuffer**) SDL_malloc(
 		sizeof(VkBuffer*) *
 		renderer->swapChainImageCount
 	);
@@ -8063,7 +8014,7 @@ static uint8_t AllocateBuffersAndOffsets(
 		return 0;
 	}
 
-	renderer->ldVertUniformOffsets = SDL_malloc(
+	renderer->ldVertUniformOffsets = (VkDeviceSize*) SDL_malloc(
 		sizeof(VkDeviceSize) *
 		renderer->swapChainImageCount
 	);
@@ -8074,7 +8025,7 @@ static uint8_t AllocateBuffersAndOffsets(
 		return 0;
 	}
 
-	renderer->ldFragUniformOffsets = SDL_malloc(
+	renderer->ldFragUniformOffsets = (VkDeviceSize*) SDL_malloc(
 		sizeof(VkDeviceSize) *
 		renderer->swapChainImageCount
 	);
@@ -8087,7 +8038,7 @@ static uint8_t AllocateBuffersAndOffsets(
 
 	renderer->ldVertexBufferCount = MAX_BOUND_VERTEX_BUFFERS * renderer->swapChainImageCount;
 
-	renderer->ldVertexBuffers = SDL_malloc(
+	renderer->ldVertexBuffers = (VkBuffer*) SDL_malloc(
 		sizeof(VkBuffer) * 
 		renderer->ldVertexBufferCount
 	);
@@ -8098,7 +8049,7 @@ static uint8_t AllocateBuffersAndOffsets(
 		return 0;
 	}
 
-	renderer->ldVertexBufferOffsets = SDL_malloc(
+	renderer->ldVertexBufferOffsets = (VkDeviceSize*) SDL_malloc(
 		sizeof(VkDeviceSize) * 
 		renderer->ldVertexBufferCount
 	);
@@ -8119,7 +8070,7 @@ static uint8_t AllocateTextureAndSamplerStorage(
 
 	renderer->textureCount = MAX_TOTAL_SAMPLERS * renderer->swapChainImageCount;
 
-	renderer->textures = SDL_malloc(
+	renderer->textures = (VulkanTexture**) SDL_malloc(
 		sizeof(VulkanTexture*) *
 		renderer->textureCount
 	);
@@ -8130,7 +8081,7 @@ static uint8_t AllocateTextureAndSamplerStorage(
 		return 0;
 	}
 
-	renderer->samplers = SDL_malloc(
+	renderer->samplers = (VkSampler*) SDL_malloc(
 		sizeof(VkSampler) *
 		renderer->textureCount
 	);
@@ -8141,7 +8092,7 @@ static uint8_t AllocateTextureAndSamplerStorage(
 		return 0;
 	}
 
-	renderer->textureNeedsUpdate = SDL_malloc(
+	renderer->textureNeedsUpdate = (uint8_t*) SDL_malloc(
 		sizeof(uint8_t) *
 		renderer->textureCount
 	);
@@ -8152,7 +8103,7 @@ static uint8_t AllocateTextureAndSamplerStorage(
 		return 0;
 	}
 
-	renderer->samplerNeedsUpdate = SDL_malloc(
+	renderer->samplerNeedsUpdate = (uint8_t*) SDL_malloc(
 		sizeof(uint8_t) *
 		renderer->textureCount
 	);
@@ -8294,7 +8245,7 @@ static uint8_t CreateBindingInfos(
 
 	renderer->vertSamplerImageInfoCount = renderer->swapChainImageCount * MAX_VERTEXTEXTURE_SAMPLERS;
 
-	renderer->vertSamplerImageInfos = SDL_malloc(
+	renderer->vertSamplerImageInfos = (VkDescriptorImageInfo*) SDL_malloc(
 		sizeof(VkDescriptorImageInfo) *
 		renderer->vertSamplerImageInfoCount
 	);
@@ -8307,7 +8258,7 @@ static uint8_t CreateBindingInfos(
 
 	renderer->fragSamplerImageInfoCount = renderer->swapChainImageCount * MAX_TEXTURE_SAMPLERS;
 
-	renderer->fragSamplerImageInfos = SDL_malloc(
+	renderer->fragSamplerImageInfos = (VkDescriptorImageInfo*) SDL_malloc(
 		sizeof(VkDescriptorImageInfo) *
 		renderer->fragSamplerImageInfoCount
 	);
@@ -8318,7 +8269,7 @@ static uint8_t CreateBindingInfos(
 		return 0;
 	}
 
-	renderer->vertUniformBufferInfo = SDL_malloc(
+	renderer->vertUniformBufferInfo = (VkDescriptorBufferInfo*) SDL_malloc(
 		sizeof(VkDescriptorBufferInfo) *
 		renderer->swapChainImageCount
 	);
@@ -8329,7 +8280,7 @@ static uint8_t CreateBindingInfos(
 		return 0;
 	}
 
-	renderer->fragUniformBufferInfo = SDL_malloc(
+	renderer->fragUniformBufferInfo = (VkDescriptorBufferInfo*) SDL_malloc(
 		sizeof(VkDescriptorBufferInfo) *
 		renderer->swapChainImageCount
 	);
@@ -8374,7 +8325,7 @@ static uint8_t CreateBarrierStorage(
 	renderer->imageMemoryBarrierCapacity = 256;
 	renderer->imageMemoryBarrierCount = 0;
 
-	renderer->imageMemoryBarriers = SDL_malloc(
+	renderer->imageMemoryBarriers = (VkImageMemoryBarrier*) SDL_malloc(
 		sizeof(VkImageMemoryBarrier) *
 		renderer->imageMemoryBarrierCapacity
 	);
@@ -8388,7 +8339,7 @@ static uint8_t CreateBarrierStorage(
 	renderer->bufferMemoryBarrierCapacity = 256;
 	renderer->bufferMemoryBarrierCount = 0;
 
-	renderer->bufferMemoryBarriers = SDL_malloc(
+	renderer->bufferMemoryBarriers = (VkBufferMemoryBarrier*) SDL_malloc(
 		sizeof(VkBufferMemoryBarrier) *
 		renderer->bufferMemoryBarrierCapacity
 	);
@@ -8402,6 +8353,12 @@ static uint8_t CreateBarrierStorage(
 	return 1;
 }
 
+static inline uint8_t DXTFormatSupported(VkFormatProperties formatProps)
+{
+	return	(formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) &&
+		(formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_TRANSFER_DST_BIT);
+}
+
 FNA3D_Device* VULKAN_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters,
 	uint8_t debugMode
@@ -8409,8 +8366,9 @@ FNA3D_Device* VULKAN_CreateDevice(
 	FNAVulkanRenderer *renderer;
 	FNA3D_Device *result;
 
-	char const* deviceExtensionNames[] = { "VK_KHR_swapchain" };
-	uint32_t deviceExtensionCount = sizeof(deviceExtensionNames) / sizeof(deviceExtensionNames[0]);
+	const char* deviceExtensionNames[] = { "VK_KHR_swapchain" };
+	uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
+	VkFormatProperties formatPropsBC1, formatPropsBC2, formatPropsBC3;
 
 	/* Create the FNA3D_Device */
 	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
@@ -8434,11 +8392,9 @@ FNA3D_Device* VULKAN_CreateDevice(
 	if (SDL_Vulkan_LoadLibrary(NULL) == -1)
 	{
 		FNA3D_LogError(
-			"%s\n%s\n",
-			SDL_GetError(),
-			"Failed to load Vulkan library"
+			"Failed to load Vulkan library: %s",
+			SDL_GetError()
 		);
-
 		return NULL;
 	}
 
@@ -8455,12 +8411,12 @@ FNA3D_Device* VULKAN_CreateDevice(
 	}
 
 	if (!SDL_Vulkan_CreateSurface(
-			presentationParameters->deviceWindowHandle,
-			renderer->instance,
-			&renderer->surface
+		(SDL_Window*) presentationParameters->deviceWindowHandle,
+		renderer->instance,
+		&renderer->surface
 	)) {
 		FNA3D_LogError(
-			"SDL_Vulkan_CreateSurface failed: %s\n",
+			"SDL_Vulkan_CreateSurface failed: %s",
 			SDL_GetError()
 		);
 		return NULL;
@@ -8561,13 +8517,36 @@ FNA3D_Device* VULKAN_CreateDevice(
 
 	/* init various renderer properties */
 	renderer->currentDepthFormat = presentationParameters->depthStencilFormat;
-	renderer->commandBuffers = SDL_malloc(sizeof(VkCommandBuffer));
+	renderer->commandBuffers = (VkCommandBuffer*) SDL_malloc(sizeof(VkCommandBuffer));
 	renderer->commandBufferCount = 0;
 	renderer->commandBufferCapacity = 1;
 
 	renderer->currentPipeline = NULL;
 	renderer->needNewRenderPass = 1;
 	renderer->frameInProgress = 0;
+
+	/* check for DXT1/S3TC support */
+	renderer->vkGetPhysicalDeviceFormatProperties(
+		renderer->physicalDevice,
+		XNAToVK_SurfaceFormat[FNA3D_SURFACEFORMAT_DXT1].formatColor,
+		&formatPropsBC1
+	);
+	renderer->vkGetPhysicalDeviceFormatProperties(
+		renderer->physicalDevice,
+		XNAToVK_SurfaceFormat[FNA3D_SURFACEFORMAT_DXT3].formatColor,
+		&formatPropsBC2
+	);
+	renderer->vkGetPhysicalDeviceFormatProperties(
+		renderer->physicalDevice,
+		XNAToVK_SurfaceFormat[FNA3D_SURFACEFORMAT_DXT5].formatColor,
+		&formatPropsBC3
+	);
+
+	renderer->supportsDxt1 = DXTFormatSupported(formatPropsBC1);
+	renderer->supportsS3tc = (
+		DXTFormatSupported(formatPropsBC2) ||
+		DXTFormatSupported(formatPropsBC3)
+	);
 
 	/* initialize various render object caches */
 	hmdefault(renderer->pipelineHashMap, NULL);
@@ -8606,7 +8585,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 	renderer->renderbuffersToDestroyCapacity = 16;
 	renderer->renderbuffersToDestroyCount = 0;
 
-	renderer->renderbuffersToDestroy = SDL_malloc(
+	renderer->renderbuffersToDestroy = (VulkanRenderbuffer**) SDL_malloc(
 		sizeof(VulkanRenderbuffer*) *
 		renderer->renderbuffersToDestroyCapacity
 	);
@@ -8614,7 +8593,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 	renderer->buffersToDestroyCapacity = 16;
 	renderer->buffersToDestroyCount = 0;
 
-	renderer->buffersToDestroy = SDL_malloc(
+	renderer->buffersToDestroy = (VulkanBuffer**) SDL_malloc(
 		sizeof(VulkanBuffer*) *
 		renderer->buffersToDestroyCapacity
 	);
@@ -8622,7 +8601,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 	renderer->bufferMemoryWrappersToDestroyCapacity = 16;
 	renderer->bufferMemoryWrappersToDestroyCount = 0;
 
-	renderer->bufferMemoryWrappersToDestroy = SDL_malloc(
+	renderer->bufferMemoryWrappersToDestroy = (BufferMemoryWrapper**) SDL_malloc(
 		sizeof(BufferMemoryWrapper*) *
 		renderer->bufferMemoryWrappersToDestroyCapacity
 	);
@@ -8630,7 +8609,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 	renderer->effectsToDestroyCapacity = 16;
 	renderer->effectsToDestroyCount = 0;
 
-	renderer->effectsToDestroy = SDL_malloc(
+	renderer->effectsToDestroy = (VulkanEffect**) SDL_malloc(
 		sizeof(VulkanEffect*) *
 		renderer->effectsToDestroyCapacity
 	);
@@ -8638,7 +8617,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 	renderer->imageDatasToDestroyCapacity = 16;
 	renderer->imageDatasToDestroyCount = 0;
 
-	renderer->imageDatasToDestroy = SDL_malloc(
+	renderer->imageDatasToDestroy = (FNAVulkanImageData**) SDL_malloc(
 		sizeof(FNAVulkanImageData*) *
 		renderer->imageDatasToDestroyCapacity
 	);
