@@ -483,6 +483,7 @@ typedef struct FNAVulkanRenderer
 	/* Capabilities */
 	uint8_t supportsDxt1;
 	uint8_t supportsS3tc;
+	uint8_t supportsDebugUtils;
 	uint8_t debugMode;
 
 	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
@@ -3449,7 +3450,7 @@ static VkPipeline FetchPipeline(
 	depthStencilStateInfo.minDepthBounds = 0; /* unused */
 	depthStencilStateInfo.maxDepthBounds = 0; /* unused */
 
-	dynamicStateInfo.dynamicStateCount = sizeof(dynamicStates)/sizeof(dynamicStates[0]);
+	dynamicStateInfo.dynamicStateCount = SDL_arraysize(dynamicStates);
 	dynamicStateInfo.pDynamicStates = dynamicStates;
 
 	MOJOSHADER_vkGetBoundShaders(&vertShader, &fragShader);
@@ -6464,7 +6465,19 @@ int32_t VULKAN_GetMaxMultiSampleCount(
 
 void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VkDebugUtilsLabelEXT labelInfo = {
+		VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT
+	};
+
+	if (renderer->supportsDebugUtils)
+	{
+		labelInfo.pLabelName = text;
+		renderer->vkCmdInsertDebugUtilsLabelEXT(
+			renderer->commandBuffers[renderer->currentSwapChainIndex],
+			&labelInfo
+		);
+	}
 }
 
 /* Function Loading */
@@ -6513,42 +6526,53 @@ static void LoadDeviceFunctions(
 	#undef VULKAN_DEVICE_FUNCTION
 }
 
-static uint8_t CheckInstanceExtensionSupport(
-	const char** requiredExtensions,
-	uint32_t requiredExtensionsLength
+static inline uint8_t SupportsExtension(
+	const char *ext,
+	VkExtensionProperties *availableExtensions,
+	uint32_t numAvailableExtensions
 ) {
-	uint32_t extensionCount, i, j;
+	int32_t i;
+	for (i = 0; i < numAvailableExtensions; i += 1)
+	{
+		if (SDL_strcmp(ext, availableExtensions[i].extensionName) == 0)
+		{
+			return 1;
+		}
+	}
+	return 0;
+}
+
+static uint8_t CheckInstanceExtensionSupport(
+	const char **requiredExtensions,
+	uint32_t requiredExtensionsLength,
+	uint8_t *supportsDebugUtils
+) {
+	uint32_t extensionCount, i;
 	VkExtensionProperties *availableExtensions;
-	uint8_t extensionFound;
+	uint8_t allExtensionsSupported = 1;
 
 	vkEnumerateInstanceExtensionProperties(NULL, &extensionCount, NULL);
-	availableExtensions = (VkExtensionProperties*) SDL_malloc(
-		extensionCount * sizeof(VkExtensionProperties)
-	);
+	availableExtensions = SDL_stack_alloc(VkExtensionProperties, extensionCount);
 	vkEnumerateInstanceExtensionProperties(NULL, &extensionCount, availableExtensions);
 
 	for (i = 0; i < requiredExtensionsLength; i++)
 	{
-		extensionFound = 0;
-
-		for (j = 0; j < extensionCount; j++)
+		if (!SupportsExtension(requiredExtensions[i], availableExtensions, extensionCount))
 		{
-			if (SDL_strcmp(requiredExtensions[i], availableExtensions[j].extensionName) == 0)
-			{
-				extensionFound = 1;
-				break;
-			}
-		}
-
-		if (!extensionFound)
-		{
-			SDL_free(availableExtensions);
-			return 0;
+			allExtensionsSupported = 0;
+			break;
 		}
 	}
 
-	SDL_free(availableExtensions);
-	return 1;
+	/* This is optional, but nice to have! */
+	*supportsDebugUtils = SupportsExtension(
+		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
+		availableExtensions,
+		extensionCount
+	);
+
+	SDL_stack_free(availableExtensions);
+	return allExtensionsSupported;
 }
 
 static uint8_t CheckDeviceExtensionSupport(
@@ -6557,38 +6581,25 @@ static uint8_t CheckDeviceExtensionSupport(
 	const char** requiredExtensions,
 	uint32_t requiredExtensionsLength
 ) {
-	uint32_t extensionCount, i, j;
+	uint32_t extensionCount, i;
 	VkExtensionProperties *availableExtensions;
-	uint8_t extensionFound;
+	uint8_t allExtensionsSupported = 1;
 
 	renderer->vkEnumerateDeviceExtensionProperties(physicalDevice, NULL, &extensionCount, NULL);
-	availableExtensions = (VkExtensionProperties*) SDL_malloc(
-		extensionCount * sizeof(VkExtensionProperties)
-	);
+	availableExtensions = SDL_stack_alloc(VkExtensionProperties, extensionCount);
 	renderer->vkEnumerateDeviceExtensionProperties(physicalDevice, NULL, &extensionCount, availableExtensions);
 
 	for (i = 0; i < requiredExtensionsLength; i++)
 	{
-		extensionFound = 0;
-
-		for (j = 0; j < extensionCount; j++)
+		if (!SupportsExtension(requiredExtensions[i], availableExtensions, extensionCount))
 		{
-			if (SDL_strcmp(requiredExtensions[i], availableExtensions[j].extensionName) == 0)
-			{
-				extensionFound = 1;
-				break;
-			}
-		}
-
-		if (!extensionFound)
-		{
-			SDL_free(availableExtensions);
-			return 0;
+			allExtensionsSupported = 0;
+			break;
 		}
 	}
 
-	SDL_free(availableExtensions);
-	return 1;
+	SDL_stack_free(availableExtensions);
+	return allExtensionsSupported;
 }
 
 static uint8_t QuerySwapChainSupport(
@@ -6668,33 +6679,33 @@ static uint8_t QuerySwapChainSupport(
 	return 1;
 }
 
-/* we want a physical device that is dedicated and supports our features */
-static uint8_t IsDeviceIdeal(
+/* if no dedicated device exists, one that supports our features would be fine */
+static uint8_t IsDeviceSuitable(
 	FNAVulkanRenderer *renderer,
 	VkPhysicalDevice physicalDevice,
 	const char** requiredExtensionNames,
 	uint32_t requiredExtensionNamesLength,
 	VkSurfaceKHR surface,
-	QueueFamilyIndices* queueFamilyIndices
+	QueueFamilyIndices *queueFamilyIndices,
+	uint8_t *isIdeal
 ) {
-	VkPhysicalDeviceProperties deviceProperties;
 	uint32_t queueFamilyCount, i;
 	SwapChainSupportDetails swapChainSupportDetails;
 	VkQueueFamilyProperties *queueProps;
 	VkBool32 supportsPresent;
+	uint8_t foundSuitableDevice = 0;
+	VkPhysicalDeviceProperties deviceProperties;
 
 	queueFamilyIndices->graphicsFamily = UINT32_MAX;
 	queueFamilyIndices->presentFamily = UINT32_MAX;
+	*isIdeal = 0;
 
-	renderer->vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
-
-	if (deviceProperties.deviceType != VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-	{
-		return 0;
-	}
-
-	if (!CheckDeviceExtensionSupport(renderer, physicalDevice, requiredExtensionNames, requiredExtensionNamesLength))
-	{
+	if (!CheckDeviceExtensionSupport(
+		renderer,
+		physicalDevice,
+		requiredExtensionNames,
+		requiredExtensionNamesLength
+	)) {
 		return 0;
 	}
 
@@ -6715,89 +6726,41 @@ static uint8_t IsDeviceIdeal(
 		return 0;
 	}
 
-	queueProps = (VkQueueFamilyProperties*) SDL_malloc(
-		queueFamilyCount * sizeof(VkQueueFamilyProperties)
-	);
+	queueProps = (VkQueueFamilyProperties*) SDL_stack_alloc(VkQueueFamilyProperties, queueFamilyCount);
 	renderer->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueProps);
 
-	for (i = 0; i < queueFamilyCount; i++) {
+	for (i = 0; i < queueFamilyCount; i++)
+	{
 		renderer->vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &supportsPresent);
-		if (supportsPresent && (queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0) {
+		if (supportsPresent && (queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0)
+		{
 			queueFamilyIndices->graphicsFamily = i;
 			queueFamilyIndices->presentFamily = i;
-			SDL_free(queueProps);
-			return 1;
+			foundSuitableDevice = 1;
+			break;
 		}
 	}
 
-	SDL_free(queueProps);
-	return 0;
-}
+	SDL_stack_free(queueProps);
 
-/* FIXME: remove code duplication here */
-/* if no dedicated device exists, one that supports our features would be fine */
-static uint8_t IsDeviceSuitable(
-	FNAVulkanRenderer *renderer,
-	VkPhysicalDevice physicalDevice,
-	const char** requiredExtensionNames,
-	uint32_t requiredExtensionNamesLength,
-	VkSurfaceKHR surface,
-	QueueFamilyIndices* queueFamilyIndices
-) {
-	VkPhysicalDeviceProperties deviceProperties;
-	uint32_t queueFamilyCount, i;
-	SwapChainSupportDetails swapChainSupportDetails;
-	VkQueueFamilyProperties *queueProps;
-	VkBool32 supportsPresent;
-
-	queueFamilyIndices->graphicsFamily = UINT32_MAX;
-	queueFamilyIndices->presentFamily = UINT32_MAX;
-
-	if (!CheckDeviceExtensionSupport(renderer, physicalDevice, requiredExtensionNames, requiredExtensionNamesLength))
+	if (foundSuitableDevice)
 	{
-		return 0;
-	}
-
-	renderer->vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
-
-	renderer->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, NULL);
-
-	if (!QuerySwapChainSupport(renderer, physicalDevice, surface, &swapChainSupportDetails))
-	{
-		SDL_free(swapChainSupportDetails.formats);
-		SDL_free(swapChainSupportDetails.presentModes);
-		return 0;
-	}
-
-	if (swapChainSupportDetails.formatsLength == 0 || swapChainSupportDetails.presentModesLength == 0)
-	{
-		SDL_free(swapChainSupportDetails.formats);
-		SDL_free(swapChainSupportDetails.presentModes);
-		return 0;
-	}
-
-	queueProps = (VkQueueFamilyProperties*) SDL_malloc(
-		queueFamilyCount * sizeof(VkQueueFamilyProperties)
-	);
-	renderer->vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueProps);
-
-	for (i = 0; i < queueFamilyCount; i++) {
-		renderer->vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &supportsPresent);
-		if (supportsPresent && (queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0) {
-			queueFamilyIndices->graphicsFamily = i;
-			queueFamilyIndices->presentFamily = i;
-			SDL_free(queueProps);
-			return 1;
+		/* We'd really like a discrete GPU, but it's OK either way! */
+		renderer->vkGetPhysicalDeviceProperties(physicalDevice, &deviceProperties);
+		if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
+		{
+			*isIdeal = 1;
 		}
+		return 1;
 	}
 
-	SDL_free(queueProps);
+	/* This device is useless for us, next! */
 	return 0;
 }
 
 static uint8_t CheckValidationLayerSupport(
 	const char** validationLayers,
-	uint32_t length
+	uint32_t validationLayersLength
 ) {
 	uint32_t layerCount;
 	VkLayerProperties *availableLayers;
@@ -6805,13 +6768,10 @@ static uint8_t CheckValidationLayerSupport(
 	uint8_t layerFound;
 
 	vkEnumerateInstanceLayerProperties(&layerCount, NULL);
-
-	availableLayers = (VkLayerProperties*) SDL_malloc(
-		layerCount * sizeof(VkLayerProperties)
-	);
+	availableLayers = SDL_stack_alloc(VkLayerProperties, layerCount);
 	vkEnumerateInstanceLayerProperties(&layerCount, availableLayers);
 
-	for (i = 0; i < length; i++)
+	for (i = 0; i < validationLayersLength; i++)
 	{
 		layerFound = 0;
 
@@ -6826,13 +6786,12 @@ static uint8_t CheckValidationLayerSupport(
 
 		if (!layerFound)
 		{
-			SDL_free(availableLayers);
-			return 0;
+			break;
 		}
 	}
 
-	SDL_free(availableLayers);
-	return 1;
+	SDL_stack_free(availableLayers);
+	return layerFound;
 }
 
 static uint8_t ChooseSwapSurfaceFormat(
@@ -7122,7 +7081,7 @@ static uint8_t CreateInstance(
 ) {
 	VkResult vulkanResult;
 	VkApplicationInfo appInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
-	const char **instanceExtensionNames;
+	const char **instanceExtensionNames, **temp;
 	uint32_t instanceExtensionCount;
 	VkInstanceCreateInfo createInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
 	const char *layerNames[] = { "VK_LAYER_KHRONOS_validation" };
@@ -7148,24 +7107,46 @@ static uint8_t CreateInstance(
 
 	instanceExtensionNames = SDL_stack_alloc(const char*, instanceExtensionCount);
 
-	if (
-		!SDL_Vulkan_GetInstanceExtensions(
-			(SDL_Window*) presentationParameters->deviceWindowHandle,
-			&instanceExtensionCount,
-			instanceExtensionNames
-		)
-	) {
+	if (!SDL_Vulkan_GetInstanceExtensions(
+		(SDL_Window*) presentationParameters->deviceWindowHandle,
+		&instanceExtensionCount,
+		instanceExtensionNames
+	)) {
 		FNA3D_LogError(
-			"SDL_Vulkan_GetInstanceExtensions(): getExtensions %s",
+			"SDL_Vulkan_GetInstanceExtensions(): %s",
 			SDL_GetError()
 		);
 		goto create_instance_fail;
 	}
 
-	if (!CheckInstanceExtensionSupport(instanceExtensionNames, instanceExtensionCount))
-	{
+	if (!CheckInstanceExtensionSupport(
+		instanceExtensionNames,
+		instanceExtensionCount,
+		&renderer->supportsDebugUtils
+	)) {
 		FNA3D_LogError("Required Vulkan instance extensions not supported");
 		goto create_instance_fail;
+	}
+
+	if (renderer->supportsDebugUtils)
+	{
+		/* Copy the old array into a new stack allocation */
+		temp = SDL_stack_alloc(const char*, instanceExtensionCount + 1);
+		SDL_memcpy(
+			temp,
+			instanceExtensionNames,
+			sizeof(const char*) * (instanceExtensionCount)
+		);
+		SDL_stack_free(instanceExtensionNames);
+		instanceExtensionNames = temp;
+
+		/* Append the debug extension to the end */
+		instanceExtensionNames[instanceExtensionCount] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+		instanceExtensionCount += 1;
+	}
+	else
+	{
+		FNA3D_LogWarn("%s is not supported!", VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 	}
 
 	/* create info structure */
@@ -7177,7 +7158,7 @@ static uint8_t CreateInstance(
 
 	if (renderer->debugMode)
 	{
-		createInfo.enabledLayerCount = sizeof(layerNames)/sizeof(layerNames[0]);
+		createInfo.enabledLayerCount = SDL_arraysize(layerNames);
 		if (!CheckValidationLayerSupport(layerNames, createInfo.enabledLayerCount))
 		{
 			FNA3D_LogWarn("Validation layers not found, continuing without validation");
@@ -7214,13 +7195,10 @@ static uint8_t DeterminePhysicalDevice(
 ) {
 	VkResult vulkanResult;
 	VkPhysicalDevice *physicalDevices;
-	uint32_t physicalDeviceCount;
+	uint32_t physicalDeviceCount, i, suitableIndex;
 	VkPhysicalDevice physicalDevice;
-
 	QueueFamilyIndices queueFamilyIndices;
-	uint8_t physicalDeviceAssigned = 0;
-
-	uint32_t i;
+	uint8_t isIdeal;
 
 	vulkanResult = renderer->vkEnumeratePhysicalDevices(
 		renderer->instance,
@@ -7261,32 +7239,35 @@ static uint8_t DeterminePhysicalDevice(
 		return 0;
 	}
 
+	/* Any suitable device will do, but we'd like the best */
+	suitableIndex = -1;
 	for (i = 0; i < physicalDeviceCount; i++)
 	{
-		if (IsDeviceIdeal(renderer, physicalDevices[i], deviceExtensionNames, deviceExtensionCount, renderer->surface, &queueFamilyIndices))
-		{
-			physicalDevice = physicalDevices[i];
-			physicalDeviceAssigned = 1;
-			break;
-		}
-	}
-
-	if (!physicalDeviceAssigned)
-	{
-		for (i = 0; i < physicalDeviceCount; i++)
-		{
-			if (IsDeviceSuitable(renderer, physicalDevices[i], deviceExtensionNames, deviceExtensionCount, renderer->surface, &queueFamilyIndices))
+		if (IsDeviceSuitable(
+			renderer,
+			physicalDevices[i],
+			deviceExtensionNames,
+			deviceExtensionCount,
+			renderer->surface,
+			&queueFamilyIndices,
+			&isIdeal
+		)) {
+			suitableIndex = i;
+			if (isIdeal)
 			{
-				physicalDevice = physicalDevices[i];
-				physicalDeviceAssigned = 1;
+				/* This is the one we want! */
 				break;
 			}
 		}
 	}
 
-	if (!physicalDeviceAssigned)
+	if (suitableIndex != -1)
 	{
-		FNA3D_LogError("No suitable physical devices found.");
+		physicalDevice = physicalDevices[suitableIndex];
+	}
+	else
+	{
+		FNA3D_LogError("No suitable physical devices found");
 		SDL_stack_free(physicalDevices);
 		return 0;
 	}
