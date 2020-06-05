@@ -117,13 +117,18 @@ typedef struct SwapChainSupportDetails {
 	uint32_t presentModesLength;
 } SwapChainSupportDetails;
 
-typedef struct FNAVulkanImageData
+typedef struct VulkanImageResource
 {
 	VkImage image;
+	VulkanResourceAccessType resourceAccessType;
+} VulkanImageResource;
+
+typedef struct FNAVulkanImageData
+{
+	VulkanImageResource imageResource;
 	VkImageView view;
 	VkDeviceMemory memory;
 	VkExtent2D dimensions;
-	VulkanResourceAccessType resourceAccessType;
 	VkDeviceSize memorySize;
 } FNAVulkanImageData;
 
@@ -249,8 +254,7 @@ struct VulkanRenderbuffer /* Cast from FNA3D_Renderbuffer */
 
 struct VulkanColorBuffer
 {
-	VkImageView handle;
-	VkExtent2D dimensions;
+	FNAVulkanImageData handle;
 };
 
 struct VulkanDepthStencilBuffer
@@ -296,7 +300,8 @@ typedef struct FNAVulkanRenderer
 
 	VkSurfaceKHR surface;
 	VkSwapchainKHR swapChain;
-	FNAVulkanImageData **swapChainImages; /* NOTE: these do not have memory; special case */
+	VulkanImageResource **swapChainImages;
+	VkImageView *swapChainImageViews;
 	uint32_t swapChainImageCount;
 	VkExtent2D swapChainExtent;
 	uint32_t currentSwapChainIndex;
@@ -311,10 +316,6 @@ typedef struct FNAVulkanRenderer
 	uint64_t currentVertexBufferBindingHash;
 	VkCommandBuffer *commandBuffers;
 
-	FNA3D_Vec4 clearColor;
-	float clearDepthValue;
-	uint32_t clearStencilValue;
-
 	/* Queries */
 	VkQueryPool queryPool;
 	int8_t freeQueryIndexStack[MAX_QUERIES];
@@ -322,7 +323,6 @@ typedef struct FNAVulkanRenderer
 
 	SurfaceFormatMapping surfaceFormatMapping;
 	FNA3D_SurfaceFormat fauxBackbufferSurfaceFormat;
-	FNAVulkanImageData fauxBackbufferColorImageData;
 	VulkanColorBuffer fauxBackbufferColor;
 	VulkanDepthStencilBuffer fauxBackbufferDepthStencil;
 	VkFramebuffer fauxBackbufferFramebuffer;
@@ -475,9 +475,6 @@ typedef struct FNAVulkanRenderer
 
 	uint8_t frameInProgress;
 	uint8_t renderPassInProgress;
-	uint8_t shouldClearColor;
-	uint8_t shouldClearDepth;
-	uint8_t shouldClearStencil;
 	uint8_t needNewRenderPass;
 
 	/* Capabilities */
@@ -512,15 +509,11 @@ typedef struct BufferMemoryBarrierCreateInfo {
 } BufferMemoryBarrierCreateInfo;
 
 typedef struct ImageMemoryBarrierCreateInfo {
-	const VulkanResourceAccessType *pPrevAccesses;
-	uint32_t prevAccessCount;
-	const VulkanResourceAccessType *pNextAccesses;
-	uint32_t nextAccessCount;
+	VkImageSubresourceRange subresourceRange;
 	uint8_t discardContents;
 	uint32_t srcQueueFamilyIndex;
 	uint32_t dstQueueFamilyIndex;
-	VkImage image;
-	VkImageSubresourceRange subresourceRange;
+	VulkanResourceAccessType nextAccess;
 } ImageMemoryBarrierCreateInfo;
 
 typedef struct VulkanResourceAccessInfo {
@@ -758,7 +751,8 @@ static void CreateBufferMemoryBarrier(
 
 static void CreateImageMemoryBarrier(
 	FNAVulkanRenderer *renderer,
-	ImageMemoryBarrierCreateInfo barrierCreateInfo
+	ImageMemoryBarrierCreateInfo barrierCreateInfo,
+	VulkanImageResource *imageResource
 );
 
 static uint8_t CreateImage(
@@ -885,7 +879,7 @@ static void GenerateVertexInputInfo(
 
 static void InternalBeginFrame(FNAVulkanRenderer *renderer);
 
-static void InternalClear(
+static void RenderPassClear(
 	FNAVulkanRenderer *renderer,
 	FNA3D_Vec4 *color,
 	float depth,
@@ -2606,7 +2600,7 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 	{
 		renderer->vkDestroyImageView(
 			renderer->logicalDevice,
-			renderer->swapChainImages[i]->view,
+			renderer->swapChainImageViews[i],
 			NULL
 		);
 
@@ -2634,6 +2628,7 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 	hmfree(renderer->framebufferHashMap);
 	hmfree(renderer->samplerStateHashMap);
 
+	SDL_free(renderer->swapChainImageViews);
 	SDL_free(renderer->ldVertexBuffers);
 	SDL_free(renderer->ldFragUniformBuffers);
 	SDL_free(renderer->ldVertexBufferOffsets);
@@ -2742,58 +2737,56 @@ static void CreateBufferMemoryBarrier(
 
 static void CreateImageMemoryBarrier(
 	FNAVulkanRenderer *renderer,
-	ImageMemoryBarrierCreateInfo barrierCreateInfo
+	ImageMemoryBarrierCreateInfo barrierCreateInfo,
+	VulkanImageResource *imageResource
 ) {
 	VkPipelineStageFlags srcStages = 0;
 	VkPipelineStageFlags dstStages = 0;
 	VkImageMemoryBarrier memoryBarrier = {
 		VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
 	};
-	uint32_t i;
-	VulkanResourceAccessType prevAccess, nextAccess;
+	VulkanResourceAccessType prevAccess;
 	const VulkanResourceAccessInfo *pPrevAccessInfo, *pNextAccessInfo;
+
+	if (imageResource->resourceAccessType == barrierCreateInfo.nextAccess)
+	{ 
+		return; 
+	}
 
 	memoryBarrier.srcAccessMask = 0;
 	memoryBarrier.dstAccessMask = 0;
 	memoryBarrier.srcQueueFamilyIndex = barrierCreateInfo.srcQueueFamilyIndex;
 	memoryBarrier.dstQueueFamilyIndex = barrierCreateInfo.dstQueueFamilyIndex;
-	memoryBarrier.image = barrierCreateInfo.image;
+	memoryBarrier.image = imageResource->image;
 	memoryBarrier.subresourceRange = barrierCreateInfo.subresourceRange;
 	memoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	memoryBarrier.newLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-	for (i = 0; i < barrierCreateInfo.prevAccessCount; i++)
+	prevAccess = imageResource->resourceAccessType;
+	pPrevAccessInfo = &AccessMap[prevAccess];
+
+	srcStages |= pPrevAccessInfo->stageMask;
+
+	if (prevAccess > RESOURCE_ACCESS_END_OF_READ)
 	{
-		prevAccess = barrierCreateInfo.pPrevAccesses[i];
-		pPrevAccessInfo = &AccessMap[prevAccess];
-
-		srcStages |= pPrevAccessInfo->stageMask;
-
-		if (prevAccess > RESOURCE_ACCESS_END_OF_READ)
-		{
-			memoryBarrier.srcAccessMask |= pPrevAccessInfo->accessMask;
-		}
-
-		if (barrierCreateInfo.discardContents)
-		{
-			memoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-		}
-		else
-		{
-			memoryBarrier.oldLayout = pPrevAccessInfo->imageLayout;
-		}
+		memoryBarrier.srcAccessMask |= pPrevAccessInfo->accessMask;
 	}
 
-	for (i = 0; i < barrierCreateInfo.nextAccessCount; i++)
+	if (barrierCreateInfo.discardContents)
 	{
-		nextAccess = barrierCreateInfo.pNextAccesses[i];
-		pNextAccessInfo = &AccessMap[nextAccess];
-
-		dstStages |= pNextAccessInfo->stageMask;
-
-		memoryBarrier.dstAccessMask |= pNextAccessInfo->accessMask;
-		memoryBarrier.newLayout = pNextAccessInfo->imageLayout;
+		memoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	}
+	else
+	{
+		memoryBarrier.oldLayout = pPrevAccessInfo->imageLayout;
+	}
+
+	pNextAccessInfo = &AccessMap[barrierCreateInfo.nextAccess];
+
+	dstStages |= pNextAccessInfo->stageMask;
+
+	memoryBarrier.dstAccessMask |= pNextAccessInfo->accessMask;
+	memoryBarrier.newLayout = pNextAccessInfo->imageLayout;
 
 	if (srcStages == 0)
 	{
@@ -2829,6 +2822,8 @@ static void CreateImageMemoryBarrier(
 
 	renderer->imageMemoryBarriers[renderer->imageMemoryBarrierCount] = memoryBarrier;
 	renderer->imageMemoryBarrierCount++;
+
+	imageResource->resourceAccessType = barrierCreateInfo.nextAccess;
 }
 
 static uint8_t CreateImage(
@@ -2872,13 +2867,13 @@ static uint8_t CreateImage(
 	imageCreateInfo.queueFamilyIndexCount = 0;
 	imageCreateInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
-	imageData->resourceAccessType = RESOURCE_ACCESS_NONE;
+	imageData->imageResource.resourceAccessType = RESOURCE_ACCESS_NONE;
 
 	result = renderer->vkCreateImage(
 		renderer->logicalDevice,
 		&imageCreateInfo,
 		NULL,
-		&imageData->image
+		&imageData->imageResource.image
 	);
 
 	if (result != VK_SUCCESS)
@@ -2890,7 +2885,7 @@ static uint8_t CreateImage(
 
 	renderer->vkGetImageMemoryRequirements(
 		renderer->logicalDevice,
-		imageData->image,
+		imageData->imageResource.image,
 		&memoryRequirements
 	);
 
@@ -2924,7 +2919,7 @@ static uint8_t CreateImage(
 
 	result = renderer->vkBindImageMemory(
 		renderer->logicalDevice,
-		imageData->image,
+		imageData->imageResource.image,
 		imageData->memory,
 		0
 	);
@@ -2936,7 +2931,7 @@ static uint8_t CreateImage(
 	}
 
 	imageViewCreateInfo.flags = 0;
-	imageViewCreateInfo.image = imageData->image;
+	imageViewCreateInfo.image = imageData->imageResource.image;
 	imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 	imageViewCreateInfo.format = format;
 	imageViewCreateInfo.components = swizzle;
@@ -3038,13 +3033,12 @@ static VulkanTexture* CreateTexture(
 
 static uint8_t BlitFramebuffer(
 	FNAVulkanRenderer *renderer,
-	FNAVulkanImageData *srcImage,
+	VulkanImageResource *srcImage,
 	FNA3D_Rect srcRect,
-	FNAVulkanImageData *dstImage,
+	VulkanImageResource *dstImage,
 	FNA3D_Rect dstRect
 ) {
 	VkImageBlit blit;
-	VulkanResourceAccessType nextAccessType;
 	ImageMemoryBarrierCreateInfo memoryBarrierCreateInfo;
 
 	blit.srcOffsets[0].x = srcRect.x;
@@ -3071,58 +3065,37 @@ static uint8_t BlitFramebuffer(
 	blit.dstSubresource.layerCount = 1;
 	blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; /* TODO: support depth/stencil */
 
-	if (srcImage->resourceAccessType != RESOURCE_ACCESS_TRANSFER_READ)
-	{
-		nextAccessType = RESOURCE_ACCESS_TRANSFER_READ;
+	memoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	memoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+	memoryBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
+	memoryBarrierCreateInfo.subresourceRange.layerCount = 1;
+	memoryBarrierCreateInfo.subresourceRange.levelCount = 1;
+	memoryBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrierCreateInfo.discardContents = 0;
+	memoryBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_TRANSFER_READ;
 
-		memoryBarrierCreateInfo.pPrevAccesses = &srcImage->resourceAccessType;
-		memoryBarrierCreateInfo.prevAccessCount = 1;
-		memoryBarrierCreateInfo.pNextAccesses = &nextAccessType;
-		memoryBarrierCreateInfo.nextAccessCount = 1;
-		memoryBarrierCreateInfo.image = srcImage->image;
-		memoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		memoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
-		memoryBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
-		memoryBarrierCreateInfo.subresourceRange.layerCount = 1;
-		memoryBarrierCreateInfo.subresourceRange.levelCount = 1;
-		memoryBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		memoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		memoryBarrierCreateInfo.discardContents = 0;
+	CreateImageMemoryBarrier(
+		renderer,
+		memoryBarrierCreateInfo,
+		srcImage
+	);
 
-		CreateImageMemoryBarrier(
-			renderer,
-			memoryBarrierCreateInfo
-		);
-
-		srcImage->resourceAccessType = RESOURCE_ACCESS_TRANSFER_READ;
-	}
-
-	if (dstImage->resourceAccessType != RESOURCE_ACCESS_TRANSFER_WRITE)
-	{
-		nextAccessType = RESOURCE_ACCESS_TRANSFER_WRITE;
-
-		memoryBarrierCreateInfo.pPrevAccesses = &dstImage->resourceAccessType;
-		memoryBarrierCreateInfo.prevAccessCount = 1;
-		memoryBarrierCreateInfo.pNextAccesses = &nextAccessType;
-		memoryBarrierCreateInfo.nextAccessCount = 1;
-		memoryBarrierCreateInfo.image = dstImage->image;
-		memoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		memoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
-		memoryBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
-		memoryBarrierCreateInfo.subresourceRange.layerCount = 1;
-		memoryBarrierCreateInfo.subresourceRange.levelCount = 1;
-		memoryBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		memoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		memoryBarrierCreateInfo.discardContents = 0;
-
-		CreateImageMemoryBarrier(
-			renderer,
-			memoryBarrierCreateInfo
-		);
-
-		dstImage->resourceAccessType = RESOURCE_ACCESS_TRANSFER_WRITE;
-	}
-
+	memoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	memoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+	memoryBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
+	memoryBarrierCreateInfo.subresourceRange.layerCount = 1;
+	memoryBarrierCreateInfo.subresourceRange.levelCount = 1;
+	memoryBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrierCreateInfo.discardContents = 0;
+	memoryBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_TRANSFER_WRITE;
+	CreateImageMemoryBarrier(
+		renderer,
+		memoryBarrierCreateInfo,
+		dstImage
+	);
+	
 	SubmitPipelineBarrier(renderer);
 
 	/* TODO: use vkCmdResolveImage for multisampled images */
@@ -3138,57 +3111,37 @@ static uint8_t BlitFramebuffer(
 		VK_FILTER_LINEAR /* FIXME: where is the final blit filter defined? -cosmonaut */
 	);
 
-	if (dstImage->resourceAccessType != RESOURCE_ACCESS_PRESENT)
-	{
-		nextAccessType = RESOURCE_ACCESS_PRESENT;
+	memoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	memoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+	memoryBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
+	memoryBarrierCreateInfo.subresourceRange.layerCount = 1;
+	memoryBarrierCreateInfo.subresourceRange.levelCount = 1;
+	memoryBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrierCreateInfo.discardContents = 0;
+	memoryBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_PRESENT;
 
-		memoryBarrierCreateInfo.pPrevAccesses = &dstImage->resourceAccessType;
-		memoryBarrierCreateInfo.prevAccessCount = 1;
-		memoryBarrierCreateInfo.pNextAccesses = &nextAccessType;
-		memoryBarrierCreateInfo.nextAccessCount = 1;
-		memoryBarrierCreateInfo.image = dstImage->image;
-		memoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		memoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
-		memoryBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
-		memoryBarrierCreateInfo.subresourceRange.layerCount = 1;
-		memoryBarrierCreateInfo.subresourceRange.levelCount = 1;
-		memoryBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		memoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		memoryBarrierCreateInfo.discardContents = 0;
+	CreateImageMemoryBarrier(
+		renderer,
+		memoryBarrierCreateInfo,
+		dstImage
+	);
 
-		CreateImageMemoryBarrier(
-			renderer,
-			memoryBarrierCreateInfo
-		);
+	memoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	memoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+	memoryBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
+	memoryBarrierCreateInfo.subresourceRange.layerCount = 1;
+	memoryBarrierCreateInfo.subresourceRange.levelCount = 1;
+	memoryBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrierCreateInfo.discardContents = 0;
+	memoryBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
 
-		dstImage->resourceAccessType = RESOURCE_ACCESS_PRESENT;
-	}
-
-	if (srcImage->resourceAccessType != RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE)
-	{
-		nextAccessType = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
-
-		memoryBarrierCreateInfo.pPrevAccesses = &srcImage->resourceAccessType;
-		memoryBarrierCreateInfo.prevAccessCount = 1;
-		memoryBarrierCreateInfo.pNextAccesses = &nextAccessType;
-		memoryBarrierCreateInfo.nextAccessCount = 1;
-		memoryBarrierCreateInfo.image = srcImage->image;
-		memoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		memoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
-		memoryBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
-		memoryBarrierCreateInfo.subresourceRange.layerCount = 1;
-		memoryBarrierCreateInfo.subresourceRange.levelCount = 1;
-		memoryBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		memoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		memoryBarrierCreateInfo.discardContents = 0;
-
-		CreateImageMemoryBarrier(
-			renderer,
-			memoryBarrierCreateInfo
-		);
-
-		srcImage->resourceAccessType = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
-	}
+	CreateImageMemoryBarrier(
+		renderer,
+		memoryBarrierCreateInfo,
+		srcImage
+	);
 
 	SubmitPipelineBarrier(renderer);
 
@@ -3654,7 +3607,7 @@ static VkFramebuffer FetchFramebuffer(
 
 	for (i = 0; i < renderer->colorAttachmentCount; i++)
 	{
-		imageViewAttachments[i] = renderer->colorAttachments[i]->handle;
+		imageViewAttachments[i] = renderer->colorAttachments[i]->handle.view;
 	}
 	if (renderer->depthStencilAttachmentActive)
 	{
@@ -4005,11 +3958,11 @@ void VULKAN_SwapBuffers(
 	}
 
 	/* special case because of the attachment description */
-	renderer->fauxBackbufferColorImageData.resourceAccessType = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
+	renderer->fauxBackbufferColor.handle.imageResource.resourceAccessType = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
 
 	BlitFramebuffer(
 		renderer,
-		&renderer->fauxBackbufferColorImageData,
+		&renderer->fauxBackbufferColor.handle.imageResource,
 		srcRect,
 		renderer->swapChainImages[renderer->currentSwapChainIndex],
 		dstRect
@@ -4079,7 +4032,7 @@ void VULKAN_SwapBuffers(
 
 /* Drawing */
 
-static void InternalClear(
+static void RenderPassClear(
 	FNAVulkanRenderer *renderer,
 	FNA3D_Vec4 *color,
 	float depth,
@@ -4094,10 +4047,10 @@ static void InternalClear(
 	);
 	VkClearRect clearRect;
 	VkClearValue clearValue = {{{
-		renderer->clearColor.x,
-		renderer->clearColor.y,
-		renderer->clearColor.z,
-		renderer->clearColor.w
+		color->x,
+		color->y,
+		color->z,
+		color->w
 	}}};
 	uint32_t i;
 
@@ -4110,21 +4063,19 @@ static void InternalClear(
 	clearRect.layerCount = 1;
 	clearRect.rect.offset.x = 0;
 	clearRect.rect.offset.y = 0;
-	clearRect.rect.extent = renderer->colorAttachments[0]->dimensions;
+	clearRect.rect.extent = renderer->colorAttachments[0]->handle.dimensions;
 
 	if (clearColor)
 	{
-		renderer->clearColor = *color;
-
 		for (i = 0; i < renderer->colorAttachmentCount; i++)
 		{
 			clearRect.rect.extent.width = SDL_max(
 				clearRect.rect.extent.width, 
-				renderer->colorAttachments[i]->dimensions.width
+				renderer->colorAttachments[i]->handle.dimensions.width
 			);
 			clearRect.rect.extent.height = SDL_max(
 				clearRect.rect.extent.height,
-				renderer->colorAttachments[i]->dimensions.height
+				renderer->colorAttachments[i]->handle.dimensions.height
 			);
 			clearAttachments[i].aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 			clearAttachments[i].colorAttachment = i;
@@ -4149,12 +4100,10 @@ static void InternalClear(
 
 			if (clearDepth)
 			{
-				renderer->clearDepthValue = depth;
 				clearAttachments[renderer->colorAttachmentCount].clearValue.depthStencil.depth = depth;
 			}
 			if (clearStencil)
 			{
-				renderer->clearStencilValue = stencil;
 				clearAttachments[renderer->colorAttachmentCount].clearValue.depthStencil.stencil = stencil;
 			}
 		}
@@ -4169,6 +4118,71 @@ static void InternalClear(
 	);
 
 	SDL_stack_free(clearAttachments);
+}
+
+static void OutsideRenderPassClear(
+	FNAVulkanRenderer *renderer,
+	FNA3D_Vec4 *color,
+	float depth,
+	int32_t stencil,
+	uint8_t clearColor,
+	uint8_t clearDepth,
+	uint8_t clearStencil
+) {
+	uint32_t i;
+	ImageMemoryBarrierCreateInfo barrierCreateInfo;
+	VkImageSubresourceRange subresourceRange;
+	VkClearColorValue clearValue = {{
+		color->x,
+		color->y,
+		color->z,
+		color->w
+	}};
+
+	if (clearColor)
+	{
+		for (i = 0; i < renderer->colorAttachmentCount; i++)
+		{
+			subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			subresourceRange.baseArrayLayer = 0;
+			subresourceRange.baseMipLevel = 0;
+			subresourceRange.layerCount = 1;
+			subresourceRange.levelCount = 1;
+
+			barrierCreateInfo.subresourceRange = subresourceRange;
+			barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrierCreateInfo.discardContents = 0;
+			barrierCreateInfo.nextAccess = RESOURCE_ACCESS_TRANSFER_WRITE;
+
+			CreateImageMemoryBarrier(
+				renderer,
+				barrierCreateInfo,
+				&renderer->colorAttachments[i]->handle.imageResource
+			);
+
+			SubmitPipelineBarrier(renderer);
+
+			renderer->vkCmdClearColorImage(
+				renderer->commandBuffers[renderer->currentSwapChainIndex],
+				renderer->colorAttachments[i]->handle.imageResource.image,
+				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				&clearValue,
+				1,
+				&subresourceRange
+			);
+
+			barrierCreateInfo.nextAccess = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
+
+			CreateImageMemoryBarrier(
+				renderer,
+				barrierCreateInfo,
+				&renderer->colorAttachments[i]->handle.imageResource
+			);
+
+			SubmitPipelineBarrier(renderer);
+		}
+	}
 }
 
 void VULKAN_Clear(
@@ -4186,7 +4200,7 @@ void VULKAN_Clear(
 
 	if (renderer->renderPassInProgress)
 	{
-		InternalClear(
+		RenderPassClear(
 			renderer,
 			color,
 			depth,
@@ -4198,13 +4212,15 @@ void VULKAN_Clear(
 	}
 	else
 	{
-		renderer->needNewRenderPass = 1;
-		renderer->shouldClearColor = clearColor;
-		renderer->clearColor = *color;
-		renderer->shouldClearDepth = clearDepth;
-		renderer->clearDepthValue = depth;
-		renderer->shouldClearStencil = clearStencil;
-		renderer->clearStencilValue = stencil;
+		OutsideRenderPassClear(
+			renderer,
+			color,
+			depth,
+			stencil,
+			clearColor,
+			clearDepth,
+			clearStencil
+		);
 	}
 }
 
@@ -4614,7 +4630,6 @@ void VULKAN_VerifySampler(
 	VkSampler vkSamplerState;
 	uint32_t texArrayOffset = (renderer->currentSwapChainIndex * MAX_TOTAL_SAMPLERS);
 	uint32_t textureIndex = texArrayOffset + index;
-	VulkanResourceAccessType nextAccess;
 	ImageMemoryBarrierCreateInfo memoryBarrierCreateInfo;
 
 	if (texture == NULL)
@@ -4678,31 +4693,21 @@ void VULKAN_VerifySampler(
 		renderer->samplerNeedsUpdate[textureIndex] = 1;
 	}
 
-	nextAccess = RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE;
+	memoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	memoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+	memoryBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
+	memoryBarrierCreateInfo.subresourceRange.layerCount = 1;
+	memoryBarrierCreateInfo.subresourceRange.levelCount = 1;
+	memoryBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrierCreateInfo.discardContents = 0;
+	memoryBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE;
 
-	if (vulkanTexture->imageData->resourceAccessType != nextAccess)
-	{
-		memoryBarrierCreateInfo.pPrevAccesses = &vulkanTexture->imageData->resourceAccessType;
-		memoryBarrierCreateInfo.prevAccessCount = 1;
-		memoryBarrierCreateInfo.pNextAccesses = &nextAccess;
-		memoryBarrierCreateInfo.nextAccessCount = 1;
-		memoryBarrierCreateInfo.image = vulkanTexture->imageData->image;
-		memoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		memoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
-		memoryBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
-		memoryBarrierCreateInfo.subresourceRange.layerCount = 1;
-		memoryBarrierCreateInfo.subresourceRange.levelCount = 1;
-		memoryBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		memoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		memoryBarrierCreateInfo.discardContents = 0;
-
-		CreateImageMemoryBarrier(
-			renderer,
-			memoryBarrierCreateInfo
-		);
-
-		vulkanTexture->imageData->resourceAccessType = nextAccess;
-	}
+	CreateImageMemoryBarrier(
+		renderer,
+		memoryBarrierCreateInfo,
+		&vulkanTexture->imageData->imageResource
+	);
 }
 
 void VULKAN_VerifyVertexSampler(
@@ -4835,21 +4840,7 @@ static void UpdateRenderPass(
 	/* TODO: optimize this to pick a render pass with a LOAD_OP_CLEAR */
 
 	BeginRenderPass(renderer);
-
-	InternalClear(
-		renderer,
-		&renderer->clearColor,
-		renderer->clearDepthValue,
-		renderer->clearStencilValue,
-		renderer->shouldClearColor,
-		renderer->shouldClearDepth,
-		renderer->shouldClearStencil
-	);
-
 	renderer->needNewRenderPass = 0;
-	renderer->shouldClearColor = 0;
-	renderer->shouldClearDepth = 0;
-	renderer->shouldClearStencil = 0;
 }
 
 static void PerformDeferredDestroys(
@@ -4954,15 +4945,6 @@ void VULKAN_SetRenderTargets(
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	uint32_t i;
 
-	/* Perform any pending clears before switching render targets */
-
-	if (	renderer->shouldClearColor ||
-			renderer->shouldClearDepth ||
-			renderer->shouldClearStencil	)
-	{
-		UpdateRenderPass(driverData);
-	}
-
 	renderer->needNewRenderPass = 1;
 
 	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i++)
@@ -5013,7 +4995,7 @@ static void SetScissorRectCommand(FNAVulkanRenderer *renderer)
 		{
 			offset.x = 0;
 			offset.y = 0;
-			extent = renderer->colorAttachments[0]->dimensions;
+			extent = renderer->colorAttachments[0]->handle.dimensions;
 		}
 		else
 		{
@@ -5187,19 +5169,19 @@ static void DestroyFauxBackbuffer(FNAVulkanRenderer *renderer)
 
 	renderer->vkDestroyImageView(
 		renderer->logicalDevice,
-		renderer->fauxBackbufferColorImageData.view,
+		renderer->fauxBackbufferColor.handle.view,
 		NULL
 	);
 
 	renderer->vkDestroyImage(
 		renderer->logicalDevice,
-		renderer->fauxBackbufferColorImageData.image,
+		renderer->fauxBackbufferColor.handle.imageResource.image,
 		NULL
 	);
 
 	renderer->vkFreeMemory(
 		renderer->logicalDevice,
-		renderer->fauxBackbufferColorImageData.memory,
+		renderer->fauxBackbufferColor.handle.memory,
 		NULL
 	);
 
@@ -5211,7 +5193,7 @@ static void DestroyFauxBackbuffer(FNAVulkanRenderer *renderer)
 
 	renderer->vkDestroyImage(
 		renderer->logicalDevice,
-		renderer->fauxBackbufferDepthStencil.handle.image,
+		renderer->fauxBackbufferDepthStencil.handle.imageResource.image,
 		NULL
 	);
 
@@ -5333,7 +5315,7 @@ void VULKAN_AddDisposeTexture(
 
 	for (i = 0; i < renderer->colorAttachmentCount; i++)
 	{
-		if (vulkanTexture->imageData->view == renderer->colorAttachments[i]->handle)
+		if (vulkanTexture->imageData->view == renderer->colorAttachments[i]->handle.view)
 		{
 			renderer->colorAttachments[i] = NULL;
 		}
@@ -5392,31 +5374,21 @@ void VULKAN_SetTextureData2D(
 		stagingBuffer->deviceMemory
 	);
 	
-	nextResourceAccessType = RESOURCE_ACCESS_TRANSFER_WRITE;
+	imageBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+	imageBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
+	imageBarrierCreateInfo.subresourceRange.layerCount = 1;
+	imageBarrierCreateInfo.subresourceRange.levelCount = 1;
+	imageBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageBarrierCreateInfo.discardContents = 0;
+	imageBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_TRANSFER_WRITE;
 
-	if (vulkanTexture->imageData->resourceAccessType != nextResourceAccessType) 
-	{
-		imageBarrierCreateInfo.pPrevAccesses = &vulkanTexture->imageData->resourceAccessType;
-		imageBarrierCreateInfo.prevAccessCount = 1;
-		imageBarrierCreateInfo.pNextAccesses = &nextResourceAccessType;
-		imageBarrierCreateInfo.nextAccessCount = 1;
-		imageBarrierCreateInfo.image = vulkanTexture->imageData->image;
-		imageBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		imageBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
-		imageBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
-		imageBarrierCreateInfo.subresourceRange.layerCount = 1;
-		imageBarrierCreateInfo.subresourceRange.levelCount = 1;
-		imageBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		imageBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		imageBarrierCreateInfo.discardContents = 0;
-
-		CreateImageMemoryBarrier(
-			renderer,
-			imageBarrierCreateInfo
-		);
-
-		vulkanTexture->imageData->resourceAccessType = nextResourceAccessType;
-	}
+	CreateImageMemoryBarrier(
+		renderer,
+		imageBarrierCreateInfo,
+		&vulkanTexture->imageData->imageResource
+	);
 
 	nextResourceAccessType = RESOURCE_ACCESS_TRANSFER_READ;
 
@@ -5459,8 +5431,8 @@ void VULKAN_SetTextureData2D(
 	renderer->vkCmdCopyBufferToImage(
 		renderer->commandBuffers[renderer->currentSwapChainIndex],
 		stagingBuffer->handle,
-		vulkanTexture->imageData->image,
-		AccessMap[vulkanTexture->imageData->resourceAccessType].imageLayout,
+		vulkanTexture->imageData->imageResource.image,
+		AccessMap[vulkanTexture->imageData->imageResource.resourceAccessType].imageLayout,
 		1,
 		&imageCopy
 	);
@@ -5582,7 +5554,7 @@ FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 	VulkanRenderbuffer *renderbuffer;
 	VkResult result;
 
-	imageViewInfo.image = vlkTexture->imageData->image;
+	imageViewInfo.image = vlkTexture->imageData->imageResource.image;
 	imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 	imageViewInfo.format = surfaceFormatMapping.formatColor;
 	imageViewInfo.components = surfaceFormatMapping.swizzle;
@@ -5596,13 +5568,14 @@ FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 	renderbuffer = (VulkanRenderbuffer*) SDL_malloc(sizeof(VulkanRenderbuffer));
 	renderbuffer->depthBuffer = NULL;
 	renderbuffer->colorBuffer = (VulkanColorBuffer*) SDL_malloc(sizeof(VulkanColorBuffer));
-	renderbuffer->colorBuffer->dimensions = dimensions;
+	renderbuffer->colorBuffer->handle.dimensions = dimensions;
+	renderbuffer->colorBuffer->handle.imageResource = vlkTexture->imageData->imageResource;
 
 	result = renderer->vkCreateImageView(
 		renderer->logicalDevice,
 		&imageViewInfo,
 		NULL,
-		&renderbuffer->colorBuffer->handle
+		&renderbuffer->colorBuffer->handle.view
 	);
 
 	if (result != VK_SUCCESS)
@@ -5668,7 +5641,7 @@ static void DestroyRenderbuffer(
 
 		renderer->vkDestroyImage(
 			renderer->logicalDevice,
-			renderbuffer->depthBuffer->handle.image,
+			renderbuffer->depthBuffer->handle.imageResource.image,
 			NULL
 		);
 
@@ -5684,7 +5657,7 @@ static void DestroyRenderbuffer(
 	{
 		renderer->vkDestroyImageView(
 			renderer->logicalDevice,
-			renderbuffer->colorBuffer->handle,
+			renderbuffer->colorBuffer->handle.view,
 			NULL
 		);
 
@@ -5733,7 +5706,7 @@ static void DestroyImageData(
 
 	renderer->vkDestroyImage(
 		renderer->logicalDevice,
-		imageData->image,
+		imageData->imageResource.image,
 		NULL
 	);
 
@@ -7431,8 +7404,15 @@ static uint8_t CreateSwapChain(
 
 	renderer->vkGetSwapchainImagesKHR(renderer->logicalDevice, renderer->swapChain, &swapChainImageCount, NULL);
 
-	renderer->swapChainImages = (FNAVulkanImageData**) SDL_malloc(sizeof(FNAVulkanImageData*) * swapChainImageCount);
+	renderer->swapChainImages = (VulkanImageResource**) SDL_malloc(sizeof(VulkanImageResource*) * swapChainImageCount);
 	if (!renderer->swapChainImages)
+	{
+		SDL_OutOfMemory();
+		return 0;
+	}
+
+	renderer->swapChainImageViews = (VkImageView*) SDL_malloc(sizeof(VkImageView) * swapChainImageCount);
+	if (!renderer->swapChainImageViews)
 	{
 		SDL_OutOfMemory();
 		return 0;
@@ -7469,11 +7449,12 @@ static uint8_t CreateSwapChain(
 			return 0;
 		}
 
-		renderer->swapChainImages[i] = (FNAVulkanImageData*) SDL_malloc(sizeof(FNAVulkanImageData));
+		renderer->swapChainImages[i] = (VulkanImageResource*) SDL_malloc(sizeof(FNAVulkanImageData));
 		SDL_zerop(renderer->swapChainImages[i]);
 
 		renderer->swapChainImages[i]->image = swapChainImages[i];
-		renderer->swapChainImages[i]->view = swapChainImageView;
+		renderer->swapChainImages[i]->resourceAccessType = RESOURCE_ACCESS_NONE;
+		renderer->swapChainImageViews[i] = swapChainImageView;
 	}
 
 	SDL_stack_free(swapChainImages);
@@ -7649,7 +7630,6 @@ static uint8_t CreateFauxBackbuffer(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
 	VkFormat vulkanDepthStencilFormat;
-	VulkanResourceAccessType nextAccessType;
 	ImageMemoryBarrierCreateInfo barrierCreateInfo;
 
 	if (
@@ -7664,9 +7644,9 @@ static uint8_t CreateFauxBackbuffer(
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_TYPE_2D,
 			/* FIXME: transfer bit probably only needs to be set on 0? */
-			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			&renderer->fauxBackbufferColorImageData
+			&renderer->fauxBackbufferColor.handle
 		)
 	) {
 		FNA3D_LogError("Failed to create color attachment image");
@@ -7675,9 +7655,6 @@ static uint8_t CreateFauxBackbuffer(
 
 	renderer->fauxBackbufferWidth = presentationParameters->backBufferWidth;
 	renderer->fauxBackbufferHeight = presentationParameters->backBufferHeight;
-
-	renderer->fauxBackbufferColor.handle = renderer->fauxBackbufferColorImageData.view;
-	renderer->fauxBackbufferColor.dimensions = renderer->fauxBackbufferColorImageData.dimensions;
 	
 	renderer->colorAttachments[0] = &renderer->fauxBackbufferColor;
 	renderer->colorAttachmentCount = 1;
@@ -7687,28 +7664,21 @@ static uint8_t CreateFauxBackbuffer(
 
 	InternalBeginFrame(renderer);
 
-	/* layout transition if required */
-	nextAccessType = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
+	barrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	barrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+	barrierCreateInfo.subresourceRange.baseMipLevel = 0;
+	barrierCreateInfo.subresourceRange.layerCount = 1;
+	barrierCreateInfo.subresourceRange.levelCount = 1;
+	barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	barrierCreateInfo.discardContents = 0;
+	barrierCreateInfo.nextAccess = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
 
-	if (renderer->fauxBackbufferColorImageData.resourceAccessType != nextAccessType)
-	{
-		barrierCreateInfo.pPrevAccesses = &renderer->fauxBackbufferColorImageData.resourceAccessType;
-		barrierCreateInfo.prevAccessCount = 1;
-		barrierCreateInfo.pNextAccesses = &nextAccessType;
-		barrierCreateInfo.nextAccessCount = 1;
-		barrierCreateInfo.image = renderer->fauxBackbufferColorImageData.image;
-		barrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		barrierCreateInfo.subresourceRange.baseArrayLayer = 0;
-		barrierCreateInfo.subresourceRange.baseMipLevel = 0;
-		barrierCreateInfo.subresourceRange.layerCount = 1;
-		barrierCreateInfo.subresourceRange.levelCount = 1;
-		barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrierCreateInfo.discardContents = 0;
-
-		CreateImageMemoryBarrier(renderer, barrierCreateInfo);
-		renderer->fauxBackbufferColorImageData.resourceAccessType = nextAccessType;
-	}
+	CreateImageMemoryBarrier(
+		renderer,
+		barrierCreateInfo,
+		&renderer->fauxBackbufferColor.handle.imageResource
+	);
 
 	/* create faux backbuffer depth stencil image */
 
@@ -7742,26 +7712,22 @@ static uint8_t CreateFauxBackbuffer(
 		renderer->depthStencilAttachmentActive = 1;
 
 		/* layout transition if required */
-		nextAccessType = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
-		if (renderer->fauxBackbufferDepthStencil.handle.resourceAccessType != nextAccessType)
-		{
-			barrierCreateInfo.pPrevAccesses = &renderer->fauxBackbufferDepthStencil.handle.resourceAccessType;
-			barrierCreateInfo.prevAccessCount = 1;
-			barrierCreateInfo.pNextAccesses = &nextAccessType;
-			barrierCreateInfo.nextAccessCount = 1;
-			barrierCreateInfo.image = renderer->fauxBackbufferDepthStencil.handle.image;
-			barrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-			barrierCreateInfo.subresourceRange.baseArrayLayer = 0;
-			barrierCreateInfo.subresourceRange.baseMipLevel = 0;
-			barrierCreateInfo.subresourceRange.layerCount = 1;
-			barrierCreateInfo.subresourceRange.levelCount = 1;
-			barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			barrierCreateInfo.discardContents = 0;
 
-			CreateImageMemoryBarrier(renderer, barrierCreateInfo);
-			renderer->fauxBackbufferDepthStencil.handle.resourceAccessType = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
-		}
+		barrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+		barrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+		barrierCreateInfo.subresourceRange.baseMipLevel = 0;
+		barrierCreateInfo.subresourceRange.layerCount = 1;
+		barrierCreateInfo.subresourceRange.levelCount = 1;
+		barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrierCreateInfo.discardContents = 0;
+		barrierCreateInfo.nextAccess = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
+
+		CreateImageMemoryBarrier(
+			renderer,
+			barrierCreateInfo,
+			&renderer->fauxBackbufferDepthStencil.handle.imageResource
+		);
 	}
 	else
 	{
