@@ -4138,6 +4138,9 @@ static void OutsideRenderPassClear(
 		color->z,
 		color->w
 	}};
+	VkClearDepthStencilValue clearDepthStencilValue;
+	clearDepthStencilValue.depth = depth;
+	clearDepthStencilValue.stencil = stencil;
 
 	if (clearColor)
 	{
@@ -4178,6 +4181,51 @@ static void OutsideRenderPassClear(
 				renderer,
 				barrierCreateInfo,
 				&renderer->colorAttachments[i]->handle.imageResource
+			);
+
+			SubmitPipelineBarrier(renderer);
+		}
+	}
+
+	if (clearDepth || clearStencil)
+	{
+		if (renderer->depthStencilAttachmentActive)
+		{
+			subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+			subresourceRange.baseArrayLayer = 0;
+			subresourceRange.baseMipLevel = 0;
+			subresourceRange.layerCount = 1;
+			subresourceRange.levelCount = 1;
+
+			barrierCreateInfo.subresourceRange = subresourceRange;
+			barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrierCreateInfo.discardContents = 0;
+			barrierCreateInfo.nextAccess = RESOURCE_ACCESS_TRANSFER_WRITE;
+
+			CreateImageMemoryBarrier(
+				renderer,
+				barrierCreateInfo,
+				&renderer->depthStencilAttachment->handle.imageResource
+			);
+
+			SubmitPipelineBarrier(renderer);
+
+			renderer->vkCmdClearDepthStencilImage(
+				renderer->commandBuffers[renderer->currentSwapChainIndex],
+				renderer->depthStencilAttachment->handle.imageResource.image,
+				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				&clearDepthStencilValue,
+				1,
+				&subresourceRange
+			);
+
+			barrierCreateInfo.nextAccess = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
+
+			CreateImageMemoryBarrier(
+				renderer,
+				barrierCreateInfo,
+				&renderer->depthStencilAttachment->handle.imageResource
 			);
 
 			SubmitPipelineBarrier(renderer);
@@ -7699,7 +7747,7 @@ static uint8_t CreateFauxBackbuffer(
 				VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
 				VK_IMAGE_TILING_OPTIMAL,
 				VK_IMAGE_TYPE_2D,
-				VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
+				VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 				&renderer->fauxBackbufferDepthStencil.handle
 			)
