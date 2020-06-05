@@ -4150,7 +4150,10 @@ static void InternalClear(
 	}}};
 	uint32_t i;
 
-	if (!clearColor && !clearDepth && !clearStencil) { return; }
+	if (!clearColor && !clearDepth && !clearStencil) { 
+		SDL_stack_free(clearAttachments);
+		return; 
+	}
 
 	clearRect.baseArrayLayer = 0;
 	clearRect.layerCount = 1;
