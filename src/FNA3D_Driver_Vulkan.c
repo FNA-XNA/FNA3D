@@ -3782,56 +3782,6 @@ static void BeginRenderPass(
 		ColorConvert(renderer->blendState.blendFactor.a)
 	};
 	uint32_t swapChainOffset, i;
-	VulkanResourceAccessType nextAccessType;
-	ImageMemoryBarrierCreateInfo barrierCreateInfo;
-
-	/* layout transition faux backbuffer attachments if necessary */
-
-	nextAccessType = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
-
-	if (renderer->fauxBackbufferColorImageData.resourceAccessType != nextAccessType)
-	{
-		barrierCreateInfo.pPrevAccesses = &renderer->fauxBackbufferColorImageData.resourceAccessType;
-		barrierCreateInfo.prevAccessCount = 1;
-		barrierCreateInfo.pNextAccesses = &nextAccessType;
-		barrierCreateInfo.nextAccessCount = 1;
-		barrierCreateInfo.image = renderer->fauxBackbufferColorImageData.image;
-		barrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		barrierCreateInfo.subresourceRange.baseArrayLayer = 0;
-		barrierCreateInfo.subresourceRange.baseMipLevel = 0;
-		barrierCreateInfo.subresourceRange.layerCount = 1;
-		barrierCreateInfo.subresourceRange.levelCount = 1;
-		barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrierCreateInfo.discardContents = 0;
-
-		CreateImageMemoryBarrier(renderer, barrierCreateInfo);
-		renderer->fauxBackbufferColorImageData.resourceAccessType = nextAccessType;
-	}
-
-	nextAccessType = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
-
-	if (renderer->fauxBackbufferDepthStencil.handle.resourceAccessType != nextAccessType)
-	{
-		barrierCreateInfo.pPrevAccesses = &renderer->fauxBackbufferDepthStencil.handle.resourceAccessType;
-		barrierCreateInfo.prevAccessCount = 1;
-		barrierCreateInfo.pNextAccesses = &nextAccessType;
-		barrierCreateInfo.nextAccessCount = 1;
-		barrierCreateInfo.image = renderer->fauxBackbufferDepthStencil.handle.image;
-		barrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-		barrierCreateInfo.subresourceRange.baseArrayLayer = 0;
-		barrierCreateInfo.subresourceRange.baseMipLevel = 0;
-		barrierCreateInfo.subresourceRange.layerCount = 1;
-		barrierCreateInfo.subresourceRange.levelCount = 1;
-		barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrierCreateInfo.discardContents = 0;
-
-		CreateImageMemoryBarrier(renderer, barrierCreateInfo);
-		renderer->fauxBackbufferDepthStencil.handle.resourceAccessType = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
-	}
-
-	SubmitPipelineBarrier(renderer);
 
 	renderer->renderPass = FetchRenderPass(renderer);
 	renderer->framebuffer = FetchFramebuffer(renderer, renderer->renderPass);
@@ -3909,6 +3859,8 @@ void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 	VkCommandBufferBeginInfo beginInfo = {
 		VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
 	};
+	VulkanResourceAccessType nextAccessType;
+	ImageMemoryBarrierCreateInfo barrierCreateInfo;
 	VkResult result;
 	uint32_t i;
 
@@ -3991,6 +3943,55 @@ void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 	);
 
 	renderer->frameInProgress = 1;
+	renderer->needNewRenderPass = 1;
+
+		/* layout transition faux backbuffer attachments if necessary */
+
+	nextAccessType = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
+
+	if (renderer->fauxBackbufferColorImageData.resourceAccessType != nextAccessType)
+	{
+		barrierCreateInfo.pPrevAccesses = &renderer->fauxBackbufferColorImageData.resourceAccessType;
+		barrierCreateInfo.prevAccessCount = 1;
+		barrierCreateInfo.pNextAccesses = &nextAccessType;
+		barrierCreateInfo.nextAccessCount = 1;
+		barrierCreateInfo.image = renderer->fauxBackbufferColorImageData.image;
+		barrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		barrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+		barrierCreateInfo.subresourceRange.baseMipLevel = 0;
+		barrierCreateInfo.subresourceRange.layerCount = 1;
+		barrierCreateInfo.subresourceRange.levelCount = 1;
+		barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrierCreateInfo.discardContents = 0;
+
+		CreateImageMemoryBarrier(renderer, barrierCreateInfo);
+		renderer->fauxBackbufferColorImageData.resourceAccessType = nextAccessType;
+	}
+
+	nextAccessType = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
+
+	if (renderer->fauxBackbufferDepthStencil.handle.resourceAccessType != nextAccessType)
+	{
+		barrierCreateInfo.pPrevAccesses = &renderer->fauxBackbufferDepthStencil.handle.resourceAccessType;
+		barrierCreateInfo.prevAccessCount = 1;
+		barrierCreateInfo.pNextAccesses = &nextAccessType;
+		barrierCreateInfo.nextAccessCount = 1;
+		barrierCreateInfo.image = renderer->fauxBackbufferDepthStencil.handle.image;
+		barrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+		barrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+		barrierCreateInfo.subresourceRange.baseMipLevel = 0;
+		barrierCreateInfo.subresourceRange.layerCount = 1;
+		barrierCreateInfo.subresourceRange.levelCount = 1;
+		barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrierCreateInfo.discardContents = 0;
+
+		CreateImageMemoryBarrier(renderer, barrierCreateInfo);
+		renderer->fauxBackbufferDepthStencil.handle.resourceAccessType = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
+	}
+
+	SubmitPipelineBarrier(renderer);
 }
 
 static void InternalBeginFrame(FNAVulkanRenderer *renderer)
