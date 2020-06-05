@@ -4137,10 +4137,11 @@ static void InternalClear(
 	uint8_t clearDepth,
 	uint8_t clearStencil
 ) {
-	VkClearAttachment *clearAttachments = (VkClearAttachment*) SDL_malloc(
-		(renderer->colorAttachmentCount +
-		renderer->depthStencilAttachmentActive) *
-		sizeof(VkClearAttachment)
+	if (!clearColor && !clearDepth && !clearStencil) { return; }
+
+	VkClearAttachment *clearAttachments = SDL_stack_alloc(
+		VkClearAttachment,
+		renderer->colorAttachmentCount + renderer->depthStencilAttachmentActive
 	);
 	VkClearRect clearRect;
 	VkClearValue clearValue = {{{
@@ -4213,7 +4214,7 @@ static void InternalClear(
 		&clearRect
 	);
 
-	SDL_free(clearAttachments);
+	SDL_stack_free(clearAttachments);
 }
 
 void VULKAN_Clear(
