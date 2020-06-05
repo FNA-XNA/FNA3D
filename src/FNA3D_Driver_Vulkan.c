@@ -4137,8 +4137,6 @@ static void InternalClear(
 	uint8_t clearDepth,
 	uint8_t clearStencil
 ) {
-	if (!clearColor && !clearDepth && !clearStencil) { return; }
-
 	VkClearAttachment *clearAttachments = SDL_stack_alloc(
 		VkClearAttachment,
 		renderer->colorAttachmentCount + renderer->depthStencilAttachmentActive
@@ -4151,6 +4149,8 @@ static void InternalClear(
 		renderer->clearColor.w
 	}}};
 	uint32_t i;
+
+	if (!clearColor && !clearDepth && !clearStencil) { return; }
 
 	clearRect.baseArrayLayer = 0;
 	clearRect.layerCount = 1;
