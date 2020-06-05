@@ -3860,8 +3860,6 @@ void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 	VkCommandBufferBeginInfo beginInfo = {
 		VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
 	};
-	VulkanResourceAccessType nextAccessType;
-	ImageMemoryBarrierCreateInfo barrierCreateInfo;
 	VkResult result;
 	uint32_t i;
 
@@ -3945,54 +3943,6 @@ void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 
 	renderer->frameInProgress = 1;
 	renderer->needNewRenderPass = 1;
-
-		/* layout transition faux backbuffer attachments if necessary */
-
-	nextAccessType = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
-
-	if (renderer->fauxBackbufferColorImageData.resourceAccessType != nextAccessType)
-	{
-		barrierCreateInfo.pPrevAccesses = &renderer->fauxBackbufferColorImageData.resourceAccessType;
-		barrierCreateInfo.prevAccessCount = 1;
-		barrierCreateInfo.pNextAccesses = &nextAccessType;
-		barrierCreateInfo.nextAccessCount = 1;
-		barrierCreateInfo.image = renderer->fauxBackbufferColorImageData.image;
-		barrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		barrierCreateInfo.subresourceRange.baseArrayLayer = 0;
-		barrierCreateInfo.subresourceRange.baseMipLevel = 0;
-		barrierCreateInfo.subresourceRange.layerCount = 1;
-		barrierCreateInfo.subresourceRange.levelCount = 1;
-		barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrierCreateInfo.discardContents = 0;
-
-		CreateImageMemoryBarrier(renderer, barrierCreateInfo);
-		renderer->fauxBackbufferColorImageData.resourceAccessType = nextAccessType;
-	}
-
-	nextAccessType = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
-
-	if (renderer->fauxBackbufferDepthStencil.handle.resourceAccessType != nextAccessType)
-	{
-		barrierCreateInfo.pPrevAccesses = &renderer->fauxBackbufferDepthStencil.handle.resourceAccessType;
-		barrierCreateInfo.prevAccessCount = 1;
-		barrierCreateInfo.pNextAccesses = &nextAccessType;
-		barrierCreateInfo.nextAccessCount = 1;
-		barrierCreateInfo.image = renderer->fauxBackbufferDepthStencil.handle.image;
-		barrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-		barrierCreateInfo.subresourceRange.baseArrayLayer = 0;
-		barrierCreateInfo.subresourceRange.baseMipLevel = 0;
-		barrierCreateInfo.subresourceRange.layerCount = 1;
-		barrierCreateInfo.subresourceRange.levelCount = 1;
-		barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrierCreateInfo.discardContents = 0;
-
-		CreateImageMemoryBarrier(renderer, barrierCreateInfo);
-		renderer->fauxBackbufferDepthStencil.handle.resourceAccessType = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
-	}
-
-	SubmitPipelineBarrier(renderer);
 }
 
 static void InternalBeginFrame(FNAVulkanRenderer *renderer)
@@ -7699,6 +7649,8 @@ static uint8_t CreateFauxBackbuffer(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
 	VkFormat vulkanDepthStencilFormat;
+	VulkanResourceAccessType nextAccessType;
+	ImageMemoryBarrierCreateInfo barrierCreateInfo;
 
 	if (
 		!CreateImage(
@@ -7733,6 +7685,31 @@ static uint8_t CreateFauxBackbuffer(
 	renderer->fauxBackbufferSurfaceFormat = presentationParameters->backBufferFormat;
 	renderer->fauxBackbufferMultisampleCount = XNAToVK_SampleCount(presentationParameters->multiSampleCount);
 
+	InternalBeginFrame(renderer);
+
+	/* layout transition if required */
+	nextAccessType = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
+
+	if (renderer->fauxBackbufferColorImageData.resourceAccessType != nextAccessType)
+	{
+		barrierCreateInfo.pPrevAccesses = &renderer->fauxBackbufferColorImageData.resourceAccessType;
+		barrierCreateInfo.prevAccessCount = 1;
+		barrierCreateInfo.pNextAccesses = &nextAccessType;
+		barrierCreateInfo.nextAccessCount = 1;
+		barrierCreateInfo.image = renderer->fauxBackbufferColorImageData.image;
+		barrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		barrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+		barrierCreateInfo.subresourceRange.baseMipLevel = 0;
+		barrierCreateInfo.subresourceRange.layerCount = 1;
+		barrierCreateInfo.subresourceRange.levelCount = 1;
+		barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrierCreateInfo.discardContents = 0;
+
+		CreateImageMemoryBarrier(renderer, barrierCreateInfo);
+		renderer->fauxBackbufferColorImageData.resourceAccessType = nextAccessType;
+	}
+
 	/* create faux backbuffer depth stencil image */
 
 	renderer->fauxBackbufferDepthFormat = presentationParameters->depthStencilFormat;
@@ -7763,11 +7740,35 @@ static uint8_t CreateFauxBackbuffer(
 
 		renderer->depthStencilAttachment = &renderer->fauxBackbufferDepthStencil;
 		renderer->depthStencilAttachmentActive = 1;
+
+		/* layout transition if required */
+		nextAccessType = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
+		if (renderer->fauxBackbufferDepthStencil.handle.resourceAccessType != nextAccessType)
+		{
+			barrierCreateInfo.pPrevAccesses = &renderer->fauxBackbufferDepthStencil.handle.resourceAccessType;
+			barrierCreateInfo.prevAccessCount = 1;
+			barrierCreateInfo.pNextAccesses = &nextAccessType;
+			barrierCreateInfo.nextAccessCount = 1;
+			barrierCreateInfo.image = renderer->fauxBackbufferDepthStencil.handle.image;
+			barrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+			barrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+			barrierCreateInfo.subresourceRange.baseMipLevel = 0;
+			barrierCreateInfo.subresourceRange.layerCount = 1;
+			barrierCreateInfo.subresourceRange.levelCount = 1;
+			barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			barrierCreateInfo.discardContents = 0;
+
+			CreateImageMemoryBarrier(renderer, barrierCreateInfo);
+			renderer->fauxBackbufferDepthStencil.handle.resourceAccessType = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
+		}
 	}
 	else
 	{
 		renderer->depthStencilAttachmentActive = 0;
 	}
+
+	SubmitPipelineBarrier(renderer);
 
 	return 1;
 }
@@ -8045,11 +8046,14 @@ static uint8_t AllocateTextureAndSamplerStorage(
 	return 1;
 }
 
-static uint8_t CreateCommandPool(
+static uint8_t CreateCommandPoolAndBuffers(
 	FNAVulkanRenderer *renderer
 ) {
 	VkResult vulkanResult;
 	VkCommandPoolCreateInfo commandPoolCreateInfo;
+	VkCommandBufferAllocateInfo commandBufferAllocateInfo = {
+		VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO
+	};
 
 	SDL_zero(commandPoolCreateInfo);
 	commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -8062,6 +8066,17 @@ static uint8_t CreateCommandPool(
 		LogVulkanResult("vkCreateCommandPool", vulkanResult);
 		return 0;
 	}
+
+	renderer->commandBuffers = (VkCommandBuffer*) SDL_malloc(sizeof(VkCommandBuffer) * renderer->swapChainImageCount);
+
+	commandBufferAllocateInfo.commandPool = renderer->commandPool;
+	commandBufferAllocateInfo.commandBufferCount = renderer->swapChainImageCount;
+
+	renderer->vkAllocateCommandBuffers(
+		renderer->logicalDevice,
+		&commandBufferAllocateInfo,
+		renderer->commandBuffers
+	);
 
 	return 1;
 }
@@ -8273,6 +8288,50 @@ static uint8_t CreateBarrierStorage(
 	return 1;
 }
 
+static void CreateDeferredDestroyStorage(
+	FNAVulkanRenderer *renderer
+) {
+	renderer->renderbuffersToDestroyCapacity = 16;
+	renderer->renderbuffersToDestroyCount = 0;
+
+	renderer->renderbuffersToDestroy = (VulkanRenderbuffer**) SDL_malloc(
+		sizeof(VulkanRenderbuffer*) *
+		renderer->renderbuffersToDestroyCapacity
+	);
+
+	renderer->buffersToDestroyCapacity = 16;
+	renderer->buffersToDestroyCount = 0;
+
+	renderer->buffersToDestroy = (VulkanBuffer**) SDL_malloc(
+		sizeof(VulkanBuffer*) *
+		renderer->buffersToDestroyCapacity
+	);
+
+	renderer->bufferMemoryWrappersToDestroyCapacity = 16;
+	renderer->bufferMemoryWrappersToDestroyCount = 0;
+
+	renderer->bufferMemoryWrappersToDestroy = (BufferMemoryWrapper**) SDL_malloc(
+		sizeof(BufferMemoryWrapper*) *
+		renderer->bufferMemoryWrappersToDestroyCapacity
+	);
+
+	renderer->effectsToDestroyCapacity = 16;
+	renderer->effectsToDestroyCount = 0;
+
+	renderer->effectsToDestroy = (VulkanEffect**) SDL_malloc(
+		sizeof(VulkanEffect*) *
+		renderer->effectsToDestroyCapacity
+	);
+
+	renderer->imageDatasToDestroyCapacity = 16;
+	renderer->imageDatasToDestroyCount = 0;
+
+	renderer->imageDatasToDestroy = (FNAVulkanImageData**) SDL_malloc(
+		sizeof(FNAVulkanImageData*) *
+		renderer->imageDatasToDestroyCapacity
+	);
+}
+
 static inline uint8_t DXTFormatSupported(VkFormatProperties formatProps)
 {
 	return	(formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) &&
@@ -8290,10 +8349,6 @@ FNA3D_Device* VULKAN_CreateDevice(
 	uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 	VkFormatProperties formatPropsBC1, formatPropsBC2, formatPropsBC3;
 
-	VkCommandBufferAllocateInfo commandBufferAllocateInfo = {
-		VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO
-	};
-
 	/* Create the FNA3D_Device */
 	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
 	ASSIGN_DRIVER(VULKAN)
@@ -8305,6 +8360,8 @@ FNA3D_Device* VULKAN_CreateDevice(
 	renderer->debugMode = debugMode;
 	renderer->parentDevice = result;
 	result->driverData = (FNA3D_Renderer*) renderer;
+
+	renderer->frameInProgress = 0;
 
 	if (SDL_WasInit(SDL_INIT_VIDEO) == 0)
 	{
@@ -8366,11 +8423,37 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
+	if (!CreateFenceAndSemaphores(renderer))
+	{
+		FNA3D_LogError("Failed to create fence and semaphores");
+		return NULL;
+	}
+
+	CreateDeferredDestroyStorage(renderer);
+
+	if (!CreateMojoshaderContext(renderer))
+	{
+		FNA3D_LogError("Failed to create MojoShader context");
+		return NULL;
+	}
+
 	if (!CreateSwapChain(
 		renderer,
 		presentationParameters
 	)) {
 		FNA3D_LogError("Failed to create swap chain");
+		return NULL;
+	}
+
+	if (!CreateCommandPoolAndBuffers(renderer))
+	{
+		FNA3D_LogError("Failed to create command pool");
+		return NULL;
+	}
+
+	if (!CreateBarrierStorage(renderer))
+	{
+		FNA3D_LogError("Failed to create barrier storage");
 		return NULL;
 	}
 
@@ -8383,12 +8466,6 @@ FNA3D_Device* VULKAN_CreateDevice(
 	if (!CreatePipelineCache(renderer))
 	{
 		FNA3D_LogError("Failed to create pipeline cache");
-		return NULL;
-	}
-
-	if (!CreateMojoshaderContext(renderer))
-	{
-		FNA3D_LogError("Failed to create MojoShader context");
 		return NULL;
 	}
 
@@ -8433,28 +8510,11 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
-	if (!CreateCommandPool(renderer))
-	{
-		FNA3D_LogError("Failed to create command pool");
-		return NULL;
-	}
-
 	/* init various renderer properties */
 	renderer->currentDepthFormat = presentationParameters->depthStencilFormat;
-	renderer->commandBuffers = (VkCommandBuffer*) SDL_malloc(sizeof(VkCommandBuffer) * renderer->swapChainImageCount);
-
-	commandBufferAllocateInfo.commandPool = renderer->commandPool;
-	commandBufferAllocateInfo.commandBufferCount = renderer->swapChainImageCount;
-
-	renderer->vkAllocateCommandBuffers(
-		renderer->logicalDevice,
-		&commandBufferAllocateInfo,
-		renderer->commandBuffers
-	);
 
 	renderer->currentPipeline = NULL;
 	renderer->needNewRenderPass = 1;
-	renderer->frameInProgress = 0;
 
 	/* check for DXT1/S3TC support */
 	renderer->vkGetPhysicalDeviceFormatProperties(
@@ -8489,12 +8549,6 @@ FNA3D_Device* VULKAN_CreateDevice(
 	/* Initialize renderer members not covered by SDL_memset('\0') */
 	SDL_memset(renderer->multiSampleMask, -1, sizeof(renderer->multiSampleMask)); /* AKA 0xFFFFFFFF */
 
-	if (!CreateFenceAndSemaphores(renderer))
-	{
-		FNA3D_LogError("Failed to create fence and semaphores");
-		return NULL;
-	}
-
 	if (!CreateQueryPool(renderer))
 	{
 		FNA3D_LogError("Failed to create query pool");
@@ -8506,52 +8560,6 @@ FNA3D_Device* VULKAN_CreateDevice(
 		FNA3D_LogError("Failed to create binding info structs");
 		return NULL;
 	}
-
-	if (!CreateBarrierStorage(renderer))
-	{
-		FNA3D_LogError("Failed to create barrier storage");
-		return NULL;
-	}
-
-	renderer->renderbuffersToDestroyCapacity = 16;
-	renderer->renderbuffersToDestroyCount = 0;
-
-	renderer->renderbuffersToDestroy = (VulkanRenderbuffer**) SDL_malloc(
-		sizeof(VulkanRenderbuffer*) *
-		renderer->renderbuffersToDestroyCapacity
-	);
-
-	renderer->buffersToDestroyCapacity = 16;
-	renderer->buffersToDestroyCount = 0;
-
-	renderer->buffersToDestroy = (VulkanBuffer**) SDL_malloc(
-		sizeof(VulkanBuffer*) *
-		renderer->buffersToDestroyCapacity
-	);
-
-	renderer->bufferMemoryWrappersToDestroyCapacity = 16;
-	renderer->bufferMemoryWrappersToDestroyCount = 0;
-
-	renderer->bufferMemoryWrappersToDestroy = (BufferMemoryWrapper**) SDL_malloc(
-		sizeof(BufferMemoryWrapper*) *
-		renderer->bufferMemoryWrappersToDestroyCapacity
-	);
-
-	renderer->effectsToDestroyCapacity = 16;
-	renderer->effectsToDestroyCount = 0;
-
-	renderer->effectsToDestroy = (VulkanEffect**) SDL_malloc(
-		sizeof(VulkanEffect*) *
-		renderer->effectsToDestroyCapacity
-	);
-
-	renderer->imageDatasToDestroyCapacity = 16;
-	renderer->imageDatasToDestroyCount = 0;
-
-	renderer->imageDatasToDestroy = (FNAVulkanImageData**) SDL_malloc(
-		sizeof(FNAVulkanImageData*) *
-		renderer->imageDatasToDestroyCapacity
-	);
 
 	return result;
 }
