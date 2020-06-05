@@ -1646,8 +1646,8 @@ static void BindResources(FNAVulkanRenderer *renderer)
 	vertUniformBufferDescriptorSetNeedsUpdate = (renderer->currentVertUniformBufferDescriptorSet == NULL);
 	fragUniformBufferDescriptorSetNeedsUpdate = (renderer->currentFragUniformBufferDescriptorSet == NULL);
 
-	vertArrayOffset = (renderer->currentSwapChainIndex * MAX_TOTAL_SAMPLERS);
-	fragArrayOffset = (renderer->currentSwapChainIndex * MAX_TOTAL_SAMPLERS) + MAX_VERTEXTEXTURE_SAMPLERS;
+	vertArrayOffset = (renderer->currentSwapChainIndex * MAX_TOTAL_SAMPLERS) + MAX_TEXTURE_SAMPLERS;
+	fragArrayOffset = (renderer->currentSwapChainIndex * MAX_TOTAL_SAMPLERS);
 
 	for (i = 0; i < renderer->currentPipelineLayoutHash.vertSamplerCount; i++)
 	{
@@ -4656,8 +4656,8 @@ void VULKAN_VerifySampler(
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkSampler vkSamplerState;
-	uint32_t fragArrayOffset = (renderer->currentSwapChainIndex * MAX_TOTAL_SAMPLERS) + MAX_VERTEXTEXTURE_SAMPLERS;
-	uint32_t textureIndex = fragArrayOffset + index;
+	uint32_t texArrayOffset = (renderer->currentSwapChainIndex * MAX_TOTAL_SAMPLERS);
+	uint32_t textureIndex = texArrayOffset + index;
 	VulkanResourceAccessType nextAccess;
 	ImageMemoryBarrierCreateInfo memoryBarrierCreateInfo;
 
@@ -4755,7 +4755,12 @@ void VULKAN_VerifyVertexSampler(
 	FNA3D_Texture *texture,
 	FNA3D_SamplerState *sampler
 ) {
-	/* TODO */
+	VULKAN_VerifySampler(
+		driverData,
+		MAX_TEXTURE_SAMPLERS + index,
+		texture,
+		sampler
+	);
 }
 
 /* Vertex State */
@@ -5367,7 +5372,7 @@ void VULKAN_AddDisposeTexture(
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
-	uint32_t fragArrayOffset = (renderer->currentSwapChainIndex * MAX_TOTAL_SAMPLERS) + MAX_VERTEXTEXTURE_SAMPLERS;
+	uint32_t texArrayOffset = (renderer->currentSwapChainIndex * MAX_TOTAL_SAMPLERS);
 	uint32_t i, textureIndex;
 
 	for (i = 0; i < renderer->colorAttachmentCount; i++)
@@ -5380,7 +5385,7 @@ void VULKAN_AddDisposeTexture(
 
 	for (i = 0; i < renderer->textureCount; i++)
 	{
-		textureIndex = fragArrayOffset + i;
+		textureIndex = texArrayOffset + i;
 
 		if (vulkanTexture == renderer->textures[textureIndex])
 		{
