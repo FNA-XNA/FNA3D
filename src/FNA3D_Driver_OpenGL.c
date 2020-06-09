@@ -3448,7 +3448,7 @@ static void OPENGL_INTERNAL_SetPresentationInterval(
 		disableLateSwapTear = (
 			(SDL_strcmp(osVersion, "Mac OS X") == 0) ||
 			(SDL_strcmp(osVersion, "WinRT") == 0) ||
-			SDL_GetHintBoolean("FNA_OPENGL_DISABLE_LATESWAPTEAR", 0)
+			SDL_GetHintBoolean("FNA3D_OPENGL_DISABLE_LATESWAPTEAR", 0)
 		);
 		if (disableLateSwapTear)
 		{
@@ -5750,9 +5750,9 @@ static uint8_t OPENGL_PrepareWindowAttributes(uint32_t *flags)
 	const char *depthFormatHint;
 
 	/* GLContext environment variables */
-	forceES3 = SDL_GetHintBoolean("FNA_OPENGL_FORCE_ES3", 0);
-	forceCore = SDL_GetHintBoolean("FNA_OPENGL_FORCE_CORE_PROFILE", 0);
-	forceCompat = SDL_GetHintBoolean("FNA_OPENGL_FORCE_COMPATIBILITY_PROFILE", 0);
+	forceES3 = SDL_GetHintBoolean("FNA3D_OPENGL_FORCE_ES3", 0);
+	forceCore = SDL_GetHintBoolean("FNA3D_OPENGL_FORCE_CORE_PROFILE", 0);
+	forceCompat = SDL_GetHintBoolean("FNA3D_OPENGL_FORCE_COMPATIBILITY_PROFILE", 0);
 
 	/* Some platforms are GLES only */
 	osVersion = SDL_GetPlatform();
@@ -5768,7 +5768,7 @@ static uint8_t OPENGL_PrepareWindowAttributes(uint32_t *flags)
 	/* Window depth format */
 	depthSize = 24;
 	stencilSize = 8;
-	depthFormatHint = SDL_GetHint("FNA_OPENGL_WINDOW_DEPTHSTENCILFORMAT");
+	depthFormatHint = SDL_GetHint("FNA3D_OPENGL_WINDOW_DEPTHSTENCILFORMAT");
 	if (depthFormatHint != NULL)
 	{
 		if (SDL_strcmp(depthFormatHint, "None") == 0)
