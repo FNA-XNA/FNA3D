@@ -38,7 +38,7 @@
 /* constants */
 
 /* TODO: this _should_ work fine with a value of 3, but keeping it at 1 until things are farther along */
-#define MAX_FRAMES_IN_FLIGHT 1 
+#define MAX_FRAMES_IN_FLIGHT 1
 #define TEXTURE_COUNT MAX_TOTAL_SAMPLERS * MAX_FRAMES_IN_FLIGHT
 
 /* should be equivalent to the number of values in FNA3D_PrimitiveType */
@@ -88,6 +88,12 @@ typedef enum VulkanResourceAccessType {
 	RESOURCE_ACCESS_TYPES_COUNT
 } VulkanResourceAccessType;
 
+typedef enum CreateSwapchainResult {
+	CREATE_SWAPCHAIN_FAIL,
+	CREATE_SWAPCHAIN_SUCCESS,
+	CREATE_SWAPCHAIN_SURFACE_ZERO,
+} CreateSwapchainResult;
+
 /* Internal Structures */
 
 typedef struct VulkanTexture VulkanTexture;
@@ -136,15 +142,6 @@ typedef struct FNAVulkanImageData
 	VkDeviceSize memorySize;
 } FNAVulkanImageData;
 
-typedef struct FNAVulkanFramebuffer
-{
-	VkFramebuffer framebuffer;
-	FNAVulkanImageData color;
-	FNAVulkanImageData depth;
-	int32_t width;
-	int32_t height;
-} FNAVulkanFramebuffer;
-
 /* FIXME: this could be packed better */
 typedef struct PipelineHash
 {
@@ -178,9 +175,16 @@ struct RenderPassHashMap
 	VkRenderPass value;
 };
 
+typedef struct FramebufferHash
+{
+	uint32_t attachmentCount;
+	uint32_t width;
+	uint32_t height;
+} FramebufferHash;
+
 struct FramebufferHashMap
 {
-	RenderPassHash key;
+	FramebufferHash key;
 	VkFramebuffer value;
 };
 
@@ -298,6 +302,8 @@ typedef struct FNAVulkanRenderer
 	VkPhysicalDeviceDriverProperties physicalDeviceDriverProperties;
 	VkDevice logicalDevice;
 
+	FNA3D_PresentationParameters *currentPresentationParameters;
+
 	QueueFamilyIndices queueFamilyIndices;
 	VkQueue graphicsQueue;
 	VkQueue presentQueue;
@@ -314,7 +320,6 @@ typedef struct FNAVulkanRenderer
 	VkPipelineCache pipelineCache;
 
 	VkRenderPass renderPass;
-	VkFramebuffer framebuffer;
 	VkPipeline currentPipeline;
 	VkPipelineLayout currentPipelineLayout;
 	uint64_t currentVertexBufferBindingHash;
@@ -330,7 +335,6 @@ typedef struct FNAVulkanRenderer
 	VulkanColorBuffer fauxBackbufferColor;
 	VulkanDepthStencilBuffer fauxBackbufferDepthStencil;
 	VkFramebuffer fauxBackbufferFramebuffer;
-	VkRenderPass backbufferRenderPass;
 	uint32_t fauxBackbufferWidth;
 	uint32_t fauxBackbufferHeight;
 	FNA3D_DepthFormat fauxBackbufferDepthFormat;
@@ -339,7 +343,6 @@ typedef struct FNAVulkanRenderer
 	VulkanColorBuffer *colorAttachments[MAX_RENDERTARGET_BINDINGS];
 	uint32_t colorAttachmentCount;
 	VulkanDepthStencilBuffer *depthStencilAttachment;
-	uint8_t depthStencilAttachmentActive;
 
 	FNA3D_DepthFormat currentDepthFormat;
 
@@ -485,6 +488,7 @@ typedef struct FNAVulkanRenderer
 	uint32_t imageDatasToDestroyCount[MAX_FRAMES_IN_FLIGHT];
 	uint32_t imageDatasToDestroyCapacity[MAX_FRAMES_IN_FLIGHT];
 
+	uint8_t commandBufferActive[MAX_FRAMES_IN_FLIGHT];
 	uint8_t frameInProgress[MAX_FRAMES_IN_FLIGHT];
 	uint8_t renderPassInProgress;
 	uint8_t needNewRenderPass;
@@ -792,6 +796,15 @@ static VulkanTexture* CreateTexture(
 	VkImageType imageType
 );
 
+static CreateSwapchainResult CreateSwapchain(
+	FNAVulkanRenderer *renderer,
+	FNA3D_PresentationParameters *presentationParameters
+);
+
+static void RecreateSwapchain(
+	FNAVulkanRenderer *renderer
+);
+
 static void PerformDeferredDestroys(
 	FNAVulkanRenderer *renderer
 );
@@ -823,6 +836,10 @@ static void DestroyRenderbuffer(
 static void DestroyImageData(
 	FNAVulkanRenderer *renderer,
 	FNAVulkanImageData *imageData
+);
+
+static void DestroySwapchain(
+	FNAVulkanRenderer *renderer
 );
 
 static void EndPass(
@@ -946,6 +963,18 @@ static void RemoveBuffer(
 	FNA3D_Buffer *buffer
 );
 
+static VkExtent2D ChooseSwapExtent(
+	void* windowHandle,
+	const VkSurfaceCapabilitiesKHR capabilities
+);
+
+static uint8_t QuerySwapChainSupport(
+	FNAVulkanRenderer* renderer,
+	VkPhysicalDevice physicalDevice,
+	VkSurfaceKHR surface,
+	SwapChainSupportDetails* outputDetails
+);
+
 static void QueueBufferAndMemoryDestroy(
 	FNAVulkanRenderer *renderer,
 	VkBuffer vkBuffer,
@@ -965,6 +994,12 @@ static void QueueImageDestroy(
 static uint8_t CreateFauxBackbuffer(
 	FNAVulkanRenderer *renderer,
 	FNA3D_PresentationParameters *presentationParameters
+);
+
+void VULKAN_GetBackbufferSize(
+	FNA3D_Renderer *driverData,
+	int32_t *w,
+	int32_t *h
 );
 
 /* static vars */
@@ -1370,6 +1405,22 @@ static const char* VkErrorMessages(VkResult code)
 
 		case VK_ERROR_INCOMPATIBLE_DRIVER:
 			errorString = "Incompatible driver";
+			break;
+
+		case VK_ERROR_OUT_OF_DATE_KHR:
+			errorString = "Out of date KHR";
+			break;
+
+		case VK_ERROR_SURFACE_LOST_KHR:
+			errorString = "Surface lost KHR";
+			break;
+
+		case VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT:
+			errorString = "Full screen exclusive mode lost";
+			break;
+
+		case VK_SUBOPTIMAL_KHR:
+			errorString = "Suboptimal KHR";
 			break;
 
 		default:
@@ -2454,6 +2505,24 @@ void VULKAN_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 	SDL_Vulkan_GetDrawableSize((SDL_Window*) window, x, y);
 }
 
+static void QuerySurfaceExtent(
+	FNAVulkanRenderer* renderer
+) {
+	SwapChainSupportDetails swapChainSupportDetails;
+
+	QuerySwapChainSupport(
+		renderer,
+		renderer->physicalDevice,
+		renderer->surface,
+		&swapChainSupportDetails
+	);
+
+	return ChooseSwapExtent(
+		renderer->currentPresentationParameters->deviceWindowHandle,
+		swapChainSupportDetails.capabilities
+	);
+}
+
 void VULKAN_DestroyDevice(FNA3D_Device *device)
 {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) device->driverData;
@@ -3508,6 +3577,7 @@ static VkRenderPass FetchRenderPass(
 	uint32_t i;
 	VkAttachmentReference *colorAttachmentReferences;
 	VkAttachmentReference depthStencilAttachmentReference;
+	uint32_t attachmentCount;
 	VkSubpassDescription subpass;
 	VkSubpassDependency subpassDependency;
 	VkRenderPassCreateInfo renderPassCreateInfo = {
@@ -3560,11 +3630,6 @@ static VkRenderPass FetchRenderPass(
 		attachmentDescriptions[renderer->colorAttachmentCount].stencilStoreOp = VK_ATTACHMENT_STORE_OP_STORE;
 		attachmentDescriptions[renderer->colorAttachmentCount].initialLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		attachmentDescriptions[renderer->colorAttachmentCount].finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-		renderer->depthStencilAttachmentActive = 1;
-	}
-	else
-	{
-		renderer->depthStencilAttachmentActive = 0;
 	}
 
 	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -3577,6 +3642,8 @@ static VkRenderPass FetchRenderPass(
 	subpass.preserveAttachmentCount = 0;
 	subpass.pPreserveAttachments = NULL;
 
+	attachmentCount = renderer->colorAttachmentCount;
+
 	if (renderer->currentDepthFormat == FNA3D_DEPTHFORMAT_NONE)
 	{
 		subpass.pDepthStencilAttachment = NULL;
@@ -3584,6 +3651,7 @@ static VkRenderPass FetchRenderPass(
 	else
 	{
 		subpass.pDepthStencilAttachment = &depthStencilAttachmentReference;
+		attachmentCount++;
 	}
 
 	subpassDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
@@ -3594,7 +3662,7 @@ static VkRenderPass FetchRenderPass(
 	subpassDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
 	subpassDependency.dependencyFlags = 0;
 
-	renderPassCreateInfo.attachmentCount = renderer->colorAttachmentCount + renderer->depthStencilAttachmentActive;
+	renderPassCreateInfo.attachmentCount = attachmentCount;
 	renderPassCreateInfo.pAttachments = attachmentDescriptions;
 	renderPassCreateInfo.subpassCount = 1;
 	renderPassCreateInfo.pSubpasses = &subpass;
@@ -3622,13 +3690,27 @@ static VkRenderPass FetchRenderPass(
 	return renderPass;
 }
 
+static FramebufferHash GetFramebufferHash(
+	FNAVulkanRenderer *renderer
+) {
+	FramebufferHash hash;
+	hash.attachmentCount = renderer->colorAttachmentCount;
+	if (renderer->currentDepthFormat != FNA3D_DEPTHFORMAT_NONE)
+	{
+		hash.attachmentCount++;
+	}
+	hash.width = renderer->swapChainExtent.width;
+	hash.height = renderer->swapChainExtent.height;
+	return hash;
+}
+
 static VkFramebuffer FetchFramebuffer(
 	FNAVulkanRenderer *renderer,
 	VkRenderPass renderPass
 ) {
 	VkFramebuffer framebuffer;
 	VkImageView imageViewAttachments[MAX_RENDERTARGET_BINDINGS + 1];
-	uint32_t i;
+	uint32_t i, attachmentCount;
 	VkFramebufferCreateInfo framebufferInfo = {
 		VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO
 	};
@@ -3636,7 +3718,7 @@ static VkFramebuffer FetchFramebuffer(
 
 	/* framebuffer is cached, can return it */
 
-	RenderPassHash hash = GetRenderPassHash(renderer);
+	FramebufferHash hash = GetFramebufferHash(renderer);
 	if (hmgeti(renderer->framebufferHashMap, hash) != -1)
 	{
 		return hmget(renderer->framebufferHashMap, hash);
@@ -3644,18 +3726,20 @@ static VkFramebuffer FetchFramebuffer(
 
 	/* otherwise make a new one */
 
+	attachmentCount = renderer->colorAttachmentCount;
 	for (i = 0; i < renderer->colorAttachmentCount; i++)
 	{
 		imageViewAttachments[i] = renderer->colorAttachments[i]->handle.view;
 	}
-	if (renderer->depthStencilAttachmentActive)
+	if (renderer->currentDepthFormat != FNA3D_DEPTHFORMAT_NONE)
 	{
 		imageViewAttachments[renderer->colorAttachmentCount] = renderer->depthStencilAttachment->handle.view;
+		attachmentCount++;
 	}
 
 	framebufferInfo.flags = 0;
 	framebufferInfo.renderPass = renderPass;
-	framebufferInfo.attachmentCount = renderer->colorAttachmentCount + renderer->depthStencilAttachmentActive;
+	framebufferInfo.attachmentCount = attachmentCount;
 	framebufferInfo.pAttachments = imageViewAttachments;
 	framebufferInfo.width = renderer->swapChainExtent.width;
 	framebufferInfo.height = renderer->swapChainExtent.height;
@@ -3756,7 +3840,11 @@ static RenderPassHash GetRenderPassHash(
 	FNAVulkanRenderer *renderer
 ) {
 	RenderPassHash hash;
-	hash.attachmentCount = renderer->colorAttachmentCount + renderer->depthStencilAttachmentActive;
+	hash.attachmentCount = renderer->colorAttachmentCount;
+	if (renderer->currentDepthFormat != FNA3D_DEPTHFORMAT_NONE)
+	{
+		hash.attachmentCount++;
+	}
 	return hash;
 }
 
@@ -3766,6 +3854,7 @@ static void BeginRenderPass(
 	VkRenderPassBeginInfo renderPassBeginInfo = {
 		VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO
 	};
+	VkFramebuffer framebuffer;
 	VkOffset2D offset = { 0, 0 }; /* FIXME: these values are not correct */
 	const float blendConstants[] =
 	{
@@ -3777,13 +3866,13 @@ static void BeginRenderPass(
 	uint32_t swapChainOffset, i;
 
 	renderer->renderPass = FetchRenderPass(renderer);
-	renderer->framebuffer = FetchFramebuffer(renderer, renderer->renderPass);
+	framebuffer = FetchFramebuffer(renderer, renderer->renderPass);
 
 	renderPassBeginInfo.renderArea.offset = offset;
 	renderPassBeginInfo.renderArea.extent = renderer->swapChainExtent;
 
 	renderPassBeginInfo.renderPass = renderer->renderPass;
-	renderPassBeginInfo.framebuffer = renderer->framebuffer;
+	renderPassBeginInfo.framebuffer = framebuffer;
 
 	renderer->vkCmdBeginRenderPass(
 		renderer->commandBuffers[renderer->currentFrame],
@@ -3870,6 +3959,11 @@ void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 
 	/* perform cleanup */
 
+	renderer->vkResetCommandBuffer(
+		renderer->commandBuffers[renderer->currentFrame],
+		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+	);
+
 	PerformDeferredDestroys(renderer);
 
 	if (renderer->activeDescriptorSetCount[renderer->currentFrame] != 0)
@@ -3917,16 +4011,12 @@ void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 		buf = buf->next;
 	}
 
-	renderer->vkResetCommandBuffer(
-		renderer->commandBuffers[renderer->currentFrame],
-		VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT
-	);
-
 	renderer->vkBeginCommandBuffer(
 		renderer->commandBuffers[renderer->currentFrame],
 		&beginInfo
 	);
 
+	renderer->commandBufferActive[renderer->currentFrame] = 1;
 	renderer->frameInProgress[renderer->currentFrame] = 1;
 	renderer->needNewRenderPass = 1;
 }
@@ -3946,7 +4036,6 @@ void VULKAN_SwapBuffers(
 	VkResult result;
 	FNA3D_Rect srcRect;
 	FNA3D_Rect dstRect;
-	int32_t w, h;
 	VkResult vulkanResult;
 	VkPipelineStageFlags waitStages[] = {
 		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
@@ -3954,14 +4043,13 @@ void VULKAN_SwapBuffers(
 	VkSubmitInfo submitInfo = {
 		VK_STRUCTURE_TYPE_SUBMIT_INFO
 	};
-	VkSwapchainKHR swapChains[] = { renderer->swapChain };
 	VkPresentInfoKHR presentInfo = {
 		VK_STRUCTURE_TYPE_PRESENT_INFO_KHR
 	};
 	uint32_t swapChainImageIndex;
 
 	/* begin next frame */
-	renderer->vkAcquireNextImageKHR(
+	result = renderer->vkAcquireNextImageKHR(
 		renderer->logicalDevice,
 		renderer->swapChain,
 		UINT64_MAX,
@@ -3969,6 +4057,18 @@ void VULKAN_SwapBuffers(
 		VK_NULL_HANDLE,
 		&swapChainImageIndex
 	);
+
+	if (result == VK_ERROR_OUT_OF_DATE_KHR)
+	{
+		RecreateSwapchain(renderer);
+		return;
+	}
+	
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkAcquireNextImageKHR", result);
+		FNA3D_LogError("failed to acquire swapchain image");
+	}
 
 	if (renderer->imagesInFlight[swapChainImageIndex] != VK_NULL_HANDLE)
 	{
@@ -4003,11 +4103,10 @@ void VULKAN_SwapBuffers(
 	}
 	else
 	{
-		VULKAN_GetDrawableSize(overrideWindowHandle, &w, &h);
 		dstRect.x = 0;
 		dstRect.y = 0;
-		dstRect.w = w;
-		dstRect.h = h;
+		dstRect.w = renderer->swapChainExtent.width;
+		dstRect.h = renderer->swapChainExtent.height;
 	}
 
 	/* special case because of the attachment description */
@@ -4024,6 +4123,8 @@ void VULKAN_SwapBuffers(
 	vulkanResult = renderer->vkEndCommandBuffer(
 		renderer->commandBuffers[renderer->currentFrame]
 	);
+
+	renderer->commandBufferActive[renderer->currentFrame] = 0;
 
 	if (vulkanResult != VK_SUCCESS)
 	{
@@ -4062,7 +4163,7 @@ void VULKAN_SwapBuffers(
 	presentInfo.waitSemaphoreCount = 1;
 	presentInfo.pWaitSemaphores = &renderer->renderFinishedSemaphores[renderer->currentFrame];
 	presentInfo.swapchainCount = 1;
-	presentInfo.pSwapchains = swapChains;
+	presentInfo.pSwapchains = &renderer->swapChain;
 	presentInfo.pImageIndices = &swapChainImageIndex;
 	presentInfo.pResults = NULL;
 
@@ -4071,14 +4172,29 @@ void VULKAN_SwapBuffers(
 		&presentInfo
 	);
 
-	if (result != VK_SUCCESS)
+	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
 	{
-		FNA3D_LogError("failed to present image");
-		LogVulkanResult("vkQueuePresentKHR", result);
+		RecreateSwapchain(renderer);
+		return;
 	}
 
-	renderer->frameInProgress[renderer->currentFrame] = 0;
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkQueuePresentKHR", result);
+		FNA3D_LogError("failed to present image");
+	}
+
 	renderer->currentFrame = (renderer->currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+
+	renderer->vkWaitForFences(
+		renderer->logicalDevice,
+		1,
+		&renderer->inFlightFences[renderer->currentFrame],
+		VK_TRUE,
+		UINT64_MAX
+	);
+
+	renderer->frameInProgress[renderer->currentFrame] = 0;
 }
 
 /* Drawing */
@@ -4092,10 +4208,7 @@ static void RenderPassClear(
 	uint8_t clearDepth,
 	uint8_t clearStencil
 ) {
-	VkClearAttachment *clearAttachments = SDL_stack_alloc(
-		VkClearAttachment,
-		renderer->colorAttachmentCount + renderer->depthStencilAttachmentActive
-	);
+	VkClearAttachment* clearAttachments;
 	VkClearRect clearRect;
 	VkClearValue clearValue = {{{
 		color->x,
@@ -4103,12 +4216,19 @@ static void RenderPassClear(
 		color->z,
 		color->w
 	}}};
-	uint32_t i;
+	uint32_t i, attachmentCount;
 
 	if (!clearColor && !clearDepth && !clearStencil) { 
-		SDL_stack_free(clearAttachments);
 		return; 
 	}
+
+	attachmentCount = renderer->colorAttachmentCount;
+	if (renderer->currentDepthFormat != FNA3D_DEPTHFORMAT_NONE) { attachmentCount++; }
+
+	clearAttachments = SDL_stack_alloc(
+		VkClearAttachment,
+		attachmentCount
+	);
 
 	clearRect.baseArrayLayer = 0;
 	clearRect.layerCount = 1;
@@ -4136,7 +4256,7 @@ static void RenderPassClear(
 
 	if (clearDepth || clearStencil)
 	{
-		if (renderer->depthStencilAttachmentActive)
+		if (renderer->currentDepthFormat != FNA3D_DEPTHFORMAT_NONE)
 		{
 			clearAttachments[renderer->colorAttachmentCount].aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
 
@@ -4162,7 +4282,7 @@ static void RenderPassClear(
 
 	renderer->vkCmdClearAttachments(
 		renderer->commandBuffers[renderer->currentFrame],
-		renderer->colorAttachmentCount + renderer->depthStencilAttachmentActive,
+		attachmentCount,
 		clearAttachments,
 		1,
 		&clearRect
@@ -4240,7 +4360,7 @@ static void OutsideRenderPassClear(
 
 	if (clearDepth || clearStencil)
 	{
-		if (renderer->depthStencilAttachmentActive)
+		if (renderer->currentDepthFormat != FNA3D_DEPTHFORMAT_NONE)
 		{
 			subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
 			subresourceRange.baseArrayLayer = 0;
@@ -4927,7 +5047,7 @@ static void UpdateRenderPass(
 	/* TODO: incomplete */
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 
-	if (!renderer->needNewRenderPass) { return; }
+	if (!renderer->frameInProgress[renderer->currentFrame] || !renderer->needNewRenderPass) { return; }
 
 	VULKAN_BeginFrame(driverData);
 
@@ -5138,7 +5258,6 @@ void VULKAN_SetRenderTargets(
 		renderer->colorAttachments[i] = NULL;
 	}
 	renderer->depthStencilAttachment = NULL;
-	renderer->depthStencilAttachmentActive = 0;
 
 	if (renderTargets == NULL)
 	{
@@ -5146,7 +5265,6 @@ void VULKAN_SetRenderTargets(
 		if (renderer->fauxBackbufferDepthFormat != FNA3D_DEPTHFORMAT_NONE)
 		{
 			renderer->depthStencilAttachment = &renderer->fauxBackbufferDepthStencil;
-			renderer->depthStencilAttachmentActive = 1;
 		}
 		return;
 	}
@@ -5219,13 +5337,24 @@ static void SetStencilReferenceValueCommand(
 static void SetViewportCommand(
 	FNAVulkanRenderer *renderer
 ) {
+	int32_t targetHeight, meh;
 	VkViewport vulkanViewport;
 
 	/* v-flipping the viewport for compatibility with other APIs -cosmonaut */
 	vulkanViewport.x = renderer->viewport.x;
-	vulkanViewport.y = renderer->viewport.h - renderer->viewport.y;
+	if (1) /* FIXME: !renderer->renderTargetBound) */
+	{
+			VULKAN_GetBackbufferSize((FNA3D_Renderer*)renderer, &meh, &targetHeight);
+	}
+	else
+	{
+			/* FIXME: WRONG */
+			targetHeight = renderer->viewport.h;
+	}
+
+	vulkanViewport.y = targetHeight - renderer->viewport.y;
 	vulkanViewport.width = renderer->viewport.w;
-	vulkanViewport.height = -(renderer->viewport.h - renderer->viewport.y);
+	vulkanViewport.height = -renderer->viewport.h;
 	vulkanViewport.minDepth = renderer->viewport.minDepth;
 	vulkanViewport.maxDepth = renderer->viewport.maxDepth;
 
@@ -5351,17 +5480,44 @@ void VULKAN_ResolveTarget(
 
 /* Backbuffer Functions */
 
+static void DestroySwapchain(FNAVulkanRenderer *renderer)
+{
+	uint32_t i;
+
+	for (i = 0; i < hmlenu(renderer->framebufferHashMap); i++)
+	{
+		renderer->vkDestroyFramebuffer(
+			renderer->logicalDevice,
+			renderer->framebufferHashMap[i].value,
+			NULL
+		);
+
+		hmdel(renderer->framebufferHashMap, renderer->framebufferHashMap[i].key);
+	}
+
+	for (i = 0; i < renderer->swapChainImageCount; i++)
+	{
+		renderer->vkDestroyImageView(
+			renderer->logicalDevice,
+			renderer->swapChainImageViews[i],
+			NULL
+		);
+
+		SDL_free(renderer->swapChainImages[i]);
+	}
+
+	renderer->vkDestroySwapchainKHR(
+		renderer->logicalDevice,
+		renderer->swapChain,
+		NULL
+	);
+}
+
 static void DestroyFauxBackbuffer(FNAVulkanRenderer *renderer)
 {
 	renderer->vkDestroyFramebuffer(
 		renderer->logicalDevice,
 		renderer->fauxBackbufferFramebuffer,
-		NULL
-	);
-
-	renderer->vkDestroyRenderPass(
-		renderer->logicalDevice,
-		renderer->backbufferRenderPass,
 		NULL
 	);
 
@@ -5407,11 +5563,13 @@ void VULKAN_ResetBackbuffer(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	renderer->currentPresentationParameters = presentationParameters;
 
+	RecreateSwapchain(renderer);
 	DestroyFauxBackbuffer(renderer);
 	CreateFauxBackbuffer(
 		renderer,
-		presentationParameters
+		renderer->currentPresentationParameters
 	);
 }
 
@@ -5794,6 +5952,7 @@ FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 	int32_t multiSampleCount
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+
 	VkFormat depthFormat = XNAToVK_DepthFormat(format);
 
 	VulkanRenderbuffer *renderbuffer = (VulkanRenderbuffer*) SDL_malloc(sizeof(VulkanRenderbuffer));
@@ -5925,7 +6084,6 @@ void VULKAN_AddDisposeRenderbuffer(
 		if (renderer->depthStencilAttachment == vlkRenderBuffer->depthBuffer)
 		{
 			renderer->depthStencilAttachment = NULL;
-			renderer->depthStencilAttachmentActive = 0;
 		}
 	} 
 	else
@@ -6978,11 +7136,11 @@ static uint8_t ChooseSwapPresentMode(
 }
 
 static VkExtent2D ChooseSwapExtent(
-	const VkSurfaceCapabilitiesKHR capabilities,
-	uint32_t width,
-	uint32_t height
+	void* windowHandle,
+	const VkSurfaceCapabilitiesKHR capabilities
 ) {
-	VkExtent2D actualExtent = { width, height };
+	VkExtent2D actualExtent;
+	int32_t drawableWidth, drawableHeight;
 
 	if (capabilities.currentExtent.width != UINT32_MAX)
 	{
@@ -6990,21 +7148,14 @@ static VkExtent2D ChooseSwapExtent(
 	}
 	else
 	{
-		actualExtent.width = SDL_max(
-			capabilities.minImageExtent.width,
-			SDL_min(
-				capabilities.maxImageExtent.width,
-				actualExtent.width
-			)
+		VULKAN_GetDrawableSize(
+			windowHandle,
+			&drawableWidth,
+			&drawableHeight
 		);
 
-		actualExtent.height = SDL_max(
-			capabilities.minImageExtent.height,
-			SDL_min(
-				capabilities.maxImageExtent.height,
-				actualExtent.height
-			)
-		);
+		actualExtent.width = drawableWidth;
+		actualExtent.height = drawableHeight;
 
 		return actualExtent;
 	}
@@ -7507,7 +7658,84 @@ static uint8_t CreateLogicalDevice(
 	return 1;
 }
 
-static uint8_t CreateSwapChain(
+static void RecreateSwapchain(
+	FNAVulkanRenderer *renderer
+) {
+	VkSubmitInfo submitInfo = {
+		VK_STRUCTURE_TYPE_SUBMIT_INFO
+	};
+	VkCommandBufferBeginInfo beginInfo = {
+		VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
+	};
+	CreateSwapchainResult createSwapchainResult;
+	SwapChainSupportDetails swapChainSupportDetails;
+	VkExtent2D extent;
+
+	if (renderer->commandBufferActive[renderer->currentFrame])
+	{
+		EndPass(renderer);
+
+		renderer->vkEndCommandBuffer(
+			renderer->commandBuffers[renderer->currentFrame]
+		);
+
+		submitInfo.waitSemaphoreCount = 0;
+		submitInfo.pWaitSemaphores = NULL;
+		submitInfo.pWaitDstStageMask = 0;
+		submitInfo.signalSemaphoreCount = 0;
+		submitInfo.pSignalSemaphores = NULL;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &renderer->commandBuffers[renderer->currentFrame];
+
+		renderer->vkQueueSubmit(
+			renderer->graphicsQueue,
+			1,
+			&submitInfo,
+			NULL
+		);
+	}
+
+	renderer->commandBufferActive[renderer->currentFrame] = 0;
+	renderer->frameInProgress[renderer->currentFrame] = 0;
+
+	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
+
+	renderer->vkResetCommandPool(
+		renderer->logicalDevice,
+		renderer->commandPool,
+		VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT
+	);
+
+	QuerySwapChainSupport(
+		renderer,
+		renderer->physicalDevice,
+		renderer->surface,
+		&swapChainSupportDetails
+	);
+
+	extent = ChooseSwapExtent(
+		renderer->currentPresentationParameters->deviceWindowHandle,
+		swapChainSupportDetails.capabilities
+	);
+
+	if (extent.width == 0 || extent.height == 0)
+	{
+		return; 
+	}
+
+	DestroySwapchain(renderer);
+	createSwapchainResult = CreateSwapchain(renderer, renderer->currentPresentationParameters);
+
+	if (createSwapchainResult == CREATE_SWAPCHAIN_FAIL)
+	{
+		FNA3D_LogError("Failed to recreate swapchain");
+		return;
+	}
+
+	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
+}
+
+static CreateSwapchainResult CreateSwapchain(
 	FNAVulkanRenderer *renderer,
 	FNA3D_PresentationParameters *presentationParameters
 ) {
@@ -7515,7 +7743,7 @@ static uint8_t CreateSwapChain(
 	SwapChainSupportDetails swapChainSupportDetails;
 	VkSurfaceFormatKHR surfaceFormat;
 	VkPresentModeKHR presentMode;
-	VkExtent2D extent;
+	VkExtent2D extent = { 0, 0 };
 	uint32_t imageCount, swapChainImageCount, i;
 	VkSwapchainCreateInfoKHR swapChainCreateInfo = { VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR };
 	VkImage *swapChainImages;
@@ -7530,7 +7758,7 @@ static uint8_t CreateSwapChain(
 		&swapChainSupportDetails
 	)) {
 		FNA3D_LogError("Device does not support swap chain creation");
-		return 0;
+		return CREATE_SWAPCHAIN_FAIL;
 	}
 
 	if (
@@ -7543,7 +7771,8 @@ static uint8_t CreateSwapChain(
 	) {
 		SDL_free(swapChainSupportDetails.formats);
 		SDL_free(swapChainSupportDetails.presentModes);
-		return 0;
+		FNA3D_LogError("Device does not support swap chain format");
+		return CREATE_SWAPCHAIN_FAIL;
 	}
 
 	renderer->surfaceFormatMapping = surfaceFormatMapping;
@@ -7558,14 +7787,19 @@ static uint8_t CreateSwapChain(
 	) {
 		SDL_free(swapChainSupportDetails.formats);
 		SDL_free(swapChainSupportDetails.presentModes);
-		return 0;
+		FNA3D_LogError("Device does not support swap chain present mode");
+		return CREATE_SWAPCHAIN_FAIL;
 	}
 
 	extent = ChooseSwapExtent(
-		swapChainSupportDetails.capabilities,
-		presentationParameters->backBufferWidth,
-		presentationParameters->backBufferHeight
+		presentationParameters->deviceWindowHandle,
+		swapChainSupportDetails.capabilities
 	);
+
+	if (extent.width == 0 || extent.height == 0)
+	{
+		return CREATE_SWAPCHAIN_SURFACE_ZERO;
+	}
 
 	imageCount = swapChainSupportDetails.capabilities.minImageCount + 1;
 
@@ -7597,23 +7831,33 @@ static uint8_t CreateSwapChain(
 	{
 		LogVulkanResult("vkCreateSwapchainKHR", vulkanResult);
 
-		return 0;
+		return CREATE_SWAPCHAIN_FAIL;
 	}
 
 	renderer->vkGetSwapchainImagesKHR(renderer->logicalDevice, renderer->swapChain, &swapChainImageCount, NULL);
+
+	if (renderer->swapChainImages)
+	{
+		SDL_free(renderer->swapChainImages);
+	}
 
 	renderer->swapChainImages = (VulkanImageResource**) SDL_malloc(sizeof(VulkanImageResource*) * swapChainImageCount);
 	if (!renderer->swapChainImages)
 	{
 		SDL_OutOfMemory();
-		return 0;
+		return CREATE_SWAPCHAIN_FAIL;
+	}
+
+	if (renderer->swapChainImageViews)
+	{
+		SDL_free(renderer->swapChainImageViews);
 	}
 
 	renderer->swapChainImageViews = (VkImageView*) SDL_malloc(sizeof(VkImageView) * swapChainImageCount);
 	if (!renderer->swapChainImageViews)
 	{
 		SDL_OutOfMemory();
-		return 0;
+		return CREATE_SWAPCHAIN_FAIL;
 	}
 
 	swapChainImages = SDL_stack_alloc(VkImage, swapChainImageCount);
@@ -7644,7 +7888,7 @@ static uint8_t CreateSwapChain(
 		{
 			LogVulkanResult("vkCreateImageView", vulkanResult);
 			SDL_stack_free(swapChainImages);
-			return 0;
+			return CREATE_SWAPCHAIN_FAIL;
 		}
 
 		renderer->swapChainImages[i] = (VulkanImageResource*) SDL_malloc(sizeof(FNAVulkanImageData));
@@ -7656,7 +7900,7 @@ static uint8_t CreateSwapChain(
 	}
 
 	SDL_stack_free(swapChainImages);
-	return 1;
+	return CREATE_SWAPCHAIN_SUCCESS;
 }
 
 static uint8_t CreateDescriptorSetLayouts(
@@ -7884,7 +8128,7 @@ static uint8_t CreateFauxBackbuffer(
 
 	if (renderer->fauxBackbufferDepthFormat != FNA3D_DEPTHFORMAT_NONE)
 	{
-		vulkanDepthStencilFormat = XNAToVK_DepthFormat(presentationParameters->depthStencilFormat);
+		vulkanDepthStencilFormat = XNAToVK_DepthFormat(renderer->fauxBackbufferDepthFormat);
 
 		if (
 			!CreateImage(
@@ -7907,7 +8151,6 @@ static uint8_t CreateFauxBackbuffer(
 		}
 
 		renderer->depthStencilAttachment = &renderer->fauxBackbufferDepthStencil;
-		renderer->depthStencilAttachmentActive = 1;
 
 		/* layout transition if required */
 
@@ -7926,10 +8169,6 @@ static uint8_t CreateFauxBackbuffer(
 			barrierCreateInfo,
 			&renderer->fauxBackbufferDepthStencil.handle.imageResource
 		);
-	}
-	else
-	{
-		renderer->depthStencilAttachmentActive = 0;
 	}
 
 	SubmitPipelineBarrier(renderer);
@@ -8365,8 +8604,11 @@ FNA3D_Device* VULKAN_CreateDevice(
 	renderer->parentDevice = result;
 	result->driverData = (FNA3D_Renderer*) renderer;
 
+	renderer->currentPresentationParameters = presentationParameters;
+
 	for (i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 	{
+		renderer->commandBufferActive[i] = 0;
 		renderer->frameInProgress[i] = 0;
 	}
 
@@ -8438,10 +8680,12 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
-	if (!CreateSwapChain(
-		renderer,
-		presentationParameters
-	)) {
+	if (
+		CreateSwapchain(
+			renderer,
+			presentationParameters
+		) != CREATE_SWAPCHAIN_SUCCESS
+	) {
 		FNA3D_LogError("Failed to create swap chain");
 		return NULL;
 	}
