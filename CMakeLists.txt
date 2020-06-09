@@ -1,7 +1,7 @@
 # CMake Project for FNA3D
 # Written by @NeroBurner
 cmake_minimum_required(VERSION 2.8.12)
-project(FNA3D)
+project(FNA3D C)
 
 # Options
 option(BUILD_SHARED_LIBS "Build shared library" ON)
