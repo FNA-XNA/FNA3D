@@ -7359,8 +7359,9 @@ static uint8_t CreateInstance(
 	const char *layerNames[] = { "VK_LAYER_KHRONOS_validation" };
 
 	/* create instance */
-	appInfo.pApplicationName = "FNA";
-	appInfo.apiVersion = VK_MAKE_VERSION(1, 2, 137);
+	appInfo.pEngineName = "FNA3D";
+	appInfo.engineVersion = FNA3D_COMPILED_VERSION;
+	appInfo.apiVersion = VK_MAKE_VERSION(1, 0, 0);
 
 	if (
 		!SDL_Vulkan_GetInstanceExtensions(
@@ -7377,7 +7378,14 @@ static uint8_t CreateInstance(
 		return 0;
 	}
 
-	instanceExtensionNames = SDL_stack_alloc(const char*, instanceExtensionCount);
+	/* Extra space for the following extensions:
+	 * VK_KHR_get_physical_device_properties2
+	 * VK_EXT_debug_utils
+	 */
+	instanceExtensionNames = SDL_stack_alloc(
+		const char*,
+		instanceExtensionCount + 2
+	);
 
 	if (!SDL_Vulkan_GetInstanceExtensions(
 		(SDL_Window*) presentationParameters->deviceWindowHandle,
@@ -7391,6 +7399,8 @@ static uint8_t CreateInstance(
 		goto create_instance_fail;
 	}
 
+	instanceExtensionNames[instanceExtensionCount++] = VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME;
+
 	if (!CheckInstanceExtensionSupport(
 		instanceExtensionNames,
 		instanceExtensionCount,
@@ -7402,19 +7412,8 @@ static uint8_t CreateInstance(
 
 	if (renderer->supportsDebugUtils)
 	{
-		/* Copy the old array into a new stack allocation */
-		temp = SDL_stack_alloc(const char*, instanceExtensionCount + 1);
-		SDL_memcpy(
-			temp,
-			instanceExtensionNames,
-			sizeof(const char*) * (instanceExtensionCount)
-		);
-		SDL_stack_free(instanceExtensionNames);
-		instanceExtensionNames = temp;
-
 		/* Append the debug extension to the end */
-		instanceExtensionNames[instanceExtensionCount] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
-		instanceExtensionCount += 1;
+		instanceExtensionNames[instanceExtensionCount++] = VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
 	}
 	else
 	{
@@ -7559,12 +7558,16 @@ static uint8_t DeterminePhysicalDevice(
 
 	FNA3D_LogInfo("FNA3D Driver: Vulkan");
 	FNA3D_LogInfo(
+		"Vulkan Device: %s",
+		renderer->physicalDeviceProperties.properties.deviceName
+	);
+	FNA3D_LogInfo(
 		"Vulkan Driver: %s %s", 
 		renderer->physicalDeviceDriverProperties.driverName,
 		renderer->physicalDeviceDriverProperties.driverInfo
 	);
 	FNA3D_LogInfo(
-		"Conformance Version: %u.%u.%u",
+		"Vulkan Conformance: %u.%u.%u",
 		renderer->physicalDeviceDriverProperties.conformanceVersion.major,
 		renderer->physicalDeviceDriverProperties.conformanceVersion.minor,
 		renderer->physicalDeviceDriverProperties.conformanceVersion.patch
@@ -8588,7 +8591,11 @@ FNA3D_Device* VULKAN_CreateDevice(
 	FNA3D_Device *result;
 	uint32_t i = 0;
 
-	const char* deviceExtensionNames[] = { "VK_KHR_swapchain" };
+	const char* deviceExtensionNames[] =
+	{
+		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+		VK_KHR_MAINTENANCE1_EXTENSION_NAME
+	};
 	uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 	VkFormatProperties formatPropsBC1, formatPropsBC2, formatPropsBC3;
 
