@@ -84,12 +84,38 @@
 #define STBIW_ONLY_PNG
 #define STBIW_ONLY_JPEG
 
+/* FIXME: Submit this to upstream! */
+static void *
+SDL_SIMDRealloc(void *mem, const size_t len)
+{
+    const size_t alignment = SDL_SIMDGetAlignment();
+    const size_t padding = alignment - (len % alignment);
+    const size_t padded = (padding != alignment) ? (len + padding) : len;
+    Uint8 *retval = NULL;
+    Uint8 *ptr;
+
+    if (mem) {
+        void **realptr = (void **) mem;
+        realptr--;
+        mem = *(((void **) mem) - 1);
+    }
+
+    ptr = (Uint8 *) SDL_realloc(mem, padded + alignment + sizeof (void *));
+    if (ptr != mem) {
+        /* store the actual malloc pointer right before our aligned pointer. */
+        retval = ptr + sizeof (void *);
+        retval += alignment - (((size_t) retval) % alignment);
+        *(((void **) retval) - 1) = ptr;
+    }
+    return retval;
+}
+
 #define STBI_NO_STDIO
 #define STB_IMAGE_STATIC
 #define STBI_ASSERT SDL_assert
-#define STBI_MALLOC SDL_malloc
-#define STBI_REALLOC SDL_realloc
-#define STBI_FREE SDL_free
+#define STBI_MALLOC SDL_SIMDAlloc
+#define STBI_REALLOC SDL_SIMDRealloc
+#define STBI_FREE SDL_SIMDFree
 #define STB_IMAGE_IMPLEMENTATION
 #ifdef __MINGW32__
 #define STBI_NO_THREAD_LOCALS /* FIXME: Port to SDL_TLS -flibit */
