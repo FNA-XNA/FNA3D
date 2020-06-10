@@ -209,6 +209,7 @@ uint8_t* FNA3D_Image_Load(
 			0x00FF0000,
 			0xFF000000
 		);
+		surface->flags |= SDL_SIMD_ALIGNED;
 
 		if (zoom)
 		{
