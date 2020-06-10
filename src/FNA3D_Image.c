@@ -288,7 +288,7 @@ uint8_t* FNA3D_Image_Load(
 
 void FNA3D_Image_Free(uint8_t *mem)
 {
-	SDL_free(mem);
+	SDL_SIMDFree(mem);
 }
 
 /* Image Write API */
