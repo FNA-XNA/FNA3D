@@ -91,7 +91,7 @@ SDL_SIMDRealloc(void *mem, const size_t len)
     const size_t alignment = SDL_SIMDGetAlignment();
     const size_t padding = alignment - (len % alignment);
     const size_t padded = (padding != alignment) ? (len + padding) : len;
-    Uint8 *retval = NULL;
+    Uint8 *retval = (Uint8*) mem;
     Uint8 *ptr;
 
     if (mem) {
@@ -101,6 +101,9 @@ SDL_SIMDRealloc(void *mem, const size_t len)
     }
 
     ptr = (Uint8 *) SDL_realloc(mem, padded + alignment + sizeof (void *));
+    if (ptr == NULL) {
+        return NULL;
+    }
     if (ptr != mem) {
         /* store the actual malloc pointer right before our aligned pointer. */
         retval = ptr + sizeof (void *);
