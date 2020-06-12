@@ -3448,7 +3448,7 @@ static void OPENGL_INTERNAL_SetPresentationInterval(
 		disableLateSwapTear = (
 			(SDL_strcmp(osVersion, "Mac OS X") == 0) ||
 			(SDL_strcmp(osVersion, "WinRT") == 0) ||
-			SDL_GetHintBoolean("FNA3D_OPENGL_DISABLE_LATESWAPTEAR", 0)
+			SDL_GetHintBoolean("FNA3D_DISABLE_LATESWAPTEAR", 0)
 		);
 		if (disableLateSwapTear)
 		{
