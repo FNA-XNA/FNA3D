@@ -4936,6 +4936,22 @@ void VULKAN_VerifySampler(
 		return;
 	}
 
+	memoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	memoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+	memoryBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
+	memoryBarrierCreateInfo.subresourceRange.layerCount = 1;
+	memoryBarrierCreateInfo.subresourceRange.levelCount = 1;
+	memoryBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrierCreateInfo.discardContents = 0;
+	memoryBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE;
+
+	CreateImageMemoryBarrier(
+		renderer,
+		memoryBarrierCreateInfo,
+		&vulkanTexture->imageData->imageResource
+	);
+
 	if (	vulkanTexture == renderer->textures[textureIndex] &&
 			sampler->addressU == vulkanTexture->wrapS &&
 			sampler->addressV == vulkanTexture->wrapT &&
@@ -4973,22 +4989,6 @@ void VULKAN_VerifySampler(
 		renderer->samplers[textureIndex] = vkSamplerState;
 		renderer->samplerNeedsUpdate[textureIndex] = 1;
 	}
-
-	memoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	memoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
-	memoryBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
-	memoryBarrierCreateInfo.subresourceRange.layerCount = 1;
-	memoryBarrierCreateInfo.subresourceRange.levelCount = 1;
-	memoryBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	memoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	memoryBarrierCreateInfo.discardContents = 0;
-	memoryBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE;
-
-	CreateImageMemoryBarrier(
-		renderer,
-		memoryBarrierCreateInfo,
-		&vulkanTexture->imageData->imageResource
-	);
 }
 
 void VULKAN_VerifyVertexSampler(
