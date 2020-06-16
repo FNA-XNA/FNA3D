@@ -5528,6 +5528,11 @@ static void Stall(FNAVulkanRenderer *renderer)
 		buf = buf->next;
 	}
 
+	renderer->vkResetCommandBuffer(
+		renderer->commandBuffers[renderer->currentFrame],
+		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+	);
+
 	renderer->vkBeginCommandBuffer(
 		renderer->commandBuffers[renderer->currentFrame],
 		&beginInfo
