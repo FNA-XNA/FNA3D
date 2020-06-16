@@ -7197,22 +7197,25 @@ static uint8_t ChooseSwapPresentMode(
 ) {
 	uint32_t i;
 	if (	desiredPresentInterval == FNA3D_PRESENTINTERVAL_DEFAULT ||
-			desiredPresentInterval == FNA3D_PRESENTINTERVAL_ONE	)
+		desiredPresentInterval == FNA3D_PRESENTINTERVAL_ONE	)
 	{
+		if (SDL_GetHintBoolean("FNA3D_DISABLE_LATESWAPTEAR", 0))
+		{
+			*outputPresentMode = VK_PRESENT_MODE_FIFO_KHR;
+			return 1;
+		}
 		for (i = 0; i < availablePresentModesLength; i++)
 		{
 			if (availablePresentModes[i] == VK_PRESENT_MODE_FIFO_RELAXED_KHR)
 			{
 				*outputPresentMode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
+				FNA3D_LogInfo("Using VK_PRESENT_MODE_FIFO_RELAXED_KHR!");
 				return 1;
 			}
 		}
+		FNA3D_LogInfo("VK_PRESENT_MODE_FIFO_RELAXED_KHR unsupported.");
 	}
-	else if (desiredPresentInterval == FNA3D_PRESENTINTERVAL_TWO)
-	{
-		FNA3D_LogError("FNA3D_PRESENTINTERVAL_TWO not supported in Vulkan");
-	}
-	else /* FNA3D_PRESENTINTERVAL_IMMEDIATE */
+	else if (desiredPresentInterval ==  FNA3D_PRESENTINTERVAL_IMMEDIATE)
 	{
 		for (i = 0; i < availablePresentModesLength; i++)
 		{
@@ -7222,10 +7225,23 @@ static uint8_t ChooseSwapPresentMode(
 				return 1;
 			}
 		}
+		FNA3D_LogInfo("VK_PRESENT_MODE_IMMEDIATE_KHR unsupported.");
+	}
+	else if (desiredPresentInterval == FNA3D_PRESENTINTERVAL_TWO)
+	{
+		FNA3D_LogError("FNA3D_PRESENTINTERVAL_TWO not supported in Vulkan");
+		return 0;
+	}
+	else
+	{
+		FNA3D_LogError(
+			"Unrecognized PresentInterval: %d",
+			desiredPresentInterval
+		);
+		return 0;
 	}
 
-	FNA3D_LogInfo("Could not find desired presentation interval, falling back to VK_PRESENT_MODE_FIFO_KHR");
-
+	FNA3D_LogInfo("Fall back to VK_PRESENT_MODE_FIFO_KHR.");
 	*outputPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 	return 1;
 }
