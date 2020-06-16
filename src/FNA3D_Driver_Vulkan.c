@@ -5464,6 +5464,9 @@ static void Stall(FNAVulkanRenderer *renderer)
 	VkSubmitInfo submitInfo = {
 		VK_STRUCTURE_TYPE_SUBMIT_INFO
 	};
+	VkCommandBufferBeginInfo beginInfo = {
+		VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
+	};
 	VkResult result;
 	VulkanBuffer *buf;
 
@@ -5524,6 +5527,11 @@ static void Stall(FNAVulkanRenderer *renderer)
 		buf->prevDataLength = 0;
 		buf = buf->next;
 	}
+
+	renderer->vkBeginCommandBuffer(
+		renderer->commandBuffers[renderer->currentFrame],
+		&beginInfo
+	);
 }
 
 static void SubmitPipelineBarrier(
