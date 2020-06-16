@@ -2511,7 +2511,6 @@ static void SetUserBufferData(
 ) {
 	int32_t sizeRequired, previousSize;
 	void* contents;
-	uint8_t *contentsPtr = (uint8_t*) data;
 
 	buffer->internalOffset += buffer->prevDataLength;
 	sizeRequired = buffer->internalOffset + dataLength;
@@ -2535,7 +2534,7 @@ static void SetUserBufferData(
 	);
 
 	SDL_memcpy(
-		contentsPtr + buffer->internalOffset,
+		(uint8_t*) contents + buffer->internalOffset,
 		(uint8_t*) data + offsetInBytes,
 		dataLength
 	);
