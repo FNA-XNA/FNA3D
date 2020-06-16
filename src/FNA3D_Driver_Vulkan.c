@@ -5484,6 +5484,12 @@ static void Stall(FNAVulkanRenderer *renderer)
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers = &renderer->commandBuffers[renderer->currentFrame];
 
+	renderer->vkResetFences(
+		renderer->logicalDevice,
+		1,
+		&renderer->inFlightFences[renderer->currentFrame]
+	);
+
 	result = renderer->vkQueueSubmit(
 		renderer->graphicsQueue,
 		1,
