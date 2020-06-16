@@ -311,7 +311,8 @@ typedef struct FNAVulkanRenderer
 	VkPhysicalDeviceDriverProperties physicalDeviceDriverProperties;
 	VkDevice logicalDevice;
 
-	FNA3D_PresentationParameters *currentPresentationParameters;
+	FNA3D_PresentInterval presentInterval;
+	void* deviceWindowHandle;
 
 	QueueFamilyIndices queueFamilyIndices;
 	VkQueue graphicsQueue;
@@ -814,8 +815,7 @@ static VulkanTexture* CreateTexture(
 );
 
 static CreateSwapchainResult CreateSwapchain(
-	FNAVulkanRenderer *renderer,
-	FNA3D_PresentationParameters *presentationParameters
+	FNAVulkanRenderer *renderer
 );
 
 static void RecreateSwapchain(
@@ -5665,13 +5665,14 @@ void VULKAN_ResetBackbuffer(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
-	renderer->currentPresentationParameters = presentationParameters;
+	renderer->presentInterval = presentationParameters->presentationInterval;
+	renderer->deviceWindowHandle = presentationParameters->deviceWindowHandle;
 
 	RecreateSwapchain(renderer);
 	DestroyFauxBackbuffer(renderer);
 	CreateFauxBackbuffer(
 		renderer,
-		renderer->currentPresentationParameters
+		presentationParameters
 	);
 }
 
@@ -7826,7 +7827,7 @@ static void RecreateSwapchain(
 	);
 
 	extent = ChooseSwapExtent(
-		renderer->currentPresentationParameters->deviceWindowHandle,
+		renderer->deviceWindowHandle,
 		swapChainSupportDetails.capabilities
 	);
 
@@ -7836,7 +7837,7 @@ static void RecreateSwapchain(
 	}
 
 	DestroySwapchain(renderer);
-	createSwapchainResult = CreateSwapchain(renderer, renderer->currentPresentationParameters);
+	createSwapchainResult = CreateSwapchain(renderer);
 
 	if (createSwapchainResult == CREATE_SWAPCHAIN_FAIL)
 	{
@@ -7848,8 +7849,7 @@ static void RecreateSwapchain(
 }
 
 static CreateSwapchainResult CreateSwapchain(
-	FNAVulkanRenderer *renderer,
-	FNA3D_PresentationParameters *presentationParameters
+	FNAVulkanRenderer *renderer
 ) {
 	VkResult vulkanResult;
 	SwapChainSupportDetails swapChainSupportDetails;
@@ -7891,7 +7891,7 @@ static CreateSwapchainResult CreateSwapchain(
 
 	if (
 		!ChooseSwapPresentMode(
-			presentationParameters->presentationInterval,
+			renderer->presentInterval,
 			swapChainSupportDetails.presentModes,
 			swapChainSupportDetails.presentModesLength,
 			&presentMode
@@ -7904,7 +7904,7 @@ static CreateSwapchainResult CreateSwapchain(
 	}
 
 	extent = ChooseSwapExtent(
-		presentationParameters->deviceWindowHandle,
+		renderer->deviceWindowHandle,
 		swapChainSupportDetails.capabilities
 	);
 
@@ -8819,7 +8819,8 @@ FNA3D_Device* VULKAN_CreateDevice(
 	renderer->parentDevice = result;
 	result->driverData = (FNA3D_Renderer*) renderer;
 
-	renderer->currentPresentationParameters = presentationParameters;
+	renderer->presentInterval = presentationParameters->presentationInterval;
+	renderer->deviceWindowHandle = presentationParameters->deviceWindowHandle;
 
 	for (i = 0; i < MAX_FRAMES_IN_FLIGHT; i++)
 	{
@@ -8895,12 +8896,8 @@ FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
-	if (
-		CreateSwapchain(
-			renderer,
-			presentationParameters
-		) != CREATE_SWAPCHAIN_SUCCESS
-	) {
+	if (CreateSwapchain(renderer) != CREATE_SWAPCHAIN_SUCCESS)
+	{
 		FNA3D_LogError("Failed to create swap chain");
 		return NULL;
 	}
