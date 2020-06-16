@@ -8786,7 +8786,8 @@ FNA3D_Device* VULKAN_CreateDevice(
 	const char* deviceExtensionNames[] =
 	{
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-		VK_KHR_MAINTENANCE1_EXTENSION_NAME
+		VK_KHR_MAINTENANCE1_EXTENSION_NAME,
+		VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME
 	};
 	uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 	VkFormatProperties formatPropsBC1, formatPropsBC2, formatPropsBC3;
