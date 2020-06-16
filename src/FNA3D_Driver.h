@@ -192,6 +192,41 @@ static inline int32_t IndexSize(FNA3D_IndexElementSize size)
 	return (size == FNA3D_INDEXELEMENTSIZE_16BIT) ? 2 : 4;
 }
 
+static inline int32_t BytesPerRow(
+	int32_t width,
+	FNA3D_SurfaceFormat format
+) {
+	int32_t blocksPerRow = width;
+
+	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
+		format == FNA3D_SURFACEFORMAT_DXT3 ||
+		format == FNA3D_SURFACEFORMAT_DXT5	)
+	{
+		blocksPerRow = (width + 3) / 4;
+	}
+
+	return blocksPerRow * Texture_GetFormatSize(format);
+}
+
+static inline int32_t BytesPerImage(
+	int32_t width,
+	int32_t height,
+	FNA3D_SurfaceFormat format
+) {
+	int32_t blocksPerRow = width;
+	int32_t blocksPerColumn = height;
+
+	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
+		format == FNA3D_SURFACEFORMAT_DXT3 ||
+		format == FNA3D_SURFACEFORMAT_DXT5	)
+	{
+		blocksPerRow = (width + 3) / 4;
+		blocksPerColumn = (height + 3) / 4;
+	}
+
+	return blocksPerRow * blocksPerColumn * Texture_GetFormatSize(format);
+}
+
 /* XNA GraphicsDevice Limits */
 
 #define MAX_TEXTURE_SAMPLERS		16

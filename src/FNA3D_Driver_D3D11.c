@@ -468,42 +468,7 @@ const char* FAUX_BLIT_PIXEL_SHADER =
 	"	return Texture.Sample(TextureSampler, texcoord);"
 	"}";
 
-/* Texture Helper Functions */
-
-static inline int32_t BytesPerRow(
-	int32_t width,
-	FNA3D_SurfaceFormat format
-) {
-	int32_t blocksPerRow = width;
-
-	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
-		format == FNA3D_SURFACEFORMAT_DXT3 ||
-		format == FNA3D_SURFACEFORMAT_DXT5	)
-	{
-		blocksPerRow = (width + 3) / 4;
-	}
-
-	return blocksPerRow * Texture_GetFormatSize(format);
-}
-
-static inline int32_t BytesPerDepthSlice(
-	int32_t width,
-	int32_t height,
-	FNA3D_SurfaceFormat format
-) {
-	int32_t blocksPerRow = width;
-	int32_t blocksPerColumn = height;
-
-	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
-		format == FNA3D_SURFACEFORMAT_DXT3 ||
-		format == FNA3D_SURFACEFORMAT_DXT5	)
-	{
-		blocksPerRow = (width + 3) / 4;
-		blocksPerColumn = (height + 3) / 4;
-	}
-
-	return blocksPerRow * blocksPerColumn * Texture_GetFormatSize(format);
-}
+/* Helper Functions */
 
 static inline uint32_t CalcSubresource(
 	uint32_t mipLevel,
@@ -3400,7 +3365,7 @@ static void D3D11_SetTextureData3D(
 		&dstBox,
 		data,
 		BytesPerRow(w, format),
-		BytesPerDepthSlice(w, h, format)
+		BytesPerImage(w, h, format)
 	);
 	SDL_UnlockMutex(renderer->ctxLock);
 }
@@ -3450,7 +3415,7 @@ static void D3D11_SetTextureDataCube(
 		&dstBox,
 		data,
 		BytesPerRow(w, format),
-		BytesPerDepthSlice(w, h, format)
+		BytesPerImage(w, h, format)
 	);
 	SDL_UnlockMutex(renderer->ctxLock);
 }
