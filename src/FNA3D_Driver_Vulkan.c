@@ -5469,6 +5469,10 @@ static void Stall(FNAVulkanRenderer *renderer)
 
 	EndPass(renderer);
 
+	renderer->vkEndCommandBuffer(
+		renderer->commandBuffers[renderer->currentFrame]
+	);
+
 	submitInfo.waitSemaphoreCount = 0;
 	submitInfo.pWaitSemaphores = NULL;
 	submitInfo.pWaitDstStageMask = NULL;
