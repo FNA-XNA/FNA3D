@@ -47,13 +47,6 @@ struct MetalTexture /* Cast from FNA3D_Texture* */
 	int32_t height;
 	uint8_t isPrivate;
 	FNA3D_SurfaceFormat format;
-	FNA3D_TextureAddressMode wrapS;
-	FNA3D_TextureAddressMode wrapT;
-	FNA3D_TextureAddressMode wrapR;
-	FNA3D_TextureFilter filter;
-	float anisotropy;
-	int32_t maxMipmapLevel;
-	float lodBias;
 	MetalTexture *next; /* linked list */
 };
 
@@ -65,13 +58,6 @@ static MetalTexture NullTexture =
 	0,
 	0,
 	FNA3D_SURFACEFORMAT_COLOR,
-	FNA3D_TEXTUREADDRESSMODE_WRAP,
-	FNA3D_TEXTUREADDRESSMODE_WRAP,
-	FNA3D_TEXTUREADDRESSMODE_WRAP,
-	FNA3D_TEXTUREFILTER_LINEAR,
-	0.0f,
-	0,
-	0.0f,
 	NULL
 };
 
@@ -596,13 +582,6 @@ static MetalTexture* CreateTexture(
 	result->format = format;
 	result->hasMipmaps = levelCount > 1;
 	result->isPrivate = isRenderTarget;
-	result->wrapS = FNA3D_TEXTUREADDRESSMODE_WRAP;
-	result->wrapT = FNA3D_TEXTUREADDRESSMODE_WRAP;
-	result->wrapR = FNA3D_TEXTUREADDRESSMODE_WRAP;
-	result->filter = FNA3D_TEXTUREFILTER_LINEAR;
-	result->anisotropy = 4.0f;
-	result->maxMipmapLevel = 0;
-	result->lodBias = 0.0f;
 	result->next = NULL;
 	return result;
 }
@@ -2663,34 +2642,12 @@ static void METAL_VerifySampler(
 		return;
 	}
 
-	if (	mtlTexture == renderer->textures[index] &&
-		sampler->addressU == mtlTexture->wrapS &&
-		sampler->addressV == mtlTexture->wrapT &&
-		sampler->addressW == mtlTexture->wrapR &&
-		sampler->filter == mtlTexture->filter &&
-		sampler->maxAnisotropy == mtlTexture->anisotropy &&
-		sampler->maxMipLevel == mtlTexture->maxMipmapLevel &&
-		sampler->mipMapLevelOfDetailBias == mtlTexture->lodBias	)
-	{
-		/* Nothing's changing, forget it. */
-		return;
-	}
-
 	/* Bind the correct texture */
 	if (mtlTexture != renderer->textures[index])
 	{
 		renderer->textures[index] = mtlTexture;
 		renderer->textureNeedsUpdate[index] = 1;
 	}
-
-	/* Update the texture sampler info */
-	mtlTexture->wrapS = sampler->addressU;
-	mtlTexture->wrapT = sampler->addressV;
-	mtlTexture->wrapR = sampler->addressW;
-	mtlTexture->filter = sampler->filter;
-	mtlTexture->anisotropy = sampler->maxAnisotropy;
-	mtlTexture->maxMipmapLevel = sampler->maxMipLevel;
-	mtlTexture->lodBias = sampler->mipMapLevelOfDetailBias;
 
 	/* Update the sampler state, if needed */
 	mtlSamplerState = FetchSamplerState(
