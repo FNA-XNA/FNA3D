@@ -236,13 +236,6 @@ struct VulkanTexture {
 	int32_t height;
 	uint8_t isPrivate;
 	FNA3D_SurfaceFormat format;
-	FNA3D_TextureAddressMode wrapS;
-	FNA3D_TextureAddressMode wrapT;
-	FNA3D_TextureAddressMode wrapR;
-	FNA3D_TextureFilter filter;
-	float anisotropy;
-	int32_t maxMipmapLevel;
-	float lodBias;
 };
 
 static VulkanTexture NullTexture =
@@ -253,14 +246,7 @@ static VulkanTexture NullTexture =
 	0,
 	0,
 	0,
-	FNA3D_SURFACEFORMAT_COLOR,
-	FNA3D_TEXTUREADDRESSMODE_WRAP,
-	FNA3D_TEXTUREADDRESSMODE_WRAP,
-	FNA3D_TEXTUREADDRESSMODE_WRAP,
-	FNA3D_TEXTUREFILTER_LINEAR,
-	0.0f,
-	0,
-	0.0f
+	FNA3D_SURFACEFORMAT_COLOR
 };
 
 struct VulkanRenderbuffer /* Cast from FNA3D_Renderbuffer */
@@ -1449,6 +1435,7 @@ static const char* VkErrorMessages(VkResult code)
 	return errorString;
 }
 
+#if 0 /* FIXME: Do we need this? */
 static const char* VkImageLayoutString(VkImageLayout layout)
 {
 	const char *layoutString;
@@ -1537,6 +1524,7 @@ static const char* VkImageLayoutString(VkImageLayout layout)
 
 	return layoutString;
 }
+#endif
 
 static void LogVulkanResult(
 	const char* vulkanFunctionName,
@@ -1700,7 +1688,7 @@ static void BindResources(FNAVulkanRenderer *renderer)
 		VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET
 	};
 	VkBuffer *vUniform, *fUniform;
-	uint64_t vOff, fOff, vSize, fSize;
+	unsigned long long vOff, fOff, vSize, fSize; /* MojoShader type... */
 	VkDescriptorSetLayout uniformBufferLayouts[2];
 	VkDescriptorSet uniformBufferDescriptorSets[2];
 	uint32_t uniformBufferLayoutCount = 0;
@@ -1731,8 +1719,10 @@ static void BindResources(FNAVulkanRenderer *renderer)
 
 	for (i = 0; i < renderer->currentPipelineLayoutHash.vertSamplerCount; i++)
 	{
+#if 0 /* FIXME: vertSamplerImageInfos in Renderer! */
 		if (	renderer->textureNeedsUpdate[vertArrayOffset + i] || 
 				renderer->samplerNeedsUpdate[vertArrayOffset + i]		)
+#endif
 		{		
 			vertSamplerImageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 			vertSamplerImageInfos[i].imageView = renderer->textures[vertArrayOffset + i]->imageData->view;
@@ -1747,9 +1737,11 @@ static void BindResources(FNAVulkanRenderer *renderer)
 	/* use dummy data if sampler count is 0 */
 	if (renderer->currentPipelineLayoutHash.vertSamplerCount == 0)
 	{
+#if 0 /* FIXME: vertSamplerImageInfos in Renderer! */
 		if (renderer->currentVertSamplerDescriptorSet == NULL ||
 			renderer->textureNeedsUpdate[vertArrayOffset] ||
 			renderer->samplerNeedsUpdate[vertArrayOffset]	)
+#endif
 		{
 			vertSamplerImageInfos[0].imageView = renderer->dummyVertTexture->imageData->view;
 			vertSamplerImageInfos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -1763,8 +1755,10 @@ static void BindResources(FNAVulkanRenderer *renderer)
 
 	for (i = 0; i < renderer->currentPipelineLayoutHash.fragSamplerCount; i++)
 	{
+#if 0 /* FIXME: fragSamplerImageInfos in Renderer! */
 		if (	renderer->textureNeedsUpdate[fragArrayOffset + i] || 
 				renderer->samplerNeedsUpdate[fragArrayOffset + i]		)
+#endif
 		{
 			fragSamplerImageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 			fragSamplerImageInfos[i].imageView = renderer->textures[fragArrayOffset + i]->imageData->view;
@@ -1779,9 +1773,11 @@ static void BindResources(FNAVulkanRenderer *renderer)
 	/* use dummy data if sampler count is 0 */
 	if (renderer->currentPipelineLayoutHash.fragSamplerCount == 0)
 	{
+#if 0 /* FIXME: fragSamplerImageInfos in Renderer! */
 		if (	renderer->currentFragSamplerDescriptorSet == NULL ||
 				renderer->textureNeedsUpdate[fragArrayOffset] ||
 				renderer->samplerNeedsUpdate[fragArrayOffset]	)
+#endif
 		{
 			fragSamplerImageInfos[0].imageView = renderer->dummyFragTexture->imageData->view;
 			fragSamplerImageInfos[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -3198,13 +3194,6 @@ static VulkanTexture* CreateTexture(
 	result->format = format;
 	result->hasMipmaps = levelCount > 1;
 	result->isPrivate = isRenderTarget;
-	result->wrapS = FNA3D_TEXTUREADDRESSMODE_WRAP;
-	result->wrapT = FNA3D_TEXTUREADDRESSMODE_WRAP;
-	result->wrapR = FNA3D_TEXTUREADDRESSMODE_WRAP;
-	result->filter = FNA3D_TEXTUREFILTER_LINEAR;
-	result->anisotropy = 1.0f;
-	result->maxMipmapLevel = 0; /* FIXME: ???? */
-	result->lodBias = 0.0f;
 
 	result->stagingBuffer = CreateBuffer(
 		renderer,
@@ -4970,32 +4959,11 @@ void VULKAN_VerifySampler(
 		memoryBarrierCreateInfo,
 		&vulkanTexture->imageData->imageResource
 	);
-
-	if (	vulkanTexture == renderer->textures[textureIndex] &&
-			sampler->addressU == vulkanTexture->wrapS &&
-			sampler->addressV == vulkanTexture->wrapT &&
-			sampler->addressW == vulkanTexture->wrapR &&
-			sampler->filter == vulkanTexture->filter &&
-			sampler->maxAnisotropy == vulkanTexture->anisotropy &&
-			sampler->maxMipLevel == vulkanTexture->maxMipmapLevel &&
-			sampler->mipMapLevelOfDetailBias == vulkanTexture->lodBias	)
-	{
-		return;
-	}
-
 	if (vulkanTexture != renderer->textures[textureIndex])
 	{
 		renderer->textures[textureIndex] = vulkanTexture;
 		renderer->textureNeedsUpdate[textureIndex] = 1;
 	}
-
-	vulkanTexture->wrapS = sampler->addressU;
-	vulkanTexture->wrapT = sampler->addressV;
-	vulkanTexture->wrapR = sampler->addressW;
-	vulkanTexture->filter = sampler->filter;
-	vulkanTexture->anisotropy = sampler->maxAnisotropy;
-	vulkanTexture->maxMipmapLevel = sampler->maxMipLevel;
-	vulkanTexture->lodBias = sampler->mipMapLevelOfDetailBias;
 
 	vkSamplerState = FetchSamplerState(
 		renderer,
@@ -5606,16 +5574,15 @@ static void DestroySwapchain(FNAVulkanRenderer *renderer)
 {
 	uint32_t i;
 
-	for (i = 0; i < hmlenu(renderer->framebufferHashMap); i++)
+	for (i = 0; i < hmlen(renderer->framebufferHashMap); i++)
 	{
 		renderer->vkDestroyFramebuffer(
 			renderer->logicalDevice,
 			renderer->framebufferHashMap[i].value,
 			NULL
 		);
-
-		hmdel(renderer->framebufferHashMap, renderer->framebufferHashMap[i].key);
 	}
+	hmfree(renderer->framebufferHashMap);
 
 	for (i = 0; i < renderer->swapChainImageCount; i++)
 	{
@@ -7046,7 +7013,10 @@ void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 
 static uint8_t LoadGlobalFunctions(void)
 {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 	vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr) SDL_Vulkan_GetVkGetInstanceProcAddr();
+#pragma GCC diagnostic pop
 	if (!vkGetInstanceProcAddr)
 	{
 		FNA3D_LogError(
