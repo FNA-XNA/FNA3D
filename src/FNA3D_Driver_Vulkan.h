@@ -51,4 +51,4 @@
 #include "FNA3D_Driver_Vulkan_device_funcs.h"
 #undef VULKAN_DEVICE_FUNCTION
 
-#endif FNA3D_DRIVER_VULKAN_H
+#endif /* FNA3D_DRIVER_VULKAN_H */
