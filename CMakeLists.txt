@@ -7,9 +7,6 @@ project(FNA3D C)
 option(BUILD_SHARED_LIBS "Build shared library" ON)
 option(BUILD_DXVK_NATIVE "Build D3D11 with DXVK-Native" OFF)
 
-# for easy testing
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ./SpriteBatchTest/lib64)
-
 # Version
 SET(LIB_MAJOR_VERSION "0")
 SET(LIB_MINOR_VERSION "20")
