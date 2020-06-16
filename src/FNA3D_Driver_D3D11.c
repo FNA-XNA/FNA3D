@@ -227,15 +227,6 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	D3D11Texture *textures[MAX_TOTAL_SAMPLERS];
 	ID3D11SamplerState *samplers[MAX_TOTAL_SAMPLERS];
 
-	/* Samplers */
-	FNA3D_TextureAddressMode wrapS[MAX_TOTAL_SAMPLERS];
-	FNA3D_TextureAddressMode wrapT[MAX_TOTAL_SAMPLERS];
-	FNA3D_TextureAddressMode wrapR[MAX_TOTAL_SAMPLERS];
-	FNA3D_TextureFilter filter[MAX_TOTAL_SAMPLERS];
-	float anisotropy[MAX_TOTAL_SAMPLERS];
-	int32_t maxMipmapLevel[MAX_TOTAL_SAMPLERS];
-	float lodBias[MAX_TOTAL_SAMPLERS];
-
 	/* Input Assembly */
 	ID3D11InputLayout *inputLayout;
 	FNA3D_PrimitiveType topology;
@@ -2317,28 +2308,6 @@ static void D3D11_VerifySampler(
 		}
 		SDL_UnlockMutex(renderer->ctxLock);
 	}
-
-	if (	renderer->samplers[index] != NULL &&
-		sampler->addressU == renderer->wrapS[index] &&
-		sampler->addressV == renderer->wrapT[index] &&
-		sampler->addressW == renderer->wrapR[index] &&
-		sampler->filter == renderer->filter[index] &&
-		sampler->maxAnisotropy == renderer->anisotropy[index] &&
-		sampler->maxMipLevel == renderer->maxMipmapLevel[index] &&
-		sampler->mipMapLevelOfDetailBias == renderer->lodBias[index]	)
-	{
-		/* Nothing's changing, forget it. */
-		return;
-	}
-
-	/* Update the texture sampler info */
-	renderer->wrapS[index] = sampler->addressU;
-	renderer->wrapT[index] = sampler->addressV;
-	renderer->wrapR[index] = sampler->addressW;
-	renderer->filter[index] = sampler->filter;
-	renderer->anisotropy[index] = (float) sampler->maxAnisotropy;
-	renderer->maxMipmapLevel[index] = sampler->maxMipLevel;
-	renderer->lodBias[index] = sampler->mipMapLevelOfDetailBias;
 
 	/* Update the sampler state, if needed */
 	d3dSamplerState = FetchSamplerState(
@@ -5018,13 +4987,6 @@ static FNA3D_Device* D3D11_CreateDevice(
 	{
 		renderer->textures[i] = &NullTexture;
 		renderer->samplers[i] = NULL;
-		renderer->wrapS[i] = FNA3D_TEXTUREADDRESSMODE_WRAP;
-		renderer->wrapT[i] = FNA3D_TEXTUREADDRESSMODE_WRAP;
-		renderer->wrapR[i] = FNA3D_TEXTUREADDRESSMODE_WRAP;
-		renderer->filter[i] = FNA3D_TEXTUREFILTER_LINEAR;
-		renderer->anisotropy[i] = 4.0f;
-		renderer->maxMipmapLevel[i] = 0;
-		renderer->lodBias[i] = 0.0f;
 	}
 
 	/* Initialize SetStringMarker support, if available */
