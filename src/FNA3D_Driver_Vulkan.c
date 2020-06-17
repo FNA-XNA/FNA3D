@@ -5476,7 +5476,7 @@ void VULKAN_SetRenderTargets(
 
 		if (depthStencilBuffer != NULL)
 		{
-			renderer->depthStencilAttachment = &((VulkanDepthStencilBuffer*) depthStencilBuffer)->handle;
+			renderer->depthStencilAttachment = &((VulkanRenderbuffer*) depthStencilBuffer)->depthBuffer->handle;
 			renderer->currentDepthFormat = depthFormat;
 		}
 		renderer->renderTargetBound = 1;
