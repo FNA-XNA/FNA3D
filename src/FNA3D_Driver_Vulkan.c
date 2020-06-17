@@ -5478,7 +5478,25 @@ void VULKAN_SetRenderTargets(
 		{
 			renderer->depthStencilAttachment = &((VulkanRenderbuffer*) depthStencilBuffer)->depthBuffer->handle;
 			renderer->currentDepthFormat = depthFormat;
+
+			imageMemoryBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			imageMemoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+			imageMemoryBarrierCreateInfo.discardContents = 0;
+			imageMemoryBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
+			imageMemoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+			imageMemoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+			imageMemoryBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
+			imageMemoryBarrierCreateInfo.subresourceRange.layerCount = 1;
+			imageMemoryBarrierCreateInfo.subresourceRange.levelCount = 1;
+
+			CreateImageMemoryBarrier(
+				renderer,
+				renderer->drawCommandBuffers[renderer->currentFrame],
+				imageMemoryBarrierCreateInfo,
+				&renderer->depthStencilAttachment->imageResource
+			);
 		}
+
 		renderer->renderTargetBound = 1;
 	}
 
