@@ -2179,9 +2179,6 @@ static void CheckPrimitiveType(
 	}
 }
 
-/* vertex buffer bindings are fixed in the pipeline
- * so we need to bind a new pipeline if it changes
- */
 static void CheckVertexBufferBindings(
 	FNAVulkanRenderer *renderer,
 	FNA3D_VertexBufferBinding *bindings,
@@ -2203,11 +2200,6 @@ static void CheckVertexBufferBindings(
 	renderer->userVertexBufferInUse = 0;
 	renderer->currentVertexBufferBindingHash = hash;
 	renderer->currentUserVertexDeclarationHash = 0;
-
- 	/* we want to generate a pipeline with these attribs
-	 * if one doesn't exist
-	 */
-	FetchPipeline(renderer);
 }
 
 static void CheckVertexDeclaration(
@@ -2228,11 +2220,6 @@ static void CheckVertexDeclaration(
 	renderer->currentUserVertexDeclarationHash = hash;
 	renderer->currentVertexBufferBindingHash = 0;
 	renderer->userVertexDeclaration = *vertexDeclaration;
-
-	/* we want to generate a pipeline with these attribs
-	 * if one doesn't exist
-	 */
-	FetchPipeline(renderer);
 }
 
 static void CreateBackingBuffer(
