@@ -960,8 +960,7 @@ FNA3D_Buffer* FNA3D_GenVertexBuffer(
 	FNA3D_Device *device,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t vertexCount,
-	int32_t vertexStride
+	int32_t sizeInBytes
 ) {
 	if (device == NULL)
 	{
@@ -971,8 +970,7 @@ FNA3D_Buffer* FNA3D_GenVertexBuffer(
 		device->driverData,
 		dynamic,
 		usage,
-		vertexCount,
-		vertexStride
+		sizeInBytes
 	);
 }
 
@@ -1043,8 +1041,7 @@ FNA3D_Buffer* FNA3D_GenIndexBuffer(
 	FNA3D_Device *device,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t indexCount,
-	FNA3D_IndexElementSize indexElementSize
+	int32_t sizeInBytes
 ) {
 	if (device == NULL)
 	{
@@ -1054,8 +1051,7 @@ FNA3D_Buffer* FNA3D_GenIndexBuffer(
 		device->driverData,
 		dynamic,
 		usage,
-		indexCount,
-		indexElementSize
+		sizeInBytes
 	);
 }
 

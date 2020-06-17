@@ -1182,8 +1182,7 @@ FNA3DAPI void FNA3D_AddDisposeRenderbuffer(
  *
  * dynamic:		Set to 1 if this buffer will be updated frequently.
  * usage:		Set to WRITEONLY if you do not intend to call GetData.
- * vertexCount:		The number of vertices to store in this buffer object.
- * vertexStride:	The size (in bytes) of a single vertex.
+ * sizeInBytes:	The length of the vertex buffer.
  *
  * Returns an allocated FNA3D_Buffer* object. Note that the contents of the
  * buffer are undefined, so you must call SetData at least once before drawing!
@@ -1192,8 +1191,7 @@ FNA3DAPI FNA3D_Buffer* FNA3D_GenVertexBuffer(
 	FNA3D_Device *device,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t vertexCount,
-	int32_t vertexStride
+	int32_t sizeInBytes
 );
 
 /* Sends a vertex buffer to be destroyed by the renderer. Note that we call it
@@ -1266,8 +1264,7 @@ FNA3DAPI void FNA3D_GetVertexBufferData(
  *
  * dynamic:		Set to 1 if this buffer will be updated frequently.
  * usage:		Set to WRITEONLY if you do not intend to call GetData.
- * indexCount:		The number of indices to store in this buffer object.
- * indexElementSize:	The size of the index value type.
+ * sizeInBytes:	The length of the vertex buffer.
  *
  * Returns an allocated FNA3D_Buffer* object. Note that the contents of the
  * buffer are undefined, so you must call SetData at least once before drawing!
@@ -1276,8 +1273,7 @@ FNA3DAPI FNA3D_Buffer* FNA3D_GenIndexBuffer(
 	FNA3D_Device *device,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t indexCount,
-	FNA3D_IndexElementSize indexElementSize
+	int32_t sizeInBytes
 );
 
 /* Sends an index buffer to be destroyed by the renderer. Note that we call it

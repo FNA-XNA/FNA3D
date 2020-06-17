@@ -3638,14 +3638,13 @@ static FNA3D_Buffer* METAL_GenVertexBuffer(
 	FNA3D_Renderer *driverData,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t vertexCount,
-	int32_t vertexStride
+	int32_t sizeInBytes
 ) {
 	/* Note that dynamic is NOT used! */
 	return (FNA3D_Buffer*) CreateBuffer(
 		driverData,
 		usage,
-		vertexCount * vertexStride
+		sizeInBytes
 	);
 }
 
@@ -3728,14 +3727,13 @@ static FNA3D_Buffer* METAL_GenIndexBuffer(
 	FNA3D_Renderer *driverData,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t indexCount,
-	FNA3D_IndexElementSize indexElementSize
+	int32_t sizeInBytes
 ) {
 	/* Note that dynamic is NOT used! */
 	return (FNA3D_Buffer*) CreateBuffer(
 		driverData,
 		usage,
-		indexCount * IndexSize(indexElementSize)
+		sizeInBytes
 	);
 }
 

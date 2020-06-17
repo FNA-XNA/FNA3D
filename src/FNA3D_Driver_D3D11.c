@@ -3397,15 +3397,14 @@ static FNA3D_Buffer* D3D11_GenVertexBuffer(
 	FNA3D_Renderer *driverData,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t vertexCount,
-	int32_t vertexStride
+	int32_t sizeInBytes
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *result = (D3D11Buffer*) SDL_malloc(sizeof(D3D11Buffer));
 	D3D11_BUFFER_DESC desc;
 
 	/* Initialize the descriptor */
-	desc.ByteWidth = vertexStride * vertexCount;
+	desc.ByteWidth = sizeInBytes;
 	desc.Usage = dynamic ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_DEFAULT;
 	desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
 	desc.CPUAccessFlags = dynamic ? D3D11_CPU_ACCESS_WRITE : 0;
@@ -3620,15 +3619,14 @@ static FNA3D_Buffer* D3D11_GenIndexBuffer(
 	FNA3D_Renderer *driverData,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t indexCount,
-	FNA3D_IndexElementSize indexElementSize
+	int32_t sizeInBytes
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *result = (D3D11Buffer*) SDL_malloc(sizeof(D3D11Buffer));
 	D3D11_BUFFER_DESC desc;
 
 	/* Initialize the descriptor */
-	desc.ByteWidth = indexCount * IndexSize(indexElementSize);
+	desc.ByteWidth = sizeInBytes;
 	desc.Usage = dynamic ? D3D11_USAGE_DYNAMIC : D3D11_USAGE_DEFAULT;
 	desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
 	desc.CPUAccessFlags = dynamic ? D3D11_CPU_ACCESS_WRITE : 0;

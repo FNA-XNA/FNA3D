@@ -511,8 +511,7 @@ struct FNA3D_Device
 		FNA3D_Renderer *driverData,
 		uint8_t dynamic,
 		FNA3D_BufferUsage usage,
-		int32_t vertexCount,
-		int32_t vertexStride
+		int32_t sizeInBytes
 	);
 	void (*AddDisposeVertexBuffer)(
 		FNA3D_Renderer *driverData,
@@ -544,8 +543,7 @@ struct FNA3D_Device
 		FNA3D_Renderer *driverData,
 		uint8_t dynamic,
 		FNA3D_BufferUsage usage,
-		int32_t indexCount,
-		FNA3D_IndexElementSize indexElementSize
+		int32_t sizeInBytes
 	);
 	void (*AddDisposeIndexBuffer)(
 		FNA3D_Renderer *driverData,

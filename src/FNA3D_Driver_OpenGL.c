@@ -628,8 +628,7 @@ struct FNA3D_Command
 		{
 			uint8_t dynamic;
 			FNA3D_BufferUsage usage;
-			int32_t vertexCount;
-			int32_t vertexStride;
+			int32_t sizeInBytes;
 			FNA3D_Buffer *retval;
 		} genVertexBuffer;
 
@@ -637,8 +636,7 @@ struct FNA3D_Command
 		{
 			uint8_t dynamic;
 			FNA3D_BufferUsage usage;
-			int32_t indexCount;
-			FNA3D_IndexElementSize indexElementSize;
+			int32_t sizeInBytes;
 			FNA3D_Buffer *retval;
 		} genIndexBuffer;
 
@@ -844,8 +842,7 @@ static void FNA3D_ExecuteCommand(
 				device,
 				cmd->genVertexBuffer.dynamic,
 				cmd->genVertexBuffer.usage,
-				cmd->genVertexBuffer.vertexCount,
-				cmd->genVertexBuffer.vertexStride
+				cmd->genVertexBuffer.sizeInBytes
 			);
 			break;
 		case FNA3D_COMMAND_GENINDEXBUFFER:
@@ -853,8 +850,7 @@ static void FNA3D_ExecuteCommand(
 				device,
 				cmd->genIndexBuffer.dynamic,
 				cmd->genIndexBuffer.usage,
-				cmd->genIndexBuffer.indexCount,
-				cmd->genIndexBuffer.indexElementSize
+				cmd->genIndexBuffer.sizeInBytes
 			);
 			break;
 		case FNA3D_COMMAND_SETVERTEXBUFFERDATA:
@@ -4462,8 +4458,7 @@ static FNA3D_Buffer* OPENGL_GenVertexBuffer(
 	FNA3D_Renderer *driverData,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t vertexCount,
-	int32_t vertexStride
+	int32_t sizeInBytes
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLBuffer *result = NULL;
@@ -4475,8 +4470,7 @@ static FNA3D_Buffer* OPENGL_GenVertexBuffer(
 		cmd.type = FNA3D_COMMAND_GENVERTEXBUFFER;
 		cmd.genVertexBuffer.dynamic = dynamic;
 		cmd.genVertexBuffer.usage = usage;
-		cmd.genVertexBuffer.vertexCount = vertexCount;
-		cmd.genVertexBuffer.vertexStride = vertexStride;
+		cmd.genVertexBuffer.sizeInBytes = sizeInBytes;
 		ForceToMainThread(renderer, &cmd);
 		return cmd.genVertexBuffer.retval;
 	}
@@ -4485,7 +4479,7 @@ static FNA3D_Buffer* OPENGL_GenVertexBuffer(
 
 	result = (OpenGLBuffer*) SDL_malloc(sizeof(OpenGLBuffer));
 	result->handle = handle;
-	result->size = (intptr_t) (vertexStride * vertexCount);
+	result->size = (intptr_t) sizeInBytes;
 	result->dynamic = (dynamic ? GL_STREAM_DRAW : GL_STATIC_DRAW);
 	result->next = NULL;
 
@@ -4665,8 +4659,7 @@ static FNA3D_Buffer* OPENGL_GenIndexBuffer(
 	FNA3D_Renderer *driverData,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t indexCount,
-	FNA3D_IndexElementSize indexElementSize
+	int32_t sizeInBytes
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLBuffer *result = NULL;
@@ -4678,8 +4671,7 @@ static FNA3D_Buffer* OPENGL_GenIndexBuffer(
 		cmd.type = FNA3D_COMMAND_GENINDEXBUFFER;
 		cmd.genIndexBuffer.dynamic = dynamic;
 		cmd.genIndexBuffer.usage = usage;
-		cmd.genIndexBuffer.indexCount = indexCount;
-		cmd.genIndexBuffer.indexElementSize = indexElementSize;
+		cmd.genIndexBuffer.sizeInBytes = sizeInBytes;
 		ForceToMainThread(renderer, &cmd);
 		return cmd.genIndexBuffer.retval;
 	}
@@ -4688,9 +4680,7 @@ static FNA3D_Buffer* OPENGL_GenIndexBuffer(
 
 	result = (OpenGLBuffer*) SDL_malloc(sizeof(OpenGLBuffer));
 	result->handle = handle;
-	result->size = (intptr_t) (
-		indexCount * IndexSize(indexElementSize)
-	);
+	result->size = (intptr_t) sizeInBytes;
 	result->dynamic = (dynamic ? GL_STREAM_DRAW : GL_STATIC_DRAW);
 	result->next = NULL;
 
