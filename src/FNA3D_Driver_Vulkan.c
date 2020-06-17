@@ -2175,6 +2175,7 @@ static void CheckPrimitiveType(
 	if (primitiveType != renderer->currentPrimitiveType)
 	{
 		renderer->currentPrimitiveType = primitiveType;
+		renderer->needNewRenderPass = 1;
 	}
 }
 
@@ -2197,22 +2198,17 @@ static void CheckVertexBufferBindings(
 		vertexShader
 	);
 
-	if (	renderer->userVertexBufferInUse ||
-			renderer->vertexBindings != bindings ||
-			renderer->numVertexBindings != numBindings ||
-			hash != renderer->currentVertexBufferBindingHash	)
-	{
-		renderer->vertexBindings = bindings;
-		renderer->numVertexBindings = numBindings;
-		renderer->userVertexBufferInUse = 0;
-		renderer->currentVertexBufferBindingHash = hash;
-		renderer->currentUserVertexDeclarationHash = 0;
-	}
-}
+	renderer->vertexBindings = bindings;
+	renderer->numVertexBindings = numBindings;
+	renderer->userVertexBufferInUse = 0;
+	renderer->currentVertexBufferBindingHash = hash;
+	renderer->currentUserVertexDeclarationHash = 0;
 
-/* vertex buffer bindings are fixed in the pipeline
- * so we need to bind a new pipeline if it changes
- */
+ 	/* we want to generate a pipeline with these attribs
+	 * if one doesn't exist
+	 */
+	FetchPipeline(renderer);
+}
 
 static void CheckVertexDeclaration(
 	FNAVulkanRenderer *renderer,
@@ -2228,14 +2224,15 @@ static void CheckVertexDeclaration(
 		vertexShader
 	);
 
-	if (	renderer->userVertexBufferInUse ||
-			hash != renderer->currentUserVertexDeclarationHash	)
-	{
-		renderer->userVertexBufferInUse = 0;
-		renderer->currentUserVertexDeclarationHash = hash;
-		renderer->currentVertexBufferBindingHash = 0;
-		renderer->userVertexDeclaration = *vertexDeclaration;
-	}
+	renderer->userVertexBufferInUse = 1;
+	renderer->currentUserVertexDeclarationHash = hash;
+	renderer->currentVertexBufferBindingHash = 0;
+	renderer->userVertexDeclaration = *vertexDeclaration;
+
+	/* we want to generate a pipeline with these attribs
+	 * if one doesn't exist
+	 */
+	FetchPipeline(renderer);
 }
 
 static void CreateBackingBuffer(
@@ -2917,7 +2914,7 @@ static void CreateBufferMemoryBarrier(
 		);
 		SDL_UnlockMutex(renderer->cmdLock);
 
-		BeginRenderPass(renderer);
+		renderer->needNewRenderPass = 1;
 	}
 	else
 	{
@@ -3024,7 +3021,7 @@ static void CreateImageMemoryBarrier(
 		);
 		SDL_UnlockMutex(renderer->cmdLock);
 
-		BeginRenderPass(renderer);
+		renderer->needNewRenderPass = 1;
 	}
 	else
 	{
@@ -7719,7 +7716,7 @@ static void GenerateUserVertexInputInfo(
 		vInputAttribDescription.binding = 0;
 
 		attributeDescriptions[attributeDescriptionCounter] = vInputAttribDescription;
-		attributeDescriptionCount++;
+		attributeDescriptionCounter++;
 	}
 
 	*attributeDescriptionCount = attributeDescriptionCounter;
