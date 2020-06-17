@@ -1182,7 +1182,7 @@ FNA3DAPI void FNA3D_AddDisposeRenderbuffer(
  *
  * dynamic:		Set to 1 if this buffer will be updated frequently.
  * usage:		Set to WRITEONLY if you do not intend to call GetData.
- * sizeInBytes:	The length of the vertex buffer.
+ * sizeInBytes:		The length of the vertex buffer.
  *
  * Returns an allocated FNA3D_Buffer* object. Note that the contents of the
  * buffer are undefined, so you must call SetData at least once before drawing!
@@ -1264,7 +1264,7 @@ FNA3DAPI void FNA3D_GetVertexBufferData(
  *
  * dynamic:		Set to 1 if this buffer will be updated frequently.
  * usage:		Set to WRITEONLY if you do not intend to call GetData.
- * sizeInBytes:	The length of the vertex buffer.
+ * sizeInBytes:		The length of the vertex buffer.
  *
  * Returns an allocated FNA3D_Buffer* object. Note that the contents of the
  * buffer are undefined, so you must call SetData at least once before drawing!
