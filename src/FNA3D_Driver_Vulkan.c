@@ -313,14 +313,16 @@ typedef struct FNAVulkanRenderer
 	VkExtent2D swapChainExtent;
 	uint32_t currentFrame;
 
-	VkCommandPool commandPool;
+	VkCommandPool dataCommandPool;
+	VkCommandPool drawCommandPool;
 	VkPipelineCache pipelineCache;
 
 	VkRenderPass renderPass;
 	VkPipeline currentPipeline;
 	VkPipelineLayout currentPipelineLayout;
 	uint64_t currentVertexBufferBindingHash;
-	VkCommandBuffer commandBuffers[MAX_FRAMES_IN_FLIGHT];
+	VkCommandBuffer dataCommandBuffers[MAX_FRAMES_IN_FLIGHT];
+	VkCommandBuffer drawCommandBuffers[MAX_FRAMES_IN_FLIGHT];
 
 	/* Queries */
 	VkQueryPool queryPool;
@@ -420,17 +422,6 @@ typedef struct FNAVulkanRenderer
 	VulkanTexture *dummyVertTexture;
 	VulkanTexture *dummyFragTexture;
 
-	VkImageMemoryBarrier *imageMemoryBarriers;
-	uint32_t imageMemoryBarrierCount;
-	uint32_t imageMemoryBarrierCapacity;
-
-	VkBufferMemoryBarrier *bufferMemoryBarriers;
-	uint32_t bufferMemoryBarrierCount;
-	uint32_t bufferMemoryBarrierCapacity;
-
-	VkPipelineStageFlags currentSrcStageMask;
-	VkPipelineStageFlags currentDstStageMask;
-
 	PipelineLayoutHashMap *pipelineLayoutHashMap;
 	PipelineHashMap *pipelineHashMap;
 	RenderPassHashMap *renderPassHashMap;
@@ -439,6 +430,7 @@ typedef struct FNAVulkanRenderer
 
 	VkFence inFlightFences[MAX_FRAMES_IN_FLIGHT];
 	VkSemaphore imageAvailableSemaphores[MAX_FRAMES_IN_FLIGHT];
+	VkSemaphore dataFinishedSemaphores[MAX_FRAMES_IN_FLIGHT];
 	VkSemaphore renderFinishedSemaphores[MAX_FRAMES_IN_FLIGHT];
 	VkFence *imagesInFlight;
 
@@ -767,12 +759,14 @@ static VulkanBuffer* CreateBuffer(
 
 static void CreateBufferMemoryBarrier(
 	FNAVulkanRenderer *renderer,
+	VkCommandBuffer commandBuffer,
 	VulkanResourceAccessType nextResourceAccessType,
 	VulkanBuffer *stagingBuffer
 );
 
 static void CreateImageMemoryBarrier(
 	FNAVulkanRenderer *renderer,
+	VkCommandBuffer commandBuffer,
 	ImageMemoryBarrierCreateInfo barrierCreateInfo,
 	VulkanImageResource *imageResource
 );
@@ -958,10 +952,6 @@ static void SetStencilReferenceValueCommand(FNAVulkanRenderer *renderer);
 static void SetViewportCommand(FNAVulkanRenderer *renderer);
 
 static void Stall(FNAVulkanRenderer *renderer);
-
-static void SubmitPipelineBarrier(
-	FNAVulkanRenderer *renderer
-);
 
 static void RemoveBuffer(
 	FNA3D_Renderer *driverData,
@@ -1551,7 +1541,7 @@ static void BindPipeline(FNAVulkanRenderer *renderer)
 	{
 		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdBindPipeline(
-			renderer->commandBuffers[renderer->currentFrame],
+			renderer->drawCommandBuffers[renderer->currentFrame],
 			VK_PIPELINE_BIND_POINT_GRAPHICS,
 			pipeline
 		);
@@ -2115,7 +2105,7 @@ static void BindResources(FNAVulkanRenderer *renderer)
 
 	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkCmdBindDescriptorSets(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
 		renderer->currentPipelineLayout,
 		0,
@@ -2166,7 +2156,7 @@ static void BindUserVertexBuffer(
 	{
 		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdBindVertexBuffers(
-			renderer->commandBuffers[renderer->currentFrame],
+			renderer->drawCommandBuffers[renderer->currentFrame],
 			0,
 			1,
 			&handle,
@@ -2624,6 +2614,12 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 		renderer->vkDestroySemaphore(
 			renderer->logicalDevice,
+			renderer->dataFinishedSemaphores[i],
+			NULL
+		);
+
+		renderer->vkDestroySemaphore(
+			renderer->logicalDevice,
 			renderer->renderFinishedSemaphores[i],
 			NULL
 		);
@@ -2643,7 +2639,13 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 	renderer->vkDestroyCommandPool(
 		renderer->logicalDevice,
-		renderer->commandPool,
+		renderer->dataCommandPool,
+		NULL
+	);
+
+	renderer->vkDestroyCommandPool(
+		renderer->logicalDevice,
+		renderer->drawCommandPool,
 		NULL
 	);
 
@@ -2796,8 +2798,6 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 	hmfree(renderer->samplerStateHashMap);
 
 	SDL_free(renderer->swapChainImageViews);
-	SDL_free(renderer->imageMemoryBarriers);
-	SDL_free(renderer->bufferMemoryBarriers);
 	SDL_free(renderer->swapChainImages);
 	SDL_free(renderer->imagesInFlight);
 
@@ -2823,6 +2823,7 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 static void CreateBufferMemoryBarrier(
 	FNAVulkanRenderer *renderer,
+	VkCommandBuffer commandBuffer,
 	VulkanResourceAccessType nextResourceAccessType,
 	VulkanBuffer *stagingBuffer
 ) {
@@ -2840,6 +2841,8 @@ static void CreateBufferMemoryBarrier(
 	{
 		return;
 	}
+
+	InternalBeginFrame(renderer);
 
 	barrierCreateInfo.pPrevAccesses = &stagingBuffer->resourceAccessType;
 	barrierCreateInfo.prevAccessCount = 1;
@@ -2895,37 +2898,51 @@ static void CreateBufferMemoryBarrier(
 		dstStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	}
 
-	if (renderer->imageMemoryBarrierCount + renderer->bufferMemoryBarrierCount > 0)
+	if (renderer->renderPassInProgress)
 	{
-		if (	srcStages != renderer->currentSrcStageMask ||
-				dstStages != renderer->currentDstStageMask	)
-		{
-			SubmitPipelineBarrier(renderer);
-		}
-	}
+		EndPass(renderer);
 
-	renderer->currentSrcStageMask = srcStages;
-	renderer->currentDstStageMask = dstStages;
-
-	if (renderer->bufferMemoryBarrierCount >= renderer->bufferMemoryBarrierCapacity)
-	{
-		renderer->bufferMemoryBarrierCapacity *= 2;
-
-		renderer->bufferMemoryBarriers = SDL_realloc(
-			renderer->bufferMemoryBarriers,
-			sizeof(VkBufferMemoryBarrier) *
-			renderer->bufferMemoryBarrierCapacity
+		SDL_LockMutex(renderer->cmdLock);
+		renderer->vkCmdPipelineBarrier(
+			commandBuffer,
+			srcStages,
+			dstStages,
+			0,
+			0,
+			NULL,
+			1,
+			&memoryBarrier,
+			0,
+			NULL
 		);
-	}
+		SDL_UnlockMutex(renderer->cmdLock);
 
-	renderer->bufferMemoryBarriers[renderer->bufferMemoryBarrierCount] = memoryBarrier;
-	renderer->bufferMemoryBarrierCount++;
+		BeginRenderPass(renderer);
+	}
+	else
+	{
+		SDL_LockMutex(renderer->cmdLock);
+		renderer->vkCmdPipelineBarrier(
+			commandBuffer,
+			srcStages,
+			dstStages,
+			0,
+			0,
+			NULL,
+			1,
+			&memoryBarrier,
+			0,
+			NULL
+		);
+		SDL_UnlockMutex(renderer->cmdLock);
+	}
 
 	stagingBuffer->resourceAccessType = nextResourceAccessType;
 }
 
 static void CreateImageMemoryBarrier(
 	FNAVulkanRenderer *renderer,
+	VkCommandBuffer commandBuffer,
 	ImageMemoryBarrierCreateInfo barrierCreateInfo,
 	VulkanImageResource *imageResource
 ) {
@@ -2941,6 +2958,8 @@ static void CreateImageMemoryBarrier(
 	{ 
 		return; 
 	}
+
+	InternalBeginFrame(renderer);
 
 	memoryBarrier.srcAccessMask = 0;
 	memoryBarrier.dstAccessMask = 0;
@@ -2986,31 +3005,44 @@ static void CreateImageMemoryBarrier(
 		dstStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	}
 
-	if (renderer->imageMemoryBarrierCount + renderer->bufferMemoryBarrierCount > 0)
+	if (renderer->renderPassInProgress)
 	{
-		if (	srcStages != renderer->currentSrcStageMask ||
-				dstStages != renderer->currentDstStageMask	)
-		{
-			SubmitPipelineBarrier(renderer);
-		}
-	}
+		EndPass(renderer);
 
-	renderer->currentSrcStageMask = srcStages;
-	renderer->currentDstStageMask = dstStages;
-
-	if (renderer->imageMemoryBarrierCount >= renderer->imageMemoryBarrierCapacity)
-	{
-		renderer->imageMemoryBarrierCapacity *= 2;
-
-		renderer->imageMemoryBarriers = SDL_realloc(
-			renderer->imageMemoryBarriers,
-			sizeof(VkImageMemoryBarrier) *
-			renderer->imageMemoryBarrierCapacity
+		SDL_LockMutex(renderer->cmdLock);
+		renderer->vkCmdPipelineBarrier(
+			commandBuffer,
+			srcStages,
+			dstStages,
+			0,
+			0,
+			NULL,
+			0,
+			NULL,
+			1,
+			&memoryBarrier
 		);
-	}
+		SDL_UnlockMutex(renderer->cmdLock);
 
-	renderer->imageMemoryBarriers[renderer->imageMemoryBarrierCount] = memoryBarrier;
-	renderer->imageMemoryBarrierCount++;
+		BeginRenderPass(renderer);
+	}
+	else
+	{
+		SDL_LockMutex(renderer->cmdLock);
+		renderer->vkCmdPipelineBarrier(
+			commandBuffer,
+			srcStages,
+			dstStages,
+			0,
+			0,
+			NULL,
+			0,
+			NULL,
+			1,
+			&memoryBarrier
+		);
+		SDL_UnlockMutex(renderer->cmdLock);
+	}
 
 	imageResource->resourceAccessType = barrierCreateInfo.nextAccess;
 }
@@ -3259,6 +3291,7 @@ static uint8_t BlitFramebuffer(
 
 	CreateImageMemoryBarrier(
 		renderer,
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		memoryBarrierCreateInfo,
 		srcImage
 	);
@@ -3272,19 +3305,19 @@ static uint8_t BlitFramebuffer(
 	memoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	memoryBarrierCreateInfo.discardContents = 0;
 	memoryBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_TRANSFER_WRITE;
+
 	CreateImageMemoryBarrier(
 		renderer,
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		memoryBarrierCreateInfo,
 		dstImage
 	);
 	
-	SubmitPipelineBarrier(renderer);
-
 	/* TODO: use vkCmdResolveImage for multisampled images */
 	/* TODO: blit depth/stencil buffer as well */
 	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkCmdBlitImage(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		srcImage->image,
 		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 		dstImage->image,
@@ -3307,6 +3340,7 @@ static uint8_t BlitFramebuffer(
 
 	CreateImageMemoryBarrier(
 		renderer,
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		memoryBarrierCreateInfo,
 		dstImage
 	);
@@ -3323,11 +3357,10 @@ static uint8_t BlitFramebuffer(
 
 	CreateImageMemoryBarrier(
 		renderer,
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		memoryBarrierCreateInfo,
 		srcImage
 	);
-
-	SubmitPipelineBarrier(renderer);
 
 	return 1;
 }
@@ -3968,7 +4001,7 @@ static void BeginRenderPass(
 	SDL_LockMutex(renderer->cmdLock);
 
 	renderer->vkCmdBeginRenderPass(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		&renderPassBeginInfo,
 		VK_SUBPASS_CONTENTS_INLINE
 	);
@@ -3980,12 +4013,12 @@ static void BeginRenderPass(
 	SetStencilReferenceValueCommand(renderer);
 
 	renderer->vkCmdSetBlendConstants(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		blendConstants
 	);
 
 	renderer->vkCmdSetDepthBias(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		renderer->rasterizerState.depthBias,
 		0, /* unused */
 		renderer->rasterizerState.slopeScaleDepthBias
@@ -4055,7 +4088,12 @@ void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 	SDL_LockMutex(renderer->cmdLock);
 
 	renderer->vkResetCommandBuffer(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->dataCommandBuffers[renderer->currentFrame],
+		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+	);
+
+	renderer->vkResetCommandBuffer(
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
 	);
 
@@ -4107,7 +4145,12 @@ void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 	}
 
 	renderer->vkBeginCommandBuffer(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->dataCommandBuffers[renderer->currentFrame],
+		&beginInfo
+	);
+
+	renderer->vkBeginCommandBuffer(
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		&beginInfo
 	);
 
@@ -4134,7 +4177,12 @@ void VULKAN_SwapBuffers(
 	FNA3D_Rect srcRect;
 	FNA3D_Rect dstRect;
 	VkResult vulkanResult;
+	VkSemaphore drawWaitSemaphores[] = {
+		renderer->dataFinishedSemaphores[renderer->currentFrame],
+		renderer->imageAvailableSemaphores[renderer->currentFrame]
+	};
 	VkPipelineStageFlags waitStages[] = {
+		VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
 		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
 	};
 	VkSubmitInfo submitInfo = {
@@ -4220,7 +4268,17 @@ void VULKAN_SwapBuffers(
 	SDL_LockMutex(renderer->cmdLock);
 
 	vulkanResult = renderer->vkEndCommandBuffer(
-		renderer->commandBuffers[renderer->currentFrame]
+		renderer->dataCommandBuffers[renderer->currentFrame]
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkEndCommandBuffer", vulkanResult);
+		return;
+	}
+
+	vulkanResult = renderer->vkEndCommandBuffer(
+		renderer->drawCommandBuffers[renderer->currentFrame]
 	);
 
 	renderer->commandBufferActive[renderer->currentFrame] = 0;
@@ -4231,13 +4289,35 @@ void VULKAN_SwapBuffers(
 		return;
 	}
 
-	submitInfo.waitSemaphoreCount = 1;
-	submitInfo.pWaitSemaphores = &renderer->imageAvailableSemaphores[renderer->currentFrame];
+	submitInfo.waitSemaphoreCount = 0;
+	submitInfo.pWaitSemaphores = NULL;
+	submitInfo.pWaitDstStageMask = NULL;
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pSignalSemaphores = &renderer->dataFinishedSemaphores[renderer->currentFrame];
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &renderer->dataCommandBuffers[renderer->currentFrame];
+
+	result = renderer->vkQueueSubmit(
+		renderer->graphicsQueue,
+		1,
+		&submitInfo,
+		NULL
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		FNA3D_LogError("failed to submit data command buffer");
+		LogVulkanResult("vkQueueSubmit", result);
+		return;
+	}
+
+	submitInfo.waitSemaphoreCount = SDL_arraysize(drawWaitSemaphores);
+	submitInfo.pWaitSemaphores = drawWaitSemaphores;
 	submitInfo.pWaitDstStageMask = waitStages;
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = &renderer->renderFinishedSemaphores[renderer->currentFrame];
 	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &renderer->commandBuffers[renderer->currentFrame];
+	submitInfo.pCommandBuffers = &renderer->drawCommandBuffers[renderer->currentFrame];
 
 	renderer->vkResetFences(
 		renderer->logicalDevice,
@@ -4254,7 +4334,7 @@ void VULKAN_SwapBuffers(
 
 	if (result != VK_SUCCESS)
 	{
-		FNA3D_LogError("failed to submit command buffer");
+		FNA3D_LogError("failed to submit draw command buffer");
 		LogVulkanResult("vkQueueSubmit", result);
 		return;
 	}
@@ -4385,7 +4465,7 @@ static void RenderPassClear(
 
 	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkCmdClearAttachments(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		attachmentCount,
 		clearAttachments,
 		1,
@@ -4438,14 +4518,13 @@ static void OutsideRenderPassClear(
 
 			CreateImageMemoryBarrier(
 				renderer,
+				renderer->drawCommandBuffers[renderer->currentFrame],
 				barrierCreateInfo,
 				&renderer->colorAttachments[i]->imageResource
 			);
 
-			SubmitPipelineBarrier(renderer);
-
 			renderer->vkCmdClearColorImage(
-				renderer->commandBuffers[renderer->currentFrame],
+				renderer->drawCommandBuffers[renderer->currentFrame],
 				renderer->colorAttachments[i]->imageResource.image,
 				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 				&clearValue,
@@ -4457,11 +4536,10 @@ static void OutsideRenderPassClear(
 
 			CreateImageMemoryBarrier(
 				renderer,
+				renderer->drawCommandBuffers[renderer->currentFrame],
 				barrierCreateInfo,
 				&renderer->colorAttachments[i]->imageResource
 			);
-
-			SubmitPipelineBarrier(renderer);
 		}
 	}
 
@@ -4483,14 +4561,13 @@ static void OutsideRenderPassClear(
 
 			CreateImageMemoryBarrier(
 				renderer,
+				renderer->drawCommandBuffers[renderer->currentFrame],
 				barrierCreateInfo,
 				&renderer->depthStencilAttachment->imageResource
 			);
 
-			SubmitPipelineBarrier(renderer);
-
 			renderer->vkCmdClearDepthStencilImage(
-				renderer->commandBuffers[renderer->currentFrame],
+				renderer->drawCommandBuffers[renderer->currentFrame],
 				renderer->depthStencilAttachment->imageResource.image,
 				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 				&clearDepthStencilValue,
@@ -4502,11 +4579,10 @@ static void OutsideRenderPassClear(
 
 			CreateImageMemoryBarrier(
 				renderer,
+				renderer->drawCommandBuffers[renderer->currentFrame],
 				barrierCreateInfo,
 				&renderer->depthStencilAttachment->imageResource
 			);
-
-			SubmitPipelineBarrier(renderer);
 		}
 	}
 
@@ -4580,7 +4656,6 @@ void VULKAN_DrawInstancedPrimitives(
 	);
 
 	CheckPrimitiveType(renderer, primitiveType);
-	SubmitPipelineBarrier(renderer);
 	UpdateRenderPass(renderer);
 	BindPipeline(renderer);
 	BindResources(renderer);
@@ -4588,14 +4663,14 @@ void VULKAN_DrawInstancedPrimitives(
 	SDL_LockMutex(renderer->cmdLock);
 
 	renderer->vkCmdBindIndexBuffer(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		indexBuffer->handle,
 		totalIndexOffset,
 		XNAToVK_IndexType[indexElementSize]
 	);
 
 	renderer->vkCmdDrawIndexed(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		PrimitiveVerts(primitiveType, primitiveCount),
 		instanceCount,
 		minVertexIndex,
@@ -4640,14 +4715,13 @@ void VULKAN_DrawPrimitives(
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 
 	CheckPrimitiveType(renderer, primitiveType);
-	SubmitPipelineBarrier(renderer);
 	UpdateRenderPass(renderer);
 	BindPipeline(renderer);
 	BindResources(renderer);
 
 	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkCmdDraw(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		PrimitiveVerts(primitiveType, primitiveCount),
 		1,
 		vertexStart,
@@ -4673,7 +4747,6 @@ void VULKAN_DrawUserIndexedPrimitives(
 	VkDeviceSize len;
 
 	CheckPrimitiveType(renderer, primitiveType);
-	SubmitPipelineBarrier(renderer);
 	UpdateRenderPass(renderer);
 	BindPipeline(renderer);
 	BindResources(renderer);
@@ -4710,7 +4783,7 @@ void VULKAN_DrawUserIndexedPrimitives(
 	SDL_LockMutex(renderer->cmdLock);
 
 	renderer->vkCmdBindIndexBuffer(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		renderer->userIndexBuffer->handle,
 		renderer->userIndexBuffer->internalOffset,
 		XNAToVK_IndexType[indexElementSize]
@@ -4719,7 +4792,7 @@ void VULKAN_DrawUserIndexedPrimitives(
 	firstIndex = indexOffset / indexSize;
 	
 	renderer->vkCmdDrawIndexed(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		numIndices,
 		1,
 		firstIndex,
@@ -4745,7 +4818,6 @@ void VULKAN_DrawUserPrimitives(
 	);
 
 	CheckPrimitiveType(renderer, primitiveType);
-	SubmitPipelineBarrier(renderer);
 	UpdateRenderPass(renderer);
 	BindPipeline(renderer);
 	BindResources(renderer);
@@ -4759,7 +4831,7 @@ void VULKAN_DrawUserPrimitives(
 
 	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkCmdDraw(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		numVerts,
 		1,
 		vertexOffset,
@@ -4836,7 +4908,7 @@ void VULKAN_SetBlendFactor(
 		{
 			SDL_LockMutex(renderer->cmdLock);
 			renderer->vkCmdSetBlendConstants(
-				renderer->commandBuffers[renderer->currentFrame],
+				renderer->drawCommandBuffers[renderer->currentFrame],
 				blendConstants
 			);
 			SDL_UnlockMutex(renderer->cmdLock);
@@ -4903,7 +4975,7 @@ void VULKAN_SetBlendState(
 	{
 		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdSetBlendConstants(
-			renderer->commandBuffers[renderer->currentFrame],
+			renderer->drawCommandBuffers[renderer->currentFrame],
 			blendConstants
 		);
 		SDL_UnlockMutex(renderer->cmdLock);
@@ -5001,9 +5073,11 @@ void VULKAN_VerifySampler(
 
 	CreateImageMemoryBarrier(
 		renderer,
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		memoryBarrierCreateInfo,
 		&vulkanTexture->imageData->imageResource
 	);
+
 	if (vulkanTexture != renderer->textures[textureIndex])
 	{
 		renderer->textures[textureIndex] = vulkanTexture;
@@ -5105,7 +5179,7 @@ void VULKAN_ApplyVertexBufferBindings(
 	{
 		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdBindVertexBuffers(
-			renderer->commandBuffers[renderer->currentFrame],
+			renderer->drawCommandBuffers[renderer->currentFrame],
 			0,
 			bufferCount,
 			buffers,
@@ -5140,8 +5214,6 @@ static void UpdateRenderPass(
 	{
 		EndPass(renderer);
 	}
-
-	SubmitPipelineBarrier(renderer);
 
 	/* TODO: optimize this to pick a render pass with a LOAD_OP_CLEAR */
 
@@ -5328,7 +5400,7 @@ static void EndPass(
 	{
 		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdEndRenderPass(
-			renderer->commandBuffers[renderer->currentFrame]
+			renderer->drawCommandBuffers[renderer->currentFrame]
 		);
 		SDL_UnlockMutex(renderer->cmdLock);
 
@@ -5392,6 +5464,7 @@ void VULKAN_SetRenderTargets(
 
 			CreateImageMemoryBarrier(
 				renderer,
+				renderer->drawCommandBuffers[renderer->currentFrame],
 				imageMemoryBarrierCreateInfo,
 				&renderer->colorAttachments[i]->imageResource
 			);
@@ -5420,7 +5493,7 @@ static void SetDepthBiasCommand(FNAVulkanRenderer *renderer)
 	{
 		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdSetDepthBias(
-			renderer->commandBuffers[renderer->currentFrame],
+			renderer->drawCommandBuffers[renderer->currentFrame],
 			renderer->rasterizerState.depthBias,
 			0.0, /* no clamp */
 			renderer->rasterizerState.slopeScaleDepthBias
@@ -5456,7 +5529,7 @@ static void SetScissorRectCommand(FNAVulkanRenderer *renderer)
 
 		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdSetScissor(
-			renderer->commandBuffers[renderer->currentFrame],
+			renderer->drawCommandBuffers[renderer->currentFrame],
 			0,
 			1,
 			&vulkanScissorRect
@@ -5472,7 +5545,7 @@ static void SetStencilReferenceValueCommand(
 	{
 		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdSetStencilReference(
-			renderer->commandBuffers[renderer->currentFrame],
+			renderer->drawCommandBuffers[renderer->currentFrame],
 			VK_STENCIL_FACE_FRONT_AND_BACK,
 			renderer->stencilRef
 		);
@@ -5507,7 +5580,7 @@ static void SetViewportCommand(
 	{
 		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdSetViewport(
-			renderer->commandBuffers[renderer->currentFrame],
+			renderer->drawCommandBuffers[renderer->currentFrame],
 			0,
 			1,
 			&vulkanViewport
@@ -5524,6 +5597,9 @@ static void Stall(FNAVulkanRenderer *renderer)
 	VkCommandBufferBeginInfo beginInfo = {
 		VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
 	};
+	VkPipelineStageFlags waitStages[] = {
+		VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+	};
 	VkResult result;
 	VulkanBuffer *buf;
 
@@ -5532,16 +5608,42 @@ static void Stall(FNAVulkanRenderer *renderer)
 	SDL_LockMutex(renderer->cmdLock);
 
 	renderer->vkEndCommandBuffer(
-		renderer->commandBuffers[renderer->currentFrame]
+		renderer->dataCommandBuffers[renderer->currentFrame]
+	);
+
+	renderer->vkEndCommandBuffer(
+		renderer->drawCommandBuffers[renderer->currentFrame]
 	);
 
 	submitInfo.waitSemaphoreCount = 0;
 	submitInfo.pWaitSemaphores = NULL;
 	submitInfo.pWaitDstStageMask = NULL;
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pSignalSemaphores = &renderer->dataFinishedSemaphores[renderer->currentFrame];
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &renderer->dataCommandBuffers[renderer->currentFrame];
+
+	result = renderer->vkQueueSubmit(
+		renderer->graphicsQueue,
+		1,
+		&submitInfo,
+		NULL
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		FNA3D_LogError("failed to submit data command buffer");
+		LogVulkanResult("vkQueueSubmit", result);
+		return;
+	}
+
+	submitInfo.waitSemaphoreCount = 1;
+	submitInfo.pWaitSemaphores = &renderer->dataFinishedSemaphores[renderer->currentFrame];
+	submitInfo.pWaitDstStageMask = waitStages;
 	submitInfo.signalSemaphoreCount = 0;
 	submitInfo.pSignalSemaphores = NULL;
 	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &renderer->commandBuffers[renderer->currentFrame];
+	submitInfo.pCommandBuffers = &renderer->drawCommandBuffers[renderer->currentFrame];
 
 	renderer->vkResetFences(
 		renderer->logicalDevice,
@@ -5594,57 +5696,26 @@ static void Stall(FNAVulkanRenderer *renderer)
 	}
 
 	renderer->vkResetCommandBuffer(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->dataCommandBuffers[renderer->currentFrame],
+		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+	);
+
+	renderer->vkResetCommandBuffer(
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
 	);
 
 	renderer->vkBeginCommandBuffer(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->dataCommandBuffers[renderer->currentFrame],
+		&beginInfo
+	);
+
+	renderer->vkBeginCommandBuffer(
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		&beginInfo
 	);
 
 	SDL_UnlockMutex(renderer->cmdLock);
-}
-
-static void SubmitPipelineBarrier(
-	FNAVulkanRenderer *renderer
-) {
-	uint8_t renderPassWasInProgress;
-
-	InternalBeginFrame(renderer);
-
-	if (renderer->bufferMemoryBarrierCount + renderer->imageMemoryBarrierCount > 0)
-	{
-		renderPassWasInProgress = renderer->renderPassInProgress;
-
-		if (renderPassWasInProgress)
-		{
-			EndPass(renderer);
-		}
-
-		SDL_LockMutex(renderer->cmdLock);
-		renderer->vkCmdPipelineBarrier(
-			renderer->commandBuffers[renderer->currentFrame],
-			renderer->currentSrcStageMask,
-			renderer->currentDstStageMask,
-			0,
-			0,
-			NULL,
-			renderer->bufferMemoryBarrierCount,
-			renderer->bufferMemoryBarriers,
-			renderer->imageMemoryBarrierCount,
-			renderer->imageMemoryBarriers
-		);
-		SDL_UnlockMutex(renderer->cmdLock);
-
-		renderer->imageMemoryBarrierCount = 0;
-		renderer->bufferMemoryBarrierCount = 0;
-
-		if (renderPassWasInProgress)
-		{
-			renderer->needNewRenderPass = 1;
-		}
-	}
 }
 
 void VULKAN_ResolveTarget(
@@ -5888,6 +5959,10 @@ void VULKAN_SetTextureData2D(
 	ImageMemoryBarrierCreateInfo imageBarrierCreateInfo;
 	VkBufferImageCopy imageCopy;
 
+	VULKAN_BeginFrame(driverData);
+
+	SDL_LockMutex(renderer->cmdLock);
+
 	renderer->vkMapMemory(
 		renderer->logicalDevice,
 		stagingBuffer->deviceMemory,
@@ -5916,17 +5991,17 @@ void VULKAN_SetTextureData2D(
 
 	CreateImageMemoryBarrier(
 		renderer,
+		renderer->dataCommandBuffers[renderer->currentFrame],
 		imageBarrierCreateInfo,
 		&vulkanTexture->imageData->imageResource
 	);
 
 	CreateBufferMemoryBarrier(
 		renderer,
+		renderer->dataCommandBuffers[renderer->currentFrame],
 		RESOURCE_ACCESS_TRANSFER_READ,
 		stagingBuffer
 	);
-
-	SubmitPipelineBarrier(renderer);
 
 	imageCopy.imageExtent.width = w;
 	imageCopy.imageExtent.height = h;
@@ -5942,9 +6017,8 @@ void VULKAN_SetTextureData2D(
 	imageCopy.bufferRowLength = w;
 	imageCopy.bufferImageHeight = h;
 
-	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkCmdCopyBufferToImage(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->dataCommandBuffers[renderer->currentFrame],
 		stagingBuffer->handle,
 		vulkanTexture->imageData->imageResource.image,
 		AccessMap[vulkanTexture->imageData->imageResource.resourceAccessType].imageLayout,
@@ -6009,6 +6083,8 @@ void VULKAN_SetTextureDataYUV(
 	ImageMemoryBarrierCreateInfo imageBarrierCreateInfo;
 	VkBufferImageCopy imageCopy;
 
+	VULKAN_BeginFrame(driverData);
+
 	/* Initialize values that are the same for Y, U, and V */
 
 	imageBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -6060,17 +6136,17 @@ void VULKAN_SetTextureDataYUV(
 
 	CreateImageMemoryBarrier(
 		renderer,
+		renderer->dataCommandBuffers[renderer->currentFrame],
 		imageBarrierCreateInfo,
 		&tex->imageData->imageResource
 	);
 
 	CreateBufferMemoryBarrier(
 		renderer,
+		renderer->dataCommandBuffers[renderer->currentFrame],
 		RESOURCE_ACCESS_TRANSFER_READ,
 		stagingBuffer
 	);
-
-	SubmitPipelineBarrier(renderer);
 
 	imageCopy.imageExtent.width = yWidth;
 	imageCopy.imageExtent.height = yHeight;
@@ -6078,7 +6154,7 @@ void VULKAN_SetTextureDataYUV(
 	imageCopy.bufferImageHeight = yHeight;
 
 	renderer->vkCmdCopyBufferToImage(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->dataCommandBuffers[renderer->currentFrame],
 		stagingBuffer->handle,
 		tex->imageData->imageResource.image,
 		AccessMap[tex->imageData->imageResource.resourceAccessType].imageLayout,
@@ -6120,20 +6196,20 @@ void VULKAN_SetTextureDataYUV(
 
 	CreateImageMemoryBarrier(
 		renderer,
+		renderer->dataCommandBuffers[renderer->currentFrame],
 		imageBarrierCreateInfo,
 		&tex->imageData->imageResource
 	);
 
 	CreateBufferMemoryBarrier(
 		renderer,
+		renderer->dataCommandBuffers[renderer->currentFrame],
 		RESOURCE_ACCESS_TRANSFER_READ,
 		stagingBuffer
 	);
 
-	SubmitPipelineBarrier(renderer);
-
 	renderer->vkCmdCopyBufferToImage(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->dataCommandBuffers[renderer->currentFrame],
 		stagingBuffer->handle,
 		tex->imageData->imageResource.image,
 		AccessMap[tex->imageData->imageResource.resourceAccessType].imageLayout,
@@ -6168,20 +6244,20 @@ void VULKAN_SetTextureDataYUV(
 
 	CreateImageMemoryBarrier(
 		renderer,
+		renderer->dataCommandBuffers[renderer->currentFrame],
 		imageBarrierCreateInfo,
 		&tex->imageData->imageResource
 	);
 
 	CreateBufferMemoryBarrier(
 		renderer,
+		renderer->dataCommandBuffers[renderer->currentFrame],
 		RESOURCE_ACCESS_TRANSFER_READ,
 		stagingBuffer
 	);
 
-	SubmitPipelineBarrier(renderer);
-
 	renderer->vkCmdCopyBufferToImage(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->dataCommandBuffers[renderer->currentFrame],
 		stagingBuffer->handle,
 		tex->imageData->imageResource.image,
 		AccessMap[tex->imageData->imageResource.resourceAccessType].imageLayout,
@@ -6922,7 +6998,7 @@ void VULKAN_AddDisposeQuery(FNA3D_Renderer *driverData, FNA3D_Query *query)
 
 	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkCmdResetQueryPool(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		renderer->queryPool,
 		vulkanQuery->index,
 		1
@@ -6943,7 +7019,7 @@ void VULKAN_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 
 	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkCmdBeginQuery(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		renderer->queryPool,
 		vulkanQuery->index,
 		VK_QUERY_CONTROL_PRECISE_BIT
@@ -6960,7 +7036,7 @@ void VULKAN_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
 
 	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkCmdEndQuery(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->drawCommandBuffers[renderer->currentFrame],
 		renderer->queryPool,
 		vulkanQuery->index
 	);
@@ -7102,7 +7178,7 @@ void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 	{
 		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdInsertDebugUtilsLabelEXT(
-			renderer->commandBuffers[renderer->currentFrame],
+			renderer->drawCommandBuffers[renderer->currentFrame],
 			&labelInfo
 		);
 		SDL_UnlockMutex(renderer->cmdLock);
@@ -8038,9 +8114,13 @@ static void RecreateSwapchain(
 	VkSubmitInfo submitInfo = {
 		VK_STRUCTURE_TYPE_SUBMIT_INFO
 	};
+	VkPipelineStageFlags waitStages[] = {
+		VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
+	};
 	CreateSwapchainResult createSwapchainResult;
 	SwapChainSupportDetails swapChainSupportDetails;
 	VkExtent2D extent;
+	VkResult result;
 
 	if (renderer->commandBufferActive[renderer->currentFrame])
 	{
@@ -8049,16 +8129,42 @@ static void RecreateSwapchain(
 		SDL_LockMutex(renderer->cmdLock);
 
 		renderer->vkEndCommandBuffer(
-			renderer->commandBuffers[renderer->currentFrame]
+			renderer->dataCommandBuffers[renderer->currentFrame]
+		);
+
+		renderer->vkEndCommandBuffer(
+			renderer->drawCommandBuffers[renderer->currentFrame]
 		);
 
 		submitInfo.waitSemaphoreCount = 0;
 		submitInfo.pWaitSemaphores = NULL;
-		submitInfo.pWaitDstStageMask = 0;
+		submitInfo.pWaitDstStageMask = NULL;
+		submitInfo.signalSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = &renderer->dataFinishedSemaphores[renderer->currentFrame];
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &renderer->dataCommandBuffers[renderer->currentFrame];
+
+		result = renderer->vkQueueSubmit(
+			renderer->graphicsQueue,
+			1,
+			&submitInfo,
+			NULL
+		);
+
+		if (result != VK_SUCCESS)
+		{
+			FNA3D_LogError("failed to submit data command buffer");
+			LogVulkanResult("vkQueueSubmit", result);
+			return;
+		}
+
+		submitInfo.waitSemaphoreCount = 1;
+		submitInfo.pWaitSemaphores = &renderer->dataFinishedSemaphores[renderer->currentFrame];
+		submitInfo.pWaitDstStageMask = waitStages;
 		submitInfo.signalSemaphoreCount = 0;
 		submitInfo.pSignalSemaphores = NULL;
 		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &renderer->commandBuffers[renderer->currentFrame];
+		submitInfo.pCommandBuffers = &renderer->drawCommandBuffers[renderer->currentFrame];
 
 		renderer->vkQueueSubmit(
 			renderer->graphicsQueue,
@@ -8066,6 +8172,13 @@ static void RecreateSwapchain(
 			&submitInfo,
 			NULL
 		);
+
+		if (result != VK_SUCCESS)
+		{
+			FNA3D_LogError("failed to submit draw command buffer");
+			LogVulkanResult("vkQueueSubmit", result);
+			return;
+		}
 
 		SDL_UnlockMutex(renderer->cmdLock);
 	}
@@ -8077,7 +8190,13 @@ static void RecreateSwapchain(
 
 	renderer->vkResetCommandPool(
 		renderer->logicalDevice,
-		renderer->commandPool,
+		renderer->dataCommandPool,
+		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+	);
+
+	renderer->vkResetCommandPool(
+		renderer->logicalDevice,
+		renderer->drawCommandPool,
 		VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT
 	);
 
@@ -8503,6 +8622,7 @@ static uint8_t CreateFauxBackbuffer(
 
 	CreateImageMemoryBarrier(
 		renderer,
+		renderer->dataCommandBuffers[renderer->currentFrame],
 		barrierCreateInfo,
 		&renderer->fauxBackbufferColor.handle.imageResource
 	);
@@ -8549,12 +8669,11 @@ static uint8_t CreateFauxBackbuffer(
 
 		CreateImageMemoryBarrier(
 			renderer,
+			renderer->dataCommandBuffers[renderer->currentFrame],
 			barrierCreateInfo,
 			&renderer->fauxBackbufferDepthStencil.handle.imageResource
 		);
 	}
-
-	SubmitPipelineBarrier(renderer);
 
 	return 1;
 }
@@ -8715,21 +8834,45 @@ static uint8_t CreateCommandPoolAndBuffers(
 	commandPoolCreateInfo.queueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily;
 	commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
 
-	vulkanResult = renderer->vkCreateCommandPool(renderer->logicalDevice, &commandPoolCreateInfo, NULL, &renderer->commandPool);
+	vulkanResult = renderer->vkCreateCommandPool(
+		renderer->logicalDevice,
+		&commandPoolCreateInfo,
+		NULL,
+		&renderer->dataCommandPool
+	);
+
 	if (vulkanResult != VK_SUCCESS)
 	{
 		LogVulkanResult("vkCreateCommandPool", vulkanResult);
 		return 0;
 	}
 
-	commandBufferAllocateInfo.commandPool = renderer->commandPool;
+	vulkanResult = renderer->vkCreateCommandPool(
+		renderer->logicalDevice,
+		&commandPoolCreateInfo,
+		NULL,
+		&renderer->drawCommandPool
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateCommandPool", vulkanResult);
+		return 0;
+	}
+
+	commandBufferAllocateInfo.commandPool = renderer->dataCommandPool;
 	commandBufferAllocateInfo.commandBufferCount = MAX_FRAMES_IN_FLIGHT;
 
 	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkAllocateCommandBuffers(
 		renderer->logicalDevice,
 		&commandBufferAllocateInfo,
-		renderer->commandBuffers
+		renderer->dataCommandBuffers
+	);
+	renderer->vkAllocateCommandBuffers(
+		renderer->logicalDevice,
+		&commandBufferAllocateInfo,
+		renderer->drawCommandBuffers
 	);
 	SDL_UnlockMutex(renderer->cmdLock);
 
@@ -8763,6 +8906,19 @@ static uint8_t CreateFenceAndSemaphores(
 		if (vulkanResult != VK_SUCCESS)
 		{
 			LogVulkanResult("vkCreateFence", vulkanResult);
+			return 0;
+		}
+
+		vulkanResult = renderer->vkCreateSemaphore(
+			renderer->logicalDevice,
+			&semaphoreInfo,
+			NULL,
+			&renderer->dataFinishedSemaphores[i]
+		);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkCreateSemaphore", vulkanResult);
 			return 0;
 		}
 
@@ -8837,40 +8993,6 @@ static uint8_t CreateQueryPool(
 		renderer->freeQueryIndexStack[i] = i + 1;
 	}
 	renderer->freeQueryIndexStack[MAX_QUERIES - 1] = -1;
-
-	return 1;
-}
-
-static uint8_t CreateBarrierStorage(
-	FNAVulkanRenderer *renderer
-) {
-	renderer->imageMemoryBarrierCapacity = 256;
-	renderer->imageMemoryBarrierCount = 0;
-
-	renderer->imageMemoryBarriers = (VkImageMemoryBarrier*) SDL_malloc(
-		sizeof(VkImageMemoryBarrier) *
-		renderer->imageMemoryBarrierCapacity
-	);
-
-	if (!renderer->imageMemoryBarriers)
-	{
-		SDL_OutOfMemory();
-		return 0;
-	}
-
-	renderer->bufferMemoryBarrierCapacity = 256;
-	renderer->bufferMemoryBarrierCount = 0;
-
-	renderer->bufferMemoryBarriers = (VkBufferMemoryBarrier*) SDL_malloc(
-		sizeof(VkBufferMemoryBarrier) *
-		renderer->bufferMemoryBarrierCapacity
-	);
-
-	if (!renderer->bufferMemoryBarriers)
-	{
-		SDL_OutOfMemory();
-		return 0;
-	}
 
 	return 1;
 }
@@ -8997,12 +9119,14 @@ static void CreateDummyData(
 
 	CreateImageMemoryBarrier(
 		renderer,
+		renderer->dataCommandBuffers[renderer->currentFrame],
 		memoryBarrierCreateInfo,
 		&renderer->dummyVertTexture->imageData->imageResource
 	);
 
 	CreateImageMemoryBarrier(
 		renderer,
+		renderer->dataCommandBuffers[renderer->currentFrame],
 		memoryBarrierCreateInfo,
 		&renderer->dummyFragTexture->imageData->imageResource
 	);
@@ -9175,12 +9299,6 @@ FNA3D_Device* VULKAN_CreateDevice(
 	if (!CreateCommandPoolAndBuffers(renderer))
 	{
 		FNA3D_LogError("Failed to create command pool");
-		return NULL;
-	}
-
-	if (!CreateBarrierStorage(renderer))
-	{
-		FNA3D_LogError("Failed to create barrier storage");
 		return NULL;
 	}
 
