@@ -206,9 +206,6 @@ typedef struct MetalRenderer /* Cast from FNA3D_Renderer* */
 
 	/* Buffer Binding Cache */
 	MetalBuffer *buffers;
-	MetalBuffer *userVertexBuffer;
-	MetalBuffer *userIndexBuffer;
-	int32_t userVertexStride;
 
 	/* Some vertex declarations may have overlapping attributes :/ */
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
@@ -1103,90 +1100,6 @@ static void SetBufferData(
 	mtlBuffer->prevInternalOffset = mtlBuffer->internalOffset;
 }
 
-static void SetUserBufferData(
-	MetalRenderer *renderer,
-	MetalBuffer *buffer,
-	int32_t offsetInBytes,
-	void* data,
-	int32_t dataLength
-) {
-	int32_t sizeRequired, prevSize;
-
-	buffer->internalOffset += buffer->prevDataLength;
-	sizeRequired = buffer->internalOffset + dataLength;
-	if (sizeRequired > buffer->internalBufferSize)
-	{
-		/* Expand! */
-		prevSize = buffer->internalBufferSize;
-		buffer->internalBufferSize = SDL_max(
-			buffer->internalBufferSize * 2,
-			buffer->internalBufferSize + dataLength
-		);
-		CreateBackingBuffer(renderer, buffer, prevSize);
-	}
-
-	/* Copy the data into the buffer */
-	SDL_memcpy(
-		(uint8_t*) buffer->contents + buffer->internalOffset,
-		(uint8_t*) data + offsetInBytes,
-		dataLength
-	);
-
-	buffer->prevDataLength = dataLength;
-}
-
-static void BindUserVertexBuffer(
-	MetalRenderer *renderer,
-	void* vertexData,
-	int32_t vertexCount,
-	int32_t vertexOffset
-) {
-	int32_t len, offset;
-	MTLBuffer *handle;
-
-	/* Update the buffer contents */
-	len = vertexCount * renderer->userVertexStride;
-	if (renderer->userVertexBuffer == NULL)
-	{
-		renderer->userVertexBuffer = CreateBuffer(
-			(FNA3D_Renderer*) renderer,
-			FNA3D_BUFFERUSAGE_WRITEONLY,
-			len
-		);
-	}
-	SetUserBufferData(
-		renderer,
-		renderer->userVertexBuffer,
-		vertexOffset * renderer->userVertexStride,
-		vertexData,
-		len
-	);
-
-	/* Bind the buffer */
-	offset = renderer->userVertexBuffer->internalOffset;
-	handle = renderer->userVertexBuffer->handle;
-	if (renderer->ldVertexBuffers[0] != handle)
-	{
-		mtlSetVertexBuffer(
-			renderer->renderCommandEncoder,
-			handle,
-			offset,
-			0
-		);
-		renderer->ldVertexBuffers[0] = handle;
-		renderer->ldVertexBufferOffsets[0] = offset;
-	}
-	else if (renderer->ldVertexBufferOffsets[0] != offset)
-	{
-		mtlSetVertexBufferOffset(
-			renderer->renderCommandEncoder,
-			offset,
-			0
-		);
-		renderer->ldVertexBufferOffsets[0] = offset;
-	}
-}
-
 /* Pipeline State Object Creation / Retrieval */
 
 typedef struct PipelineHash
@@ -1877,112 +1790,6 @@ static MTLVertexDescriptor* FetchVertexBufferBindingsDescriptor(
 	return result;
 }
 
-static MTLVertexDescriptor* FetchVertexDeclarationDescriptor(
-	MetalRenderer *renderer,
-	FNA3D_VertexDeclaration *vertexDeclaration,
-	int32_t vertexOffset
-) {
-	uint64_t hash;
-	int32_t i, j, usage, index, attribLoc;
-	FNA3D_VertexElement element;
-	MTLVertexAttributeDescriptor *attrib;
-	MTLVertexBufferLayoutDescriptor *layout;
-	MOJOSHADER_mtlShader *vertexShader, *blah;
-	MTLVertexDescriptor *result;
-
-	/* We need the vertex shader... */
-	MOJOSHADER_mtlGetBoundShaders(&vertexShader, &blah);
-
-	/* Can we just reuse an existing descriptor? */
-	hash = GetVertexDeclarationHash(
-		*vertexDeclaration,
-		vertexShader
-	);
-	result = hmget(renderer->vertexDescriptorCache, hash);
-	if (result != NULL)
-	{
-		/* This descriptor has already been cached! */
-		return result;
-	}
-
-	/* We have to make a new vertex descriptor... */
-	result = mtlMakeVertexDescriptor();
-	objc_retain(result);
-
-	/* There's this weird case where you can have overlapping
-	 * vertex usage/index combinations. It seems like the first
-	 * attrib gets priority, so whenever a duplicate attribute
-	 * exists, give it the next available index. If that fails, we
-	 * have to crash :/
-	 * -flibit
-	 */
-	SDL_memset(renderer->attrUse, '\0', sizeof(renderer->attrUse));
-	for (i = 0; i < vertexDeclaration->elementCount; i += 1)
-	{
-		element = vertexDeclaration->elements[i];
-		usage = element.vertexElementUsage;
-		index = element.usageIndex;
-		if (renderer->attrUse[usage][index])
-		{
-			index = -1;
-			for (j = 0; j < 16; j += 1)
-			{
-				if (!renderer->attrUse[usage][j])
-				{
-					index = j;
-					break;
-				}
-			}
-			if (index < 0)
-			{
-				FNA3D_LogError(
-					"Vertex usage collision!"
-				);
-			}
-		}
-		renderer->attrUse[usage][index] = 1;
-		attribLoc = MOJOSHADER_mtlGetVertexAttribLocation(
-			vertexShader,
-			VertexAttribUsage(usage),
-			index
-		);
-		if (attribLoc == -1)
-		{
-			/* Stream not in use! */
-			continue;
-		}
-		attrib = mtlGetVertexAttributeDescriptor(
-			result,
-			attribLoc
-		);
-		mtlSetVertexAttributeFormat(
-			attrib,
-			XNAToMTL_VertexAttribType[element.vertexElementFormat]
-		);
-		mtlSetVertexAttributeOffset(
-			attrib,
-			element.offset
-		);
-		mtlSetVertexAttributeBufferIndex(
-			attrib,
-			0
-		);
-	}
-
-	/* Describe vertex buffer layout */
-	layout = mtlGetVertexBufferLayoutDescriptor(
-		result,
-		0
-	);
-	mtlSetVertexBufferLayoutStride(
-		layout,
-		vertexDeclaration->vertexStride
-	);
-
-	hmput(renderer->vertexDescriptorCache, hash, result);
-	return result;
-}
-
 /* Renderer Implementation */
 
 /* Quit */
@@ -2358,90 +2165,6 @@ static void METAL_DrawPrimitives(
 		XNAToMTL_Primitive[primitiveType],
 		vertexStart,
 		PrimitiveVerts(primitiveType, primitiveCount)
-	);
-}
-
-static void METAL_DrawUserIndexedPrimitives(
-	FNA3D_Renderer *driverData,
-	FNA3D_PrimitiveType primitiveType,
-	void* vertexData,
-	int32_t vertexOffset,
-	int32_t numVertices,
-	void* indexData,
-	int32_t indexOffset,
-	FNA3D_IndexElementSize indexElementSize,
-	int32_t primitiveCount
-) {
-	MetalRenderer *renderer = (MetalRenderer*) driverData;
-	int32_t numIndices, indexSize, len;
-
-	/* Bind the vertex buffer */
-	BindUserVertexBuffer(
-		renderer,
-		vertexData,
-		numVertices,
-		vertexOffset
-	);
-
-	/* Prepare the index buffer */
-	numIndices = PrimitiveVerts(primitiveType, primitiveCount);
-	indexSize = IndexSize(indexElementSize);
-	len = numIndices * indexSize;
-	if (renderer->userIndexBuffer == NULL)
-	{
-		renderer->userIndexBuffer = CreateBuffer(
-			driverData,
-			FNA3D_BUFFERUSAGE_WRITEONLY,
-			len
-		);
-	}
-	SetUserBufferData(
-		renderer,
-		renderer->userIndexBuffer,
-		indexOffset * indexSize,
-		indexData,
-		len
-	);
-
-	/* Draw! */
-	mtlDrawIndexedPrimitives(
-		renderer->renderCommandEncoder,
-		XNAToMTL_Primitive[primitiveType],
-		numIndices,
-		XNAToMTL_IndexType[indexElementSize],
-		renderer->userIndexBuffer->handle,
-		renderer->userIndexBuffer->internalOffset,
-		1
-	);
-}
-
-static void METAL_DrawUserPrimitives(
-	FNA3D_Renderer *driverData,
-	FNA3D_PrimitiveType primitiveType,
-	void* vertexData,
-	int32_t vertexOffset,
-	int32_t primitiveCount
-) {
-	MetalRenderer *renderer = (MetalRenderer*) driverData;
-
-	/* Bind the vertex buffer */
-	int32_t numVerts = PrimitiveVerts(
-		primitiveType,
-		primitiveCount
-	);
-	BindUserVertexBuffer(
-		renderer,
-		vertexData,
-		numVerts,
-		vertexOffset
-	);
-
-	/* Draw! */
-	mtlDrawPrimitives(
-		renderer->renderCommandEncoder,
-		XNAToMTL_Primitive[primitiveType],
-		0,
-		numVerts
 	);
 }
 
@@ -2866,29 +2589,6 @@ static void METAL_ApplyVertexBufferBindings(
 			renderer->ldVertexBufferOffsets[i] = offset;
 		}
 	}
-}
-
-static void METAL_ApplyVertexDeclaration(
-	FNA3D_Renderer *driverData,
-	FNA3D_VertexDeclaration *vertexDeclaration,
-	void* vertexData,
-	int32_t vertexOffset
-) {
-	MetalRenderer *renderer = (MetalRenderer*) driverData;
-
-	/* Translate the declaration into a descriptor */
-	renderer->currentVertexDescriptor = FetchVertexDeclarationDescriptor(
-		renderer,
-		vertexDeclaration,
-		vertexOffset
-	);
-	renderer->userVertexStride = vertexDeclaration->vertexStride;
-
-	/* Prepare for rendering */
-	UpdateRenderPass(renderer);
-	BindResources(renderer);
-
-	/* The rest happens in DrawUser[Indexed]Primitives. */
 }
 
 /* Render Targets */

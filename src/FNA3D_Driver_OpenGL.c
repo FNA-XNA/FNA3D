@@ -247,8 +247,6 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 
 	/* ld, or LastDrawn, vertex attributes */
 	int32_t ldBaseVertex;
-	FNA3D_VertexDeclaration *ldVertexDeclaration;
-	void* ldPointer;
 
 	/* Render Targets */
 	int32_t numAttachments;
@@ -1698,79 +1696,6 @@ static void OPENGL_DrawPrimitives(
 	}
 }
 
-static void OPENGL_DrawUserIndexedPrimitives(
-	FNA3D_Renderer *driverData,
-	FNA3D_PrimitiveType primitiveType,
-	void* vertexData,
-	int32_t vertexOffset,
-	int32_t numVertices,
-	void* indexData,
-	int32_t indexOffset,
-	FNA3D_IndexElementSize indexElementSize,
-	int32_t primitiveCount
-) {
-	uint8_t tps;
-	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
-
-	/* Unbind any active index buffer */
-	BindIndexBuffer(renderer, 0);
-
-	tps = (	renderer->togglePointSprite &&
-		primitiveType == FNA3D_PRIMITIVETYPE_POINTLIST_EXT	);
-	if (tps)
-	{
-		renderer->glEnable(GL_POINT_SPRITE);
-	}
-
-	/* Draw! */
-	renderer->glDrawRangeElements(
-		XNAToGL_Primitive[primitiveType],
-		0,
-		numVertices - 1,
-		PrimitiveVerts(primitiveType, primitiveCount),
-		XNAToGL_IndexType[indexElementSize],
-		(void*) (
-			((size_t) indexData) +
-			(indexOffset * IndexSize(indexElementSize))
-		)
-	);
-
-	if (tps)
-	{
-		renderer->glDisable(GL_POINT_SPRITE);
-	}
-}
-
-static void OPENGL_DrawUserPrimitives(
-	FNA3D_Renderer *driverData,
-	FNA3D_PrimitiveType primitiveType,
-	void* vertexData,
-	int32_t vertexOffset,
-	int32_t primitiveCount
-) {
-	uint8_t tps;
-	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
-
-	tps = (	renderer->togglePointSprite &&
-		primitiveType == FNA3D_PRIMITIVETYPE_POINTLIST_EXT	);
-	if (tps)
-	{
-		renderer->glEnable(GL_POINT_SPRITE);
-	}
-
-	/* Draw! */
-	renderer->glDrawArrays(
-		XNAToGL_Primitive[primitiveType],
-		vertexOffset,
-		PrimitiveVerts(primitiveType, primitiveCount)
-	);
-
-	if (tps)
-	{
-		renderer->glDisable(GL_POINT_SPRITE);
-	}
-}
-
 /* Mutable Render States */
 
 static void OPENGL_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewport)
@@ -2604,113 +2529,6 @@ static void OPENGL_ApplyVertexBufferBindings(
 
 		renderer->ldBaseVertex = baseVertex;
 		renderer->effectApplied = 0;
-		renderer->ldVertexDeclaration = NULL;
-		renderer->ldPointer = NULL;
-	}
-
-	MOJOSHADER_glProgramReady();
-	MOJOSHADER_glProgramViewportInfo(
-		renderer->viewport.w, renderer->viewport.h,
-		renderer->backbuffer->width, renderer->backbuffer->height,
-		renderer->renderTargetBound
-	);
-}
-
-static void OPENGL_ApplyVertexDeclaration(
-	FNA3D_Renderer *driverData,
-	FNA3D_VertexDeclaration *vertexDeclaration,
-	void* vertexData,
-	int32_t vertexOffset
-) {
-	int32_t usage, index, attribLoc, i, j;
-	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
-	FNA3D_VertexElement *element;
-	OpenGLVertexAttribute *attr;
-	uint8_t normalized;
-	uint8_t *finalPtr;
-	uint8_t *basePtr = (uint8_t*) vertexData;
-	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
-
-	BindVertexBuffer(renderer, 0);
-	basePtr += (vertexDeclaration->vertexStride * vertexOffset);
-
-	if (	vertexDeclaration != renderer->ldVertexDeclaration ||
-		basePtr != renderer->ldPointer ||
-		renderer->effectApplied	)
-	{
-		/* There's this weird case where you can have overlapping
-		 * vertex usage/index combinations. It seems like the first
-		 * attrib gets priority, so whenever a duplicate attribute
-		 * exists, give it the next available index. If that fails, we
-		 * have to crash :/
-		 * -flibit
-		 */
-		SDL_memset(attrUse, '\0', sizeof(attrUse));
-		for (i = 0; i < vertexDeclaration->elementCount; i += 1)
-		{
-			element = &vertexDeclaration->elements[i];
-			usage = element->vertexElementUsage;
-			index = element->usageIndex;
-			if (attrUse[usage][index])
-			{
-				index = -1;
-				for (j = 0; j < 16; j += 1)
-				{
-					if (!attrUse[usage][j])
-					{
-						index = j;
-						break;
-					}
-				}
-				if (index < 0)
-				{
-					FNA3D_LogError(
-						"Vertex usage collision!"
-					);
-				}
-			}
-			attrUse[usage][index] = 1;
-			attribLoc = MOJOSHADER_glGetVertexAttribLocation(
-				VertexAttribUsage(usage),
-				index
-			);
-			if (attribLoc == -1)
-			{
-				/* Stream not used! */
-				continue;
-			}
-			renderer->attributeEnabled[attribLoc] = 1;
-			attr = &renderer->attributes[attribLoc];
-			finalPtr = basePtr + element->offset;
-			normalized = XNAToGL_VertexAttribNormalized(element);
-			if (	attr->currentBuffer != 0 ||
-				attr->currentPointer != finalPtr ||
-				attr->currentFormat != element->vertexElementFormat ||
-				attr->currentNormalized != normalized ||
-				attr->currentStride != vertexDeclaration->vertexStride	)
-			{
-				renderer->glVertexAttribPointer(
-					attribLoc,
-					XNAToGL_VertexAttribSize[element->vertexElementFormat],
-					XNAToGL_VertexAttribType[element->vertexElementFormat],
-					normalized,
-					vertexDeclaration->vertexStride,
-					finalPtr
-				);
-				attr->currentBuffer = 0;
-				attr->currentPointer = finalPtr;
-				attr->currentFormat = element->vertexElementFormat;
-				attr->currentNormalized = normalized;
-				attr->currentStride = vertexDeclaration->vertexStride;
-			}
-			renderer->attributeDivisor[attribLoc] = 0;
-		}
-		OPENGL_INTERNAL_FlushGLVertexAttributes(renderer);
-
-		renderer->ldVertexDeclaration = vertexDeclaration;
-		renderer->ldPointer = vertexData;
-		renderer->effectApplied = 0;
-		renderer->ldBaseVertex = -1;
 	}
 
 	MOJOSHADER_glProgramReady();

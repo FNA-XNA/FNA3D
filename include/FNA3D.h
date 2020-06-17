@@ -619,48 +619,6 @@ FNA3DAPI void FNA3D_DrawPrimitives(
 	int32_t primitiveCount
 );
 
-/* Draws data from client-side vertex/index arrays. It is STRONGLY recommended
- * that you do NOT use this function, and instead upload your data to buffer
- * objects instead. The renderer is probably doing this behind your back anyway!
- *
- * primitiveType:	The primitive topology of the vertex data.
- * vertexData:		A pointer to the client vertex data.
- * vertexOffset:	The starting offset to read from the vertex array.
- * numVertices:		The number of vertices to read from the vertex array.
- * indexData:		A pointer to the client index data.
- * indexOffset:		The starting offset to ready from the index array.
- * indexElementSize:	The size of the index type for this index array.
- * primitiveCount:	The number of primitives to draw.
- */
-FNA3DAPI void FNA3D_DrawUserIndexedPrimitives(
-	FNA3D_Device *device,
-	FNA3D_PrimitiveType primitiveType,
-	void* vertexData,
-	int32_t vertexOffset,
-	int32_t numVertices,
-	void* indexData,
-	int32_t indexOffset,
-	FNA3D_IndexElementSize indexElementSize,
-	int32_t primitiveCount
-);
-
-/* Draws data from client-side vertex arrays. It is STRONGLY recommended that
- * you do NOT use this function, and instead upload your data to buffer objects
- * instead. The renderer is probably doing this behind your back anyway!
- *
- * primitiveType:	The primitive topology of the vertex data.
- * vertexData:		A pointer to the client vertex data.
- * vertexOffset:	The starting offset to read from the vertex array.
- * primitiveCount:	The number of primitives to draw.
- */
-FNA3DAPI void FNA3D_DrawUserPrimitives(
-	FNA3D_Device *device,
-	FNA3D_PrimitiveType primitiveType,
-	void* vertexData,
-	int32_t vertexOffset,
-	int32_t primitiveCount
-);
-
 /* Mutable Render States */
 
 /* Sets the view dimensions for rendering, relative to the active render target.
@@ -789,8 +747,6 @@ FNA3DAPI void FNA3D_VerifyVertexSampler(
 	FNA3D_SamplerState *sampler
 );
 
-/* Vertex State */
-
 /* Updates the vertex attribute state to read from a set of vertex buffers. This
  * should be the very last thing you call before making a draw call, as this
  * does all the final prep work for the shader program before it's ready to use.
@@ -812,23 +768,6 @@ FNA3DAPI void FNA3D_ApplyVertexBufferBindings(
 	int32_t numBindings,
 	uint8_t bindingsUpdated,
 	int32_t baseVertex
-);
-
-/* Updates the vertex attribute state to read from a vertex array. This should
- * be the very last thing you call before making a draw call, as this does all
- * the final prep work for the shader program before it's ready to use. At the
- * same time, it is STRONGLY recommended that you do NOT use this function, as
- * it is only useful for DrawUser*Primitives, which you should also not use.
- *
- * vertexDeclaration:	The vertex layout information for the vertex array.
- * vertexData:		The vertex array to be read by DrawUser*Primitives.
- * vertexOffset:	The starting offset to read from the vertex array.
- */
-FNA3DAPI void FNA3D_ApplyVertexDeclaration(
-	FNA3D_Device *device,
-	FNA3D_VertexDeclaration *vertexDeclaration,
-	void* vertexData,
-	int32_t vertexOffset
 );
 
 /* Render Targets */

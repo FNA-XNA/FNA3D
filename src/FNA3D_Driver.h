@@ -263,24 +263,6 @@ struct FNA3D_Device
 		int32_t vertexStart,
 		int32_t primitiveCount
 	);
-	void (*DrawUserIndexedPrimitives)(
-		FNA3D_Renderer *driverData,
-		FNA3D_PrimitiveType primitiveType,
-		void* vertexData,
-		int32_t vertexOffset,
-		int32_t numVertices,
-		void* indexData,
-		int32_t indexOffset,
-		FNA3D_IndexElementSize indexElementSize,
-		int32_t primitiveCount
-	);
-	void (*DrawUserPrimitives)(
-		FNA3D_Renderer *driverData,
-		FNA3D_PrimitiveType primitiveType,
-		void* vertexData,
-		int32_t vertexOffset,
-		int32_t primitiveCount
-	);
 
 	/* Mutable Render States */
 
@@ -329,21 +311,12 @@ struct FNA3D_Device
 		FNA3D_SamplerState *sampler
 	);
 
-	/* Vertex State */
-
 	void (*ApplyVertexBufferBindings)(
 		FNA3D_Renderer *driverData,
 		FNA3D_VertexBufferBinding *bindings,
 		int32_t numBindings,
 		uint8_t bindingsUpdated,
 		int32_t baseVertex
-	);
-
-	void (*ApplyVertexDeclaration)(
-		FNA3D_Renderer *driverData,
-		FNA3D_VertexDeclaration *vertexDeclaration,
-		void* vertexData,
-		int32_t vertexOffset
 	);
 
 	/* Render Targets */
@@ -682,8 +655,6 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(DrawIndexedPrimitives, name) \
 	ASSIGN_DRIVER_FUNC(DrawInstancedPrimitives, name) \
 	ASSIGN_DRIVER_FUNC(DrawPrimitives, name) \
-	ASSIGN_DRIVER_FUNC(DrawUserIndexedPrimitives, name) \
-	ASSIGN_DRIVER_FUNC(DrawUserPrimitives, name) \
 	ASSIGN_DRIVER_FUNC(SetViewport, name) \
 	ASSIGN_DRIVER_FUNC(SetScissorRect, name) \
 	ASSIGN_DRIVER_FUNC(GetBlendFactor, name) \
@@ -698,7 +669,6 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(VerifySampler, name) \
 	ASSIGN_DRIVER_FUNC(VerifyVertexSampler, name) \
 	ASSIGN_DRIVER_FUNC(ApplyVertexBufferBindings, name) \
-	ASSIGN_DRIVER_FUNC(ApplyVertexDeclaration, name) \
 	ASSIGN_DRIVER_FUNC(SetRenderTargets, name) \
 	ASSIGN_DRIVER_FUNC(ResolveTarget, name) \
 	ASSIGN_DRIVER_FUNC(ResetBackbuffer, name) \

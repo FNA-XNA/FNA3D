@@ -327,54 +327,6 @@ void FNA3D_DrawPrimitives(
 	);
 }
 
-void FNA3D_DrawUserIndexedPrimitives(
-	FNA3D_Device *device,
-	FNA3D_PrimitiveType primitiveType,
-	void* vertexData,
-	int32_t vertexOffset,
-	int32_t numVertices,
-	void* indexData,
-	int32_t indexOffset,
-	FNA3D_IndexElementSize indexElementSize,
-	int32_t primitiveCount
-) {
-	if (device == NULL)
-	{
-		return;
-	}
-	device->DrawUserIndexedPrimitives(
-		device->driverData,
-		primitiveType,
-		vertexData,
-		vertexOffset,
-		numVertices,
-		indexData,
-		indexOffset,
-		indexElementSize,
-		primitiveCount
-	);
-}
-
-void FNA3D_DrawUserPrimitives(
-	FNA3D_Device *device,
-	FNA3D_PrimitiveType primitiveType,
-	void* vertexData,
-	int32_t vertexOffset,
-	int32_t primitiveCount
-) {
-	if (device == NULL)
-	{
-		return;
-	}
-	device->DrawUserPrimitives(
-		device->driverData,
-		primitiveType,
-		vertexData,
-		vertexOffset,
-		primitiveCount
-	);
-}
-
 /* Mutable Render States */
 
 void FNA3D_SetViewport(FNA3D_Device *device, FNA3D_Viewport *viewport)
@@ -514,8 +466,6 @@ void FNA3D_VerifyVertexSampler(
 	device->VerifyVertexSampler(device->driverData, index, texture, sampler);
 }
 
-/* Vertex State */
-
 void FNA3D_ApplyVertexBufferBindings(
 	FNA3D_Device *device,
 	FNA3D_VertexBufferBinding *bindings,
@@ -533,24 +483,6 @@ void FNA3D_ApplyVertexBufferBindings(
 		numBindings,
 		bindingsUpdated,
 		baseVertex
-	);
-}
-
-void FNA3D_ApplyVertexDeclaration(
-	FNA3D_Device *device,
-	FNA3D_VertexDeclaration *vertexDeclaration,
-	void* vertexData,
-	int32_t vertexOffset
-) {
-	if (device == NULL)
-	{
-		return;
-	}
-	device->ApplyVertexDeclaration(
-		device->driverData,
-		vertexDeclaration,
-		vertexData,
-		vertexOffset
 	);
 }
 
