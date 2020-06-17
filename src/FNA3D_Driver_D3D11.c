@@ -1947,8 +1947,6 @@ static void D3D11_VerifyVertexSampler(
 	);
 }
 
-/* Vertex State */
-
 static void D3D11_ApplyVertexBufferBindings(
 	FNA3D_Renderer *driverData,
 	FNA3D_VertexBufferBinding *bindings,

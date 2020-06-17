@@ -2387,8 +2387,6 @@ static void OPENGL_VerifyVertexSampler(
 	);
 }
 
-/* Vertex State */
-
 static inline void OPENGL_INTERNAL_FlushGLVertexAttributes(OpenGLRenderer *renderer)
 {
 	int32_t i, divisor;

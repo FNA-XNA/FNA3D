@@ -2399,8 +2399,6 @@ static void METAL_VerifyVertexSampler(
 	);
 }
 
-/* Vertex State */
-
 static void BindResources(MetalRenderer *renderer)
 {
 	int32_t i;
