@@ -60,12 +60,12 @@
 #define ERROR_CHECK(msg) \
 	if (FAILED(res)) \
 	{ \
-		FNA3D_LogError("%s Error Code: %08X", res); \
+		FNA3D_LogError("%s! Error Code: %08X", msg, res); \
 	}
 #define ERROR_CHECK_RETURN(msg, ret) \
 	if (FAILED(res)) \
 	{ \
-		FNA3D_LogError("%s Error Code: %08X", res); \
+		FNA3D_LogError("%s! Error Code: %08X", msg, res); \
 		return ret; \
 	}
 
@@ -916,7 +916,7 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 		datalen,
 		&result
 	);
-	ERROR_CHECK("Could not compile input layout!")
+	ERROR_CHECK("Could not compile input layout")
 
 	/* Clean up */
 	SDL_free(elements);
@@ -2350,7 +2350,7 @@ static void D3D11_INTERNAL_CreateFramebuffer(
 			DXGI_FORMAT_UNKNOWN,	/* keep the old format */
 			0
 		);
-		ERROR_CHECK("Could not resize swapchain!")
+		ERROR_CHECK("Could not resize swapchain")
 	}
 
 	/* Create a render target view for the swapchain */
@@ -2600,7 +2600,7 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 		NULL,
 		&texture
 	);
-	ERROR_CHECK_RETURN("Texture2D creation failed!", NULL)
+	ERROR_CHECK_RETURN("Texture2D creation failed", NULL)
 
 	/* Initialize D3D11Texture */
 	result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
@@ -4201,7 +4201,7 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 
 	D3D11_PLATFORM_UnloadD3D11(module);
 
-	ERROR_CHECK_RETURN("D3D11 is unsupported!", 0)
+	ERROR_CHECK_RETURN("D3D11 is unsupported", 0)
 
 	/* No window flags required */
 	SDL_SetHint(SDL_HINT_VIDEO_EXTERNAL_CONTEXT, "1");
@@ -4259,7 +4259,7 @@ static void D3D11_INTERNAL_InitializeFauxBackbuffer(
 		"Faux-Backbuffer Blit Vertex Shader", NULL, NULL,
 		"main", "vs_4_0", 0, 0, &blob, &blob
 	);
-	ERROR_CHECK_RETURN("Backbuffer vshader failed to compile!",)
+	ERROR_CHECK_RETURN("Backbuffer vshader failed to compile",)
 	ID3D11Device_CreateVertexShader(
 		renderer->device,
 		ID3D10Blob_GetBufferPointer(blob),
@@ -4302,7 +4302,7 @@ static void D3D11_INTERNAL_InitializeFauxBackbuffer(
 		"Faux-Backbuffer Blit Pixel Shader", NULL, NULL,
 		"main", "ps_4_0", 0, 0, &blob, &blob
 	);
-	ERROR_CHECK_RETURN("Backbuffer pshader failed to compile!",)
+	ERROR_CHECK_RETURN("Backbuffer pshader failed to compile",)
 	ID3D11Device_CreatePixelShader(
 		renderer->device,
 		ID3D10Blob_GetBufferPointer(blob),
@@ -4431,7 +4431,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 		&renderer->dxgi_dll,
 		&renderer->factory
 	);
-	ERROR_CHECK_RETURN("Could not create DXGIFactory!", NULL)
+	ERROR_CHECK_RETURN("Could not create DXGIFactory", NULL)
 	D3D11_PLATFORM_GetDefaultAdapter(
 		renderer->factory,
 		&renderer->adapter
@@ -4473,7 +4473,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 		&renderer->featureLevel,
 		&renderer->context
 	);
-	ERROR_CHECK_RETURN("Could not create D3D11Device!", NULL)
+	ERROR_CHECK_RETURN("Could not create D3D11Device", NULL)
 
 	/* Print driver info */
 	FNA3D_LogInfo("FNA3D Driver: D3D11");
@@ -4521,7 +4521,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 			&D3D_IID_ID3DUserDefinedAnnotation,
 			(void**) &renderer->annotation
 		);
-		ERROR_CHECK("Could not get UserDefinedAnnotation!")
+		ERROR_CHECK("Could not get UserDefinedAnnotation")
 	}
 	else
 	{
@@ -4661,7 +4661,7 @@ static void D3D11_PLATFORM_CreateSwapChain(
 		NULL,
 		(IDXGISwapChain1**) &renderer->swapchain
 	);
-	ERROR_CHECK("Could not create swapchain!")
+	ERROR_CHECK("Could not create swapchain")
 }
 
 #else
@@ -4819,7 +4819,7 @@ static void D3D11_PLATFORM_CreateSwapChain(
 		&swapchainDesc,
 		&renderer->swapchain
 	);
-	ERROR_CHECK("Could not create swapchain!")
+	ERROR_CHECK("Could not create swapchain")
 }
 
 #endif
