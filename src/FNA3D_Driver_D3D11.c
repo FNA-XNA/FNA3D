@@ -4440,22 +4440,22 @@ static FNA3D_Device* D3D11_CreateDevice(
 	};
 	uint32_t flags, supportsDxt3, supportsDxt5;
 	int32_t i;
-	HRESULT ret;
+	HRESULT res;
 
 	/* Allocate and zero out the renderer */
 	renderer = (D3D11Renderer*) SDL_malloc(sizeof(D3D11Renderer));
 	SDL_memset(renderer, '\0', sizeof(D3D11Renderer));
 
 	/* Load CreateDXGIFactory1 */
-	ret = D3D11_PLATFORM_CreateDXGIFactory(
+	res = D3D11_PLATFORM_CreateDXGIFactory(
 		&renderer->dxgi_dll,
 		&renderer->factory
 	);
-	if (ret < 0)
+	if (res < 0)
 	{
 		FNA3D_LogError(
 			"Could not create DXGIFactory! Error code: %x",
-			ret
+			res
 		);
 		return NULL;
 	}
@@ -4488,7 +4488,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 	{
 		flags |= D3D11_CREATE_DEVICE_DEBUG;
 	}
-	ret = D3D11CreateDeviceFunc(
+	res = D3D11CreateDeviceFunc(
 		NULL, /* FIXME: Should be renderer->adapter! */
 		D3D_DRIVER_TYPE_HARDWARE,
 		NULL,
@@ -4500,11 +4500,11 @@ static FNA3D_Device* D3D11_CreateDevice(
 		&renderer->featureLevel,
 		&renderer->context
 	);
-	if (ret < 0)
+	if (res < 0)
 	{
 		FNA3D_LogError(
 			"Could not create D3D11Device! Error code: %x",
-			ret
+			res
 		);
 		return NULL;
 	}
@@ -4550,16 +4550,16 @@ static FNA3D_Device* D3D11_CreateDevice(
 	/* Initialize SetStringMarker support, if available */
 	if (renderer->featureLevel == D3D_FEATURE_LEVEL_11_1)
 	{
-		ret = ID3D11DeviceContext_QueryInterface(
+		res = ID3D11DeviceContext_QueryInterface(
 			renderer->context,
 			&D3D_IID_ID3DUserDefinedAnnotation,
 			(void**) &renderer->annotation
 		);
-		if (ret < 0)
+		if (res < 0)
 		{
 			FNA3D_LogError(
 				"Could not get UserDefinedAnnotation! Error: %x",
-				ret
+				res
 			);
 		}
 	}
