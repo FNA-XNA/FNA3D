@@ -57,6 +57,18 @@
 #include <dxgi.h>
 #endif
 
+#define ERROR_CHECK(msg) \
+	if (FAILED(res)) \
+	{ \
+		FNA3D_LogError("%s Error Code: %08X", res); \
+	}
+#define ERROR_CHECK_RETURN(msg, ret) \
+	if (FAILED(res)) \
+	{ \
+		FNA3D_LogError("%s Error Code: %08X", res); \
+		return ret; \
+	}
+
 /* Internal Structures */
 
 typedef struct D3D11Texture /* Cast FNA3D_Texture* to this! */
@@ -904,13 +916,7 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 		datalen,
 		&result
 	);
-	if (FAILED(res))
-	{
-		FNA3D_LogError(
-			"Could not compile input layout! Error: %x",
-			res
-		);
-	}
+	ERROR_CHECK("Could not compile input layout!")
 
 	/* Clean up */
 	SDL_free(elements);
@@ -2344,13 +2350,7 @@ static void D3D11_INTERNAL_CreateFramebuffer(
 			DXGI_FORMAT_UNKNOWN,	/* keep the old format */
 			0
 		);
-		if (FAILED(res))
-		{
-			FNA3D_LogError(
-				"Could not resize swapchain! Error code: %x",
-				res
-			);
-		}
+		ERROR_CHECK("Could not resize swapchain!")
 	}
 
 	/* Create a render target view for the swapchain */
@@ -2569,13 +2569,10 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *result;
+	ID3D11Texture2D *texture;
 	D3D11_TEXTURE2D_DESC desc;
 	D3D11_RENDER_TARGET_VIEW_DESC rtViewDesc;
 	HRESULT res;
-
-	/* Initialize D3D11Texture */
-	result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
-	SDL_memset(result, '\0', sizeof(D3D11Texture));
 
 	/* Initialize descriptor */
 	desc.Width = width;
@@ -2601,14 +2598,14 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 		renderer->device,
 		&desc,
 		NULL,
-		(ID3D11Texture2D**) &result->handle
+		&texture
 	);
-	if (FAILED(res))
-	{
-		SDL_free(result);
-		FNA3D_LogError("Texture2D creation failed: %X\n", res);
-		return NULL;
-	}
+	ERROR_CHECK_RETURN("Texture2D creation failed!", NULL)
+
+	/* Initialize D3D11Texture */
+	result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
+	SDL_memset(result, '\0', sizeof(D3D11Texture));
+	result->handle = (ID3D11Resource*) texture;
 	result->levelCount = levelCount;
 	result->isRenderTarget = isRenderTarget;
 	result->format = format;
@@ -4204,10 +4201,7 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 
 	D3D11_PLATFORM_UnloadD3D11(module);
 
-	if (FAILED(res))
-	{
-		return 0;
-	}
+	ERROR_CHECK_RETURN("D3D11 is unsupported!", 0)
 
 	/* No window flags required */
 	SDL_SetHint(SDL_HINT_VIDEO_EXTERNAL_CONTEXT, "1");
@@ -4265,14 +4259,7 @@ static void D3D11_INTERNAL_InitializeFauxBackbuffer(
 		"Faux-Backbuffer Blit Vertex Shader", NULL, NULL,
 		"main", "vs_4_0", 0, 0, &blob, &blob
 	);
-	if (FAILED(res))
-	{
-		FNA3D_LogError(
-			"Backbuffer vshader failed to compile! Error code: %x",
-			res
-		);
-		return;
-	}
+	ERROR_CHECK_RETURN("Backbuffer vshader failed to compile!",)
 	ID3D11Device_CreateVertexShader(
 		renderer->device,
 		ID3D10Blob_GetBufferPointer(blob),
@@ -4315,14 +4302,7 @@ static void D3D11_INTERNAL_InitializeFauxBackbuffer(
 		"Faux-Backbuffer Blit Pixel Shader", NULL, NULL,
 		"main", "ps_4_0", 0, 0, &blob, &blob
 	);
-	if (FAILED(res))
-	{
-		FNA3D_LogError(
-			"Backbuffer pshader failed to compile! Error code: %x",
-			res
-		);
-		return;
-	}
+	ERROR_CHECK_RETURN("Backbuffer pshader failed to compile!",)
 	ID3D11Device_CreatePixelShader(
 		renderer->device,
 		ID3D10Blob_GetBufferPointer(blob),
@@ -4451,14 +4431,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 		&renderer->dxgi_dll,
 		&renderer->factory
 	);
-	if (FAILED(res))
-	{
-		FNA3D_LogError(
-			"Could not create DXGIFactory! Error code: %x",
-			res
-		);
-		return NULL;
-	}
+	ERROR_CHECK_RETURN("Could not create DXGIFactory!", NULL)
 	D3D11_PLATFORM_GetDefaultAdapter(
 		renderer->factory,
 		&renderer->adapter
@@ -4500,14 +4473,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 		&renderer->featureLevel,
 		&renderer->context
 	);
-	if (FAILED(res))
-	{
-		FNA3D_LogError(
-			"Could not create D3D11Device! Error code: %x",
-			res
-		);
-		return NULL;
-	}
+	ERROR_CHECK_RETURN("Could not create D3D11Device!", NULL)
 
 	/* Print driver info */
 	FNA3D_LogInfo("FNA3D Driver: D3D11");
@@ -4555,13 +4521,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 			&D3D_IID_ID3DUserDefinedAnnotation,
 			(void**) &renderer->annotation
 		);
-		if (FAILED(res))
-		{
-			FNA3D_LogError(
-				"Could not get UserDefinedAnnotation! Error: %x",
-				res
-			);
-		}
+		ERROR_CHECK("Could not get UserDefinedAnnotation!")
 	}
 	else
 	{
@@ -4701,13 +4661,7 @@ static void D3D11_PLATFORM_CreateSwapChain(
 		NULL,
 		(IDXGISwapChain1**) &renderer->swapchain
 	);
-	if (FAILED(res))
-	{
-		FNA3D_LogError(
-			"Could not create swapchain! Error code: %x",
-			res
-		);
-	}
+	ERROR_CHECK("Could not create swapchain!")
 }
 
 #else
@@ -4865,13 +4819,7 @@ static void D3D11_PLATFORM_CreateSwapChain(
 		&swapchainDesc,
 		&renderer->swapchain
 	);
-	if (FAILED(res))
-	{
-		FNA3D_LogError(
-			"Could not create swapchain! Error code: %x",
-			res
-		);
-	}
+	ERROR_CHECK("Could not create swapchain!")
 }
 
 #endif
