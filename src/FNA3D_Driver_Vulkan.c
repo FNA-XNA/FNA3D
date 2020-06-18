@@ -4754,7 +4754,6 @@ void VULKAN_ApplyVertexBufferBindings(
 	VkBuffer buffers[MAX_BOUND_VERTEX_BUFFERS];
 	VkDeviceSize offsets[MAX_BOUND_VERTEX_BUFFERS];
 	uint32_t i, firstVertexBufferIndex, vertexBufferIndex, bufferCount;
-	uint8_t needsRebind = 0;
 
 	CheckVertexBufferBindings(
 		renderer,
@@ -4772,15 +4771,6 @@ void VULKAN_ApplyVertexBufferBindings(
 		vertexBuffer = (VulkanBuffer*) bindings[i].vertexBuffer;
 		if (vertexBuffer == NULL)
 		{
-			buffers[bufferCount] = NULL;
-			offsets[bufferCount] = 0;
-			bufferCount++;
-
-			if (renderer->ldVertexBuffers[vertexBufferIndex] != NULL)
-			{
-				renderer->ldVertexBuffers[vertexBufferIndex] = NULL;
-				needsRebind = 1;
-			}
 			continue;
 		}
 
@@ -4795,7 +4785,6 @@ void VULKAN_ApplyVertexBufferBindings(
 		{
 			renderer->ldVertexBuffers[vertexBufferIndex] = vertexBuffer->handle;
 			renderer->ldVertexBufferOffsets[vertexBufferIndex] = offset;
-			needsRebind = 1;
 		}
 
 		buffers[bufferCount] = vertexBuffer->handle;
@@ -4803,7 +4792,7 @@ void VULKAN_ApplyVertexBufferBindings(
 		bufferCount++;
 	}
 
-	if (needsRebind)
+	if (bufferCount > 0)
 	{
 		renderer->vkCmdBindVertexBuffers(
 			renderer->drawCommandBuffers[renderer->currentFrame],
