@@ -153,7 +153,6 @@ typedef struct PipelineHash
 	StateHash rasterizerState;
 	StateHash depthStencilState;
 	uint64_t vertexBufferBindingsHash;
-	uint64_t vertexDeclarationHash;
 	FNA3D_PrimitiveType primitiveType;
 	VkSampleMask sampleMask;
 	uint64_t vertShader;
@@ -356,16 +355,6 @@ typedef struct FNAVulkanRenderer
 	FNA3D_PrimitiveType currentPrimitiveType;
 
 	VulkanBuffer *buffers;
-	VulkanBuffer *userVertexBuffer;
-	VulkanBuffer *userIndexBuffer;
-	int32_t userVertexStride;
-	uint8_t userVertexBufferInUse;
-	FNA3D_VertexDeclaration userVertexDeclaration;
-	uint64_t currentUserVertexDeclarationHash;
-
-	/* Some vertex declarations may have overlapping attributes :/ */
-	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
-
 	uint32_t numVertexBindings;
 	FNA3D_VertexBufferBinding *vertexBindings;
 
@@ -726,13 +715,6 @@ static void BindResources(
 	FNAVulkanRenderer *renderer
 );
 
-static void BindUserVertexBuffer(
-	FNAVulkanRenderer *renderer,
-	void *vertexData,
-	int32_t vertexCount,
-	int32_t vertexOffset
-);
-
 static void CheckPrimitiveType(
 	FNAVulkanRenderer *renderer,
 	FNA3D_PrimitiveType primitiveType
@@ -742,11 +724,6 @@ static void CheckVertexBufferBindings(
 	FNAVulkanRenderer *renderer,
 	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings
-);
-
-static void CheckVertexDeclaration(
-	FNAVulkanRenderer *renderer,
-	FNA3D_VertexDeclaration *vertexDeclaration
 );
 
 static void CreateBackingBuffer(
@@ -898,13 +875,6 @@ static uint8_t FindMemoryType(
 	uint32_t *result
 );
 
-static void GenerateUserVertexInputInfo(
-	FNAVulkanRenderer *renderer,
-	VkVertexInputBindingDescription *bindingDescriptions,
-	VkVertexInputAttributeDescription* attributeDescriptions,
-	uint32_t *attributeDescriptionCount
-);
-
 static void GenerateVertexInputInfo(
 	FNAVulkanRenderer *renderer,
 	VkVertexInputBindingDescription *bindingDescriptions,
@@ -935,14 +905,6 @@ static void SetBufferData(
 	void* data,
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
-);
-
-static void SetUserBufferData(
-	FNAVulkanRenderer *renderer,
-	VulkanBuffer *buffer,
-	int32_t offsetInBytes,
-	void* data,
-	int32_t dataLength
 );
 
 void VULKAN_SetRenderTargets(
@@ -2120,55 +2082,6 @@ static void BindResources(FNAVulkanRenderer *renderer)
 	);
 }
 
-static void BindUserVertexBuffer(
-	FNAVulkanRenderer *renderer,
-	void *vertexData,
-	int32_t vertexCount,
-	int32_t vertexOffset
-) {
-	VkDeviceSize len, offset;
-	VkBuffer handle;
-	uint32_t swapChainOffset;
-
-	len = vertexCount * renderer->userVertexStride;
-	if (renderer->userVertexBuffer == NULL)
-	{
-		renderer->userVertexBuffer = CreateBuffer(
-			renderer,
-			FNA3D_BUFFERUSAGE_WRITEONLY,
-			len,
-			RESOURCE_ACCESS_VERTEX_BUFFER
-		);
-	}
-
-	SetUserBufferData(
-		renderer,
-		renderer->userVertexBuffer,
-		vertexOffset * renderer->userVertexStride,
-		vertexData,
-		len
-	);
-
-	offset = renderer->userVertexBuffer->internalOffset;
-	handle = renderer->userVertexBuffer->handle;
-
-	swapChainOffset = MAX_BOUND_VERTEX_BUFFERS * renderer->currentFrame;
-
-	if (	renderer->ldVertexBuffers[swapChainOffset] != handle ||
-			renderer->ldVertexBufferOffsets[swapChainOffset] != offset	)
-	{
-		renderer->vkCmdBindVertexBuffers(
-			renderer->drawCommandBuffers[renderer->currentFrame],
-			0,
-			1,
-			&handle,
-			&offset
-		);
-		renderer->ldVertexBuffers[swapChainOffset] = handle;
-		renderer->ldVertexBufferOffsets[swapChainOffset] = offset;
-	}
-}
-
 static void CheckPrimitiveType(
 	FNAVulkanRenderer *renderer,
 	FNA3D_PrimitiveType primitiveType
@@ -2198,29 +2111,7 @@ static void CheckVertexBufferBindings(
 
 	renderer->vertexBindings = bindings;
 	renderer->numVertexBindings = numBindings;
-	renderer->userVertexBufferInUse = 0;
 	renderer->currentVertexBufferBindingHash = hash;
-	renderer->currentUserVertexDeclarationHash = 0;
-}
-
-static void CheckVertexDeclaration(
-	FNAVulkanRenderer *renderer,
-	FNA3D_VertexDeclaration *vertexDeclaration
-) {
-	MOJOSHADER_vkShader *vertexShader, *blah;
-	uint64_t hash;
-
-	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
-
-	hash = GetVertexDeclarationHash(
-		*vertexDeclaration,
-		vertexShader
-	);
-
-	renderer->userVertexBufferInUse = 1;
-	renderer->currentUserVertexDeclarationHash = hash;
-	renderer->currentVertexBufferBindingHash = 0;
-	renderer->userVertexDeclaration = *vertexDeclaration;
 }
 
 static void CreateBackingBuffer(
@@ -2485,51 +2376,6 @@ static void SetBufferData(
 	vulkanBuffer->prevInternalOffset = vulkanBuffer->internalOffset;
 }
 
-static void SetUserBufferData(
-	FNAVulkanRenderer *renderer,
-	VulkanBuffer *buffer,
-	int32_t offsetInBytes,
-	void* data,
-	int32_t dataLength
-) {
-	int32_t sizeRequired, previousSize;
-	void* contents;
-
-	buffer->internalOffset += buffer->prevDataLength;
-	sizeRequired = buffer->internalOffset + dataLength;
-	if (sizeRequired > buffer->internalBufferSize)
-	{
-		previousSize = buffer->internalBufferSize;
-		buffer->internalBufferSize = SDL_max(
-			buffer->internalBufferSize * 2,
-			buffer->internalBufferSize + dataLength
-		);
-		CreateBackingBuffer(renderer, buffer, previousSize, buffer->usageFlags);
-	}
-
-	renderer->vkMapMemory(
-		renderer->logicalDevice,
-		buffer->deviceMemory,
-		0,
-		buffer->internalBufferSize,
-		0,
-		&contents
-	);
-
-	SDL_memcpy(
-		(uint8_t*) contents + buffer->internalOffset,
-		(uint8_t*) data + offsetInBytes,
-		dataLength
-	);
-
-	renderer->vkUnmapMemory(
-		renderer->logicalDevice,
-		buffer->deviceMemory
-	);
-
-	buffer->prevDataLength = dataLength;
-}
-
 /* Init/Quit */
 
 uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
@@ -2566,16 +2412,6 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 	DestroyImageData(renderer, renderer->dummyFragTexture->imageData);
 	DestroyBuffer(renderer, renderer->dummyFragTexture->stagingBuffer);
 	SDL_free(renderer->dummyFragTexture);
-
-	if (renderer->userVertexBuffer != NULL)
-	{
-		DestroyBuffer(renderer, renderer->userVertexBuffer);
-	}
-
-	if (renderer->userIndexBuffer != NULL)
-	{
-		DestroyBuffer(renderer, renderer->userIndexBuffer);
-	}
 
 	for (i = 0; i < MAX_FRAMES_IN_FLIGHT + 1; i++)
 	{
@@ -3451,29 +3287,14 @@ static VkPipeline FetchPipeline(
 		sizeof(VkVertexInputAttributeDescription)
 	);
 
-	if (renderer->userVertexBufferInUse)
-	{
-		GenerateUserVertexInputInfo(
-			renderer,
-			bindingDescriptions,
-			attributeDescriptions,
-			&attributeDescriptionCount
-		);
+	GenerateVertexInputInfo(
+		renderer,
+		bindingDescriptions,
+		attributeDescriptions,
+		&attributeDescriptionCount
+	);
 
-		vertexInputInfo.vertexBindingDescriptionCount = 1;
-	}
-	else
-	{
-		GenerateVertexInputInfo(
-			renderer,
-			bindingDescriptions,
-			attributeDescriptions,
-			&attributeDescriptionCount
-		);
-
-		vertexInputInfo.vertexBindingDescriptionCount = renderer->numVertexBindings;
-	}
-
+	vertexInputInfo.vertexBindingDescriptionCount = renderer->numVertexBindings;
 	vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions;
 	vertexInputInfo.vertexAttributeDescriptionCount = attributeDescriptionCount;
 	vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions;
@@ -3885,7 +3706,6 @@ static PipelineHash GetPipelineHash(
 		renderer->rasterizerState.depthBias * XNAToVK_DepthBiasScale[renderer->currentDepthFormat]
 	);
 	hash.depthStencilState = GetDepthStencilStateHash(renderer->depthStencilState);
-	hash.vertexDeclarationHash = renderer->currentUserVertexDeclarationHash;
 	hash.vertexBufferBindingsHash = renderer->currentVertexBufferBindingHash;
 	hash.primitiveType = renderer->currentPrimitiveType;
 	hash.sampleMask = renderer->multiSampleMask[0];
@@ -4652,110 +4472,6 @@ void VULKAN_DrawPrimitives(
 	);
 }
 
-void VULKAN_DrawUserIndexedPrimitives(
-	FNA3D_Renderer *driverData,
-	FNA3D_PrimitiveType primitiveType,
-	void* vertexData,
-	int32_t vertexOffset,
-	int32_t numVertices,
-	void* indexData,
-	int32_t indexOffset,
-	FNA3D_IndexElementSize indexElementSize,
-	int32_t primitiveCount
-) {
-	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
-	int32_t numIndices, indexSize;
-	uint32_t firstIndex;
-	VkDeviceSize len;
-
-	CheckPrimitiveType(renderer, primitiveType);
-	UpdateRenderPass(renderer);
-	BindPipeline(renderer);
-	BindResources(renderer);
-
-	BindUserVertexBuffer(
-		renderer,
-		vertexData,
-		numVertices,
-		vertexOffset
-	);
-
-	numIndices = PrimitiveVerts(primitiveType, primitiveCount);
-	indexSize = IndexSize(indexElementSize);
-	len = numIndices * indexSize;
-
-	if (renderer->userIndexBuffer == NULL)
-	{
-		renderer->userIndexBuffer = CreateBuffer(
-			renderer,
-			FNA3D_BUFFERUSAGE_WRITEONLY,
-			len,
-			RESOURCE_ACCESS_INDEX_BUFFER
-		);
-	}
-
-	SetUserBufferData(
-		renderer,
-		renderer->userIndexBuffer,
-		indexOffset * indexSize,
-		indexData,
-		len
-	);
-
-	renderer->vkCmdBindIndexBuffer(
-		renderer->drawCommandBuffers[renderer->currentFrame],
-		renderer->userIndexBuffer->handle,
-		renderer->userIndexBuffer->internalOffset,
-		XNAToVK_IndexType[indexElementSize]
-	);
-
-	firstIndex = indexOffset / indexSize;
-	
-	renderer->vkCmdDrawIndexed(
-		renderer->drawCommandBuffers[renderer->currentFrame],
-		numIndices,
-		1,
-		firstIndex,
-		vertexOffset,
-		0
-	);
-}
-
-void VULKAN_DrawUserPrimitives(
-	FNA3D_Renderer *driverData,
-	FNA3D_PrimitiveType primitiveType,
-	void* vertexData,
-	int32_t vertexOffset,
-	int32_t primitiveCount
-) {
-	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
-
-	int32_t numVerts = PrimitiveVerts(
-		primitiveType,
-		primitiveCount
-	);
-
-	CheckPrimitiveType(renderer, primitiveType);
-	UpdateRenderPass(renderer);
-	BindPipeline(renderer);
-	BindResources(renderer);
-
-	BindUserVertexBuffer(
-		renderer,
-		vertexData,
-		numVerts,
-		vertexOffset
-	);
-
-	renderer->vkCmdDraw(
-		renderer->drawCommandBuffers[renderer->currentFrame],
-		numVerts,
-		1,
-		vertexOffset,
-		0
-	);
-}
-
 /* Mutable Render States */
 
 void VULKAN_SetViewport(
@@ -5097,18 +4813,6 @@ void VULKAN_ApplyVertexBufferBindings(
 			offsets
 		);
 	}
-}
-
-void VULKAN_ApplyVertexDeclaration(
-	FNA3D_Renderer *driverData,
-	FNA3D_VertexDeclaration *vertexDeclaration,
-	void* ptr,
-	int32_t vertexOffset
-) {
-	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
-
-	CheckVertexDeclaration(renderer,vertexDeclaration);
-	renderer->userVertexStride = vertexDeclaration->vertexStride;
 }
 
 /* Render Targets */
@@ -7623,82 +7327,6 @@ static uint8_t FindMemoryType(
 	return 0;
 }
 
-static void GenerateUserVertexInputInfo(
-	FNAVulkanRenderer *renderer,
-	VkVertexInputBindingDescription *bindingDescriptions,
-	VkVertexInputAttributeDescription* attributeDescriptions,
-	uint32_t *attributeDescriptionCount
-) {
-	MOJOSHADER_vkShader *vertexShader, *blah;
-	uint32_t attributeDescriptionCounter = 0;
-	uint32_t i, j;
-	FNA3D_VertexElement element;
-	FNA3D_VertexElementUsage usage;
-	int32_t index, attribLoc;
-	VkVertexInputAttributeDescription vInputAttribDescription;
-
-	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
-
-	bindingDescriptions[0].binding = 0;
-	bindingDescriptions[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-	bindingDescriptions[0].stride = renderer->userVertexDeclaration.vertexStride;
-
-	SDL_memset(renderer->attrUse, '\0', sizeof(renderer->attrUse));
-	for (i = 0; i < renderer->userVertexDeclaration.elementCount; i++)
-	{
-		element = renderer->userVertexDeclaration.elements[i];
-		usage = element.vertexElementUsage;
-		index = element.usageIndex;
-
-		if (renderer->attrUse[usage][index])
-		{
-			index = -1;
-
-			for (j = 0; j < MAX_VERTEX_ATTRIBUTES; j++)
-			{
-				if (!renderer->attrUse[usage][j])
-				{
-					index = j;
-					break;
-				}
-			}
-
-			if (index < 0)
-			{
-				FNA3D_LogError(
-					"Vertex usage collision!"
-				);
-			}
-		}
-
-		renderer->attrUse[usage][index] = 1;
-
-		attribLoc = MOJOSHADER_vkGetVertexAttribLocation(
-			vertexShader,
-			VertexAttribUsage(usage),
-			index
-		);
-		
-		if (attribLoc == -1)
-		{
-			/* Stream not in use! */
-			continue;
-		}
-
-		vInputAttribDescription.location = attribLoc;
-		vInputAttribDescription.format = XNAToVK_VertexAttribType[
-			element.vertexElementFormat
-		];
-		vInputAttribDescription.offset = element.offset;
-		vInputAttribDescription.binding = 0;
-
-		attributeDescriptions[attributeDescriptionCounter] = vInputAttribDescription;
-		attributeDescriptionCounter++;
-	}
-
-	*attributeDescriptionCount = attributeDescriptionCounter;
-}
-
 static void GenerateVertexInputInfo(
 	FNAVulkanRenderer *renderer,
 	VkVertexInputBindingDescription *bindingDescriptions,
@@ -7706,6 +7334,7 @@ static void GenerateVertexInputInfo(
 	uint32_t *attributeDescriptionCount
 ) {
 	MOJOSHADER_vkShader *vertexShader, *blah;
+	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 	uint32_t attributeDescriptionCounter = 0;
 	uint32_t i, j, k;
 	FNA3D_VertexDeclaration vertexDeclaration;
@@ -7717,7 +7346,7 @@ static void GenerateVertexInputInfo(
 
 	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
 
-	SDL_memset(renderer->attrUse, '\0', sizeof(renderer->attrUse));
+	SDL_memset(attrUse, '\0', sizeof(attrUse));
 	for (i = 0; i < renderer->numVertexBindings; i++)
 	{
 		vertexDeclaration = renderer->vertexBindings[i].vertexDeclaration;
@@ -7728,13 +7357,13 @@ static void GenerateVertexInputInfo(
 			usage = element.vertexElementUsage;
 			index = element.usageIndex;
 
-			if (renderer->attrUse[usage][index])
+			if (attrUse[usage][index])
 			{
 				index = -1;
 
 				for (k = 0; k < MAX_VERTEX_ATTRIBUTES; k++)
 				{
-					if (!renderer->attrUse[usage][k])
+					if (!attrUse[usage][k])
 					{
 						index = k;
 						break;
@@ -7749,7 +7378,7 @@ static void GenerateVertexInputInfo(
 				}
 			}
 
-			renderer->attrUse[usage][index] = 1;
+			attrUse[usage][index] = 1;
 
 			attribLoc = MOJOSHADER_vkGetVertexAttribLocation(
 				vertexShader,
