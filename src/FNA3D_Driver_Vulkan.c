@@ -6187,9 +6187,7 @@ void VULKAN_GetTextureData2D(
 	VulkanResourceAccessType prevResourceAccess;
 	void *stagingData;
 	VkBufferImageCopy imageCopy;
-	int32_t row;
 	uint8_t *dataPtr = (uint8_t*) data;
-	int32_t formatSize = Texture_GetFormatSize(format);
 
 	/* Cache this so we can restore it later */
 	prevResourceAccess = vulkanTexture->imageData->imageResource.resourceAccessType;
@@ -6549,15 +6547,14 @@ FNA3D_Buffer* VULKAN_GenVertexBuffer(
 	FNA3D_Renderer *driverData,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t vertexCount,
-	int32_t vertexStride
+	int32_t sizeInBytes
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 
 	return (FNA3D_Buffer*) CreateBuffer(
 		renderer,
 		usage,
-		vertexCount * vertexStride,
+		sizeInBytes,
 		RESOURCE_ACCESS_VERTEX_BUFFER
 	);
 }
@@ -6710,15 +6707,14 @@ FNA3D_Buffer* VULKAN_GenIndexBuffer(
 	FNA3D_Renderer *driverData,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t indexCount,
-	FNA3D_IndexElementSize indexElementSize
+	int32_t sizeInBytes
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 
 	return (FNA3D_Buffer*) CreateBuffer(
 		renderer,
 		usage,
-		indexCount * IndexSize(indexElementSize),
+		sizeInBytes,
 		RESOURCE_ACCESS_INDEX_BUFFER
 	);
 }
