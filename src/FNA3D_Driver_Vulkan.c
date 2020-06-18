@@ -296,7 +296,6 @@ typedef struct FNAVulkanRenderer
 	VkPhysicalDeviceProperties2 physicalDeviceProperties;
 	VkPhysicalDeviceDriverProperties physicalDeviceDriverProperties;
 	VkDevice logicalDevice;
-	SDL_mutex *cmdLock;
 
 	FNA3D_PresentInterval presentInterval;
 	void* deviceWindowHandle;
@@ -1539,13 +1538,11 @@ static void BindPipeline(FNAVulkanRenderer *renderer)
 
 	if (pipeline != renderer->currentPipeline)
 	{
-		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdBindPipeline(
 			renderer->drawCommandBuffers[renderer->currentFrame],
 			VK_PIPELINE_BIND_POINT_GRAPHICS,
 			pipeline
 		);
-		SDL_UnlockMutex(renderer->cmdLock);
 
 		renderer->currentPipeline = pipeline;
 	}
@@ -2103,7 +2100,6 @@ static void BindResources(FNAVulkanRenderer *renderer)
 	descriptorSetsToBind[2] = renderer->currentVertUniformBufferDescriptorSet;
 	descriptorSetsToBind[3] = renderer->currentFragUniformBufferDescriptorSet;
 
-	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkCmdBindDescriptorSets(
 		renderer->drawCommandBuffers[renderer->currentFrame],
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
@@ -2114,7 +2110,6 @@ static void BindResources(FNAVulkanRenderer *renderer)
 		dynamicOffsetsCount,
 		dynamicOffsets
 	);
-	SDL_UnlockMutex(renderer->cmdLock);
 }
 
 static void BindUserVertexBuffer(
@@ -2154,7 +2149,6 @@ static void BindUserVertexBuffer(
 	if (	renderer->ldVertexBuffers[swapChainOffset] != handle ||
 			renderer->ldVertexBufferOffsets[swapChainOffset] != offset	)
 	{
-		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdBindVertexBuffers(
 			renderer->drawCommandBuffers[renderer->currentFrame],
 			0,
@@ -2162,7 +2156,6 @@ static void BindUserVertexBuffer(
 			&handle,
 			&offset
 		);
-		SDL_UnlockMutex(renderer->cmdLock);
 		renderer->ldVertexBuffers[swapChainOffset] = handle;
 		renderer->ldVertexBufferOffsets[swapChainOffset] = offset;
 	}
@@ -2800,7 +2793,6 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 		SDL_free(renderer->imageDatasToDestroy[i]);
 	}
 
-	SDL_DestroyMutex(renderer->cmdLock);
 	SDL_free(renderer);
 	SDL_free(device);
 }
@@ -2876,7 +2868,6 @@ static void CreateBufferMemoryBarrier(
 	{
 		srcStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
 	}
-	
 	if (dstStages == 0)
 	{
 		dstStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
@@ -2885,41 +2876,20 @@ static void CreateBufferMemoryBarrier(
 	if (renderer->renderPassInProgress)
 	{
 		EndPass(renderer);
-
-		SDL_LockMutex(renderer->cmdLock);
-		renderer->vkCmdPipelineBarrier(
-			commandBuffer,
-			srcStages,
-			dstStages,
-			0,
-			0,
-			NULL,
-			1,
-			&memoryBarrier,
-			0,
-			NULL
-		);
-		SDL_UnlockMutex(renderer->cmdLock);
-
 		renderer->needNewRenderPass = 1;
 	}
-	else
-	{
-		SDL_LockMutex(renderer->cmdLock);
-		renderer->vkCmdPipelineBarrier(
-			commandBuffer,
-			srcStages,
-			dstStages,
-			0,
-			0,
-			NULL,
-			1,
-			&memoryBarrier,
-			0,
-			NULL
-		);
-		SDL_UnlockMutex(renderer->cmdLock);
-	}
+	renderer->vkCmdPipelineBarrier(
+		commandBuffer,
+		srcStages,
+		dstStages,
+		0,
+		0,
+		NULL,
+		1,
+		&memoryBarrier,
+		0,
+		NULL
+	);
 
 	stagingBuffer->resourceAccessType = nextResourceAccessType;
 }
@@ -2992,41 +2962,20 @@ static void CreateImageMemoryBarrier(
 	if (renderer->renderPassInProgress)
 	{
 		EndPass(renderer);
-
-		SDL_LockMutex(renderer->cmdLock);
-		renderer->vkCmdPipelineBarrier(
-			commandBuffer,
-			srcStages,
-			dstStages,
-			0,
-			0,
-			NULL,
-			0,
-			NULL,
-			1,
-			&memoryBarrier
-		);
-		SDL_UnlockMutex(renderer->cmdLock);
-
 		renderer->needNewRenderPass = 1;
 	}
-	else
-	{
-		SDL_LockMutex(renderer->cmdLock);
-		renderer->vkCmdPipelineBarrier(
-			commandBuffer,
-			srcStages,
-			dstStages,
-			0,
-			0,
-			NULL,
-			0,
-			NULL,
-			1,
-			&memoryBarrier
-		);
-		SDL_UnlockMutex(renderer->cmdLock);
-	}
+	renderer->vkCmdPipelineBarrier(
+		commandBuffer,
+		srcStages,
+		dstStages,
+		0,
+		0,
+		NULL,
+		0,
+		NULL,
+		1,
+		&memoryBarrier
+	);
 
 	imageResource->resourceAccessType = barrierCreateInfo.nextAccess;
 }
@@ -3299,7 +3248,6 @@ static uint8_t BlitFramebuffer(
 	
 	/* TODO: use vkCmdResolveImage for multisampled images */
 	/* TODO: blit depth/stencil buffer as well */
-	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkCmdBlitImage(
 		renderer->drawCommandBuffers[renderer->currentFrame],
 		srcImage->image,
@@ -3310,7 +3258,6 @@ static uint8_t BlitFramebuffer(
 		&blit,
 		VK_FILTER_LINEAR /* FIXME: where is the final blit filter defined? -cosmonaut */
 	);
-	SDL_UnlockMutex(renderer->cmdLock);
 
 	memoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	memoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
@@ -3982,8 +3929,6 @@ static void BeginRenderPass(
 	renderPassBeginInfo.renderPass = renderer->renderPass;
 	renderPassBeginInfo.framebuffer = framebuffer;
 
-	SDL_LockMutex(renderer->cmdLock);
-
 	renderer->vkCmdBeginRenderPass(
 		renderer->drawCommandBuffers[renderer->currentFrame],
 		&renderPassBeginInfo,
@@ -4009,8 +3954,6 @@ static void BeginRenderPass(
 	);
 
 	/* TODO: visibility buffer */
-
-	SDL_UnlockMutex(renderer->cmdLock);
 
 	/* Reset bindings for the current frame in flight */
 	
@@ -4068,8 +4011,6 @@ void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 	LogVulkanResult("vkWaitForFences", result);
 
 	/* perform cleanup */
-
-	SDL_LockMutex(renderer->cmdLock);
 
 	renderer->vkResetCommandBuffer(
 		renderer->dataCommandBuffers[renderer->currentFrame],
@@ -4141,8 +4082,6 @@ void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 	renderer->commandBufferActive[renderer->currentFrame] = 1;
 	renderer->frameInProgress[renderer->currentFrame] = 1;
 	renderer->needNewRenderPass = 1;
-
-	SDL_UnlockMutex(renderer->cmdLock);
 }
 
 static void InternalBeginFrame(FNAVulkanRenderer *renderer)
@@ -4249,8 +4188,6 @@ void VULKAN_SwapBuffers(
 		dstRect
 	);
 
-	SDL_LockMutex(renderer->cmdLock);
-
 	vulkanResult = renderer->vkEndCommandBuffer(
 		renderer->dataCommandBuffers[renderer->currentFrame]
 	);
@@ -4322,8 +4259,6 @@ void VULKAN_SwapBuffers(
 		LogVulkanResult("vkQueueSubmit", result);
 		return;
 	}
-
-	SDL_UnlockMutex(renderer->cmdLock);
 
 	presentInfo.waitSemaphoreCount = 1;
 	presentInfo.pWaitSemaphores = &renderer->renderFinishedSemaphores[renderer->currentFrame];
@@ -4447,7 +4382,6 @@ static void RenderPassClear(
 		}
 	}
 
-	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkCmdClearAttachments(
 		renderer->drawCommandBuffers[renderer->currentFrame],
 		attachmentCount,
@@ -4455,7 +4389,6 @@ static void RenderPassClear(
 		1,
 		&clearRect
 	);
-	SDL_UnlockMutex(renderer->cmdLock);
 
 	SDL_stack_free(clearAttachments);
 }
@@ -4481,8 +4414,6 @@ static void OutsideRenderPassClear(
 	VkClearDepthStencilValue clearDepthStencilValue;
 	clearDepthStencilValue.depth = depth;
 	clearDepthStencilValue.stencil = stencil;
-
-	SDL_LockMutex(renderer->cmdLock);
 
 	if (clearColor)
 	{
@@ -4569,8 +4500,6 @@ static void OutsideRenderPassClear(
 			);
 		}
 	}
-
-	SDL_UnlockMutex(renderer->cmdLock);
 }
 
 void VULKAN_Clear(
@@ -4644,8 +4573,6 @@ void VULKAN_DrawInstancedPrimitives(
 	BindPipeline(renderer);
 	BindResources(renderer);
 
-	SDL_LockMutex(renderer->cmdLock);
-
 	renderer->vkCmdBindIndexBuffer(
 		renderer->drawCommandBuffers[renderer->currentFrame],
 		indexBuffer->handle,
@@ -4661,8 +4588,6 @@ void VULKAN_DrawInstancedPrimitives(
 		totalIndexOffset,
 		0
 	);
-
-	SDL_UnlockMutex(renderer->cmdLock);
 }
 
 void VULKAN_DrawIndexedPrimitives(
@@ -4703,7 +4628,6 @@ void VULKAN_DrawPrimitives(
 	BindPipeline(renderer);
 	BindResources(renderer);
 
-	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkCmdDraw(
 		renderer->drawCommandBuffers[renderer->currentFrame],
 		PrimitiveVerts(primitiveType, primitiveCount),
@@ -4711,7 +4635,6 @@ void VULKAN_DrawPrimitives(
 		vertexStart,
 		0
 	);
-	SDL_UnlockMutex(renderer->cmdLock);
 }
 
 void VULKAN_DrawUserIndexedPrimitives(
@@ -4764,8 +4687,6 @@ void VULKAN_DrawUserIndexedPrimitives(
 		len
 	);
 
-	SDL_LockMutex(renderer->cmdLock);
-
 	renderer->vkCmdBindIndexBuffer(
 		renderer->drawCommandBuffers[renderer->currentFrame],
 		renderer->userIndexBuffer->handle,
@@ -4783,8 +4704,6 @@ void VULKAN_DrawUserIndexedPrimitives(
 		vertexOffset,
 		0
 	);
-
-	SDL_UnlockMutex(renderer->cmdLock);
 }
 
 void VULKAN_DrawUserPrimitives(
@@ -4813,7 +4732,6 @@ void VULKAN_DrawUserPrimitives(
 		vertexOffset
 	);
 
-	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkCmdDraw(
 		renderer->drawCommandBuffers[renderer->currentFrame],
 		numVerts,
@@ -4821,7 +4739,6 @@ void VULKAN_DrawUserPrimitives(
 		vertexOffset,
 		0
 	);
-	SDL_UnlockMutex(renderer->cmdLock);
 }
 
 /* Mutable Render States */
@@ -4890,12 +4807,10 @@ void VULKAN_SetBlendFactor(
 
 		if (renderer->frameInProgress[renderer->currentFrame])
 		{
-			SDL_LockMutex(renderer->cmdLock);
 			renderer->vkCmdSetBlendConstants(
 				renderer->drawCommandBuffers[renderer->currentFrame],
 				blendConstants
 			);
-			SDL_UnlockMutex(renderer->cmdLock);
 		}
 	}
 }
@@ -4957,12 +4872,10 @@ void VULKAN_SetBlendState(
 	/* Dynamic state */
 	if (renderer->frameInProgress[renderer->currentFrame])
 	{
-		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdSetBlendConstants(
 			renderer->drawCommandBuffers[renderer->currentFrame],
 			blendConstants
 		);
-		SDL_UnlockMutex(renderer->cmdLock);
 	}
 }
 
@@ -5161,7 +5074,6 @@ void VULKAN_ApplyVertexBufferBindings(
 
 	if (needsRebind)
 	{
-		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdBindVertexBuffers(
 			renderer->drawCommandBuffers[renderer->currentFrame],
 			0,
@@ -5169,7 +5081,6 @@ void VULKAN_ApplyVertexBufferBindings(
 			buffers,
 			offsets
 		);
-		SDL_UnlockMutex(renderer->cmdLock);
 	}
 }
 
@@ -5382,12 +5293,9 @@ static void EndPass(
 ) {
 	if (renderer->renderPassInProgress)
 	{
-		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdEndRenderPass(
 			renderer->drawCommandBuffers[renderer->currentFrame]
 		);
-		SDL_UnlockMutex(renderer->cmdLock);
-
 		renderer->renderPassInProgress = 0;
 	}
 }
@@ -5493,14 +5401,12 @@ static void SetDepthBiasCommand(FNAVulkanRenderer *renderer)
 {
 	if (renderer->renderPassInProgress)
 	{
-		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdSetDepthBias(
 			renderer->drawCommandBuffers[renderer->currentFrame],
 			renderer->rasterizerState.depthBias,
 			0.0, /* no clamp */
 			renderer->rasterizerState.slopeScaleDepthBias
 		);
-		SDL_UnlockMutex(renderer->cmdLock);
 	}
 }
 
@@ -5529,14 +5435,12 @@ static void SetScissorRectCommand(FNAVulkanRenderer *renderer)
 		vulkanScissorRect.offset = offset;
 		vulkanScissorRect.extent = extent;
 
-		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdSetScissor(
 			renderer->drawCommandBuffers[renderer->currentFrame],
 			0,
 			1,
 			&vulkanScissorRect
 		);
-		SDL_UnlockMutex(renderer->cmdLock);
 	}
 }
 
@@ -5545,13 +5449,11 @@ static void SetStencilReferenceValueCommand(
 ) {
 	if (renderer->renderPassInProgress)
 	{
-		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdSetStencilReference(
 			renderer->drawCommandBuffers[renderer->currentFrame],
 			VK_STENCIL_FACE_FRONT_AND_BACK,
 			renderer->stencilRef
 		);
-		SDL_UnlockMutex(renderer->cmdLock);
 	}
 }
 
@@ -5580,14 +5482,12 @@ static void SetViewportCommand(
 
 	if (renderer->frameInProgress[renderer->currentFrame])
 	{
-		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdSetViewport(
 			renderer->drawCommandBuffers[renderer->currentFrame],
 			0,
 			1,
 			&vulkanViewport
 		);
-		SDL_UnlockMutex(renderer->cmdLock);
 	}
 }
 
@@ -5606,8 +5506,6 @@ static void Stall(FNAVulkanRenderer *renderer)
 	VulkanBuffer *buf;
 
 	EndPass(renderer);
-
-	SDL_LockMutex(renderer->cmdLock);
 
 	renderer->vkEndCommandBuffer(
 		renderer->dataCommandBuffers[renderer->currentFrame]
@@ -5716,8 +5614,6 @@ static void Stall(FNAVulkanRenderer *renderer)
 		renderer->drawCommandBuffers[renderer->currentFrame],
 		&beginInfo
 	);
-
-	SDL_UnlockMutex(renderer->cmdLock);
 }
 
 void VULKAN_ResolveTarget(
@@ -5963,8 +5859,6 @@ void VULKAN_SetTextureData2D(
 
 	VULKAN_BeginFrame(driverData);
 
-	SDL_LockMutex(renderer->cmdLock);
-
 	renderer->vkMapMemory(
 		renderer->logicalDevice,
 		stagingBuffer->deviceMemory,
@@ -6027,7 +5921,6 @@ void VULKAN_SetTextureData2D(
 		1,
 		&imageCopy
 	);
-	SDL_UnlockMutex(renderer->cmdLock);
 }
 
 void VULKAN_SetTextureData3D(
@@ -6108,8 +6001,6 @@ void VULKAN_SetTextureDataYUV(
 	imageCopy.imageSubresource.layerCount = 1;
 	imageCopy.imageSubresource.mipLevel = 0;
 	imageCopy.bufferOffset = 0;
-
-	SDL_LockMutex(renderer->cmdLock);
 
 	/* Y */
 
@@ -6266,8 +6157,6 @@ void VULKAN_SetTextureDataYUV(
 		1,
 		&imageCopy
 	);
-
-	SDL_UnlockMutex(renderer->cmdLock);
 }
 
 void VULKAN_GetTextureData2D(
@@ -6998,14 +6887,12 @@ void VULKAN_AddDisposeQuery(FNA3D_Renderer *driverData, FNA3D_Query *query)
 	/* Need to do this between passes */
 	EndPass(renderer);
 
-	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkCmdResetQueryPool(
 		renderer->drawCommandBuffers[renderer->currentFrame],
 		renderer->queryPool,
 		vulkanQuery->index,
 		1
 	);
-	SDL_UnlockMutex(renderer->cmdLock);
 
 	/* Push the now-freed index to the stack */
 	renderer->freeQueryIndexStack[vulkanQuery->index] = renderer->freeQueryIndexStackHead;
@@ -7019,14 +6906,12 @@ void VULKAN_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	VulkanQuery *vulkanQuery = (VulkanQuery*) query;
 
-	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkCmdBeginQuery(
 		renderer->drawCommandBuffers[renderer->currentFrame],
 		renderer->queryPool,
 		vulkanQuery->index,
 		VK_QUERY_CONTROL_PRECISE_BIT
 	);
-	SDL_UnlockMutex(renderer->cmdLock);
 }
 
 void VULKAN_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
@@ -7036,13 +6921,11 @@ void VULKAN_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
 
 	/* Assume that the user is calling this in the same pass as they started it */
 
-	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkCmdEndQuery(
 		renderer->drawCommandBuffers[renderer->currentFrame],
 		renderer->queryPool,
 		vulkanQuery->index
 	);
-	SDL_UnlockMutex(renderer->cmdLock);
 }
 
 uint8_t VULKAN_QueryComplete(FNA3D_Renderer *driverData, FNA3D_Query *query)
@@ -7178,12 +7061,10 @@ void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 
 	if (renderer->supportsDebugUtils)
 	{
-		SDL_LockMutex(renderer->cmdLock);
 		renderer->vkCmdInsertDebugUtilsLabelEXT(
 			renderer->drawCommandBuffers[renderer->currentFrame],
 			&labelInfo
 		);
-		SDL_UnlockMutex(renderer->cmdLock);
 	}
 }
 
@@ -8128,8 +8009,6 @@ static void RecreateSwapchain(
 	{
 		EndPass(renderer);
 
-		SDL_LockMutex(renderer->cmdLock);
-
 		renderer->vkEndCommandBuffer(
 			renderer->dataCommandBuffers[renderer->currentFrame]
 		);
@@ -8181,8 +8060,6 @@ static void RecreateSwapchain(
 			LogVulkanResult("vkQueueSubmit", result);
 			return;
 		}
-
-		SDL_UnlockMutex(renderer->cmdLock);
 	}
 
 	renderer->commandBufferActive[renderer->currentFrame] = 0;
@@ -8865,7 +8742,6 @@ static uint8_t CreateCommandPoolAndBuffers(
 	commandBufferAllocateInfo.commandPool = renderer->dataCommandPool;
 	commandBufferAllocateInfo.commandBufferCount = MAX_FRAMES_IN_FLIGHT;
 
-	SDL_LockMutex(renderer->cmdLock);
 	renderer->vkAllocateCommandBuffers(
 		renderer->logicalDevice,
 		&commandBufferAllocateInfo,
@@ -8876,7 +8752,6 @@ static uint8_t CreateCommandPoolAndBuffers(
 		&commandBufferAllocateInfo,
 		renderer->drawCommandBuffers
 	);
-	SDL_UnlockMutex(renderer->cmdLock);
 
 	return 1;
 }
@@ -9373,9 +9248,6 @@ FNA3D_Device* VULKAN_CreateDevice(
 		DXTFormatSupported(formatPropsBC2) ||
 		DXTFormatSupported(formatPropsBC3)
 	);
-
-	/* A mutex for accessing the command buffer */
-	renderer->cmdLock = SDL_CreateMutex();
 
 	/* initialize various render object caches */
 	hmdefault(renderer->pipelineHashMap, NULL);
