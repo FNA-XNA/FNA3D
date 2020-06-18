@@ -904,7 +904,7 @@ static ID3D11InputLayout* FetchBindingsInputLayout(
 		datalen,
 		&result
 	);
-	if (res < 0)
+	if (FAILED(res))
 	{
 		FNA3D_LogError(
 			"Could not compile input layout! Error: %x",
@@ -2344,7 +2344,7 @@ static void D3D11_INTERNAL_CreateFramebuffer(
 			DXGI_FORMAT_UNKNOWN,	/* keep the old format */
 			0
 		);
-		if (res < 0)
+		if (FAILED(res))
 		{
 			FNA3D_LogError(
 				"Could not resize swapchain! Error code: %x",
@@ -4204,7 +4204,7 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 
 	D3D11_PLATFORM_UnloadD3D11(module);
 
-	if (res < 0)
+	if (FAILED(res))
 	{
 		return 0;
 	}
@@ -4265,7 +4265,7 @@ static void D3D11_INTERNAL_InitializeFauxBackbuffer(
 		"Faux-Backbuffer Blit Vertex Shader", NULL, NULL,
 		"main", "vs_4_0", 0, 0, &blob, &blob
 	);
-	if (res < 0)
+	if (FAILED(res))
 	{
 		FNA3D_LogError(
 			"Backbuffer vshader failed to compile! Error code: %x",
@@ -4315,7 +4315,7 @@ static void D3D11_INTERNAL_InitializeFauxBackbuffer(
 		"Faux-Backbuffer Blit Pixel Shader", NULL, NULL,
 		"main", "ps_4_0", 0, 0, &blob, &blob
 	);
-	if (res < 0)
+	if (FAILED(res))
 	{
 		FNA3D_LogError(
 			"Backbuffer pshader failed to compile! Error code: %x",
@@ -4451,7 +4451,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 		&renderer->dxgi_dll,
 		&renderer->factory
 	);
-	if (res < 0)
+	if (FAILED(res))
 	{
 		FNA3D_LogError(
 			"Could not create DXGIFactory! Error code: %x",
@@ -4500,7 +4500,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 		&renderer->featureLevel,
 		&renderer->context
 	);
-	if (res < 0)
+	if (FAILED(res))
 	{
 		FNA3D_LogError(
 			"Could not create D3D11Device! Error code: %x",
@@ -4555,7 +4555,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 			&D3D_IID_ID3DUserDefinedAnnotation,
 			(void**) &renderer->annotation
 		);
-		if (res < 0)
+		if (FAILED(res))
 		{
 			FNA3D_LogError(
 				"Could not get UserDefinedAnnotation! Error: %x",
@@ -4701,7 +4701,7 @@ static void D3D11_PLATFORM_CreateSwapChain(
 		NULL,
 		(IDXGISwapChain1**) &renderer->swapchain
 	);
-	if (res < 0)
+	if (FAILED(res))
 	{
 		FNA3D_LogError(
 			"Could not create swapchain! Error code: %x",
@@ -4865,7 +4865,7 @@ static void D3D11_PLATFORM_CreateSwapChain(
 		&swapchainDesc,
 		&renderer->swapchain
 	);
-	if (res < 0)
+	if (FAILED(res))
 	{
 		FNA3D_LogError(
 			"Could not create swapchain! Error code: %x",
