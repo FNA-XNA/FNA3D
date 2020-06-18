@@ -2571,6 +2571,7 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 	D3D11Texture *result;
 	D3D11_TEXTURE2D_DESC desc;
 	D3D11_RENDER_TARGET_VIEW_DESC rtViewDesc;
+	HRESULT res;
 
 	/* Initialize D3D11Texture */
 	result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
@@ -2596,12 +2597,18 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 	}
 
 	/* Create the texture */
-	ID3D11Device_CreateTexture2D(
+	res = ID3D11Device_CreateTexture2D(
 		renderer->device,
 		&desc,
 		NULL,
 		(ID3D11Texture2D**) &result->handle
 	);
+	if (FAILED(res))
+	{
+		SDL_free(result);
+		FNA3D_LogError("Texture2D creation failed: %X\n", res);
+		return NULL;
+	}
 	result->levelCount = levelCount;
 	result->isRenderTarget = isRenderTarget;
 	result->format = format;
