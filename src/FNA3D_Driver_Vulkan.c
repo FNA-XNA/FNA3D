@@ -3228,7 +3228,7 @@ static VkPipeline FetchPipeline(
 	VkPipelineMultisampleStateCreateInfo multisamplingInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO
 	};
-	VkPipelineColorBlendAttachmentState colorBlendAttachment;
+	VkPipelineColorBlendAttachmentState colorBlendAttachments[MAX_RENDERTARGET_BINDINGS];
 	VkPipelineColorBlendStateCreateInfo colorBlendStateInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO
 	};
@@ -3268,14 +3268,20 @@ static VkPipeline FetchPipeline(
 		return hmget(renderer->pipelineHashMap, hash);
 	}
 
+	/* Viewport / Scissor */
+
 	/* NOTE: because viewport and scissor are dynamic,
 	 * values must be set using the command buffer
 	 */
 	viewportStateInfo.viewportCount = 1;
 	viewportStateInfo.scissorCount = 1;
 
+	/* Input Assembly */
+
 	inputAssemblyInfo.topology = XNAToVK_Topology[renderer->currentPrimitiveType];
 	inputAssemblyInfo.primitiveRestartEnable = VK_FALSE;
+
+	/* Vertex Input */
 
 	bindingDescriptions = (VkVertexInputBindingDescription*) SDL_malloc(
 		renderer->numVertexBindings *
@@ -3299,6 +3305,8 @@ static VkPipeline FetchPipeline(
 	vertexInputInfo.vertexAttributeDescriptionCount = attributeDescriptionCount;
 	vertexInputInfo.pVertexAttributeDescriptions = attributeDescriptions;
 
+	/* Rasterizer */
+
 	rasterizerInfo.depthClampEnable = VK_FALSE;
 	rasterizerInfo.rasterizerDiscardEnable = VK_FALSE;
 	rasterizerInfo.polygonMode = XNAToVK_PolygonMode[renderer->rasterizerState.fillMode];
@@ -3308,6 +3316,8 @@ static VkPipeline FetchPipeline(
 	rasterizerInfo.frontFace = VK_FRONT_FACE_CLOCKWISE;
 	rasterizerInfo.depthBiasEnable = VK_TRUE;
 
+	/* Multisample */
+
 	multisamplingInfo.sampleShadingEnable = VK_FALSE;
 	multisamplingInfo.minSampleShading = 1.0f;
 	multisamplingInfo.pSampleMask = renderer->multiSampleMask;
@@ -3315,35 +3325,52 @@ static VkPipeline FetchPipeline(
 	multisamplingInfo.alphaToCoverageEnable = VK_FALSE;
 	multisamplingInfo.alphaToOneEnable = VK_FALSE;
 
-	/* FIXME: i think we need one colorblendattachment per colorattachment? */
+	/* Blend */
 
-	colorBlendAttachment.colorWriteMask = VK_COLOR_COMPONENT_R_BIT | VK_COLOR_COMPONENT_G_BIT | VK_COLOR_COMPONENT_B_BIT | VK_COLOR_COMPONENT_A_BIT;
-	colorBlendAttachment.blendEnable = VK_TRUE;
+	SDL_zero(colorBlendAttachments);
+	colorBlendAttachments[0].blendEnable = !(
+		renderer->blendState.colorSourceBlend == FNA3D_BLEND_ONE &&
+		renderer->blendState.colorDestinationBlend == FNA3D_BLEND_ZERO &&
+		renderer->blendState.alphaSourceBlend == FNA3D_BLEND_ONE &&
+		renderer->blendState.alphaDestinationBlend == FNA3D_BLEND_ZERO
+	);
+	if (colorBlendAttachments[0].blendEnable)
+	{
+		colorBlendAttachments[0].srcColorBlendFactor = XNAToVK_BlendFactor[
+			renderer->blendState.colorSourceBlend
+		];
+		colorBlendAttachments[0].srcAlphaBlendFactor = XNAToVK_BlendFactor[
+			renderer->blendState.alphaSourceBlend
+		];
+		colorBlendAttachments[0].dstColorBlendFactor = XNAToVK_BlendFactor[
+			renderer->blendState.colorDestinationBlend
+		];
+		colorBlendAttachments[0].dstAlphaBlendFactor = XNAToVK_BlendFactor[
+			renderer->blendState.alphaDestinationBlend
+		];
 
-	colorBlendAttachment.srcColorBlendFactor = XNAToVK_BlendFactor[
-		renderer->blendState.colorSourceBlend
-	];
-	colorBlendAttachment.srcAlphaBlendFactor = XNAToVK_BlendFactor[
-		renderer->blendState.alphaSourceBlend
-	];
-	colorBlendAttachment.dstColorBlendFactor = XNAToVK_BlendFactor[
-		renderer->blendState.colorDestinationBlend
-	];
-	colorBlendAttachment.dstAlphaBlendFactor = XNAToVK_BlendFactor[
-		renderer->blendState.alphaDestinationBlend
-	];
+		colorBlendAttachments[0].colorBlendOp = XNAToVK_BlendOp[
+			renderer->blendState.colorBlendFunction
+		];
+		colorBlendAttachments[0].alphaBlendOp = XNAToVK_BlendOp[
+			renderer->blendState.alphaBlendFunction
+		];
+	}
+	colorBlendAttachments[1] = colorBlendAttachments[0];
+	colorBlendAttachments[2] = colorBlendAttachments[0];
+	colorBlendAttachments[3] = colorBlendAttachments[0];
 
-	colorBlendAttachment.colorBlendOp = XNAToVK_BlendOp[
-		renderer->blendState.colorBlendFunction
-	];
-	colorBlendAttachment.alphaBlendOp = XNAToVK_BlendOp[
-		renderer->blendState.alphaBlendFunction
-	];
+	colorBlendAttachments[0].colorWriteMask = renderer->blendState.colorWriteEnable;
+	colorBlendAttachments[1].colorWriteMask = renderer->blendState.colorWriteEnable1;
+	colorBlendAttachments[2].colorWriteMask = renderer->blendState.colorWriteEnable2;
+	colorBlendAttachments[3].colorWriteMask = renderer->blendState.colorWriteEnable3;
 
 	colorBlendStateInfo.logicOpEnable = VK_FALSE;
 	colorBlendStateInfo.logicOp = VK_LOGIC_OP_COPY;
-	colorBlendStateInfo.attachmentCount = 1;
-	colorBlendStateInfo.pAttachments = &colorBlendAttachment;
+	colorBlendStateInfo.attachmentCount = renderer->colorAttachmentCount;
+	colorBlendStateInfo.pAttachments = colorBlendAttachments;
+
+	/* Stencil */
 
 	frontStencilState.failOp = XNAToVK_StencilOp[
 		renderer->depthStencilState.stencilFail
@@ -3377,6 +3404,8 @@ static VkPipeline FetchPipeline(
 	backStencilState.writeMask = renderer->depthStencilState.stencilWriteMask;
 	backStencilState.reference = renderer->depthStencilState.referenceStencil;
 
+	/* Depth Stencil */
+
 	depthStencilStateInfo.flags = 0; /* unused */
 	depthStencilStateInfo.depthTestEnable = renderer->depthStencilState.depthBufferEnable;
 	depthStencilStateInfo.depthWriteEnable = renderer->depthStencilState.depthBufferWriteEnable;
@@ -3390,8 +3419,12 @@ static VkPipeline FetchPipeline(
 	depthStencilStateInfo.minDepthBounds = 0; /* unused */
 	depthStencilStateInfo.maxDepthBounds = 0; /* unused */
 
+	/* Dynamic State */
+
 	dynamicStateInfo.dynamicStateCount = SDL_arraysize(dynamicStates);
 	dynamicStateInfo.pDynamicStates = dynamicStates;
+
+	/* Shaders */
 
 	vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
 	vertShaderStageInfo.module = (VkShaderModule) MOJOSHADER_vkGetShaderModule(vertShader);
@@ -3403,6 +3436,8 @@ static VkPipeline FetchPipeline(
 
 	stageInfos[0] = vertShaderStageInfo;
 	stageInfos[1] = fragShaderStageInfo;
+
+	/* Pipeline */
 
 	pipelineCreateInfo.stageCount = 2;
 	pipelineCreateInfo.pStages = stageInfos;
@@ -4151,15 +4186,26 @@ static void RenderPassClear(
 		color->z,
 		color->w
 	}}};
+	uint8_t shouldClearDepthStencil = (
+		(clearDepth || clearStencil) &&
+		renderer->depthStencilAttachment != NULL
+	);
 	uint32_t i, attachmentCount;
+	VkClearAttachment *dsClearAttachment;
 
-	if (!clearColor && !clearDepth && !clearStencil) { 
-		return; 
+	if (!clearColor && !shouldClearDepthStencil)
+	{
+		return;
 	}
 
-	attachmentCount = renderer->colorAttachmentCount;
-	if (renderer->depthStencilAttachment != NULL) { 
-		attachmentCount++; 
+	attachmentCount = 0;
+	if (clearColor)
+	{
+		attachmentCount = renderer->colorAttachmentCount;
+	}
+	if (shouldClearDepthStencil)
+	{
+		attachmentCount += 1;
 	}
 
 	clearAttachments = SDL_stack_alloc(
@@ -4175,45 +4221,27 @@ static void RenderPassClear(
 
 	if (clearColor)
 	{
-		for (i = 0; i < renderer->colorAttachmentCount; i++)
+		for (i = 0; i < renderer->colorAttachmentCount; i += 1)
 		{
-			clearRect.rect.extent.width = SDL_max(
-				clearRect.rect.extent.width, 
-				renderer->colorAttachments[i]->dimensions.width
-			);
-			clearRect.rect.extent.height = SDL_max(
-				clearRect.rect.extent.height,
-				renderer->colorAttachments[i]->dimensions.height
-			);
 			clearAttachments[i].aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 			clearAttachments[i].colorAttachment = i;
 			clearAttachments[i].clearValue = clearValue;
 		}
 	}
 
-	if (clearDepth || clearStencil)
+	if (shouldClearDepthStencil)
 	{
-		if (renderer->depthStencilAttachment != NULL)
+		dsClearAttachment = &clearAttachments[attachmentCount - 1];
+		dsClearAttachment->aspectMask = 0;
+		if (clearDepth)
 		{
-			clearAttachments[renderer->colorAttachmentCount].aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-
-			clearRect.rect.extent.width = SDL_max(
-				clearRect.rect.extent.width,
-				renderer->depthStencilAttachment->dimensions.width
-			);
-			clearRect.rect.extent.height = SDL_max(
-				clearRect.rect.extent.height,
-				renderer->depthStencilAttachment->dimensions.height
-			);
-
-			if (clearDepth)
-			{
-				clearAttachments[renderer->colorAttachmentCount].clearValue.depthStencil.depth = depth;
-			}
-			if (clearStencil)
-			{
-				clearAttachments[renderer->colorAttachmentCount].clearValue.depthStencil.stencil = stencil;
-			}
+			dsClearAttachment->aspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
+			dsClearAttachment->clearValue.depthStencil.depth = depth;
+		}
+		if (clearStencil)
+		{
+			dsClearAttachment->aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+			dsClearAttachment->clearValue.depthStencil.stencil = stencil;
 		}
 	}
 
@@ -4246,9 +4274,11 @@ static void OutsideRenderPassClear(
 		color->z,
 		color->w
 	}};
-	VkClearDepthStencilValue clearDepthStencilValue;
-	clearDepthStencilValue.depth = depth;
-	clearDepthStencilValue.stencil = stencil;
+	uint8_t shouldClearDepthStencil = (
+		(clearDepth || clearStencil) &&
+		renderer->depthStencilAttachment != NULL
+	);
+	VkClearDepthStencilValue clearDepthStencilValue = { depth, stencil };
 
 	if (clearColor)
 	{
@@ -4293,47 +4323,53 @@ static void OutsideRenderPassClear(
 		}
 	}
 
-	if (clearDepth || clearStencil)
+	if (shouldClearDepthStencil)
 	{
-		if (renderer->depthStencilAttachment != NULL)
+		subresourceRange.aspectMask = 0;
+		if (clearDepth)
 		{
-			subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-			subresourceRange.baseArrayLayer = 0;
-			subresourceRange.baseMipLevel = 0;
-			subresourceRange.layerCount = 1;
-			subresourceRange.levelCount = 1;
-
-			barrierCreateInfo.subresourceRange = subresourceRange;
-			barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			barrierCreateInfo.discardContents = 0;
-			barrierCreateInfo.nextAccess = RESOURCE_ACCESS_TRANSFER_WRITE;
-
-			CreateImageMemoryBarrier(
-				renderer,
-				renderer->drawCommandBuffers[renderer->currentFrame],
-				barrierCreateInfo,
-				&renderer->depthStencilAttachment->imageResource
-			);
-
-			renderer->vkCmdClearDepthStencilImage(
-				renderer->drawCommandBuffers[renderer->currentFrame],
-				renderer->depthStencilAttachment->imageResource.image,
-				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-				&clearDepthStencilValue,
-				1,
-				&subresourceRange
-			);
-
-			barrierCreateInfo.nextAccess = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
-
-			CreateImageMemoryBarrier(
-				renderer,
-				renderer->drawCommandBuffers[renderer->currentFrame],
-				barrierCreateInfo,
-				&renderer->depthStencilAttachment->imageResource
-			);
+			subresourceRange.aspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
 		}
+		if (clearStencil)
+		{
+			subresourceRange.aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+		}
+
+		subresourceRange.baseArrayLayer = 0;
+		subresourceRange.baseMipLevel = 0;
+		subresourceRange.layerCount = 1;
+		subresourceRange.levelCount = 1;
+
+		barrierCreateInfo.subresourceRange = subresourceRange;
+		barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+		barrierCreateInfo.discardContents = 0;
+		barrierCreateInfo.nextAccess = RESOURCE_ACCESS_TRANSFER_WRITE;
+
+		CreateImageMemoryBarrier(
+			renderer,
+			renderer->drawCommandBuffers[renderer->currentFrame],
+			barrierCreateInfo,
+			&renderer->depthStencilAttachment->imageResource
+		);
+
+		renderer->vkCmdClearDepthStencilImage(
+			renderer->drawCommandBuffers[renderer->currentFrame],
+			renderer->depthStencilAttachment->imageResource.image,
+			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+			&clearDepthStencilValue,
+			1,
+			&subresourceRange
+		);
+
+		barrierCreateInfo.nextAccess = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
+
+		CreateImageMemoryBarrier(
+			renderer,
+			renderer->drawCommandBuffers[renderer->currentFrame],
+			barrierCreateInfo,
+			&renderer->depthStencilAttachment->imageResource
+		);
 	}
 }
 
@@ -4420,7 +4456,7 @@ void VULKAN_DrawInstancedPrimitives(
 		PrimitiveVerts(primitiveType, primitiveCount),
 		instanceCount,
 		minVertexIndex,
-		totalIndexOffset,
+		0,
 		0
 	);
 }
@@ -4590,24 +4626,18 @@ void VULKAN_SetBlendState(
 	FNA3D_BlendState *blendState
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
-	const float blendConstants[] =
-	{
-		blendState->blendFactor.r,
-		blendState->blendFactor.g,
-		blendState->blendFactor.b,
-		blendState->blendFactor.a
-	};
 
 	SDL_memcpy(&renderer->blendState, blendState, sizeof(FNA3D_BlendState));
 
 	/* Dynamic state */
-	if (renderer->frameInProgress[renderer->currentFrame])
-	{
-		renderer->vkCmdSetBlendConstants(
-			renderer->drawCommandBuffers[renderer->currentFrame],
-			blendConstants
-		);
-	}
+	VULKAN_SetBlendFactor(
+		driverData,
+		&blendState->blendFactor
+	);
+	VULKAN_SetMultiSampleMask(
+		driverData,
+		blendState->multiSampleMask
+	);
 }
 
 void VULKAN_SetDepthStencilState(
@@ -4616,6 +4646,12 @@ void VULKAN_SetDepthStencilState(
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	SDL_memcpy(&renderer->depthStencilState, depthStencilState, sizeof(FNA3D_DepthStencilState));
+
+	/* Dynamic state */
+	VULKAN_SetReferenceStencil(
+		driverData,
+		depthStencilState->referenceStencil
+	);
 }
 
 void VULKAN_ApplyRasterizerState(
