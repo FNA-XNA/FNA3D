@@ -879,7 +879,9 @@ static void GenerateVertexInputInfo(
 	FNAVulkanRenderer *renderer,
 	VkVertexInputBindingDescription *bindingDescriptions,
 	VkVertexInputAttributeDescription* attributeDescriptions,
-	uint32_t *attributeDescriptionCount
+	uint32_t *attributeDescriptionCount,
+	VkVertexInputBindingDivisorDescriptionEXT *divisorDescriptions,
+	uint32_t *divisorDescriptionCount
 );
 
 static void InternalBeginFrame(FNAVulkanRenderer *renderer);
@@ -3219,8 +3221,13 @@ static VkPipeline FetchPipeline(
 	VkVertexInputBindingDescription *bindingDescriptions;
 	VkVertexInputAttributeDescription *attributeDescriptions;
 	uint32_t attributeDescriptionCount;
+	VkVertexInputBindingDivisorDescriptionEXT *divisorDescriptions;
+	uint32_t divisorDescriptionCount;
 	VkPipelineVertexInputStateCreateInfo vertexInputInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO
+	};
+	VkPipelineVertexInputDivisorStateCreateInfoEXT divisorStateInfo = {
+		VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO_EXT
 	};
 	VkPipelineRasterizationStateCreateInfo rasterizerInfo = {
 		VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO
@@ -3292,13 +3299,26 @@ static VkPipeline FetchPipeline(
 		MAX_VERTEX_ATTRIBUTES *
 		sizeof(VkVertexInputAttributeDescription)
 	);
+	divisorDescriptions = (VkVertexInputBindingDivisorDescriptionEXT*) SDL_malloc(
+		renderer->numVertexBindings *
+		sizeof(VkVertexInputBindingDivisorDescriptionEXT)
+	);
 
 	GenerateVertexInputInfo(
 		renderer,
 		bindingDescriptions,
 		attributeDescriptions,
-		&attributeDescriptionCount
+		&attributeDescriptionCount,
+		divisorDescriptions,
+		&divisorDescriptionCount
 	);
+
+	if (divisorDescriptionCount > 0)
+	{
+		divisorStateInfo.vertexBindingDivisorCount = divisorDescriptionCount;
+		divisorStateInfo.pVertexBindingDivisors = divisorDescriptions;
+		vertexInputInfo.pNext = &divisorStateInfo;
+	}
 
 	vertexInputInfo.vertexBindingDescriptionCount = renderer->numVertexBindings;
 	vertexInputInfo.pVertexBindingDescriptions = bindingDescriptions;
@@ -3470,6 +3490,7 @@ static VkPipeline FetchPipeline(
 
 	SDL_free(bindingDescriptions);
 	SDL_free(attributeDescriptions);
+	SDL_free(divisorDescriptions);
 
 	hmput(renderer->pipelineHashMap, hash, pipeline);
 	return pipeline;
@@ -7356,11 +7377,14 @@ static void GenerateVertexInputInfo(
 	FNAVulkanRenderer *renderer,
 	VkVertexInputBindingDescription *bindingDescriptions,
 	VkVertexInputAttributeDescription* attributeDescriptions,
-	uint32_t *attributeDescriptionCount
+	uint32_t *attributeDescriptionCount,
+	VkVertexInputBindingDivisorDescriptionEXT *divisorDescriptions,
+	uint32_t *divisorDescriptionCount
 ) {
 	MOJOSHADER_vkShader *vertexShader, *blah;
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 	uint32_t attributeDescriptionCounter = 0;
+	uint32_t divisorDescriptionCounter = 0;
 	uint32_t i, j, k;
 	FNA3D_VertexDeclaration vertexDeclaration;
 	FNA3D_VertexElement element;
@@ -7368,6 +7392,7 @@ static void GenerateVertexInputInfo(
 	int32_t index, attribLoc;
 	VkVertexInputAttributeDescription vInputAttribDescription;
 	VkVertexInputBindingDescription vertexInputBindingDescription;
+	VkVertexInputBindingDivisorDescriptionEXT divisorDescription;
 
 	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
 
@@ -7430,12 +7455,27 @@ static void GenerateVertexInputInfo(
 
 		vertexInputBindingDescription.binding = i;
 		vertexInputBindingDescription.stride = vertexDeclaration.vertexStride;
-		vertexInputBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+		if (renderer->vertexBindings[i].instanceFrequency > 0)
+		{
+			vertexInputBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_INSTANCE;
+
+			divisorDescription.binding = i;
+			divisorDescription.divisor = renderer->vertexBindings[i].instanceFrequency;
+
+			divisorDescriptions[divisorDescriptionCounter] = divisorDescription;
+			divisorDescriptionCounter++;
+		}
+		else
+		{
+			vertexInputBindingDescription.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+		}
 
 		bindingDescriptions[i] = vertexInputBindingDescription;
 	}
 
 	*attributeDescriptionCount = attributeDescriptionCounter;
+	*divisorDescriptionCount = divisorDescriptionCounter;
 }
 
 /* device initialization stuff */
