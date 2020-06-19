@@ -479,6 +479,11 @@ typedef struct FNAVulkanRenderer
 	uint8_t needNewRenderPass;
 	uint8_t renderTargetBound;
 
+	/* depth formats */
+	VkFormat D16Format;
+	VkFormat D24Format;
+	VkFormat D24S8Format;
+
 	/* Capabilities */
 	uint8_t supportsDxt1;
 	uint8_t supportsS3tc;
@@ -1158,14 +1163,14 @@ static SurfaceFormatMapping XNAToVK_SurfaceFormat[] =
 };
 
 static VkFormat XNAToVK_DepthFormat(
+	FNAVulkanRenderer *renderer,
 	FNA3D_DepthFormat format
 ) {
-	/* FIXME: check device compatibility with renderer */
 	switch(format)
 	{
-		case FNA3D_DEPTHFORMAT_D16: return VK_FORMAT_D16_UNORM;
-		case FNA3D_DEPTHFORMAT_D24: return VK_FORMAT_D24_UNORM_S8_UINT;
-		case FNA3D_DEPTHFORMAT_D24S8: return VK_FORMAT_D24_UNORM_S8_UINT;
+		case FNA3D_DEPTHFORMAT_D16: return renderer->D16Format;
+		case FNA3D_DEPTHFORMAT_D24: return renderer->D24Format;
+		case FNA3D_DEPTHFORMAT_D24S8: return renderer->D24S8Format;
 		default:
 			FNA3D_LogError(
 				"Tried to convert FNA3D_DEPTHFORMAT_NONE to VkFormat; something has gone very wrong"
@@ -1174,13 +1179,49 @@ static VkFormat XNAToVK_DepthFormat(
 	}
 }
 
-static float XNAToVK_DepthBiasScale[] =
+static float XNAToVK_DepthBiasScale(VkFormat format)
 {
-	0.0f,				/* FNA3D_DEPTHFORMAT_NONE */
-	(float) ((1 << 16) - 1),	/* FNA3D_DEPTHFORMAT_D16 */
-	(float) ((1 << 24) - 1),	/* FNA3D_DEPTHFORMAT_D24 */
-	(float) ((1 << 24) - 1) 	/* FNA3D_DEPTHFORMAT_D24S8 */
-};
+	switch(format)
+	{
+		case VK_FORMAT_D16_UNORM:
+			return (float) ((1 << 16) - 1);
+
+		case VK_FORMAT_D24_UNORM_S8_UINT:
+			return (float) ((1 << 24) - 1);
+
+		case VK_FORMAT_D32_SFLOAT:
+		case VK_FORMAT_D32_SFLOAT_S8_UINT:
+			return (float) ((1 << 23) - 1);
+
+		default:
+			return 0.0f;
+	}
+
+	SDL_assert(0 && "Invalid depth pixel format");
+}
+
+static uint8_t DepthFormatContainsStencil(VkFormat format)
+{
+	switch(format)
+	{
+		case VK_FORMAT_D16_UNORM:
+			return 0;
+
+		case VK_FORMAT_D24_UNORM_S8_UINT:
+			return 1;
+
+		case VK_FORMAT_D32_SFLOAT:
+			return 0;
+
+		case VK_FORMAT_D32_SFLOAT_S8_UINT:
+			return 1;
+
+		default:
+			return 0.0f;
+	}
+
+	SDL_assert(0 && "Invalid depth pixel format");
+}
 
 static VkBlendFactor XNAToVK_BlendFactor[] =
 {
@@ -3550,7 +3591,7 @@ static VkRenderPass FetchRenderPass(
 		depthStencilAttachmentReference.attachment = renderer->colorAttachmentCount;
 		depthStencilAttachmentReference.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		attachmentDescriptions[renderer->colorAttachmentCount].flags = 0;
-		attachmentDescriptions[renderer->colorAttachmentCount].format = XNAToVK_DepthFormat(renderer->currentDepthFormat);
+		attachmentDescriptions[renderer->colorAttachmentCount].format = renderer->depthStencilAttachment->surfaceFormat;
 		attachmentDescriptions[renderer->colorAttachmentCount].samples = VK_SAMPLE_COUNT_1_BIT;
 		attachmentDescriptions[renderer->colorAttachmentCount].loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
 		attachmentDescriptions[renderer->colorAttachmentCount].storeOp = VK_ATTACHMENT_STORE_OP_STORE;
@@ -3759,7 +3800,7 @@ static PipelineHash GetPipelineHash(
 	hash.blendState = GetBlendStateHash(renderer->blendState);
 	hash.rasterizerState = GetRasterizerStateHash(
 		renderer->rasterizerState,
-		renderer->rasterizerState.depthBias * XNAToVK_DepthBiasScale[renderer->currentDepthFormat]
+		renderer->rasterizerState.depthBias * XNAToVK_DepthBiasScale(XNAToVK_DepthFormat(renderer, renderer->currentDepthFormat))
 	);
 	hash.depthStencilState = GetDepthStencilStateHash(renderer->depthStencilState);
 	hash.vertexBufferBindingsHash = renderer->currentVertexBufferBindingHash;
@@ -4688,9 +4729,12 @@ void VULKAN_ApplyRasterizerState(
 		SetScissorRectCommand(renderer);
 	}
 
-	realDepthBias = rasterizerState->depthBias * XNAToVK_DepthBiasScale[
-		renderer->currentDepthFormat
-	];
+	realDepthBias = rasterizerState->depthBias * XNAToVK_DepthBiasScale(
+		XNAToVK_DepthFormat(
+			renderer,
+			renderer->currentDepthFormat
+		)
+	);
 	
 	if (	realDepthBias != renderer->rasterizerState.depthBias ||
 			rasterizerState->slopeScaleDepthBias != renderer->rasterizerState.slopeScaleDepthBias	)
@@ -5075,6 +5119,7 @@ void VULKAN_SetRenderTargets(
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	VulkanColorBuffer *cb;
 	VulkanTexture *tex;
+	VkImageAspectFlags depthAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
 	uint32_t i;
 	ImageMemoryBarrierCreateInfo imageMemoryBarrierCreateInfo;
 
@@ -5113,7 +5158,7 @@ void VULKAN_SetRenderTargets(
 			imageMemoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 			imageMemoryBarrierCreateInfo.discardContents = 0;
 			imageMemoryBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
-			imageMemoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; /* FIXME: depth too? */
+			imageMemoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 			imageMemoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
 			imageMemoryBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
 			imageMemoryBarrierCreateInfo.subresourceRange.layerCount = 1;
@@ -5136,11 +5181,16 @@ void VULKAN_SetRenderTargets(
 			renderer->depthStencilAttachment = &((VulkanRenderbuffer*) depthStencilBuffer)->depthBuffer->handle;
 			renderer->currentDepthFormat = depthFormat;
 
+			if (DepthFormatContainsStencil(XNAToVK_DepthFormat(renderer, depthFormat)))
+			{
+				depthAspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
+			}
+
 			imageMemoryBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 			imageMemoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 			imageMemoryBarrierCreateInfo.discardContents = 0;
 			imageMemoryBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
-			imageMemoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+			imageMemoryBarrierCreateInfo.subresourceRange.aspectMask = depthAspectFlags;
 			imageMemoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
 			imageMemoryBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
 			imageMemoryBarrierCreateInfo.subresourceRange.layerCount = 1;
@@ -6139,8 +6189,14 @@ FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 	int32_t multiSampleCount
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VkImageAspectFlags depthAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
 
-	VkFormat depthFormat = XNAToVK_DepthFormat(format);
+	VkFormat depthFormat = XNAToVK_DepthFormat(renderer, format);
+
+	if (DepthFormatContainsStencil(depthFormat))
+	{
+		depthAspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
+	}
 
 	VulkanRenderbuffer *renderbuffer = (VulkanRenderbuffer*) SDL_malloc(sizeof(VulkanRenderbuffer));
 	renderbuffer->colorBuffer = NULL;
@@ -6154,7 +6210,7 @@ FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 			XNAToVK_SampleCount(multiSampleCount),
 			depthFormat,
 			IDENTITY_SWIZZLE,
-			VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+			depthAspectFlags,
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_TYPE_2D,
 			VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT,
@@ -7357,6 +7413,54 @@ static VkExtent2D ChooseSwapExtent(
 	}
 }
 
+static void ChooseDepthFormats(
+	FNAVulkanRenderer *renderer
+) {
+	VkResult result;
+	VkImageFormatProperties imageFormatProperties;
+
+	result = renderer->vkGetPhysicalDeviceImageFormatProperties(
+		renderer->physicalDevice,
+		VK_FORMAT_D16_UNORM,
+		VK_IMAGE_TYPE_2D,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_ASPECT_DEPTH_BIT,
+		0,
+		&imageFormatProperties
+	);
+
+	if (result == VK_ERROR_FORMAT_NOT_SUPPORTED)
+	{
+		renderer->D16Format = VK_FORMAT_D32_SFLOAT;
+	}
+	else
+	{
+		renderer->D16Format = VK_FORMAT_D16_UNORM;
+	}
+
+	/* vulkan doesn't even have plain D24 in the spec */
+	renderer->D24Format = VK_FORMAT_D32_SFLOAT;
+
+	result = renderer->vkGetPhysicalDeviceImageFormatProperties(
+		renderer->physicalDevice,
+		VK_FORMAT_D24_UNORM_S8_UINT,
+		VK_IMAGE_TYPE_2D,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+		0,
+		&imageFormatProperties
+	);
+
+	if (result == VK_ERROR_FORMAT_NOT_SUPPORTED)
+	{
+		renderer->D24S8Format = VK_FORMAT_D32_SFLOAT_S8_UINT;
+	}
+	else
+	{
+		renderer->D24S8Format = VK_FORMAT_D24_UNORM_S8_UINT;
+	}
+}
+
 static uint8_t FindMemoryType(
 	FNAVulkanRenderer *renderer,
 	uint32_t typeFilter,
@@ -8271,6 +8375,7 @@ static uint8_t CreateFauxBackbuffer(
 ) {
 	VkFormat vulkanDepthStencilFormat;
 	ImageMemoryBarrierCreateInfo barrierCreateInfo;
+	VkImageAspectFlags depthAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
 
 	if (
 		!CreateImage(
@@ -8324,7 +8429,12 @@ static uint8_t CreateFauxBackbuffer(
 
 	if (renderer->fauxBackbufferDepthFormat != FNA3D_DEPTHFORMAT_NONE)
 	{
-		vulkanDepthStencilFormat = XNAToVK_DepthFormat(renderer->fauxBackbufferDepthFormat);
+		vulkanDepthStencilFormat = XNAToVK_DepthFormat(renderer, renderer->fauxBackbufferDepthFormat);
+
+		if (DepthFormatContainsStencil(vulkanDepthStencilFormat))
+		{
+			depthAspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
+		}
 
 		if (
 			!CreateImage(
@@ -8334,7 +8444,7 @@ static uint8_t CreateFauxBackbuffer(
 				XNAToVK_SampleCount(presentationParameters->multiSampleCount),
 				vulkanDepthStencilFormat,
 				IDENTITY_SWIZZLE,
-				VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT,
+				depthAspectFlags,
 				VK_IMAGE_TILING_OPTIMAL,
 				VK_IMAGE_TYPE_2D,
 				VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
@@ -8348,7 +8458,7 @@ static uint8_t CreateFauxBackbuffer(
 
 		/* layout transition if required */
 
-		barrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
+		barrierCreateInfo.subresourceRange.aspectMask = depthAspectFlags;
 		barrierCreateInfo.subresourceRange.baseArrayLayer = 0;
 		barrierCreateInfo.subresourceRange.baseMipLevel = 0;
 		barrierCreateInfo.subresourceRange.layerCount = 1;
@@ -8964,6 +9074,8 @@ FNA3D_Device* VULKAN_CreateDevice(
 		FNA3D_LogError("Failed to create logical device");
 		return NULL;
 	}
+
+	ChooseDepthFormats(renderer);
 
 	CreateDeferredDestroyStorage(renderer);
 
