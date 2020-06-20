@@ -3500,7 +3500,6 @@ static VkRenderPass FetchRenderPass(
 	VkAttachmentReference depthStencilAttachmentReference;
 	uint32_t attachmentCount;
 	VkSubpassDescription subpass;
-	VkSubpassDependency subpassDependency;
 	VkRenderPassCreateInfo renderPassCreateInfo = {
 		VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO
 	};
@@ -3575,20 +3574,12 @@ static VkRenderPass FetchRenderPass(
 		attachmentCount++;
 	}
 
-	subpassDependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-	subpassDependency.dstSubpass = 0;
-	subpassDependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	subpassDependency.srcAccessMask = 0;
-	subpassDependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	subpassDependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-	subpassDependency.dependencyFlags = 0;
-
 	renderPassCreateInfo.attachmentCount = attachmentCount;
 	renderPassCreateInfo.pAttachments = attachmentDescriptions;
 	renderPassCreateInfo.subpassCount = 1;
 	renderPassCreateInfo.pSubpasses = &subpass;
-	renderPassCreateInfo.dependencyCount = 1;
-	renderPassCreateInfo.pDependencies = &subpassDependency;
+	renderPassCreateInfo.dependencyCount = 0;
+	renderPassCreateInfo.pDependencies = NULL;
 	renderPassCreateInfo.flags = 0;
 
 	vulkanResult = renderer->vkCreateRenderPass(
@@ -3802,6 +3793,7 @@ static void BeginRenderPass(
 		ColorConvert(renderer->blendState.blendFactor.b),
 		ColorConvert(renderer->blendState.blendFactor.a)
 	};
+	ImageMemoryBarrierCreateInfo imageBarrierCreateInfo;
 	uint32_t swapChainOffset, i;
 	
 	renderer->renderPass = FetchRenderPass(renderer);
@@ -3812,6 +3804,41 @@ static void BeginRenderPass(
 
 	renderPassBeginInfo.renderPass = renderer->renderPass;
 	renderPassBeginInfo.framebuffer = framebuffer;
+
+	/* layout transition attachments before beginning the render pass */
+	imageBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+	imageBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
+	imageBarrierCreateInfo.subresourceRange.layerCount = 1;
+	imageBarrierCreateInfo.subresourceRange.levelCount = 1;
+	imageBarrierCreateInfo.discardContents = 0;
+
+	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i++)
+	{
+		if (renderer->colorAttachments[i] != NULL)
+		{
+			imageBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
+
+			CreateImageMemoryBarrier(
+				renderer,
+				imageBarrierCreateInfo,
+				&renderer->colorAttachments[i]->imageResource
+			);
+		}
+	}
+
+	if (renderer->depthStencilAttachment != NULL)
+	{
+		imageBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
+
+		CreateImageMemoryBarrier(
+			renderer,
+			imageBarrierCreateInfo,
+			&renderer->depthStencilAttachment->imageResource
+		);
+	}
 
 	renderer->vkCmdBeginRenderPass(
 		renderer->commandBuffers[renderer->currentFrame],
@@ -4038,9 +4065,6 @@ void VULKAN_SwapBuffers(
 		dstRect.w = renderer->swapChainExtent.width;
 		dstRect.h = renderer->swapChainExtent.height;
 	}
-
-	/* special case because of the attachment description */
-	renderer->fauxBackbufferColor.handle.imageResource.resourceAccessType = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
 
 	BlitFramebuffer(
 		renderer,
