@@ -3794,6 +3794,7 @@ static void BeginRenderPass(
 		ColorConvert(renderer->blendState.blendFactor.a)
 	};
 	ImageMemoryBarrierCreateInfo imageBarrierCreateInfo;
+	VkImageAspectFlags depthAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
 	uint32_t swapChainOffset, i;
 	
 	renderer->renderPass = FetchRenderPass(renderer);
@@ -3831,6 +3832,12 @@ static void BeginRenderPass(
 
 	if (renderer->depthStencilAttachment != NULL)
 	{
+		if (DepthFormatContainsStencil(renderer->depthStencilAttachment->surfaceFormat))
+		{
+			depthAspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
+		}
+
+		imageBarrierCreateInfo.subresourceRange.aspectMask = depthAspectFlags;
 		imageBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
 
 		CreateImageMemoryBarrier(
@@ -5036,9 +5043,7 @@ void VULKAN_SetRenderTargets(
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	VulkanColorBuffer *cb;
 	VulkanTexture *tex;
-	VkImageAspectFlags depthAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
 	uint32_t i;
-	ImageMemoryBarrierCreateInfo imageMemoryBarrierCreateInfo;
 
 	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i++)
 	{
@@ -5070,22 +5075,6 @@ void VULKAN_SetRenderTargets(
 				tex = (VulkanTexture*) renderTargets[i].texture;
 				renderer->colorAttachments[i] = tex->imageData;
 			}
-
-			imageMemoryBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			imageMemoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			imageMemoryBarrierCreateInfo.discardContents = 0;
-			imageMemoryBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
-			imageMemoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			imageMemoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
-			imageMemoryBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
-			imageMemoryBarrierCreateInfo.subresourceRange.layerCount = 1;
-			imageMemoryBarrierCreateInfo.subresourceRange.levelCount = 1;
-
-			CreateImageMemoryBarrier(
-				renderer,
-				imageMemoryBarrierCreateInfo,
-				&renderer->colorAttachments[i]->imageResource
-			);
 		}
 
 		renderer->colorAttachmentCount = numRenderTargets;
@@ -5096,27 +5085,6 @@ void VULKAN_SetRenderTargets(
 		{
 			renderer->depthStencilAttachment = &((VulkanRenderbuffer*) depthStencilBuffer)->depthBuffer->handle;
 			renderer->currentDepthFormat = depthFormat;
-
-			if (DepthFormatContainsStencil(XNAToVK_DepthFormat(renderer, depthFormat)))
-			{
-				depthAspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
-			}
-
-			imageMemoryBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			imageMemoryBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-			imageMemoryBarrierCreateInfo.discardContents = 0;
-			imageMemoryBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE;
-			imageMemoryBarrierCreateInfo.subresourceRange.aspectMask = depthAspectFlags;
-			imageMemoryBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
-			imageMemoryBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
-			imageMemoryBarrierCreateInfo.subresourceRange.layerCount = 1;
-			imageMemoryBarrierCreateInfo.subresourceRange.levelCount = 1;
-
-			CreateImageMemoryBarrier(
-				renderer,
-				imageMemoryBarrierCreateInfo,
-				&renderer->depthStencilAttachment->imageResource
-			);
 		}
 
 		renderer->renderTargetBound = 1;
