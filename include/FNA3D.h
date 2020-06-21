@@ -1334,7 +1334,8 @@ typedef struct MOJOSHADER_effectStateChanges MOJOSHADER_effectStateChanges;
  * effectCode:		The D3D9 Effect binary blob.
  * effectCodeLength:	The size (in bytes) of the blob.
  * effect:		Filled with the compiled FNA3D_Effect*.
- * effectData:		Filled with the parsed Effect Framework data.
+ * effectData:		Filled with the parsed Effect Framework data. This
+ *			pointer is valid until the effect is disposed.
  */
 FNA3DAPI void FNA3D_CreateEffect(
 	FNA3D_Device *device,
