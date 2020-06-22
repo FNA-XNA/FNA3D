@@ -4451,7 +4451,6 @@ void VULKAN_Clear(
 	float depth,
 	int32_t stencil
 ) {
-	/* TODO: support depth stencil clear */
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	uint8_t clearColor = (options & FNA3D_CLEAROPTIONS_TARGET) == FNA3D_CLEAROPTIONS_TARGET;
 	uint8_t clearDepth = (options & FNA3D_CLEAROPTIONS_DEPTHBUFFER) == FNA3D_CLEAROPTIONS_DEPTHBUFFER;
@@ -5133,16 +5132,16 @@ void VULKAN_SetRenderTargets(
 	{
 		renderer->colorAttachments[i] = NULL;
 		renderer->colorMultiSampleAttachments[i] = NULL;
-		renderer->multiSampleCount = renderer->fauxBackbufferMultiSampleCount;
 	}
 	renderer->depthStencilAttachment = NULL;
+	renderer->multiSampleCount = renderer->fauxBackbufferMultiSampleCount;
 
 	if (renderTargets == NULL)
 	{
 		renderer->colorAttachments[0] = renderer->fauxBackbufferColor.handle;
 		renderer->colorAttachmentCount = 1;
 
-		if (renderer->fauxBackbufferMultiSampleCount > 0)
+		if (renderer->fauxBackbufferMultiSampleCount > 1)
 		{
 			renderer->colorMultiSampleAttachments[0] = renderer->fauxBackbufferMultiSampleColor;
 		}
@@ -5162,10 +5161,11 @@ void VULKAN_SetRenderTargets(
 			{
 				cb = ((VulkanRenderbuffer*) renderTargets[i].colorBuffer)->colorBuffer;
 				renderer->colorAttachments[i] = cb->handle;
+				renderer->multiSampleCount = cb->multiSampleCount;
+
 				if (cb->multiSampleCount > 0)
 				{
 					renderer->colorMultiSampleAttachments[i] = cb->multiSampleTexture;
-					renderer->multiSampleCount = cb->multiSampleCount;
 				}
 			}
 			else
@@ -6090,7 +6090,6 @@ FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 	};
 	VulkanRenderbuffer *renderbuffer;
 	ImageMemoryBarrierCreateInfo imageBarrierCreateInfo;
-	VkResult result;
 
 	imageViewInfo.image = vlkTexture->imageData->imageResource.image;
 	imageViewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
@@ -8451,6 +8450,23 @@ static uint8_t CreateFauxBackbuffer(
 			barrierCreateInfo,
 			&renderer->fauxBackbufferDepthStencil.handle.imageResource
 		);
+
+		if (!renderer->renderTargetBound)
+		{
+			renderer->depthStencilAttachment = &renderer->fauxBackbufferDepthStencil.handle;
+		}
+	}
+
+	if (!renderer->renderTargetBound)
+	{
+		renderer->colorAttachments[0] = renderer->fauxBackbufferColor.handle;
+		renderer->colorAttachmentCount = 1;
+
+		if (renderer->fauxBackbufferMultiSampleCount > 0)
+		{
+			renderer->colorMultiSampleAttachments[0] = renderer->fauxBackbufferMultiSampleColor;
+			renderer->multiSampleCount = renderer->fauxBackbufferMultiSampleCount;
+		}
 	}
 
 	return 1;
@@ -9120,14 +9136,6 @@ FNA3D_Device* VULKAN_CreateDevice(
 	}
 
 	renderer->currentFrame = 0;
-
-	renderer->colorAttachments[0] = renderer->fauxBackbufferColor.handle;
-	renderer->colorAttachmentCount = 1;
-
-	if (renderer->fauxBackbufferDepthFormat != FNA3D_DEPTHFORMAT_NONE)
-	{
-		renderer->depthStencilAttachment = &renderer->fauxBackbufferDepthStencil.handle;
-	}
 	
 	CreateDummyData(renderer);
 
