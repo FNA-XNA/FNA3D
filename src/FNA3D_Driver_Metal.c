@@ -631,30 +631,33 @@ static void SetEncoderViewport(MetalRenderer *renderer)
 
 static void SetEncoderScissorRect(MetalRenderer *renderer)
 {
+	FNA3D_Rect rect = renderer->scissorRect;
+
 	if (	renderer->renderCommandEncoder != NULL &&
 		!renderer->needNewRenderPass			)
 	{
 		if (!renderer->scissorTestEnable)
 		{
-			/* Set to the default scissor rect */
-			mtlSetScissorRect(
-				renderer->renderCommandEncoder,
-				0,
-				0,
-				renderer->currentAttachmentWidth,
-				renderer->currentAttachmentHeight
-			);
+			/* Default to the size of the current RT */
+			rect.x = 0;
+			rect.y = 0;
+			rect.w = renderer->currentAttachmentWidth;
+			rect.h = renderer->currentAttachmentHeight;
 		}
-		else
-		{
-			mtlSetScissorRect(
-				renderer->renderCommandEncoder,
-				renderer->scissorRect.x,
-				renderer->scissorRect.y,
-				renderer->scissorRect.w,
-				renderer->scissorRect.h
-			);
-		}
+
+		/* Clamp to the size of the viewport */
+		rect.x = SDL_max(0, SDL_min(rect.x, renderer->viewport.w));
+		rect.y = SDL_max(0, SDL_min(rect.y, renderer->viewport.h));
+		rect.w = SDL_max(0, SDL_min(rect.w, renderer->viewport.w - rect.x));
+		rect.h = SDL_max(0, SDL_min(rect.h, renderer->viewport.h - rect.y));
+
+		mtlSetScissorRect(
+			renderer->renderCommandEncoder,
+			rect.x,
+			rect.y,
+			rect.w,
+			rect.h
+		);
 	}
 }
 
