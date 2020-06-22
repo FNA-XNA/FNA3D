@@ -6147,20 +6147,6 @@ FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 		);
 	}
 
-	result = renderer->vkCreateImageView(
-		renderer->logicalDevice,
-		&imageViewInfo,
-		NULL,
-		&renderbuffer->colorBuffer->handle->view
-	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResult("vkCreateImageView", result);
-		FNA3D_LogError("Failed to create color renderbuffer image view");
-		return NULL;
-	}
-
 	return (FNA3D_Renderbuffer*) renderbuffer;
 }
 
