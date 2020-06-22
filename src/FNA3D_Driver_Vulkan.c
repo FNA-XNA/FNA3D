@@ -5172,6 +5172,7 @@ void VULKAN_SetRenderTargets(
 			{
 				tex = (VulkanTexture*) renderTargets[i].texture;
 				renderer->colorAttachments[i] = tex->imageData;
+				renderer->multiSampleCount = 0;
 			}
 		}
 
