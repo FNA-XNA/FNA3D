@@ -3844,18 +3844,23 @@ static RenderPassHash GetRenderPassHash(
 ) {
 	RenderPassHash hash;
 	hash.colorAttachmentFormatOne = renderer->colorAttachments[0]->surfaceFormat;
+
 	hash.colorAttachmentFormatTwo = renderer->colorAttachments[1] != NULL ?
 		renderer->colorAttachments[1]->surfaceFormat :
 		VK_FORMAT_UNDEFINED;
+
 	hash.colorAttachmentFormatThree = renderer->colorAttachments[2] != NULL ?
 		renderer->colorAttachments[2]->surfaceFormat :
 		VK_FORMAT_UNDEFINED;
+
 	hash.colorAttachmentFormatFour = renderer->colorAttachments[3] != NULL ?
 		renderer->colorAttachments[3]->surfaceFormat :
 		VK_FORMAT_UNDEFINED;
+
 	hash.depthStencilAttachmentFormat = renderer->depthStencilAttachment != NULL ?
 		renderer->depthStencilAttachment->surfaceFormat :
 		VK_FORMAT_UNDEFINED;
+
 	hash.width = renderer->colorAttachments[0]->dimensions.width;
 	hash.height = renderer->colorAttachments[0]->dimensions.height;
 	hash.multiSampleCount = renderer->multiSampleCount;
@@ -4253,7 +4258,7 @@ static void RenderPassClear(
 	uint8_t clearDepth,
 	uint8_t clearStencil
 ) {
-	VkClearAttachment* clearAttachments;
+	VkClearAttachment clearAttachments[2 * MAX_RENDERTARGET_BINDINGS + 1];
 	VkClearRect clearRect;
 	VkClearValue clearValue = {{{
 		color->x,
@@ -4266,7 +4271,6 @@ static void RenderPassClear(
 		renderer->depthStencilAttachment != NULL
 	);
 	uint32_t i, attachmentCount;
-	VkClearAttachment *dsClearAttachment;
 
 	if (!clearColor && !shouldClearDepthStencil)
 	{
@@ -4274,19 +4278,6 @@ static void RenderPassClear(
 	}
 
 	attachmentCount = 0;
-	if (clearColor)
-	{
-		attachmentCount = renderer->colorAttachmentCount;
-	}
-	if (shouldClearDepthStencil)
-	{
-		attachmentCount += 1;
-	}
-
-	clearAttachments = SDL_stack_alloc(
-		VkClearAttachment,
-		attachmentCount
-	);
 
 	clearRect.baseArrayLayer = 0;
 	clearRect.layerCount = 1;
@@ -4298,26 +4289,35 @@ static void RenderPassClear(
 	{
 		for (i = 0; i < renderer->colorAttachmentCount; i += 1)
 		{
-			clearAttachments[i].aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-			clearAttachments[i].colorAttachment = i;
-			clearAttachments[i].clearValue = clearValue;
+			SDL_zero(clearAttachments[attachmentCount]);
+			clearAttachments[attachmentCount].aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			clearAttachments[attachmentCount].colorAttachment = attachmentCount;
+			clearAttachments[attachmentCount].clearValue = clearValue;
+			attachmentCount++;
+
+			/* do not clear the multisample image here
+			 * vulkan treats them both as the same color attachment 
+			 * vulkan is a very good and not confusing at all API
+			 */
 		}
 	}
 
 	if (shouldClearDepthStencil)
 	{
-		dsClearAttachment = &clearAttachments[attachmentCount - 1];
-		dsClearAttachment->aspectMask = 0;
+		SDL_zero(clearAttachments[attachmentCount]);
+		
 		if (clearDepth)
 		{
-			dsClearAttachment->aspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
-			dsClearAttachment->clearValue.depthStencil.depth = depth;
+			clearAttachments[attachmentCount].aspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
+			clearAttachments[attachmentCount].clearValue.depthStencil.depth = depth;
 		}
 		if (clearStencil)
 		{
-			dsClearAttachment->aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-			dsClearAttachment->clearValue.depthStencil.stencil = stencil;
+			clearAttachments[attachmentCount].aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+			clearAttachments[attachmentCount].clearValue.depthStencil.stencil = stencil;
 		}
+
+		attachmentCount++;
 	}
 
 	renderer->vkCmdClearAttachments(
@@ -4327,8 +4327,6 @@ static void RenderPassClear(
 		1,
 		&clearRect
 	);
-
-	SDL_stack_free(clearAttachments);
 }
 
 static void OutsideRenderPassClear(
@@ -4393,6 +4391,34 @@ static void OutsideRenderPassClear(
 				barrierCreateInfo,
 				&renderer->colorAttachments[i]->imageResource
 			);
+
+			if (renderer->multiSampleCount > 0)
+			{
+				barrierCreateInfo.nextAccess = RESOURCE_ACCESS_TRANSFER_WRITE;
+
+				CreateImageMemoryBarrier(
+					renderer,
+					barrierCreateInfo,
+					&renderer->colorMultiSampleAttachments[i]->imageResource
+				);
+
+				renderer->vkCmdClearColorImage(
+					renderer->commandBuffers[renderer->currentFrame],
+					renderer->colorMultiSampleAttachments[i]->imageResource.image,
+					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+					&clearValue,
+					1,
+					&subresourceRange
+				);
+
+				barrierCreateInfo.nextAccess = RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE;
+
+				CreateImageMemoryBarrier(
+					renderer,
+					barrierCreateInfo,
+					&renderer->colorMultiSampleAttachments[i]->imageResource
+				);
+			}
 		}
 	}
 
@@ -6123,7 +6149,7 @@ FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_TYPE_2D,
-			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			renderbuffer->colorBuffer->multiSampleTexture
 		);
@@ -8389,7 +8415,7 @@ static uint8_t CreateFauxBackbuffer(
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_TYPE_2D,
-			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			renderer->fauxBackbufferMultiSampleColor
 		);
