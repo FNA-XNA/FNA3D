@@ -263,7 +263,7 @@ struct VulkanRenderbuffer /* Cast from FNA3D_Renderbuffer */
 struct VulkanColorBuffer
 {
 	FNAVulkanImageData *handle;
-	VulkanTexture *multiSampleTexture;
+	FNAVulkanImageData *multiSampleTexture;
 	uint32_t multiSampleCount;
 };
 
@@ -336,7 +336,7 @@ typedef struct FNAVulkanRenderer
 	SurfaceFormatMapping surfaceFormatMapping;
 	FNA3D_SurfaceFormat fauxBackbufferSurfaceFormat;
 	VulkanColorBuffer fauxBackbufferColor;
-	FNAVulkanImageData fauxBackbufferMultiSampleColor;
+	FNAVulkanImageData *fauxBackbufferMultiSampleColor;
 	VulkanDepthStencilBuffer fauxBackbufferDepthStencil;
 	VkFramebuffer fauxBackbufferFramebuffer;
 	uint32_t fauxBackbufferWidth;
@@ -3048,7 +3048,6 @@ static uint8_t BlitFramebuffer(
 	FNA3D_Rect dstRect
 ) {
 	VkImageBlit blit;
-	VkImageResolve resolve;
 	ImageMemoryBarrierCreateInfo memoryBarrierCreateInfo;
 
 	memoryBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -5145,7 +5144,7 @@ void VULKAN_SetRenderTargets(
 
 		if (renderer->fauxBackbufferMultiSampleCount > 0)
 		{
-			renderer->colorMultiSampleAttachments[0] = &renderer->fauxBackbufferMultiSampleColor;
+			renderer->colorMultiSampleAttachments[0] = renderer->fauxBackbufferMultiSampleColor;
 		}
 
 		if (renderer->fauxBackbufferDepthFormat != FNA3D_DEPTHFORMAT_NONE)
@@ -5165,7 +5164,7 @@ void VULKAN_SetRenderTargets(
 				renderer->colorAttachments[i] = cb->handle;
 				if (cb->multiSampleCount > 0)
 				{
-					renderer->colorMultiSampleAttachments[i] = cb->multiSampleTexture->imageData;
+					renderer->colorMultiSampleAttachments[i] = cb->multiSampleTexture;
 					renderer->multiSampleCount = cb->multiSampleCount;
 				}
 			}
@@ -5438,6 +5437,11 @@ static void DestroyFauxBackbuffer(FNAVulkanRenderer *renderer)
 		renderer->fauxBackbufferColor.handle->memory,
 		NULL
 	);
+
+	if (renderer->fauxBackbufferMultiSampleColor != NULL)
+	{
+		DestroyImageData(renderer, renderer->fauxBackbufferMultiSampleColor);
+	}
 
 	renderer->vkDestroyImageView(
 		renderer->logicalDevice,
@@ -6107,18 +6111,23 @@ FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 
 	if (multiSampleCount > 1)
 	{
-		VulkanTexture *multiSampleTexture = CreateTexture(
+		renderbuffer->colorBuffer->multiSampleTexture = (FNAVulkanImageData*) SDL_malloc(sizeof(FNAVulkanImageData));
+
+		CreateImage(
 			renderer,
-			format,
 			width,
 			height,
-			1,
-			1,
+			XNAToVK_SampleCount(multiSampleCount),
+			surfaceFormatMapping.formatColor,
+			surfaceFormatMapping.swizzle,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_TYPE_2D,
-			XNAToVK_SampleCount(multiSampleCount)
+			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+			renderbuffer->colorBuffer->multiSampleTexture
 		);
 
-		renderbuffer->colorBuffer->multiSampleTexture = multiSampleTexture;
 		renderbuffer->colorBuffer->multiSampleCount = multiSampleCount;
 
 		imageBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -6134,7 +6143,7 @@ FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 		CreateImageMemoryBarrier(
 			renderer,
 			imageBarrierCreateInfo,
-			&multiSampleTexture->imageData->imageResource
+			&renderbuffer->colorBuffer->multiSampleTexture->imageResource
 		);
 	}
 
@@ -6245,22 +6254,14 @@ static void DestroyRenderbuffer(
 	}
 	else
 	{
-		renderer->vkDestroyImageView(
-			renderer->logicalDevice,
-			renderbuffer->colorBuffer->handle->view,
-			NULL
-		);
+		if (renderbuffer->colorBuffer->multiSampleTexture != NULL)
+		{
+			DestroyImageData(renderer, renderbuffer->colorBuffer->multiSampleTexture);
+		}
 
 		/* The image is owned by the texture it's from, so we don't free it here. */
 
 		SDL_free(renderbuffer->colorBuffer);
-	}
-
-	if (renderbuffer->colorBuffer->multiSampleTexture != NULL)
-	{
-		DestroyImageData(renderer, renderbuffer->colorBuffer->multiSampleTexture->imageData);
-		DestroyBuffer(renderer, renderbuffer->colorBuffer->multiSampleTexture->stagingBuffer);
-		SDL_free(renderbuffer->colorBuffer->multiSampleTexture);
 	}
 
 	SDL_free(renderbuffer);
@@ -8386,9 +8387,12 @@ static uint8_t CreateFauxBackbuffer(
 	);
 
 	renderer->fauxBackbufferMultiSampleCount = presentationParameters->multiSampleCount;
+	renderer->fauxBackbufferMultiSampleColor = NULL;
 
 	if (renderer->fauxBackbufferMultiSampleCount > 0)
 	{
+		renderer->fauxBackbufferMultiSampleColor = (FNAVulkanImageData*) SDL_malloc(sizeof(FNAVulkanImageData));
+
 		CreateImage(
 			renderer,
 			presentationParameters->backBufferWidth,
@@ -8401,13 +8405,13 @@ static uint8_t CreateFauxBackbuffer(
 			VK_IMAGE_TYPE_2D,
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-			&renderer->fauxBackbufferMultiSampleColor
+			renderer->fauxBackbufferMultiSampleColor
 		);
 
 		CreateImageMemoryBarrier(
 			renderer,
 			barrierCreateInfo,
-			&renderer->fauxBackbufferColor.handle->imageResource
+			&renderer->fauxBackbufferMultiSampleColor->imageResource
 		);
 	}
 
