@@ -923,6 +923,19 @@ void VULKAN_SetRenderTargets(
 	FNA3D_DepthFormat depthFormat
 ); 
 
+void VULKAN_GetTextureData2D(
+	FNA3D_Renderer *driverData,
+	FNA3D_Texture *texture,
+	FNA3D_SurfaceFormat format,
+	int32_t x,
+	int32_t y,
+	int32_t w,
+	int32_t h,
+	int32_t level,
+	void* data,
+	int32_t dataLength
+);
+
 static void SetDepthBiasCommand(FNAVulkanRenderer *renderer);
 static void SetScissorRectCommand(FNAVulkanRenderer *renderer);
 static void SetStencilReferenceValueCommand(FNAVulkanRenderer *renderer);
@@ -5514,9 +5527,41 @@ void VULKAN_ReadBackbuffer(
 	int32_t w,
 	int32_t h,
 	void* data,
-	int32_t dataLen
+	int32_t dataLength
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanTexture backbufferTexture;
+
+	/* create a pseudo-texture to feed to GetTextureData2D */
+
+	backbufferTexture.imageData = renderer->fauxBackbufferColor.handle;
+	backbufferTexture.width = renderer->fauxBackbufferWidth;
+	backbufferTexture.height = renderer->fauxBackbufferHeight;
+	backbufferTexture.format = renderer->fauxBackbufferSurfaceFormat;
+	backbufferTexture.hasMipmaps = 0;
+
+	backbufferTexture.stagingBuffer = CreateBuffer(
+		renderer,
+		FNA3D_BUFFERUSAGE_NONE,
+		backbufferTexture.imageData->memorySize,
+		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE
+	);
+
+	VULKAN_GetTextureData2D(
+		driverData,
+		(FNA3D_Texture*) &backbufferTexture,
+		renderer->fauxBackbufferSurfaceFormat,
+		x,
+		y,
+		w,
+		h,
+		0,
+		data,
+		dataLength
+	);
+
+	/* safe to destroy here because GetTextureData2D stalls the pipeline */
+	DestroyBuffer(renderer, backbufferTexture.stagingBuffer);
 }
 
 void VULKAN_GetBackbufferSize(
