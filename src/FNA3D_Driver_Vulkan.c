@@ -301,7 +301,7 @@ typedef struct FNAVulkanRenderer
 	VkInstance instance;
 	VkPhysicalDevice physicalDevice;
 	VkPhysicalDeviceProperties2 physicalDeviceProperties;
-	VkPhysicalDeviceDriverProperties physicalDeviceDriverProperties;
+	VkPhysicalDeviceDriverPropertiesKHR physicalDeviceDriverProperties;
 	VkDevice logicalDevice;
 
 	FNA3D_PresentInterval presentInterval;
@@ -7847,7 +7847,7 @@ static uint8_t DeterminePhysicalDevice(
 	renderer->physicalDevice = physicalDevice;
 	renderer->queueFamilyIndices = queueFamilyIndices;
 
-	renderer->physicalDeviceDriverProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES;
+	renderer->physicalDeviceDriverProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR;
 
 	renderer->physicalDeviceProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
 	renderer->physicalDeviceProperties.pNext = &renderer->physicalDeviceDriverProperties;
@@ -9007,6 +9007,7 @@ FNA3D_Device* VULKAN_CreateDevice(
 	{
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 		VK_KHR_MAINTENANCE1_EXTENSION_NAME,
+		VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,
 		VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME
 	};
 	uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
