@@ -238,9 +238,10 @@ struct VulkanQuery {
 struct VulkanTexture {
 	FNAVulkanImageData *imageData;
 	VulkanBuffer *stagingBuffer;
-	uint8_t hasMipmaps;
+	uint32_t levelCount;
 	int32_t width;
 	int32_t height;
+	int32_t depth;
 	FNA3D_SurfaceFormat format;
 };
 
@@ -745,7 +746,7 @@ static VulkanBuffer* CreateBuffer(
 	FNAVulkanRenderer *renderer,
 	FNA3D_BufferUsage usage, 
 	VkDeviceSize size,
-	VkBufferUsageFlags usageFlags
+	VulkanResourceAccessType resourceAccessType
 ); 
 
 static void CreateBufferMemoryBarrier(
@@ -764,7 +765,10 @@ static uint8_t CreateImage(
 	FNAVulkanRenderer *renderer,
 	uint32_t width,
 	uint32_t height,
+	uint32_t depth,
+	uint8_t isCube,
 	VkSampleCountFlagBits samples,
+	uint32_t levelCount,
 	VkFormat format,
 	VkComponentMapping swizzle,
 	VkImageAspectFlags aspectMask,
@@ -773,17 +777,6 @@ static uint8_t CreateImage(
 	VkImageUsageFlags usage,
 	VkMemoryPropertyFlags memoryProperties,
 	FNAVulkanImageData *imageData
-);
-
-static VulkanTexture* CreateTexture(
-	FNAVulkanRenderer *renderer,
-	FNA3D_SurfaceFormat format,
-	int32_t width,
-	int32_t height,
-	int32_t levelCount,
-	uint8_t isRenderTarget,
-	VkImageType imageType,
-	VkSampleCountFlagBits sampleCount
 );
 
 static CreateSwapchainResult CreateSwapchain(
@@ -2781,7 +2774,7 @@ static void CreateImageMemoryBarrier(
 
 	if (imageResource->resourceAccessType == barrierCreateInfo.nextAccess)
 	{ 
-		return; 
+		return;
 	}
 
 	InternalBeginFrame(renderer);
@@ -2855,7 +2848,10 @@ static uint8_t CreateImage(
 	FNAVulkanRenderer *renderer,
 	uint32_t width,
 	uint32_t height,
+	uint32_t depth,
+	uint8_t isCube,
 	VkSampleCountFlagBits samples,
+	uint32_t levelCount,
 	VkFormat format,
 	VkComponentMapping swizzle,
 	VkImageAspectFlags aspectMask,
@@ -2877,14 +2873,14 @@ static uint8_t CreateImage(
 		VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO
 	};
 
-	imageCreateInfo.flags = 0;
+	imageCreateInfo.flags = isCube ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
 	imageCreateInfo.imageType = imageType;
 	imageCreateInfo.format = format;
 	imageCreateInfo.extent.width = width;
 	imageCreateInfo.extent.height = height;
-	imageCreateInfo.extent.depth = 1;
+	imageCreateInfo.extent.depth = depth;
 	imageCreateInfo.mipLevels = 1;
-	imageCreateInfo.arrayLayers = 1;
+	imageCreateInfo.arrayLayers = isCube ? 6 : 1;
 	imageCreateInfo.samples = samples;
 	imageCreateInfo.tiling = tiling;
 	imageCreateInfo.usage = usage;
@@ -2958,7 +2954,6 @@ static uint8_t CreateImage(
 
 	imageViewCreateInfo.flags = 0;
 	imageViewCreateInfo.image = imageData->imageResource.image;
-	imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 	imageViewCreateInfo.format = format;
 	imageViewCreateInfo.components = swizzle;
 	imageViewCreateInfo.subresourceRange.aspectMask = aspectMask;
@@ -2966,6 +2961,19 @@ static uint8_t CreateImage(
 	imageViewCreateInfo.subresourceRange.levelCount = 1;
 	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
 	imageViewCreateInfo.subresourceRange.layerCount = 1;
+
+	if (isCube)
+	{
+		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+	}
+	else if (imageType == VK_IMAGE_TYPE_2D)
+	{
+		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	}
+	else if (imageType == VK_IMAGE_TYPE_3D)
+	{
+		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_3D;
+	}
 
 	result = renderer->vkCreateImageView(
 		renderer->logicalDevice,
@@ -2985,72 +2993,6 @@ static uint8_t CreateImage(
 	imageData->dimensions.height = height;
 
 	return 1;
-}
-
-static VulkanTexture* CreateTexture(
-	FNAVulkanRenderer *renderer,
-	FNA3D_SurfaceFormat format,
-	int32_t width,
-	int32_t height,
-	int32_t levelCount,
-	uint8_t isRenderTarget,
-	VkImageType imageType,
-	VkSampleCountFlagBits sampleCount
-) {
-	VulkanTexture *result;
-	FNAVulkanImageData *imageData;
-	VulkanBuffer *stagingBuffer;
-	SurfaceFormatMapping surfaceFormatMapping = XNAToVK_SurfaceFormat[format];
-	uint32_t usageFlags = (
-		VK_IMAGE_USAGE_SAMPLED_BIT |
-		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
-		VK_IMAGE_USAGE_TRANSFER_SRC_BIT
-	);
-
-	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
-	SDL_memset(result, '\0', sizeof(VulkanTexture));
-
-	imageData = (FNAVulkanImageData*) SDL_malloc(sizeof(FNAVulkanImageData));
-	SDL_memset(imageData, '\0', sizeof(FNAVulkanImageData));
-
-	stagingBuffer = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
-	SDL_memset(stagingBuffer, '\0', sizeof(VulkanBuffer));
-
-	result->imageData = imageData;
-
-	if (isRenderTarget)
-	{
-		usageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-	}
-
-	CreateImage(
-		renderer,
-		width,
-		height,
-		sampleCount,
-		surfaceFormatMapping.formatColor,
-		surfaceFormatMapping.swizzle,
-		VK_IMAGE_ASPECT_COLOR_BIT,
-		VK_IMAGE_TILING_OPTIMAL,
-		imageType,
-		usageFlags,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
-		result->imageData
-	);
-
-	result->width = width;
-	result->height = height;
-	result->format = format;
-	result->hasMipmaps = levelCount > 1;
-
-	result->stagingBuffer = CreateBuffer(
-		renderer,
-		FNA3D_BUFFERUSAGE_NONE, /* arbitrary */
-		result->imageData->memorySize,
-		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE
-	);
-
-	return result;
 }
 
 static uint8_t BlitFramebuffer(
@@ -4862,7 +4804,7 @@ void VULKAN_VerifySampler(
 	vkSamplerState = FetchSamplerState(
 		renderer,
 		sampler,
-		vulkanTexture->hasMipmaps
+		vulkanTexture->levelCount > 1
 	);
 
 	if (vkSamplerState != renderer->samplers[textureIndex])
@@ -5538,7 +5480,7 @@ void VULKAN_ReadBackbuffer(
 	backbufferTexture.width = renderer->fauxBackbufferWidth;
 	backbufferTexture.height = renderer->fauxBackbufferHeight;
 	backbufferTexture.format = renderer->fauxBackbufferSurfaceFormat;
-	backbufferTexture.hasMipmaps = 0;
+	backbufferTexture.levelCount = 1;
 
 	backbufferTexture.stagingBuffer = CreateBuffer(
 		renderer,
@@ -5604,17 +5546,56 @@ FNA3D_Texture* VULKAN_CreateTexture2D(
 	uint8_t isRenderTarget
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanTexture *result;
+	SurfaceFormatMapping surfaceFormatMapping = XNAToVK_SurfaceFormat[format];
+	uint32_t usageFlags = (
+		VK_IMAGE_USAGE_SAMPLED_BIT |
+		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+		VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+	);
 
-	return (FNA3D_Texture*) CreateTexture(
+	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
+	SDL_memset(result, '\0', sizeof(VulkanTexture));
+
+	result->imageData = (FNAVulkanImageData*) SDL_malloc(sizeof(FNAVulkanImageData));
+	SDL_memset(result->imageData, '\0', sizeof(FNAVulkanImageData));
+
+	if (isRenderTarget)
+	{
+		usageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	}
+
+	CreateImage(
 		renderer,
-		format,
 		width,
 		height,
+		1,
+		0,
+		VK_SAMPLE_COUNT_1_BIT,
 		levelCount,
-		isRenderTarget,
+		surfaceFormatMapping.formatColor,
+		surfaceFormatMapping.swizzle,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_TYPE_2D,
-		VK_SAMPLE_COUNT_1_BIT
+		usageFlags,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		result->imageData
 	);
+
+	result->width = width;
+	result->height = height;
+	result->format = format;
+	result->levelCount = levelCount;
+
+	result->stagingBuffer = CreateBuffer(
+		renderer,
+		FNA3D_BUFFERUSAGE_NONE, /* arbitrary */
+		result->imageData->memorySize,
+		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE
+	);
+
+	return (FNA3D_Texture*) result;
 }
 
 FNA3D_Texture* VULKAN_CreateTexture3D(
@@ -5625,8 +5606,53 @@ FNA3D_Texture* VULKAN_CreateTexture3D(
 	int32_t depth,
 	int32_t levelCount
 ) {
-	/* TODO */
-	return NULL;
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanTexture *result;
+	SurfaceFormatMapping surfaceFormatMapping = XNAToVK_SurfaceFormat[format];
+	uint32_t usageFlags = (
+		VK_IMAGE_USAGE_SAMPLED_BIT |
+		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+		VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+	);
+
+	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
+	SDL_memset(result, '\0', sizeof(VulkanTexture));
+
+	result->imageData = (FNAVulkanImageData*) SDL_malloc(sizeof(FNAVulkanImageData));
+	SDL_memset(result->imageData, '\0', sizeof(FNAVulkanImageData));
+
+	CreateImage(
+		renderer,
+		width,
+		height,
+		depth,
+		0,
+		VK_SAMPLE_COUNT_1_BIT,
+		levelCount,
+		surfaceFormatMapping.formatColor,
+		surfaceFormatMapping.swizzle,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_TYPE_3D,
+		usageFlags,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		result->imageData
+	);
+
+	result->width = width;
+	result->height = height;
+	result->depth = depth;
+	result->format = format;
+	result->levelCount = levelCount;
+
+	result->stagingBuffer = CreateBuffer(
+		renderer,
+		FNA3D_BUFFERUSAGE_NONE, /* arbitrary */
+		result->imageData->memorySize,
+		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE
+	);
+
+	return (FNA3D_Texture*) result;
 }
 
 FNA3D_Texture* VULKAN_CreateTextureCube(
@@ -5636,8 +5662,57 @@ FNA3D_Texture* VULKAN_CreateTextureCube(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
-	/* TODO */
-	return NULL;
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanTexture *result;
+	SurfaceFormatMapping surfaceFormatMapping = XNAToVK_SurfaceFormat[format];
+	uint32_t usageFlags = (
+		VK_IMAGE_USAGE_SAMPLED_BIT |
+		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
+		VK_IMAGE_USAGE_TRANSFER_SRC_BIT
+	);
+
+	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
+	SDL_memset(result, '\0', sizeof(VulkanTexture));
+
+	result->imageData = (FNAVulkanImageData*) SDL_malloc(sizeof(FNAVulkanImageData));
+	SDL_memset(result->imageData, '\0', sizeof(FNAVulkanImageData));
+
+	if (isRenderTarget)
+	{
+		usageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+	}
+
+	CreateImage(
+		renderer,
+		size,
+		size,
+		1,
+		1,
+		VK_SAMPLE_COUNT_1_BIT,
+		levelCount,
+		surfaceFormatMapping.formatColor,
+		surfaceFormatMapping.swizzle,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		VK_IMAGE_TILING_OPTIMAL,
+		VK_IMAGE_TYPE_2D,
+		usageFlags,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		result->imageData
+	);
+
+	result->width = size;
+	result->height = size;
+	result->format = format;
+	result->levelCount = levelCount;
+
+	result->stagingBuffer = CreateBuffer(
+		renderer,
+		FNA3D_BUFFERUSAGE_NONE, /* arbitrary */
+		result->imageData->memorySize,
+		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE
+	);
+
+	return (FNA3D_Texture*) result;
 }
 
 void VULKAN_AddDisposeTexture(
@@ -5772,17 +5847,94 @@ void VULKAN_SetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t w,
+	int32_t h,
+	int32_t d,
 	int32_t level,
-	int32_t left,
-	int32_t top,
-	int32_t right,
-	int32_t bottom,
-	int32_t front,
-	int32_t back,
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
+	VulkanBuffer *stagingBuffer = vulkanTexture->stagingBuffer;
+	void *stagingData;
+	ImageMemoryBarrierCreateInfo imageBarrierCreateInfo;
+	VkBufferImageCopy imageCopy;
+
+	/* DXT formats require w and h to be multiples of 4 */
+	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
+		format == FNA3D_SURFACEFORMAT_DXT3 ||
+		format == FNA3D_SURFACEFORMAT_DXT5	)
+	{
+		w = (w + 3) & ~3;
+		h = (h + 3) & ~3;
+	}
+
+	VULKAN_BeginFrame(driverData);
+
+	renderer->vkMapMemory(
+		renderer->logicalDevice,
+		stagingBuffer->deviceMemory,
+		stagingBuffer->internalOffset,
+		stagingBuffer->size,
+		0,
+		&stagingData
+	);
+
+	SDL_memcpy(stagingData, data, dataLength);
+
+	renderer->vkUnmapMemory(
+		renderer->logicalDevice,
+		stagingBuffer->deviceMemory
+	);
+
+	imageBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageBarrierCreateInfo.subresourceRange.baseArrayLayer = 0;
+	imageBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
+	imageBarrierCreateInfo.subresourceRange.layerCount = 1;
+	imageBarrierCreateInfo.subresourceRange.levelCount = 1;
+	imageBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageBarrierCreateInfo.discardContents = 0;
+	imageBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_TRANSFER_WRITE;
+
+	CreateImageMemoryBarrier(
+		renderer,
+		imageBarrierCreateInfo,
+		&vulkanTexture->imageData->imageResource
+	);
+
+	CreateBufferMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_TRANSFER_READ,
+		stagingBuffer
+	);
+
+	imageCopy.imageExtent.width = w;
+	imageCopy.imageExtent.height = h;
+	imageCopy.imageExtent.depth = d;
+	imageCopy.imageOffset.x = x;
+	imageCopy.imageOffset.y = y;
+	imageCopy.imageOffset.z = z;
+	imageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageCopy.imageSubresource.baseArrayLayer = 0;
+	imageCopy.imageSubresource.layerCount = 1;
+	imageCopy.imageSubresource.mipLevel = 0;
+	imageCopy.bufferOffset = 0;
+	imageCopy.bufferRowLength = w;
+	imageCopy.bufferImageHeight = h;
+
+	renderer->vkCmdCopyBufferToImage(
+		renderer->commandBuffers[renderer->currentFrame],
+		stagingBuffer->handle,
+		vulkanTexture->imageData->imageResource.image,
+		AccessMap[vulkanTexture->imageData->imageResource.resourceAccessType].imageLayout,
+		1,
+		&imageCopy
+	);
 }
 
 void VULKAN_SetTextureDataCube(
@@ -5798,7 +5950,84 @@ void VULKAN_SetTextureDataCube(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
+	VulkanBuffer *stagingBuffer = vulkanTexture->stagingBuffer;
+	void *stagingData;
+	ImageMemoryBarrierCreateInfo imageBarrierCreateInfo;
+	VkBufferImageCopy imageCopy;
+
+	/* DXT formats require w and h to be multiples of 4 */
+	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
+		format == FNA3D_SURFACEFORMAT_DXT3 ||
+		format == FNA3D_SURFACEFORMAT_DXT5	)
+	{
+		w = (w + 3) & ~3;
+		h = (h + 3) & ~3;
+	}
+
+	VULKAN_BeginFrame(driverData);
+
+	renderer->vkMapMemory(
+		renderer->logicalDevice,
+		stagingBuffer->deviceMemory,
+		stagingBuffer->internalOffset,
+		stagingBuffer->size,
+		0,
+		&stagingData
+	);
+
+	SDL_memcpy(stagingData, data, dataLength);
+
+	renderer->vkUnmapMemory(
+		renderer->logicalDevice,
+		stagingBuffer->deviceMemory
+	);
+
+	imageBarrierCreateInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageBarrierCreateInfo.subresourceRange.baseArrayLayer = cubeMapFace;
+	imageBarrierCreateInfo.subresourceRange.baseMipLevel = 0;
+	imageBarrierCreateInfo.subresourceRange.layerCount = 1;
+	imageBarrierCreateInfo.subresourceRange.levelCount = 1;
+	imageBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageBarrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	imageBarrierCreateInfo.discardContents = 0;
+	imageBarrierCreateInfo.nextAccess = RESOURCE_ACCESS_TRANSFER_WRITE;
+
+	CreateImageMemoryBarrier(
+		renderer,
+		imageBarrierCreateInfo,
+		&vulkanTexture->imageData->imageResource
+	);
+
+	CreateBufferMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_TRANSFER_READ,
+		stagingBuffer
+	);
+
+	imageCopy.imageExtent.width = w;
+	imageCopy.imageExtent.height = h;
+	imageCopy.imageExtent.depth = 1;
+	imageCopy.imageOffset.x = x;
+	imageCopy.imageOffset.y = y;
+	imageCopy.imageOffset.z = 0;
+	imageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageCopy.imageSubresource.baseArrayLayer = cubeMapFace;
+	imageCopy.imageSubresource.layerCount = 1;
+	imageCopy.imageSubresource.mipLevel = 0;
+	imageCopy.bufferOffset = 0;
+	imageCopy.bufferRowLength = w;
+	imageCopy.bufferImageHeight = h;
+
+	renderer->vkCmdCopyBufferToImage(
+		renderer->commandBuffers[renderer->currentFrame],
+		stagingBuffer->handle,
+		vulkanTexture->imageData->imageResource.image,
+		AccessMap[vulkanTexture->imageData->imageResource.resourceAccessType].imageLayout,
+		1,
+		&imageCopy
+	);
 }
 
 void VULKAN_SetTextureDataYUV(
@@ -6188,7 +6417,10 @@ FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 			renderer,
 			width,
 			height,
+			1,
+			0,
 			XNAToVK_SampleCount(multiSampleCount),
+			1,
 			surfaceFormatMapping.formatColor,
 			surfaceFormatMapping.swizzle,
 			VK_IMAGE_ASPECT_COLOR_BIT,
@@ -6229,6 +6461,7 @@ FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 	int32_t multiSampleCount
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanRenderbuffer *renderbuffer;
 	VkImageAspectFlags depthAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
 	ImageMemoryBarrierCreateInfo imageBarrierCreateInfo;
 	VkFormat depthFormat = XNAToVK_DepthFormat(renderer, format);
@@ -6238,7 +6471,7 @@ FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 		depthAspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
 	}
 
-	VulkanRenderbuffer *renderbuffer = (VulkanRenderbuffer*) SDL_malloc(sizeof(VulkanRenderbuffer));
+	renderbuffer = (VulkanRenderbuffer*) SDL_malloc(sizeof(VulkanRenderbuffer));
 	renderbuffer->colorBuffer = NULL;
 	renderbuffer->depthBuffer = (VulkanDepthStencilBuffer*) SDL_malloc(sizeof(VulkanDepthStencilBuffer));
 
@@ -6247,7 +6480,10 @@ FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 			renderer,
 			width,
 			height,
+			1,
+			0,
 			XNAToVK_SampleCount(multiSampleCount),
+			1,
 			depthFormat,
 			IDENTITY_SWIZZLE,
 			depthAspectFlags,
@@ -8404,7 +8640,10 @@ static uint8_t CreateFauxBackbuffer(
 			renderer,
 			presentationParameters->backBufferWidth,
 			presentationParameters->backBufferHeight,
+			1,
+			0,
 			VK_SAMPLE_COUNT_1_BIT,
+			1,
 			renderer->surfaceFormatMapping.formatColor,
 			renderer->surfaceFormatMapping.swizzle,
 			VK_IMAGE_ASPECT_COLOR_BIT,
@@ -8454,7 +8693,10 @@ static uint8_t CreateFauxBackbuffer(
 			renderer,
 			presentationParameters->backBufferWidth,
 			presentationParameters->backBufferHeight,
+			1,
+			0,
 			XNAToVK_SampleCount(presentationParameters->multiSampleCount),
+			1,
 			renderer->surfaceFormatMapping.formatColor,
 			renderer->surfaceFormatMapping.swizzle,
 			VK_IMAGE_ASPECT_COLOR_BIT,
@@ -8490,7 +8732,10 @@ static uint8_t CreateFauxBackbuffer(
 				renderer,
 				presentationParameters->backBufferWidth,
 				presentationParameters->backBufferHeight,
+				1,
+				0,
 				XNAToVK_SampleCount(presentationParameters->multiSampleCount),
+				1,
 				vulkanDepthStencilFormat,
 				IDENTITY_SWIZZLE,
 				depthAspectFlags,
@@ -8904,26 +9149,22 @@ static void CreateDummyData(
 	VkSamplerCreateInfo samplerCreateInfo;
 	ImageMemoryBarrierCreateInfo memoryBarrierCreateInfo;
 
-	renderer->dummyVertTexture = CreateTexture(
-		renderer,
+	renderer->dummyVertTexture = (VulkanTexture*) VULKAN_CreateTexture2D(
+		(FNA3D_Renderer*) renderer,
 		FNA3D_SURFACEFORMAT_COLOR,
 		1,
 		1,
 		1,
-		0,
-		VK_IMAGE_TYPE_2D,
-		VK_SAMPLE_COUNT_1_BIT
+		0
 	);
 
-	renderer->dummyFragTexture = CreateTexture(
-		renderer,
+	renderer->dummyFragTexture = (VulkanTexture*) VULKAN_CreateTexture2D(
+		(FNA3D_Renderer*) renderer,
 		FNA3D_SURFACEFORMAT_COLOR,
 		1,
 		1,
 		1,
-		0,
-		VK_IMAGE_TYPE_2D,
-		VK_SAMPLE_COUNT_1_BIT
+		0
 	);
 
 	memoryBarrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
