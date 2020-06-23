@@ -818,6 +818,7 @@ FNA3DAPI void FNA3D_ResetBackbuffer(
  * w:		The width of the backbuffer region to read.
  * h:		The height of the backbuffer region to read.
  * data:	The pointer to read the backbuffer data into.
+ * dataLength:	The size of the backbuffer data in bytes.
  */
 FNA3DAPI void FNA3D_ReadBackbuffer(
 	FNA3D_Device *device,
