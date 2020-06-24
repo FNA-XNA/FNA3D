@@ -367,6 +367,23 @@ static D3D11_BLEND XNAToD3D_BlendMode[] =
 	D3D11_BLEND_SRC_ALPHA_SAT	/* Blend.SourceAlphaSaturation */
 };
 
+static D3D11_BLEND XNAToD3D_BlendModeAlpha[] =
+{
+	D3D11_BLEND_ONE,		/* Blend.One */
+	D3D11_BLEND_ZERO,		/* Blend.Zero */
+	D3D11_BLEND_SRC_ALPHA,		/* Blend.SourceColor */
+	D3D11_BLEND_INV_SRC_ALPHA,	/* Blend.InverseSourceColor */
+	D3D11_BLEND_SRC_ALPHA,		/* Blend.SourceAlpha */
+	D3D11_BLEND_INV_SRC_ALPHA,	/* Blend.InverseSourceAlpha */
+	D3D11_BLEND_DEST_ALPHA,		/* Blend.DestinationColor */
+	D3D11_BLEND_INV_DEST_ALPHA,	/* Blend.InverseDestinationColor */
+	D3D11_BLEND_DEST_ALPHA,		/* Blend.DestinationAlpha */
+	D3D11_BLEND_INV_DEST_ALPHA,	/* Blend.InverseDestinationAlpha */
+	D3D11_BLEND_BLEND_FACTOR,	/* Blend.BlendFactor */
+	D3D11_BLEND_INV_BLEND_FACTOR,	/* Blend.InverseBlendFactor */
+	D3D11_BLEND_SRC_ALPHA_SAT	/* Blend.SourceAlphaSaturation */
+};
+
 static D3D11_BLEND_OP XNAToD3D_BlendOperation[] =
 {
 	D3D11_BLEND_OP_ADD,		/* BlendFunction.Add */
@@ -565,13 +582,13 @@ static ID3D11BlendState* FetchBlendState(
 		desc.RenderTarget[0].DestBlend = XNAToD3D_BlendMode[
 			state->colorDestinationBlend
 		];
-		desc.RenderTarget[0].DestBlendAlpha = XNAToD3D_BlendMode[
+		desc.RenderTarget[0].DestBlendAlpha = XNAToD3D_BlendModeAlpha[
 			state->alphaDestinationBlend
 		];
 		desc.RenderTarget[0].SrcBlend = XNAToD3D_BlendMode[
 			state->colorSourceBlend
 		];
-		desc.RenderTarget[0].SrcBlendAlpha = XNAToD3D_BlendMode[
+		desc.RenderTarget[0].SrcBlendAlpha = XNAToD3D_BlendModeAlpha[
 			state->alphaSourceBlend
 		];
 	}
