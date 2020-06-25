@@ -5077,6 +5077,8 @@ static void Stall(FNAVulkanRenderer *renderer)
 	VkResult result;
 	VulkanBuffer *buf;
 
+	if (!renderer->commandBufferActive[renderer->currentFrame]) { return; }
+	
 	EndPass(renderer);
 
 	renderer->vkEndCommandBuffer(
