@@ -3916,6 +3916,7 @@ static void D3D11_CreateEffect(
 	shaderBackend.getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_d3d11GetBoundShaders;
 	shaderBackend.mapUniformBufferMemory = MOJOSHADER_d3d11MapUniformBufferMemory;
 	shaderBackend.unmapUniformBufferMemory = MOJOSHADER_d3d11UnmapUniformBufferMemory;
+	shaderBackend.getError = MOJOSHADER_d3d11GetError;
 	shaderBackend.m = NULL;
 	shaderBackend.f = NULL;
 	shaderBackend.malloc_data = NULL;

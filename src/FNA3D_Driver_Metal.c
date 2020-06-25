@@ -3802,6 +3802,7 @@ static void METAL_CreateEffect(
 	shaderBackend.getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_mtlGetBoundShaders;
 	shaderBackend.mapUniformBufferMemory = MOJOSHADER_mtlMapUniformBufferMemory;
 	shaderBackend.unmapUniformBufferMemory = MOJOSHADER_mtlUnmapUniformBufferMemory;
+	shaderBackend.getError = MOJOSHADER_mtlGetError;
 	shaderBackend.m = NULL;
 	shaderBackend.f = NULL;
 	shaderBackend.malloc_data = NULL;

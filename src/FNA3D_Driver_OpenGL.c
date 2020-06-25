@@ -4859,6 +4859,7 @@ static void OPENGL_CreateEffect(
 	shaderBackend.getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_glGetBoundShaders;
 	shaderBackend.mapUniformBufferMemory = MOJOSHADER_glMapUniformBufferMemory;
 	shaderBackend.unmapUniformBufferMemory = MOJOSHADER_glUnmapUniformBufferMemory;
+	shaderBackend.getError = MOJOSHADER_glGetError;
 	shaderBackend.m = NULL;
 	shaderBackend.f = NULL;
 	shaderBackend.malloc_data = NULL;
