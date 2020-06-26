@@ -1775,16 +1775,16 @@ static void BindResources(FNAVulkanRenderer *renderer)
 	}
 
 	MOJOSHADER_vkGetUniformBuffers(
-		(void**) &vUniform,
+		&vUniform,
 		&vOff,
 		&vSize,
-		(void**) &fUniform,
+		&fUniform,
 		&fOff,
 		&fSize
 	);
 
 	/* we can't bind a NULL UBO so we have dummy data instead */
-	if (vUniform == NULL)
+	if (vUniform == NULL_BUFFER)
 	{
 		vUniform = renderer->dummyVertUniformBuffer->handle;
 		vOff = 0;
@@ -1810,7 +1810,7 @@ static void BindResources(FNAVulkanRenderer *renderer)
 	}
 	
 	/* we can't bind a NULL UBO so we have dummy data instead */
-	if (fUniform == NULL)
+	if (fUniform == NULL_BUFFER)
 	{
 		fUniform = renderer->dummyFragUniformBuffer->handle;
 		fOff = 0;
@@ -3802,10 +3802,10 @@ static void BeginRenderPass(
 		}
 	}
 
-	renderer->ldFragUniformBuffers[renderer->currentFrame] = NULL;
+	renderer->ldFragUniformBuffers[renderer->currentFrame] = NULL_BUFFER;
 	renderer->ldFragUniformOffsets[renderer->currentFrame] = 0;
 	renderer->ldFragUniformSizes[renderer->currentFrame] = 0;
-	renderer->ldVertUniformBuffers[renderer->currentFrame] = NULL;
+	renderer->ldVertUniformBuffers[renderer->currentFrame] = NULL_BUFFER;
 	renderer->ldVertUniformOffsets[renderer->currentFrame] = 0;
 	renderer->ldVertUniformSizes[renderer->currentFrame] = 0;
 	renderer->currentPipeline = NULL_PIPELINE;
