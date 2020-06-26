@@ -181,15 +181,9 @@ struct RenderPassHashMap
 
 typedef struct FramebufferHash
 {
-	VkImageView colorAttachmentViewOne;
-	VkImageView colorMultiSampleAttachmentViewOne;
-	VkImageView colorAttachmentViewTwo;
-	VkImageView colorMultiSampleAttachmentViewTwo;
-	VkImageView colorAttachmentViewThree;
-	VkImageView colorMultiSampleAttachmentViewThree;
-	VkImageView colorAttachmentViewFour;
-	VkImageView colorMultiSampleAttachmentViewFour;
-	VkImageView depthStencilAttachmentViewFive;
+	VkImageView colorAttachmentViews[MAX_RENDERTARGET_BINDINGS];
+	VkImageView colorMultiSampleAttachmentViews[MAX_RENDERTARGET_BINDINGS];
+	VkImageView depthStencilAttachmentView;
 	uint32_t width;
 	uint32_t height;
 } FramebufferHash;
@@ -232,6 +226,7 @@ struct VulkanQuery {
 struct VulkanTexture {
 	VkImage image;
 	VkImageView view;
+	VkImageView rtViews[6];
 	VkDeviceMemory memory;
 	VkExtent2D dimensions;
 	uint32_t depth;
@@ -247,6 +242,7 @@ static VulkanTexture NullTexture =
 {
 	(VkImage) 0,
 	(VkImageView) 0,
+	{ 0, 0, 0, 0, 0, 0},
 	(VkDeviceMemory) 0,
 	{0, 0},
 	0,
@@ -350,6 +346,7 @@ typedef struct FNAVulkanRenderer
 
 	VulkanTexture *colorAttachments[MAX_RENDERTARGET_BINDINGS];
 	VulkanTexture *colorMultiSampleAttachments[MAX_RENDERTARGET_BINDINGS];
+	FNA3D_CubeMapFace attachmentCubeFaces[MAX_RENDERTARGET_BINDINGS];
 	uint32_t multiSampleCount;
 	uint32_t colorAttachmentCount;
 
@@ -811,6 +808,13 @@ static void QueueBufferDestroy(
 static void QueueTextureDestroy(
 	FNAVulkanRenderer *renderer,
 	VulkanTexture *imageData
+);
+
+static void IncrementBufferOffset(
+	FNAVulkanRenderer *renderer,
+	VulkanBuffer *buffer,
+	VkDeviceSize dataLength,
+	uint8_t dynamicSize
 );
 
 static void UpdateRenderPass(FNAVulkanRenderer *renderer);
@@ -1560,7 +1564,14 @@ static void BindResources(FNAVulkanRenderer *renderer)
 #endif
 		{		
 			vertSamplerImageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			vertSamplerImageInfos[i].imageView = renderer->textures[vertArrayOffset + i]->view;
+			if (renderer->textures[vertArrayOffset + i] != &NullTexture)
+			{
+				vertSamplerImageInfos[i].imageView = renderer->textures[vertArrayOffset + i]->view;
+			}
+			else
+			{
+				vertSamplerImageInfos[i].imageView = renderer->dummyVertTexture->view;
+			}
 			vertSamplerImageInfos[i].sampler = renderer->samplers[vertArrayOffset + i];
 
 			vertexSamplerDescriptorSetNeedsUpdate = 1;
@@ -1598,7 +1609,14 @@ static void BindResources(FNAVulkanRenderer *renderer)
 #endif
 		{
 			fragSamplerImageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			fragSamplerImageInfos[i].imageView = renderer->textures[fragArrayOffset + i]->view;
+			if (renderer->textures[fragArrayOffset + i] != &NullTexture)
+			{
+				fragSamplerImageInfos[i].imageView = renderer->textures[fragArrayOffset + i]->view;
+			}
+			else
+			{
+				fragSamplerImageInfos[i].imageView = renderer->dummyFragTexture->view;
+			}
 			fragSamplerImageInfos[i].sampler = renderer->samplers[fragArrayOffset + i];
 
 			fragSamplerDescriptorSetNeedsUpdate = 1;
@@ -1764,19 +1782,19 @@ static void BindResources(FNAVulkanRenderer *renderer)
 	);
 
 	/* we can't bind a NULL UBO so we have dummy data instead */
+	if (vUniform == NULL)
+	{
+		vUniform = &renderer->dummyVertUniformBuffer->handle;
+		vOff = 0;
+		vSize = renderer->dummyVertUniformBuffer->size;
+	}
+
 	if (	renderer->currentVertUniformBufferDescriptorSet == NULL_DESC_SET ||
 			vUniform != renderer->ldVertUniformBuffers[renderer->currentFrame]
 	) {
-		if (vUniform != NULL)
-		{
-			vertUniformBufferInfo.buffer = *vUniform;
-		}
-		else
-		{
-			vertUniformBufferInfo.buffer = renderer->dummyVertUniformBuffer->handle;
-		}
-		vertUniformBufferInfo.offset = 0; /* because of dynamic offset */
-		vertUniformBufferInfo.range = VK_WHOLE_SIZE;
+		vertUniformBufferInfo.buffer = *vUniform;
+		vertUniformBufferInfo.offset = 0;
+		vertUniformBufferInfo.range = vSize;
 
 		vertUniformBufferDescriptorSetNeedsUpdate = 1;
 		renderer->ldVertUniformBuffers[renderer->currentFrame] = vUniform;
@@ -1787,20 +1805,20 @@ static void BindResources(FNAVulkanRenderer *renderer)
 		renderer->ldVertUniformOffsets[renderer->currentFrame] = vOff;
 	}
 	
+	/* we can't bind a NULL UBO so we have dummy data instead */
+	if (fUniform == NULL)
+	{
+		fUniform = &renderer->dummyFragUniformBuffer->handle;
+		fOff = 0;
+		fSize = renderer->dummyFragUniformBuffer->size;
+	}
+
 	if (	renderer->currentFragUniformBufferDescriptorSet == NULL_DESC_SET ||
 			fUniform != renderer->ldFragUniformBuffers[renderer->currentFrame]
 	) {
-		if (fUniform != NULL)
-		{
-			fragUniformBufferInfo.buffer = *fUniform;
-		}
-		else
-		{
-			fragUniformBufferInfo.buffer = renderer->dummyFragUniformBuffer->handle;
-		}
-		
-		fragUniformBufferInfo.offset = 0; /* because of dynamic offset */
-		fragUniformBufferInfo.range = VK_WHOLE_SIZE;
+		fragUniformBufferInfo.buffer = *fUniform;
+		fragUniformBufferInfo.offset = 0;
+		fragUniformBufferInfo.range = fSize;
 
 		fragUniformBufferDescriptorSetNeedsUpdate = 1;
 		renderer->ldFragUniformBuffers[renderer->currentFrame] = fUniform;
@@ -2155,7 +2173,6 @@ static void SetBufferData(
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
-	int32_t sizeRequired, previousSize;
 	void* contents;
 
 	if (vulkanBuffer->boundThisFrame)
@@ -2175,19 +2192,7 @@ static void SetBufferData(
 		}
 		else if (options == FNA3D_SETDATAOPTIONS_DISCARD)
 		{
-			vulkanBuffer->internalOffset += vulkanBuffer->size;
-			sizeRequired = (int32_t) vulkanBuffer->internalOffset + dataLength;
-			if (sizeRequired > vulkanBuffer->internalBufferSize)
-			{
-				previousSize = (int32_t) vulkanBuffer->internalBufferSize;
-				vulkanBuffer->internalBufferSize *= 2;
-				CreateBackingBuffer(
-					renderer,
-					vulkanBuffer,
-					previousSize,
-					vulkanBuffer->usageFlags
-				);
-			}
+			IncrementBufferOffset(renderer, vulkanBuffer, dataLength, 0);
 		}
 	}
 
@@ -2238,6 +2243,30 @@ static void SetBufferData(
 	);
 
 	vulkanBuffer->prevInternalOffset = vulkanBuffer->internalOffset;
+}
+
+static void IncrementBufferOffset(
+	FNAVulkanRenderer *renderer,
+	VulkanBuffer *buffer,
+	VkDeviceSize dataLength,
+	uint8_t dynamicSize 
+) {
+	buffer->internalOffset += (dynamicSize) ? dataLength : buffer->size;
+
+	if (buffer->internalOffset + dataLength > buffer->internalBufferSize)
+	{
+		buffer->internalBufferSize = SDL_max(
+			buffer->internalOffset + dataLength,
+			buffer->internalBufferSize * 2
+		);
+		
+		CreateBackingBuffer(
+			renderer,
+			buffer,
+			buffer->internalBufferSize,
+			buffer->usageFlags
+		);
+	}
 }
 
 /* Init/Quit */
@@ -2493,8 +2522,9 @@ static void CreateBufferMemoryBarrier(
 	barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	barrierCreateInfo.buffer = stagingBuffer->handle;
-	barrierCreateInfo.offset = stagingBuffer->internalOffset;
-	barrierCreateInfo.size = stagingBuffer->internalBufferSize;
+	/* transition the whole buffer, otherwise our resource access type can be invalid */
+	barrierCreateInfo.offset = 0;
+	barrierCreateInfo.size = VK_WHOLE_SIZE;
 
 	memoryBarrier.srcAccessMask = 0;
 	memoryBarrier.dstAccessMask = 0;
@@ -2564,7 +2594,9 @@ static void CreateImageMemoryBarrier(
 	FNAVulkanRenderer *renderer,
 	VulkanResourceAccessType nextAccess,
 	VkImageAspectFlags aspectMask,
-	uint32_t depth,
+	uint32_t baseLayer,
+	uint32_t layerCount,
+	uint32_t baseLevel,
 	uint32_t levelCount,
 	uint8_t discardContents,
 	VkImage image,
@@ -2591,9 +2623,9 @@ static void CreateImageMemoryBarrier(
 	memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	memoryBarrier.image = image;
 	memoryBarrier.subresourceRange.aspectMask = aspectMask;
-	memoryBarrier.subresourceRange.baseArrayLayer = 0;
-	memoryBarrier.subresourceRange.layerCount = depth;
-	memoryBarrier.subresourceRange.baseMipLevel = 0;
+	memoryBarrier.subresourceRange.baseArrayLayer = baseLayer;
+	memoryBarrier.subresourceRange.layerCount = layerCount;
+	memoryBarrier.subresourceRange.baseMipLevel = baseLevel;
 	memoryBarrier.subresourceRange.levelCount = levelCount;
 	memoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	memoryBarrier.newLayout = VK_IMAGE_LAYOUT_UNDEFINED;
@@ -2660,6 +2692,7 @@ static uint8_t CreateTexture(
 	uint32_t height,
 	uint32_t depth,
 	uint8_t isCube,
+	uint8_t isRenderTarget,
 	VkSampleCountFlagBits samples,
 	uint32_t levelCount,
 	VkFormat format,
@@ -2682,6 +2715,8 @@ static uint8_t CreateTexture(
 	VkImageViewCreateInfo imageViewCreateInfo = {
 		VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO
 	};
+	uint8_t layerCount = isCube ? 6 : 1;
+	uint32_t i;
 
 	imageCreateInfo.flags = isCube ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
 	imageCreateInfo.imageType = imageType;
@@ -2690,7 +2725,7 @@ static uint8_t CreateTexture(
 	imageCreateInfo.extent.height = height;
 	imageCreateInfo.extent.depth = depth;
 	imageCreateInfo.mipLevels = levelCount;
-	imageCreateInfo.arrayLayers = isCube ? 6 : 1;
+	imageCreateInfo.arrayLayers = layerCount;
 	imageCreateInfo.samples = samples;
 	imageCreateInfo.tiling = tiling;
 	imageCreateInfo.usage = usage;
@@ -2767,20 +2802,8 @@ static uint8_t CreateTexture(
 	imageViewCreateInfo.subresourceRange.baseMipLevel = 0;
 	imageViewCreateInfo.subresourceRange.levelCount = levelCount;
 	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
-	imageViewCreateInfo.subresourceRange.layerCount = isCube ? 6 : 1;
-
-	if (isCube)
-	{
-		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
-	}
-	else if (imageType == VK_IMAGE_TYPE_2D)
-	{
-		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	}
-	else if (imageType == VK_IMAGE_TYPE_3D)
-	{
-		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_3D;
-	}
+	imageViewCreateInfo.subresourceRange.layerCount = layerCount;
+	imageViewCreateInfo.viewType = isCube ? VK_IMAGE_VIEW_TYPE_CUBE : imageType;
 
 	result = renderer->vkCreateImageView(
 		renderer->logicalDevice,
@@ -2792,8 +2815,41 @@ static uint8_t CreateTexture(
 	if (result != VK_SUCCESS)
 	{
 		LogVulkanResult("vkCreateImageView", result);
-		FNA3D_LogError("Failed to create color attachment image view");
+		FNA3D_LogError("Failed to create texture image view");
 		return 0;
+	}
+
+	if (isRenderTarget)
+	{
+		if (!isCube && levelCount == 1)
+		{
+			/* Skip a step and just use the view directly */
+			texture->rtViews[0] = texture->view;
+		}
+		else
+		{
+			/* Create a framebuffer-compatible view for each layer */
+			for (i = 0; i < layerCount; i += 1)
+			{
+				imageViewCreateInfo.subresourceRange.levelCount = 1;
+				imageViewCreateInfo.subresourceRange.layerCount = 1;
+				imageViewCreateInfo.subresourceRange.baseArrayLayer = i;
+
+				result = renderer->vkCreateImageView(
+					renderer->logicalDevice,
+					&imageViewCreateInfo,
+					NULL,
+					&texture->rtViews[i]
+				);
+
+				if (result != VK_SUCCESS)
+				{
+					LogVulkanResult("vkCreateImageView", result);
+					FNA3D_LogError("Failed to create color attachment image view");
+					return 0;
+				}
+			}
+		}
 	}
 
 	texture->dimensions.width = width;
@@ -2802,7 +2858,7 @@ static uint8_t CreateTexture(
 	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
 	texture->surfaceFormat = format;
 	texture->levelCount = levelCount;
-	texture->layerCount = isCube ? 6 : 1;
+	texture->layerCount = layerCount;
 
 	texture->stagingBuffer = CreateBuffer(
 		renderer,
@@ -2829,7 +2885,9 @@ static uint8_t BlitFramebuffer(
 		renderer,
 		RESOURCE_ACCESS_TRANSFER_READ,
 		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
 		1,
+		0,
 		1,
 		0,
 		srcImage,
@@ -2840,7 +2898,9 @@ static uint8_t BlitFramebuffer(
 		renderer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
 		1,
+		0,
 		1,
 		0,
 		dstImage,
@@ -2886,7 +2946,9 @@ static uint8_t BlitFramebuffer(
 		renderer,
 		RESOURCE_ACCESS_PRESENT,
 		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
 		1,
+		0,
 		1,
 		0,
 		dstImage,
@@ -2897,7 +2959,9 @@ static uint8_t BlitFramebuffer(
 		renderer,
 		RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
 		1,
+		0,
 		1,
 		0,
 		srcImage,
@@ -3412,36 +3476,27 @@ static VkRenderPass FetchRenderPass(FNAVulkanRenderer *renderer)
 static FramebufferHash GetFramebufferHash(FNAVulkanRenderer *renderer)
 {
 	FramebufferHash hash;
+	uint8_t i;
 
-	hash.colorAttachmentViewOne = renderer->colorAttachments[0]->view;
-	hash.colorMultiSampleAttachmentViewOne = renderer->colorMultiSampleAttachments[0] != NULL ?
-		renderer->colorMultiSampleAttachments[0]->view :
-		NULL_IMAGE_VIEW;
-		
-	hash.colorAttachmentViewTwo = renderer->colorAttachments[1] != NULL ?
-		renderer->colorAttachments[1]->view :
-		NULL_IMAGE_VIEW;
-	hash.colorMultiSampleAttachmentViewTwo = renderer->colorMultiSampleAttachments[1] != NULL ?
-		renderer->colorMultiSampleAttachments[1]->view :
-		NULL_IMAGE_VIEW;
+	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
+	{
+		hash.colorAttachmentViews[i] = (
+			renderer->colorAttachments[i] != NULL ?
+				renderer->colorAttachments[i]->rtViews[renderer->attachmentCubeFaces[i]] :
+				NULL_IMAGE_VIEW
+		);
+		hash.colorMultiSampleAttachmentViews[i] = (
+			renderer->colorMultiSampleAttachments[i] != NULL ?
+				renderer->colorMultiSampleAttachments[i]->rtViews[renderer->attachmentCubeFaces[i]] :
+				NULL_IMAGE_VIEW
+		);
+	}
 
-	hash.colorAttachmentViewThree = renderer->colorAttachments[2] != NULL ?
-		renderer->colorAttachments[2]->view :
-		NULL_IMAGE_VIEW;
-	hash.colorMultiSampleAttachmentViewThree = renderer->colorMultiSampleAttachments[2] != NULL ?
-		renderer->colorMultiSampleAttachments[2]->view :
-		NULL_IMAGE_VIEW;
-
-	hash.colorAttachmentViewFour = renderer->colorAttachments[3] != NULL ?
-		renderer->colorAttachments[3]->view :
-		NULL_IMAGE_VIEW;
-	hash.colorMultiSampleAttachmentViewFour = renderer->colorMultiSampleAttachments[3] != NULL ?
-		renderer->colorMultiSampleAttachments[3]->view :
-		NULL_IMAGE_VIEW;
-
-	hash.depthStencilAttachmentViewFive = renderer->depthStencilAttachment != NULL ?
-		renderer->depthStencilAttachment->view :
-		NULL_IMAGE_VIEW;
+	hash.depthStencilAttachmentView = (
+		renderer->depthStencilAttachment != NULL ?
+			renderer->depthStencilAttachment->rtViews[0] :
+			NULL_IMAGE_VIEW
+	);
 
 	hash.width = renderer->colorAttachments[0]->dimensions.width;
 	hash.height = renderer->colorAttachments[0]->dimensions.height;
@@ -3453,7 +3508,7 @@ static VkFramebuffer FetchFramebuffer(
 	VkRenderPass renderPass
 ) {
 	VkFramebuffer framebuffer;
-	VkImageView imageViewAttachments[2 *MAX_RENDERTARGET_BINDINGS + 1];
+	VkImageView imageViewAttachments[2 * MAX_RENDERTARGET_BINDINGS + 1];
 	uint32_t i, attachmentCount;
 	VkFramebufferCreateInfo framebufferInfo = {
 		VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO
@@ -3474,22 +3529,18 @@ static VkFramebuffer FetchFramebuffer(
 
 	for (i = 0; i < renderer->colorAttachmentCount; i++)
 	{
+		imageViewAttachments[attachmentCount] = renderer->colorAttachments[i]->rtViews[renderer->attachmentCubeFaces[i]];
+		attachmentCount++;
+
 		if (renderer->multiSampleCount > 0)
 		{
-			imageViewAttachments[attachmentCount] = renderer->colorAttachments[i]->view;
-			attachmentCount++;
-			imageViewAttachments[attachmentCount] = renderer->colorMultiSampleAttachments[i]->view;
-			attachmentCount++;
-		}
-		else
-		{
-			imageViewAttachments[attachmentCount] = renderer->colorAttachments[i]->view;
+			imageViewAttachments[attachmentCount] = renderer->colorMultiSampleAttachments[i]->rtViews[renderer->attachmentCubeFaces[i]];
 			attachmentCount++;
 		}
 	}
 	if (renderer->depthStencilAttachment != NULL)
 	{
-		imageViewAttachments[attachmentCount] = renderer->depthStencilAttachment->view;
+		imageViewAttachments[attachmentCount] = renderer->depthStencilAttachment->rtViews[0];
 		attachmentCount++;
 	}
 
@@ -3521,7 +3572,7 @@ static VkFramebuffer FetchFramebuffer(
 static VkSampler FetchSamplerState(
 	FNAVulkanRenderer *renderer,
 	FNA3D_SamplerState *samplerState,
-	uint8_t hasMipmaps
+	uint32_t levelCount
 ) {
 	VkSamplerCreateInfo createInfo = {
 		VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO
@@ -3540,14 +3591,13 @@ static VkSampler FetchSamplerState(
 	createInfo.addressModeW = XNAToVK_SamplerAddressMode[samplerState->addressW];
 	createInfo.magFilter = XNAToVK_MagFilter[samplerState->filter];
 	createInfo.minFilter = XNAToVK_MinFilter[samplerState->filter];
-	if (hasMipmaps)
+	if (levelCount > 1)
 	{
 		createInfo.mipmapMode = XNAToVK_MipFilter[samplerState->filter];
 	}
 	createInfo.mipLodBias = samplerState->mipMapLevelOfDetailBias;
-	/* FIXME: double check that the lod range is correct */
-	createInfo.minLod = 0;
-	createInfo.maxLod = (float) samplerState->maxMipLevel;
+	createInfo.minLod = (float) samplerState->maxMipLevel;
+	createInfo.maxLod = VK_LOD_CLAMP_NONE;
 	createInfo.maxAnisotropy = samplerState->filter == FNA3D_TEXTUREFILTER_ANISOTROPIC ?
 		(float) SDL_max(1, samplerState->maxAnisotropy) :
 		1.0f;
@@ -3655,7 +3705,9 @@ static void BeginRenderPass(
 				renderer,
 				RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
 				VK_IMAGE_ASPECT_COLOR_BIT,
-				1,
+				0,
+				renderer->colorAttachments[i]->layerCount,
+				0,
 				1,
 				0,
 				renderer->colorAttachments[i]->image,
@@ -3675,7 +3727,9 @@ static void BeginRenderPass(
 			renderer,
 			RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
 			depthAspectFlags,
-			1,
+			0,
+			renderer->depthStencilAttachment->layerCount,
+			0,
 			1,
 			0,
 			renderer->depthStencilAttachment->image,
@@ -4112,7 +4166,9 @@ static void OutsideRenderPassClear(
 				renderer,
 				RESOURCE_ACCESS_TRANSFER_WRITE,
 				VK_IMAGE_ASPECT_COLOR_BIT,
+				0,
 				renderer->colorAttachments[i]->layerCount,
+				0,
 				renderer->colorAttachments[i]->levelCount,
 				0,
 				renderer->colorAttachments[i]->image,
@@ -4132,7 +4188,9 @@ static void OutsideRenderPassClear(
 				renderer,
 				RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
 				VK_IMAGE_ASPECT_COLOR_BIT,
+				0,
 				renderer->colorAttachments[i]->layerCount,
+				0,
 				renderer->colorAttachments[i]->levelCount,
 				0,
 				renderer->colorAttachments[i]->image,
@@ -4148,7 +4206,9 @@ static void OutsideRenderPassClear(
 					renderer,
 					RESOURCE_ACCESS_TRANSFER_WRITE,
 					VK_IMAGE_ASPECT_COLOR_BIT,
+					0,
 					renderer->colorMultiSampleAttachments[i]->layerCount,
+					0,
 					renderer->colorMultiSampleAttachments[i]->levelCount,
 					0,
 					renderer->colorMultiSampleAttachments[i]->image,
@@ -4168,7 +4228,9 @@ static void OutsideRenderPassClear(
 					renderer,
 					RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
 					VK_IMAGE_ASPECT_COLOR_BIT,
+					0,
 					renderer->colorMultiSampleAttachments[i]->layerCount,
+					0,
 					renderer->colorMultiSampleAttachments[i]->levelCount,
 					0,
 					renderer->colorMultiSampleAttachments[i]->image,
@@ -4199,7 +4261,9 @@ static void OutsideRenderPassClear(
 			renderer,
 			RESOURCE_ACCESS_TRANSFER_WRITE,
 			depthAspectMask,
+			0,
 			renderer->depthStencilAttachment->layerCount,
+			0,
 			renderer->depthStencilAttachment->levelCount,
 			0,
 			renderer->depthStencilAttachment->image,
@@ -4219,7 +4283,9 @@ static void OutsideRenderPassClear(
 			renderer,
 			RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
 			depthAspectMask,
+			0,
 			renderer->depthStencilAttachment->layerCount,
+			0,
 			renderer->depthStencilAttachment->levelCount,
 			0,
 			renderer->depthStencilAttachment->image,
@@ -4585,7 +4651,9 @@ void VULKAN_VerifySampler(
 		renderer,
 		RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
 		vulkanTexture->layerCount,
+		0,
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
@@ -4601,7 +4669,7 @@ void VULKAN_VerifySampler(
 	vkSamplerState = FetchSamplerState(
 		renderer,
 		sampler,
-		vulkanTexture->levelCount > 1
+		vulkanTexture->levelCount
 	);
 
 	if (vkSamplerState != renderer->samplers[textureIndex])
@@ -4915,6 +4983,7 @@ void VULKAN_SetRenderTargets(
 	if (renderTargets == NULL)
 	{
 		renderer->colorAttachments[0] = renderer->fauxBackbufferColor.handle;
+		renderer->attachmentCubeFaces[0] = (FNA3D_CubeMapFace) 0;
 		renderer->colorAttachmentCount = 1;
 
 		if (renderer->fauxBackbufferMultiSampleCount > 1)
@@ -4933,6 +5002,12 @@ void VULKAN_SetRenderTargets(
 	{
 		for (i = 0; i < numRenderTargets; i++)
 		{
+			renderer->attachmentCubeFaces[i] = (
+				renderTargets[i].type == FNA3D_RENDERTARGET_TYPE_CUBE ?
+					renderTargets[i].cube.face :
+					(FNA3D_CubeMapFace) 0
+			);
+
 			if (renderTargets[i].colorBuffer != NULL)
 			{
 				cb = ((VulkanRenderbuffer*) renderTargets[i].colorBuffer)->colorBuffer;
@@ -5078,7 +5153,7 @@ static void Stall(FNAVulkanRenderer *renderer)
 	VulkanBuffer *buf;
 
 	if (!renderer->commandBufferActive[renderer->currentFrame]) { return; }
-	
+
 	EndPass(renderer);
 
 	renderer->vkEndCommandBuffer(
@@ -5152,7 +5227,117 @@ void VULKAN_ResolveTarget(
 	FNA3D_Renderer *driverData,
 	FNA3D_RenderTargetBinding *target
 ) {
-	/* TODO */
+	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
+	VulkanTexture *vulkanTexture = (VulkanTexture*) target->texture;
+	int32_t layerCount = target->type == FNA3D_RENDERTARGET_TYPE_CUBE ? 6 : 1;
+	int32_t level;
+	VulkanResourceAccessType origAccessType;
+	VkImageBlit blit;
+
+	/* The target is resolved during the render pass. */
+
+	/* If the target has mipmaps, regenerate them now */
+	if (target->levelCount > 1)
+	{
+		EndPass(renderer);
+
+		origAccessType = vulkanTexture->resourceAccessType;
+
+		CreateImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_TRANSFER_READ,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			layerCount,
+			0,
+			1,
+			0,
+			vulkanTexture->image,
+			&vulkanTexture->resourceAccessType
+		);
+
+		CreateImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_TRANSFER_WRITE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			layerCount,
+			1,
+			target->levelCount - 1,
+			1,
+			vulkanTexture->image,
+			&vulkanTexture->resourceAccessType
+		);
+
+		for (level = 1; level < target->levelCount; level += 1)
+		{
+			blit.srcOffsets[0].x = 0;
+			blit.srcOffsets[0].y = 0;
+			blit.srcOffsets[0].z = 0;
+
+			blit.srcOffsets[1].x = vulkanTexture->dimensions.width;
+			blit.srcOffsets[1].y = vulkanTexture->dimensions.height;
+			blit.srcOffsets[1].z = 1;
+
+			blit.dstOffsets[0].x = 0;
+			blit.dstOffsets[0].y = 0;
+			blit.dstOffsets[0].z = 0;
+
+			blit.dstOffsets[1].x = vulkanTexture->dimensions.width >> level;
+			blit.dstOffsets[1].y = vulkanTexture->dimensions.height >> level;
+			blit.dstOffsets[1].z = 1;
+
+			blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			blit.srcSubresource.baseArrayLayer = 0;
+			blit.srcSubresource.layerCount = layerCount;
+			blit.srcSubresource.mipLevel = 0;
+
+			blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			blit.dstSubresource.baseArrayLayer = 0;
+			blit.dstSubresource.layerCount = layerCount;
+			blit.dstSubresource.mipLevel = level;
+
+			renderer->vkCmdBlitImage(
+				renderer->commandBuffers[renderer->currentFrame],
+				vulkanTexture->image,
+				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				vulkanTexture->image,
+				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				1,
+				&blit,
+				VK_FILTER_LINEAR
+			);
+		}
+
+		/* Transition level >= 1 back to the original access type */
+		CreateImageMemoryBarrier(
+			renderer,
+			origAccessType,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			layerCount,
+			1,
+			target->levelCount - 1,
+			0,
+			vulkanTexture->image,
+			&vulkanTexture->resourceAccessType
+		);
+
+		/* The 0th mip requires a little access type switcheroo... */
+		vulkanTexture->resourceAccessType = RESOURCE_ACCESS_TRANSFER_READ;
+		CreateImageMemoryBarrier(
+			renderer,
+			origAccessType,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			layerCount,
+			0,
+			1,
+			0,
+			vulkanTexture->image,
+			&vulkanTexture->resourceAccessType
+		);
+	}
 }
 
 /* Backbuffer Functions */
@@ -5315,6 +5500,7 @@ FNA3D_Texture* VULKAN_CreateTexture2D(
 		height,
 		1,
 		0,
+		isRenderTarget,
 		VK_SAMPLE_COUNT_1_BIT,
 		levelCount,
 		surfaceFormatMapping.formatColor,
@@ -5355,6 +5541,7 @@ FNA3D_Texture* VULKAN_CreateTexture3D(
 		width,
 		height,
 		depth,
+		0,
 		0,
 		VK_SAMPLE_COUNT_1_BIT,
 		levelCount,
@@ -5401,6 +5588,7 @@ FNA3D_Texture* VULKAN_CreateTextureCube(
 		size,
 		1,
 		1,
+		isRenderTarget,
 		VK_SAMPLE_COUNT_1_BIT,
 		levelCount,
 		surfaceFormatMapping.formatColor,
@@ -5429,7 +5617,7 @@ void VULKAN_AddDisposeTexture(
 	{
 		if (renderer->colorAttachments[i] != NULL)
 		{
-			if (vulkanTexture->view == renderer->colorAttachments[i]->view)
+			if (vulkanTexture->view == renderer->colorAttachments[i]->rtViews[renderer->attachmentCubeFaces[i]])
 			{
 				renderer->colorAttachments[i] = NULL;
 			}
@@ -5466,22 +5654,13 @@ void VULKAN_SetTextureData2D(
 	void *stagingData;
 	VkBufferImageCopy imageCopy;
 
-	/* DXT formats require w and h to be multiples of 4 */
-	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
-		format == FNA3D_SURFACEFORMAT_DXT3 ||
-		format == FNA3D_SURFACEFORMAT_DXT5	)
-	{
-		w = (w + 3) & ~3;
-		h = (h + 3) & ~3;
-	}
-
 	VULKAN_BeginFrame(driverData);
 
 	renderer->vkMapMemory(
 		renderer->logicalDevice,
 		stagingBuffer->deviceMemory,
 		stagingBuffer->internalOffset,
-		stagingBuffer->size,
+		dataLength,
 		0,
 		&stagingData
 	);
@@ -5497,7 +5676,9 @@ void VULKAN_SetTextureData2D(
 		renderer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
 		vulkanTexture->layerCount,
+		0,
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
@@ -5519,10 +5700,10 @@ void VULKAN_SetTextureData2D(
 	imageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	imageCopy.imageSubresource.baseArrayLayer = 0;
 	imageCopy.imageSubresource.layerCount = 1;
-	imageCopy.imageSubresource.mipLevel = 0;
-	imageCopy.bufferOffset = 0;
-	imageCopy.bufferRowLength = w;
-	imageCopy.bufferImageHeight = h;
+	imageCopy.imageSubresource.mipLevel = level;
+	imageCopy.bufferOffset = stagingBuffer->internalOffset;
+	imageCopy.bufferRowLength = 0;
+	imageCopy.bufferImageHeight = 0;
 
 	renderer->vkCmdCopyBufferToImage(
 		renderer->commandBuffers[renderer->currentFrame],
@@ -5532,6 +5713,8 @@ void VULKAN_SetTextureData2D(
 		1,
 		&imageCopy
 	);
+
+	IncrementBufferOffset(renderer, stagingBuffer, dataLength, 1);
 }
 
 void VULKAN_SetTextureData3D(
@@ -5554,22 +5737,13 @@ void VULKAN_SetTextureData3D(
 	void *stagingData;
 	VkBufferImageCopy imageCopy;
 
-	/* DXT formats require w and h to be multiples of 4 */
-	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
-		format == FNA3D_SURFACEFORMAT_DXT3 ||
-		format == FNA3D_SURFACEFORMAT_DXT5	)
-	{
-		w = (w + 3) & ~3;
-		h = (h + 3) & ~3;
-	}
-
 	VULKAN_BeginFrame(driverData);
 
 	renderer->vkMapMemory(
 		renderer->logicalDevice,
 		stagingBuffer->deviceMemory,
 		stagingBuffer->internalOffset,
-		stagingBuffer->size,
+		dataLength,
 		0,
 		&stagingData
 	);
@@ -5585,7 +5759,9 @@ void VULKAN_SetTextureData3D(
 		renderer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
 		vulkanTexture->layerCount,
+		0,
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
@@ -5607,10 +5783,10 @@ void VULKAN_SetTextureData3D(
 	imageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	imageCopy.imageSubresource.baseArrayLayer = 0;
 	imageCopy.imageSubresource.layerCount = 1;
-	imageCopy.imageSubresource.mipLevel = 0;
-	imageCopy.bufferOffset = 0;
-	imageCopy.bufferRowLength = w;
-	imageCopy.bufferImageHeight = h;
+	imageCopy.imageSubresource.mipLevel = level;
+	imageCopy.bufferOffset = stagingBuffer->internalOffset;
+	imageCopy.bufferRowLength = 0;
+	imageCopy.bufferImageHeight = 0;
 
 	renderer->vkCmdCopyBufferToImage(
 		renderer->commandBuffers[renderer->currentFrame],
@@ -5620,6 +5796,8 @@ void VULKAN_SetTextureData3D(
 		1,
 		&imageCopy
 	);
+
+	IncrementBufferOffset(renderer, stagingBuffer, dataLength, 1);
 }
 
 void VULKAN_SetTextureDataCube(
@@ -5641,22 +5819,13 @@ void VULKAN_SetTextureDataCube(
 	void *stagingData;
 	VkBufferImageCopy imageCopy;
 
-	/* DXT formats require w and h to be multiples of 4 */
-	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
-		format == FNA3D_SURFACEFORMAT_DXT3 ||
-		format == FNA3D_SURFACEFORMAT_DXT5	)
-	{
-		w = (w + 3) & ~3;
-		h = (h + 3) & ~3;
-	}
-
 	VULKAN_BeginFrame(driverData);
 
 	renderer->vkMapMemory(
 		renderer->logicalDevice,
 		stagingBuffer->deviceMemory,
 		stagingBuffer->internalOffset,
-		stagingBuffer->size,
+		dataLength,
 		0,
 		&stagingData
 	);
@@ -5672,7 +5841,9 @@ void VULKAN_SetTextureDataCube(
 		renderer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
 		vulkanTexture->layerCount,
+		0,
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
@@ -5694,10 +5865,10 @@ void VULKAN_SetTextureDataCube(
 	imageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 	imageCopy.imageSubresource.baseArrayLayer = cubeMapFace;
 	imageCopy.imageSubresource.layerCount = 1;
-	imageCopy.imageSubresource.mipLevel = 0;
-	imageCopy.bufferOffset = 0;
-	imageCopy.bufferRowLength = w;
-	imageCopy.bufferImageHeight = h;
+	imageCopy.imageSubresource.mipLevel = level;
+	imageCopy.bufferOffset = stagingBuffer->internalOffset;
+	imageCopy.bufferRowLength = 0; /* assumes tightly packed data */
+	imageCopy.bufferImageHeight = 0; /* assumes tightly packed data */
 
 	renderer->vkCmdCopyBufferToImage(
 		renderer->commandBuffers[renderer->currentFrame],
@@ -5707,6 +5878,8 @@ void VULKAN_SetTextureDataCube(
 		1,
 		&imageCopy
 	);
+
+	IncrementBufferOffset(renderer, stagingBuffer, dataLength, 1);
 }
 
 void VULKAN_SetTextureDataYUV(
@@ -5742,18 +5915,19 @@ void VULKAN_SetTextureDataYUV(
 	imageCopy.imageSubresource.baseArrayLayer = 0;
 	imageCopy.imageSubresource.layerCount = 1;
 	imageCopy.imageSubresource.mipLevel = 0;
-	imageCopy.bufferOffset = 0;
 
 	/* Y */
 
 	tex = (VulkanTexture*) y;
 	stagingBuffer = tex->stagingBuffer;
 
+	imageCopy.bufferOffset = stagingBuffer->internalOffset;
+
 	renderer->vkMapMemory(
 		renderer->logicalDevice,
 		stagingBuffer->deviceMemory,
 		stagingBuffer->internalOffset,
-		stagingBuffer->size,
+		dataLength,
 		0,
 		&stagingData
 	);
@@ -5773,7 +5947,9 @@ void VULKAN_SetTextureDataYUV(
 		renderer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
 		tex->layerCount,
+		0,
 		tex->levelCount,
 		0,
 		tex->image,
@@ -5800,6 +5976,8 @@ void VULKAN_SetTextureDataYUV(
 		&imageCopy
 	);
 
+	IncrementBufferOffset(renderer, stagingBuffer, dataLength, 1);
+
 	/* These apply to both U and V */
 
 	imageCopy.imageExtent.width = uvWidth;
@@ -5812,11 +5990,13 @@ void VULKAN_SetTextureDataYUV(
 	tex = (VulkanTexture*) u;
 	stagingBuffer = tex->stagingBuffer;
 
+	imageCopy.bufferOffset = stagingBuffer->internalOffset;
+
 	renderer->vkMapMemory(
 		renderer->logicalDevice,
 		stagingBuffer->deviceMemory,
 		stagingBuffer->internalOffset,
-		stagingBuffer->size,
+		dataLength,
 		0,
 		&stagingData
 	);
@@ -5836,7 +6016,9 @@ void VULKAN_SetTextureDataYUV(
 		renderer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
 		tex->layerCount,
+		0,
 		tex->levelCount,
 		0,
 		tex->image,
@@ -5858,16 +6040,20 @@ void VULKAN_SetTextureDataYUV(
 		&imageCopy
 	);
 
+	IncrementBufferOffset(renderer, stagingBuffer, dataLength, 1);
+
 	/* V */
 
 	tex = (VulkanTexture*) v;
 	stagingBuffer = tex->stagingBuffer;
 
+	imageCopy.bufferOffset = stagingBuffer->internalOffset;
+
 	renderer->vkMapMemory(
 		renderer->logicalDevice,
 		stagingBuffer->deviceMemory,
 		stagingBuffer->internalOffset,
-		stagingBuffer->size,
+		dataLength,
 		0,
 		&stagingData
 	);
@@ -5887,7 +6073,9 @@ void VULKAN_SetTextureDataYUV(
 		renderer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
 		tex->layerCount,
+		0,
 		tex->levelCount,
 		0,
 		tex->image,
@@ -5908,9 +6096,11 @@ void VULKAN_SetTextureDataYUV(
 		1,
 		&imageCopy
 	);
+
+	IncrementBufferOffset(renderer, stagingBuffer, dataLength, 1);
 }
 
-void VULKAN_GetTextureData2D(
+static void VULKAN_INTERNAL_GetTextureData(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
 	FNA3D_SurfaceFormat format,
@@ -5919,6 +6109,7 @@ void VULKAN_GetTextureData2D(
 	int32_t w,
 	int32_t h,
 	int32_t level,
+	int32_t layer,
 	void* data,
 	int32_t dataLength
 ) {
@@ -5937,7 +6128,9 @@ void VULKAN_GetTextureData2D(
 		renderer,
 		RESOURCE_ACCESS_TRANSFER_READ,
 		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
 		vulkanTexture->layerCount,
+		0,
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
@@ -5960,8 +6153,8 @@ void VULKAN_GetTextureData2D(
 	imageCopy.imageOffset.x = x;
 	imageCopy.imageOffset.y = y;
 	imageCopy.imageOffset.z = 0;
-	imageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT; /* FIXME: What about depth/stencil? */
-	imageCopy.imageSubresource.baseArrayLayer = 0;
+	imageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageCopy.imageSubresource.baseArrayLayer = layer;
 	imageCopy.imageSubresource.layerCount = 1;
 	imageCopy.imageSubresource.mipLevel = level;
 	imageCopy.bufferOffset = 0;
@@ -5981,7 +6174,9 @@ void VULKAN_GetTextureData2D(
 		renderer,
 		prevResourceAccess,
 		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
 		vulkanTexture->layerCount,
+		0,
 		vulkanTexture->levelCount,
 		0,
 		vulkanTexture->image,
@@ -6019,6 +6214,33 @@ void VULKAN_GetTextureData2D(
 	);
 }
 
+void VULKAN_GetTextureData2D(
+	FNA3D_Renderer *driverData,
+	FNA3D_Texture *texture,
+	FNA3D_SurfaceFormat format,
+	int32_t x,
+	int32_t y,
+	int32_t w,
+	int32_t h,
+	int32_t level,
+	void* data,
+	int32_t dataLength
+) {
+	VULKAN_INTERNAL_GetTextureData(
+		driverData,
+		texture,
+		format,
+		x,
+		y,
+		w,
+		h,
+		level,
+		0,
+		data,
+		dataLength
+	);
+}
+
 void VULKAN_GetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
@@ -6051,7 +6273,19 @@ void VULKAN_GetTextureDataCube(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
+	VULKAN_INTERNAL_GetTextureData(
+		driverData,
+		texture,
+		format,
+		x,
+		y,
+		w,
+		h,
+		level,
+		cubeMapFace,
+		data,
+		dataLength
+	);
 }
 
 /* Renderbuffers */
@@ -6088,10 +6322,12 @@ FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 	renderbuffer->colorBuffer = (VulkanColorBuffer*) SDL_malloc(sizeof(VulkanColorBuffer));
 	renderbuffer->colorBuffer->handle = vlkTexture;
 	renderbuffer->colorBuffer->multiSampleTexture = NULL;
+	renderbuffer->colorBuffer->multiSampleCount = 0;
 
 	if (multiSampleCount > 1)
 	{
 		renderbuffer->colorBuffer->multiSampleTexture = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
+		SDL_memset(renderbuffer->colorBuffer->multiSampleTexture, '\0', sizeof(VulkanTexture));
 
 		CreateTexture(
 			renderer,
@@ -6099,6 +6335,7 @@ FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 			height,
 			1,
 			0,
+			1,
 			XNAToVK_SampleCount(multiSampleCount),
 			1,
 			surfaceFormatMapping.formatColor,
@@ -6117,7 +6354,9 @@ FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 			renderer,
 			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
 			renderbuffer->colorBuffer->multiSampleTexture->layerCount,
+			0,
 			renderbuffer->colorBuffer->multiSampleTexture->levelCount,
 			0,
 			renderbuffer->colorBuffer->multiSampleTexture->image,
@@ -6148,7 +6387,10 @@ FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 	renderbuffer = (VulkanRenderbuffer*) SDL_malloc(sizeof(VulkanRenderbuffer));
 	renderbuffer->colorBuffer = NULL;
 	renderbuffer->depthBuffer = (VulkanDepthStencilBuffer*) SDL_malloc(sizeof(VulkanDepthStencilBuffer));
+
 	renderbuffer->depthBuffer->handle = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
+	SDL_memset(renderbuffer->depthBuffer->handle, '\0', sizeof(VulkanTexture));
+
 	if (
 		!CreateTexture(
 			renderer,
@@ -6156,6 +6398,7 @@ FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 			height,
 			1,
 			0,
+			1,
 			XNAToVK_SampleCount(multiSampleCount),
 			1,
 			depthFormat,
@@ -6176,7 +6419,9 @@ FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 		renderer,
 		RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
 		depthAspectFlags,
+		0,
 		renderbuffer->depthBuffer->handle->layerCount,
+		0,
 		renderbuffer->depthBuffer->handle->levelCount,
 		0,
 		renderbuffer->depthBuffer->handle->image,
@@ -6234,6 +6479,7 @@ static void DestroyTexture(
 	FNAVulkanRenderer *renderer,
 	VulkanTexture *texture
 ) {
+	int32_t i;
 
 	renderer->vkFreeMemory(
 		renderer->logicalDevice,
@@ -6246,6 +6492,28 @@ static void DestroyTexture(
 		texture->view,
 		NULL
 	);
+
+	if (texture->rtViews[0] != texture->view)
+	{
+		renderer->vkDestroyImageView(
+			renderer->logicalDevice,
+			texture->rtViews[0],
+			NULL
+		);
+	}
+
+	if (texture->rtViews[1] != NULL_IMAGE_VIEW)
+	{
+		/* Free all the other cube RT views */
+		for (i = 1; i < 6; i += 1)
+		{
+			renderer->vkDestroyImageView(
+				renderer->logicalDevice,
+				texture->rtViews[i],
+				NULL
+			);
+		}
+	}
 
 	renderer->vkDestroyImage(
 		renderer->logicalDevice,
@@ -8282,6 +8550,7 @@ static uint8_t CreateFauxBackbuffer(
 	VkImageAspectFlags depthAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
 
 	renderer->fauxBackbufferColor.handle = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
+	SDL_memset(renderer->fauxBackbufferColor.handle, '\0', sizeof(VulkanTexture));
 
 	if (
 		!CreateTexture(
@@ -8290,6 +8559,7 @@ static uint8_t CreateFauxBackbuffer(
 			presentationParameters->backBufferHeight,
 			1,
 			0,
+			1,
 			VK_SAMPLE_COUNT_1_BIT,
 			1,
 			renderer->surfaceFormatMapping.formatColor,
@@ -8318,7 +8588,9 @@ static uint8_t CreateFauxBackbuffer(
 		renderer,
 		RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
 		renderer->fauxBackbufferColor.handle->layerCount,
+		0,
 		renderer->fauxBackbufferColor.handle->levelCount,
 		0,
 		renderer->fauxBackbufferColor.handle->image,
@@ -8331,6 +8603,7 @@ static uint8_t CreateFauxBackbuffer(
 	if (renderer->fauxBackbufferMultiSampleCount > 0)
 	{
 		renderer->fauxBackbufferMultiSampleColor = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
+		SDL_memset(renderer->fauxBackbufferMultiSampleColor, '\0', sizeof(VulkanTexture));
 
 		CreateTexture(
 			renderer,
@@ -8338,6 +8611,7 @@ static uint8_t CreateFauxBackbuffer(
 			presentationParameters->backBufferHeight,
 			1,
 			0,
+			1,
 			XNAToVK_SampleCount(presentationParameters->multiSampleCount),
 			1,
 			renderer->surfaceFormatMapping.formatColor,
@@ -8354,7 +8628,9 @@ static uint8_t CreateFauxBackbuffer(
 			renderer,
 			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
 			renderer->fauxBackbufferMultiSampleColor->layerCount,
+			0,
 			renderer->fauxBackbufferMultiSampleColor->levelCount,
 			0,
 			renderer->fauxBackbufferMultiSampleColor->image,
@@ -8370,6 +8646,7 @@ static uint8_t CreateFauxBackbuffer(
 	if (renderer->fauxBackbufferDepthFormat != FNA3D_DEPTHFORMAT_NONE)
 	{
 		renderer->fauxBackbufferDepthStencil.handle = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
+		SDL_memset(renderer->fauxBackbufferDepthStencil.handle, '\0', sizeof(VulkanTexture));
 
 		vulkanDepthStencilFormat = XNAToVK_DepthFormat(renderer, renderer->fauxBackbufferDepthFormat);
 
@@ -8385,6 +8662,7 @@ static uint8_t CreateFauxBackbuffer(
 				presentationParameters->backBufferHeight,
 				1,
 				0,
+				1,
 				XNAToVK_SampleCount(presentationParameters->multiSampleCount),
 				1,
 				vulkanDepthStencilFormat,
@@ -8407,7 +8685,9 @@ static uint8_t CreateFauxBackbuffer(
 			renderer,
 			RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
 			depthAspectFlags,
+			0,
 			renderer->fauxBackbufferDepthStencil.handle->layerCount,
+			0,
 			renderer->fauxBackbufferDepthStencil.handle->levelCount,
 			0,
 			renderer->fauxBackbufferDepthStencil.handle->image,
@@ -8468,6 +8748,8 @@ static uint8_t CreateMojoshaderContext(
 		(PFN_MOJOSHADER_vkGetInstanceProcAddr) vkGetInstanceProcAddr,
 		(PFN_MOJOSHADER_vkGetDeviceProcAddr) renderer->vkGetDeviceProcAddr,
 		renderer->queueFamilyIndices.graphicsFamily,
+		renderer->physicalDeviceProperties.properties.limits.maxUniformBufferRange,
+		renderer->physicalDeviceProperties.properties.limits.minUniformBufferOffsetAlignment,
 		NULL,
 		NULL,
 		NULL
@@ -8511,7 +8793,7 @@ static uint8_t CreateDescriptorPools(
 		);
 	
 
-		uniformBufferPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		uniformBufferPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
 		uniformBufferPoolSize.descriptorCount = UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE;
 
 		uniformBufferPoolInfo.poolSizeCount = 1;
@@ -8816,7 +9098,9 @@ static void CreateDummyData(
 		renderer,
 		RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
 		1,
+		0,
 		1,
 		1,
 		renderer->dummyVertTexture->image,
@@ -8827,7 +9111,9 @@ static void CreateDummyData(
 		renderer,
 		RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE,
 		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
 		1,
+		0,
 		1,
 		1,
 		renderer->dummyFragTexture->image,
