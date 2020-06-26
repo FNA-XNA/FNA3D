@@ -3234,9 +3234,14 @@ static void D3D11_GetTextureDataCube(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *tex = (D3D11Texture*) texture;
 	D3D11_TEXTURE2D_DESC stagingDesc;
-	uint32_t subresourceIndex = CalcSubresource(
+	uint32_t srcSubresourceIndex = CalcSubresource(
 		level,
 		cubeMapFace,
+		tex->levelCount
+	);
+	uint32_t dstSubresourceIndex = CalcSubresource(
+		level,
+		0,
 		tex->levelCount
 	);
 	int32_t texSize = tex->cube.size >> level;
@@ -3270,7 +3275,7 @@ static void D3D11_GetTextureDataCube(
 		stagingDesc.Usage = D3D11_USAGE_STAGING;
 		stagingDesc.BindFlags = 0;
 		stagingDesc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
-		stagingDesc.MiscFlags = D3D11_RESOURCE_MISC_TEXTURECUBE;
+		stagingDesc.MiscFlags = 0;
 
 		res = ID3D11Device_CreateTexture2D(
 			renderer->device,
@@ -3287,12 +3292,12 @@ static void D3D11_GetTextureDataCube(
 	ID3D11DeviceContext_CopySubresourceRegion(
 		renderer->context,
 		tex->staging,
-		subresourceIndex,
+		dstSubresourceIndex,
 		0,
 		0,
 		0,
 		tex->handle,
-		subresourceIndex,
+		srcSubresourceIndex,
 		&srcBox
 	);
 
@@ -3300,7 +3305,7 @@ static void D3D11_GetTextureDataCube(
 	res = ID3D11DeviceContext_Map(
 		renderer->context,
 		tex->staging,
-		subresourceIndex,
+		dstSubresourceIndex,
 		D3D11_MAP_READ,
 		0,
 		&subresource
@@ -3318,7 +3323,7 @@ static void D3D11_GetTextureDataCube(
 	ID3D11DeviceContext_Unmap(
 		renderer->context,
 		tex->staging,
-		subresourceIndex
+		dstSubresourceIndex
 	);
 
 	SDL_UnlockMutex(renderer->ctxLock);
