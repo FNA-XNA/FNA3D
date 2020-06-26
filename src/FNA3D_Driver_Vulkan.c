@@ -368,10 +368,12 @@ typedef struct FNAVulkanRenderer
 	FNA3D_VertexBufferBinding *vertexBindings;
 
 	/* counts equal to swap chain count */
-	VkBuffer *ldVertUniformBuffers[MAX_FRAMES_IN_FLIGHT];
-	VkBuffer *ldFragUniformBuffers[MAX_FRAMES_IN_FLIGHT];
+	VkBuffer ldVertUniformBuffers[MAX_FRAMES_IN_FLIGHT];
+	VkBuffer ldFragUniformBuffers[MAX_FRAMES_IN_FLIGHT];
 	VkDeviceSize ldVertUniformOffsets[MAX_FRAMES_IN_FLIGHT];
 	VkDeviceSize ldFragUniformOffsets[MAX_FRAMES_IN_FLIGHT];
+	VkDeviceSize ldVertUniformSizes[MAX_FRAMES_IN_FLIGHT];
+	VkDeviceSize ldFragUniformSizes[MAX_FRAMES_IN_FLIGHT];
 
 	/* needs to be dynamic because of swap chain count */
 	VkBuffer ldVertexBuffers[MAX_BOUND_VERTEX_BUFFERS * MAX_FRAMES_IN_FLIGHT];
@@ -1523,7 +1525,7 @@ static void BindResources(FNAVulkanRenderer *renderer)
 	VkWriteDescriptorSet vertUniformBufferWrite = {
 		VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET
 	};
-	VkBuffer *vUniform, *fUniform;
+	VkBuffer vUniform, fUniform;
 	unsigned long long vOff, fOff, vSize, fSize; /* MojoShader type... */
 	VkDescriptorSetLayout uniformBufferLayouts[2];
 	VkDescriptorSet uniformBufferDescriptorSets[2];
@@ -1784,21 +1786,23 @@ static void BindResources(FNAVulkanRenderer *renderer)
 	/* we can't bind a NULL UBO so we have dummy data instead */
 	if (vUniform == NULL)
 	{
-		vUniform = &renderer->dummyVertUniformBuffer->handle;
+		vUniform = renderer->dummyVertUniformBuffer->handle;
 		vOff = 0;
 		vSize = renderer->dummyVertUniformBuffer->size;
 	}
 
 	if (	renderer->currentVertUniformBufferDescriptorSet == NULL_DESC_SET ||
-			vUniform != renderer->ldVertUniformBuffers[renderer->currentFrame]
+			vUniform != renderer->ldVertUniformBuffers[renderer->currentFrame] ||
+			vSize != renderer->ldVertUniformSizes[renderer->currentFrame]
 	) {
-		vertUniformBufferInfo.buffer = *vUniform;
+		vertUniformBufferInfo.buffer = vUniform;
 		vertUniformBufferInfo.offset = 0;
 		vertUniformBufferInfo.range = vSize;
 
 		vertUniformBufferDescriptorSetNeedsUpdate = 1;
 		renderer->ldVertUniformBuffers[renderer->currentFrame] = vUniform;
 		renderer->ldVertUniformOffsets[renderer->currentFrame] = vOff;
+		renderer->ldVertUniformSizes[renderer->currentFrame] = vSize;
 	}
 	else if (vOff != renderer->ldVertUniformOffsets[renderer->currentFrame])
 	{
@@ -1808,21 +1812,23 @@ static void BindResources(FNAVulkanRenderer *renderer)
 	/* we can't bind a NULL UBO so we have dummy data instead */
 	if (fUniform == NULL)
 	{
-		fUniform = &renderer->dummyFragUniformBuffer->handle;
+		fUniform = renderer->dummyFragUniformBuffer->handle;
 		fOff = 0;
 		fSize = renderer->dummyFragUniformBuffer->size;
 	}
 
 	if (	renderer->currentFragUniformBufferDescriptorSet == NULL_DESC_SET ||
-			fUniform != renderer->ldFragUniformBuffers[renderer->currentFrame]
+			fUniform != renderer->ldFragUniformBuffers[renderer->currentFrame] ||
+			fSize != renderer->ldFragUniformSizes[renderer->currentFrame]
 	) {
-		fragUniformBufferInfo.buffer = *fUniform;
+		fragUniformBufferInfo.buffer = fUniform;
 		fragUniformBufferInfo.offset = 0;
 		fragUniformBufferInfo.range = fSize;
 
 		fragUniformBufferDescriptorSetNeedsUpdate = 1;
 		renderer->ldFragUniformBuffers[renderer->currentFrame] = fUniform;
 		renderer->ldFragUniformOffsets[renderer->currentFrame] = fOff;
+		renderer->ldFragUniformSizes[renderer->currentFrame] = fSize;
 	}
 	else if (fOff != renderer->ldFragUniformOffsets[renderer->currentFrame])
 	{
@@ -2307,6 +2313,7 @@ void VULKAN_DestroyDevice(FNA3D_Device *device)
 		renderer->currentFrame = (renderer->currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 
+	MOJOSHADER_vkDestroyContext();
 	DestroyFauxBackbuffer(renderer);
 
 	currentBuffer = renderer->buffers;
@@ -2803,7 +2810,23 @@ static uint8_t CreateTexture(
 	imageViewCreateInfo.subresourceRange.levelCount = levelCount;
 	imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
 	imageViewCreateInfo.subresourceRange.layerCount = layerCount;
-	imageViewCreateInfo.viewType = isCube ? VK_IMAGE_VIEW_TYPE_CUBE : imageType;
+
+	if (isCube)
+	{
+		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_CUBE;
+	}
+	else if (imageType == VK_IMAGE_TYPE_2D)
+	{
+		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	}
+	else if (imageType == VK_IMAGE_TYPE_3D)
+	{
+		imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_3D;
+	}
+	else
+	{
+		FNA3D_LogError("invalid image type: %u", imageType);
+	}
 
 	result = renderer->vkCreateImageView(
 		renderer->logicalDevice,
@@ -3781,8 +3804,10 @@ static void BeginRenderPass(
 
 	renderer->ldFragUniformBuffers[renderer->currentFrame] = NULL;
 	renderer->ldFragUniformOffsets[renderer->currentFrame] = 0;
+	renderer->ldFragUniformSizes[renderer->currentFrame] = 0;
 	renderer->ldVertUniformBuffers[renderer->currentFrame] = NULL;
 	renderer->ldVertUniformOffsets[renderer->currentFrame] = 0;
+	renderer->ldVertUniformSizes[renderer->currentFrame] = 0;
 	renderer->currentPipeline = NULL_PIPELINE;
 
 	swapChainOffset = MAX_BOUND_VERTEX_BUFFERS * renderer->currentFrame;
@@ -4811,8 +4836,6 @@ static void PerformDeferredDestroys(FNAVulkanRenderer *renderer)
 		DestroyTexture(renderer, renderer->texturesToDestroy[renderer->currentFrame][i]);
 	}
 	renderer->texturesToDestroyCount[renderer->currentFrame] = 0;
-
-	MOJOSHADER_vkFreeBuffers();
 
 	/* rotate */
 
