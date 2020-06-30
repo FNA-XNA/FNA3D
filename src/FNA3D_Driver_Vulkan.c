@@ -37,7 +37,6 @@
 
 /* constants */
 
-/* TODO: this _should_ work fine with a value of 3, but keeping it at 1 until things are farther along */
 #define MAX_FRAMES_IN_FLIGHT 1
 #define TEXTURE_COUNT MAX_TOTAL_SAMPLERS * MAX_FRAMES_IN_FLIGHT
 
@@ -65,6 +64,7 @@ const VkComponentMapping IDENTITY_SWIZZLE =
 	VK_COMPONENT_SWIZZLE_A
 };
 
+/* these are used for memory barriers */
 typedef enum VulkanResourceAccessType {
 	/* reads */
 	RESOURCE_ACCESS_NONE, /* for initialization */
@@ -140,7 +140,6 @@ typedef struct SwapChainSupportDetails {
 	uint32_t presentModesLength;
 } SwapChainSupportDetails;
 
-/* FIXME: this could be packed better */
 typedef struct PipelineHash
 {
 	StateHash blendState;
@@ -151,7 +150,7 @@ typedef struct PipelineHash
 	VkSampleMask sampleMask;
 	uint64_t vertShader;
 	uint64_t fragShader;
-	/* pipelines have to be compatible with a render pass */
+	/* pipelines have to be compatible with a particular render pass */
 	VkRenderPass renderPass;
 } PipelineHash;
 
@@ -200,7 +199,6 @@ struct SamplerStateHashMap
 	VkSampler value;
 };
 
-/* FIXME: this can be packed better */
 typedef struct PipelineLayoutHash
 {
 	uint8_t vertUniformBufferCount;
@@ -507,18 +505,6 @@ typedef struct FNAVulkanRenderer
 } FNAVulkanRenderer;
 
 /* image barrier stuff */
-
-typedef struct BufferMemoryBarrierCreateInfo {
-	const VulkanResourceAccessType *pPrevAccesses;
-	uint32_t prevAccessCount;
-	const VulkanResourceAccessType *pNextAccesses;
-	uint32_t nextAccessCount;
-	uint32_t srcQueueFamilyIndex;
-	uint32_t dstQueueFamilyIndex;
-	VkBuffer buffer;
-	VkDeviceSize offset;
-	VkDeviceSize size;
-} BufferMemoryBarrierCreateInfo;
 
 typedef struct VulkanResourceAccessInfo {
 	VkPipelineStageFlags stageMask;
@@ -1285,97 +1271,6 @@ static const char* VkErrorMessages(VkResult code)
 
 	return errorString;
 }
-
-#if 0 /* FIXME: Do we need this? */
-static const char* VkImageLayoutString(VkImageLayout layout)
-{
-	const char *layoutString;
-
-	switch(layout)
-	{
-		case VK_IMAGE_LAYOUT_UNDEFINED:
-			layoutString = "VK_IMAGE_LAYOUT_UNDEFINED";
-			break;
-
-		case VK_IMAGE_LAYOUT_GENERAL:
-			layoutString = "VK_IMAGE_LAYOUT_GENERAL";
-			break;
-
-		case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
-			layoutString = "VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL";
-			break;
-
-		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL:
-			layoutString = "VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL";
-			break;
-
-		case VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL:
-			layoutString = "VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL";
-			break;
-
-		case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
-			layoutString = "VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL";
-			break;
-
-		case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
-			layoutString = "VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL";
-			break;
-
-		case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
-			layoutString = "VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL";
-			break;
-
-		case VK_IMAGE_LAYOUT_PREINITIALIZED:
-			layoutString = "VK_IMAGE_LAYOUT_PREINITIALIZED";
-			break;
-
-		case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL:
-			layoutString = "VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL";
-			break;
-
-		case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL:
-			layoutString = "VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL";
-			break;
-
-		case VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL:
-			layoutString = "VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL";
-			break;
-
-		case VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL:
-			layoutString = "VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL";
-			break;
-
-		case VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL:
-			layoutString = "VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL";
-			break;
-
-		case VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL:
-			layoutString = "VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL";
-			break;
-
-		case VK_IMAGE_LAYOUT_PRESENT_SRC_KHR:
-			layoutString = "VK_IMAGE_LAYOUT_PRESENT_SRC_KHR";
-			break;
-
-		case VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR:
-			layoutString = "VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR";
-			break;
-
-		case VK_IMAGE_LAYOUT_SHADING_RATE_OPTIMAL_NV:
-			layoutString = "VK_IMAGE_LAYOUT_SHADING_RATE_OPTIMAL_NV";
-			break;
-
-		case VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT:
-			layoutString = "VK_IMAGE_LAYOUT_FRAGMENT_DENSITY_MAP_OPTIMAL_EXT";
-			break;
-
-		default:
-			layoutString = "UNKNOWN";
-	}
-
-	return layoutString;
-}
-#endif
 
 static void LogVulkanResult(
 	const char* vulkanFunctionName,
@@ -2505,13 +2400,11 @@ static void CreateBufferMemoryBarrier(
 	VulkanResourceAccessType nextResourceAccessType,
 	VulkanBuffer *stagingBuffer
 ) {
-	BufferMemoryBarrierCreateInfo barrierCreateInfo;
 	VkPipelineStageFlags srcStages = 0;
 	VkPipelineStageFlags dstStages = 0;
 	VkBufferMemoryBarrier memoryBarrier = {
 		VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER
 	};
-	uint32_t i;
 	VulkanResourceAccessType prevAccess, nextAccess;
 	const VulkanResourceAccessInfo *prevAccessInfo, *nextAccessInfo;
 
@@ -2522,49 +2415,33 @@ static void CreateBufferMemoryBarrier(
 
 	VULKAN_BeginFrame((FNA3D_Renderer*) renderer);
 
-	barrierCreateInfo.pPrevAccesses = &stagingBuffer->resourceAccessType;
-	barrierCreateInfo.prevAccessCount = 1;
-	barrierCreateInfo.pNextAccesses = &nextResourceAccessType;
-	barrierCreateInfo.nextAccessCount = 1;
-	barrierCreateInfo.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrierCreateInfo.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	barrierCreateInfo.buffer = stagingBuffer->handle;
-	/* transition the whole buffer, otherwise our resource access type can be invalid */
-	barrierCreateInfo.offset = 0;
-	barrierCreateInfo.size = VK_WHOLE_SIZE;
-
 	memoryBarrier.srcAccessMask = 0;
 	memoryBarrier.dstAccessMask = 0;
-	memoryBarrier.srcQueueFamilyIndex = barrierCreateInfo.srcQueueFamilyIndex;
-	memoryBarrier.dstQueueFamilyIndex = barrierCreateInfo.dstQueueFamilyIndex;
-	memoryBarrier.buffer = barrierCreateInfo.buffer;
-	memoryBarrier.offset = barrierCreateInfo.offset;
-	memoryBarrier.size = barrierCreateInfo.size;
+	memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrier.buffer = stagingBuffer->handle;
+	/* transition the whole buffer, otherwise our resource access type can be invalid */
+	memoryBarrier.offset = 0;
+	memoryBarrier.size = VK_WHOLE_SIZE;
 
-	for (i = 0; i < barrierCreateInfo.prevAccessCount; i++)
+	prevAccess = stagingBuffer->resourceAccessType;
+	prevAccessInfo = &AccessMap[prevAccess];
+
+	srcStages |= prevAccessInfo->stageMask;
+
+	if (prevAccess > RESOURCE_ACCESS_END_OF_READ)
 	{
-		prevAccess = barrierCreateInfo.pPrevAccesses[i];
-		prevAccessInfo = &AccessMap[prevAccess];
-
-		srcStages |= prevAccessInfo->stageMask;
-
-		if (prevAccess > RESOURCE_ACCESS_END_OF_READ)
-		{
-			memoryBarrier.srcAccessMask |= prevAccessInfo->accessMask;
-		}
+		memoryBarrier.srcAccessMask |= prevAccessInfo->accessMask;
 	}
 
-	for (i = 0; i < barrierCreateInfo.nextAccessCount; i++)
+	nextAccess = nextResourceAccessType;
+	nextAccessInfo = &AccessMap[nextAccess];
+
+	dstStages |= nextAccessInfo->stageMask;
+
+	if (memoryBarrier.srcAccessMask != 0)
 	{
-		nextAccess = barrierCreateInfo.pNextAccesses[i];
-		nextAccessInfo = &AccessMap[nextAccess];
-
-		dstStages |= nextAccessInfo->stageMask;
-
-		if (memoryBarrier.srcAccessMask != 0)
-		{
-			memoryBarrier.dstAccessMask |= nextAccessInfo->accessMask;
-		}
+		memoryBarrier.dstAccessMask |= nextAccessInfo->accessMask;
 	}
 
 	if (srcStages == 0)
@@ -4793,8 +4670,6 @@ static void UpdateRenderPass(FNAVulkanRenderer *renderer)
 	{
 		EndPass(renderer);
 	}
-
-	/* TODO: optimize this to pick a render pass with a LOAD_OP_CLEAR */
 
 	BeginRenderPass(renderer);
 	renderer->needNewRenderPass = 0;
@@ -7135,7 +7010,6 @@ int32_t VULKAN_QueryPixelCount(
 		return 0;
 	}
 
-	/* FIXME maybe signed/unsigned integer problems? */
 	return queryResult;
 }
 
