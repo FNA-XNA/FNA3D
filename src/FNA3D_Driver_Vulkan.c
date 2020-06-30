@@ -4376,13 +4376,10 @@ void VULKAN_DrawInstancedPrimitives(
 ) {
 	FNAVulkanRenderer *renderer = (FNAVulkanRenderer*) driverData;
 	VulkanBuffer *indexBuffer = (VulkanBuffer*) indices;
-	int32_t totalIndexOffset;
+
+	/* Note that minVertexIndex/numVertices are NOT used! */
 
 	indexBuffer->boundThisFrame = 1;
-	totalIndexOffset = (
-		(startIndex * IndexSize(indexElementSize)) +
-		(int32_t) indexBuffer->internalOffset
-	);
 
 	CheckPrimitiveType(renderer, primitiveType);
 	UpdateRenderPass(renderer);
@@ -4392,7 +4389,7 @@ void VULKAN_DrawInstancedPrimitives(
 	renderer->vkCmdBindIndexBuffer(
 		renderer->commandBuffers[renderer->currentFrame],
 		indexBuffer->handle,
-		totalIndexOffset,
+		indexBuffer->internalOffset,
 		XNAToVK_IndexType[indexElementSize]
 	);
 
@@ -4400,8 +4397,8 @@ void VULKAN_DrawInstancedPrimitives(
 		renderer->commandBuffers[renderer->currentFrame],
 		PrimitiveVerts(primitiveType, primitiveCount),
 		instanceCount,
-		minVertexIndex,
-		0,
+		startIndex,
+		baseVertex,
 		0
 	);
 }
@@ -4755,7 +4752,7 @@ void VULKAN_ApplyVertexBufferBindings(
 		}
 
 		offset = vertexBuffer->internalOffset + (
-			(bindings[i].vertexOffset + baseVertex) *
+			bindings[i].vertexOffset *
 			bindings[i].vertexDeclaration.vertexStride
 		);
 
