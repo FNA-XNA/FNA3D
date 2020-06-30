@@ -1775,10 +1775,10 @@ static void BindResources(FNAVulkanRenderer *renderer)
 	}
 
 	MOJOSHADER_vkGetUniformBuffers(
-		&vUniform,
+		(unsigned long long *) &vUniform,
 		&vOff,
 		&vSize,
-		&fUniform,
+		(unsigned long long *) &fUniform,
 		&fOff,
 		&fSize
 	);
@@ -5414,7 +5414,10 @@ static void DestroyFauxBackbuffer(FNAVulkanRenderer *renderer)
 		DestroyTexture(renderer, renderer->fauxBackbufferMultiSampleColor);
 	}
 
-	DestroyTexture(renderer, renderer->fauxBackbufferDepthStencil.handle);
+	if (renderer->fauxBackbufferDepthStencil.handle != NULL)
+	{
+		DestroyTexture(renderer, renderer->fauxBackbufferDepthStencil.handle);
+	}
 }
 
 void VULKAN_ResetBackbuffer(

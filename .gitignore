@@ -13,6 +13,7 @@ Release/
 xcuserdata/
 *.xcworkspace/
 .vscode/
+.ccls-cache/
 
 CMakeFiles/
 .editorconfig
