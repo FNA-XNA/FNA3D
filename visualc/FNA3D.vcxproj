@@ -132,10 +132,7 @@
     <ClInclude Include="..\src\FNA3D_Driver_D3D11.h" />
     <ClInclude Include="..\src\FNA3D_Driver_OpenGL.h" />
     <ClInclude Include="..\src\FNA3D_Driver_OpenGL_glfuncs.h" />
-    <ClInclude Include="..\src\FNA3D_Driver_Vulkan.h" />
-    <ClInclude Include="..\src\FNA3D_Driver_Vulkan_device_funcs.h" />
-    <ClInclude Include="..\src\FNA3D_Driver_Vulkan_global_funcs.h" />
-    <ClInclude Include="..\src\FNA3D_Driver_Vulkan_instance_funcs.h" />
+    <ClInclude Include="..\src\FNA3D_Driver_Vulkan_vkfuncs.h" />
     <ClInclude Include="..\src\FNA3D_PipelineCache.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
