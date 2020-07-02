@@ -2714,7 +2714,7 @@ static void VULKAN_INTERNAL_AllocateSubBuffer(
 	VulkanRenderer *renderer,
 	VulkanBuffer *buffer
 ) {
-	uint64_t totalPhysicalSize, totalAllocated, alignment;
+	VkDeviceSize totalPhysicalSize, totalAllocated, alignment;
 	uint32_t i;
 	VulkanSubBuffer *subBuffer;
 
