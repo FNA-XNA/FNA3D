@@ -469,20 +469,20 @@ typedef struct VulkanPhysicalBuffer
 typedef struct VulkanSubBuffer
 {
 	VulkanPhysicalBuffer *physicalBuffer;
+	uint8_t *ptr;
 	VkDeviceSize offset;
 	VulkanResourceAccessType resourceAccessType;
 } VulkanSubBuffer;
 
 struct VulkanBuffer /* cast from FNA3D_Buffer */
 {
-	#define MAX_SUBBUFFER_COUNT 64
-
 	VkDeviceSize size;
-	uint8_t subBufferCount;
-	uint8_t currentSubBufferIndex;
+	int32_t subBufferCount;
+	int32_t subBufferCapacity;
+	int32_t currentSubBufferIndex;
 	uint8_t bound;
 	VulkanResourceAccessType resourceAccessType;
-	VulkanSubBuffer subBuffers[MAX_SUBBUFFER_COUNT];
+	VulkanSubBuffer *subBuffers;
 };
 
 typedef struct VulkanBufferAllocator
@@ -1976,9 +1976,10 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 	VulkanBuffer *buffer,
 	VulkanSubBuffer *subBuffer
 ) {
-VkPipelineStageFlags srcStages = 0;
+	VkPipelineStageFlags srcStages = 0;
 	VkPipelineStageFlags dstStages = 0;
-	VkBufferMemoryBarrier memoryBarrier = {
+	VkBufferMemoryBarrier memoryBarrier =
+	{
 		VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER
 	};
 	VulkanResourceAccessType prevAccess, nextAccess;
@@ -2062,7 +2063,7 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	VkImage image,
 	VulkanResourceAccessType *resourceAccessType
 ) {
-VkPipelineStageFlags srcStages = 0;
+	VkPipelineStageFlags srcStages = 0;
 	VkPipelineStageFlags dstStages = 0;
 	VkImageMemoryBarrier memoryBarrier = {
 		VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER
@@ -2487,11 +2488,13 @@ static void VULKAN_INTERNAL_ResetBuffers(VulkanRenderer *renderer)
 	uint32_t i;
 	for (i = 0; i < renderer->numBuffersInUse; i++)
 	{
-		renderer->buffersInUse[i]->bound = 0;
-		renderer->buffersInUse[i]->currentSubBufferIndex = 0;
-		renderer->buffersInUse[i] = NULL;
+		if (renderer->buffersInUse[i] != NULL)
+		{
+			renderer->buffersInUse[i]->bound = 0;
+			renderer->buffersInUse[i]->currentSubBufferIndex = 0;
+			renderer->buffersInUse[i] = NULL;
+		}
 	}
-
 	renderer->numBuffersInUse = 0;
 }
 
@@ -2599,8 +2602,10 @@ static void VULKAN_INTERNAL_RemoveBuffer(
 	renderer->queuedBuffersToDestroyCount += 1;
 }
 
-static VkDeviceSize VULKAN_INTERNAL_NextHighestAlignment(VkDeviceSize n, VkDeviceSize align)
-{
+static VkDeviceSize VULKAN_INTERNAL_NextHighestAlignment(
+	VkDeviceSize n,
+	VkDeviceSize align
+) {
 	return align * ((n + align - 1) / align);
 }
 
@@ -2609,11 +2614,13 @@ static VulkanPhysicalBuffer *VULKAN_INTERNAL_NewPhysicalBuffer(
 	VkDeviceSize size
 ) {
 	VkResult vulkanResult;
-	VkBufferCreateInfo bufferCreateInfo = {
+	VkBufferCreateInfo bufferCreateInfo =
+	{
 		VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO
 	};
 	VkMemoryRequirements memoryRequirements;
-	VkMemoryAllocateInfo allocInfo = {
+	VkMemoryAllocateInfo allocInfo =
+	{
 		VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO
 	};
 	VulkanPhysicalBuffer *result = (VulkanPhysicalBuffer*) SDL_malloc(sizeof(VulkanPhysicalBuffer));
@@ -2702,19 +2709,19 @@ static VulkanPhysicalBuffer *VULKAN_INTERNAL_NewPhysicalBuffer(
 	return result;
 }
 
-/* modified from the allocation strategy utilized by the Metal driver */
+/* Modified from the allocation strategy utilized by the Metal driver */
 static void VULKAN_INTERNAL_AllocateSubBuffer(
 	VulkanRenderer *renderer,
-	VulkanBuffer *buffer,
-	VulkanSubBuffer *subBuffer
+	VulkanBuffer *buffer
 ) {
-	VkDeviceSize totalPhysicalSize, totalAllocated, alignment;
+	uint64_t totalPhysicalSize, totalAllocated, alignment;
 	uint32_t i;
+	VulkanSubBuffer *subBuffer;
 
-	/* which physical buffer should we suballocate from? */
+	/* Which physical buffer should we suballocate from? */
 	for (i = 0; i < PHYSICAL_BUFFER_MAX_COUNT; i++)
 	{
-		totalPhysicalSize = PHYSICAL_BUFFER_BASE_SIZE * SDL_max(1, 2 * i);
+		totalPhysicalSize = PHYSICAL_BUFFER_BASE_SIZE << i;
 		totalAllocated = renderer->bufferAllocator->totalAllocated[i];
 
 		if (totalPhysicalSize - totalAllocated >= buffer->size)
@@ -2723,7 +2730,6 @@ static void VULKAN_INTERNAL_AllocateSubBuffer(
 			break;
 		}
 	}
-
 	if (i == PHYSICAL_BUFFER_MAX_COUNT)
 	{
 		FNA3D_LogError("Oh crap, out of buffer room!!");
@@ -2733,19 +2739,34 @@ static void VULKAN_INTERNAL_AllocateSubBuffer(
 	/* Create physical buffer */
 	if (renderer->bufferAllocator->physicalBuffers[i] == NULL)
 	{
-		FNA3D_LogInfo("Allocating physical buffer %d!", i);
 		renderer->bufferAllocator->physicalBuffers[i] = VULKAN_INTERNAL_NewPhysicalBuffer(
 			renderer,
 			totalPhysicalSize
 		);
 	}
 
+	/* Reallocate the subbuffer array if we're at max capacity */
+	if (buffer->subBufferCount == buffer->subBufferCapacity)
+	{
+		buffer->subBufferCapacity *= 2;
+		buffer->subBuffers = SDL_realloc(
+			buffer->subBuffers,
+			sizeof(VulkanSubBuffer) * buffer->subBufferCapacity
+		);
+	}
+
 	/* Populate the given VulkanSubBuffer */
+	subBuffer = &buffer->subBuffers[buffer->subBufferCount];
 	subBuffer->physicalBuffer = renderer->bufferAllocator->physicalBuffers[i];
 	subBuffer->offset = totalAllocated;
+	subBuffer->resourceAccessType = buffer->resourceAccessType;
+	subBuffer->ptr = (
+		subBuffer->physicalBuffer->mapPointer +
+		subBuffer->offset
+	);
 
-	if (buffer->resourceAccessType == RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER ||
-		buffer->resourceAccessType == RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER)
+	if (	buffer->resourceAccessType == RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER ||
+		buffer->resourceAccessType == RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER		)
 	{
 		alignment = renderer->physicalDeviceProperties.properties.limits.minUniformBufferOffsetAlignment;
 	}
@@ -2758,10 +2779,12 @@ static void VULKAN_INTERNAL_AllocateSubBuffer(
 		alignment = renderer->physicalDeviceProperties.properties.limits.minMemoryMapAlignment;
 	}
 
+	/* Mark how much we've just allocated, rounding up for alignment */
 	renderer->bufferAllocator->totalAllocated[i] = VULKAN_INTERNAL_NextHighestAlignment(
 		totalAllocated + buffer->size,
 		alignment
 	);
+	buffer->subBufferCount += 1;
 
 	VULKAN_INTERNAL_BufferMemoryBarrier(
 		renderer,
@@ -2775,19 +2798,22 @@ static void VULKAN_INTERNAL_MarkAsBound(
 	VulkanRenderer *renderer,
 	VulkanBuffer *buf
 ) {
-	/* don't rebind a bound buffer */
+	/* Don't rebind a bound buffer */
 	if (buf->bound) return;
 
 	buf->bound = 1;
-	renderer->buffersInUse[renderer->numBuffersInUse] = buf;
-	renderer->numBuffersInUse += 1;
 
-	/* Expand the dynamic array if needed */
-	if (renderer->numBuffersInUse >= renderer->maxBuffersInUse)
+	if (renderer->numBuffersInUse == renderer->maxBuffersInUse)
 	{
 		renderer->maxBuffersInUse *= 2;
-		renderer->buffersInUse = SDL_realloc(renderer->buffersInUse, sizeof(VulkanBuffer*) * renderer->maxBuffersInUse);
+		renderer->buffersInUse = SDL_realloc(
+			renderer->buffersInUse,
+			sizeof(VulkanBuffer*) * renderer->maxBuffersInUse
+		);
 	}
+
+	renderer->buffersInUse[renderer->numBuffersInUse] = buf;
+	renderer->numBuffersInUse += 1;
 }
 
 static void VULKAN_INTERNAL_SetBufferData(
@@ -2805,55 +2831,42 @@ static void VULKAN_INTERNAL_SetBufferData(
 	#define CURIDX vulkanBuffer->currentSubBufferIndex
 	#define SUBBUF vulkanBuffer->subBuffers[CURIDX]
 
-	if (options == FNA3D_SETDATAOPTIONS_NOOVERWRITE &&
-		vulkanBuffer->subBufferCount > 0)
-	{
-		/* Write data in place and be done with it. */
-		SDL_memcpy(
-			SUBBUF.physicalBuffer->mapPointer + SUBBUF.offset + offsetInBytes,
-			data,
-			dataLength
-		);
-		return;
-	}
+	prevIndex = CURIDX;
 
 	if (vulkanBuffer->bound)
 	{
-		CURIDX += 1;
+		if (options == FNA3D_SETDATAOPTIONS_NOOVERWRITE)
+		{
+			VULKAN_INTERNAL_Stall(renderer);
+			vulkanBuffer->bound = 1;
+		}
+		else if (options == FNA3D_SETDATAOPTIONS_DISCARD)
+		{
+			CURIDX += 1;
+		}
 	}
 
 	/* Create a new SubBuffer if needed */
 	if (CURIDX == vulkanBuffer->subBufferCount)
 	{
-		if (CURIDX == MAX_SUBBUFFER_COUNT)
-		{
-			FNA3D_LogError("Can't allocate another SubBuffer!");
-			return;
-		}
-
-		VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer, &SUBBUF);
-		vulkanBuffer->subBufferCount += 1;
+		VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer);
 	}
 
-	if (options == FNA3D_SETDATAOPTIONS_NONE &&
-		dataLength != vulkanBuffer->size &&
-		vulkanBuffer->bound
-	) {
-		prevIndex = CURIDX;
-		VULKAN_INTERNAL_Stall(renderer);
-
-		if (CURIDX != prevIndex && dataLength < vulkanBuffer->size)
-		{
-			SDL_memcpy(
-				SUBBUF.physicalBuffer->mapPointer + SUBBUF.offset,
-				vulkanBuffer->subBuffers[prevIndex].physicalBuffer->mapPointer,
-				vulkanBuffer->size
-			);
-		}
+	/* Copy over previous contents when needed */
+	if (	options == FNA3D_SETDATAOPTIONS_NONE &&
+		dataLength < vulkanBuffer->size &&
+		CURIDX != prevIndex			)
+	{
+		SDL_memcpy(
+			SUBBUF.ptr,
+			vulkanBuffer->subBuffers[prevIndex].ptr,
+			vulkanBuffer->size
+		);
 	}
 
+	/* Copy the data! */
 	SDL_memcpy(
-		SUBBUF.physicalBuffer->mapPointer + SUBBUF.offset + offsetInBytes,
+		SUBBUF.ptr + offsetInBytes,
 		data,
 		dataLength
 	);
@@ -2862,14 +2875,19 @@ static void VULKAN_INTERNAL_SetBufferData(
 	#undef CURIDX
 }
 
-static FNA3D_Buffer* VULKAN_INTERNAL_CreateBuffer(VkDeviceSize size, VulkanResourceAccessType resourceAccessType) {
-	VulkanBuffer *result;
-
-	result = (VulkanBuffer*) SDL_malloc(sizeof(VulkanBuffer));
-	SDL_memset(result, 0, sizeof(VulkanBuffer));
+static FNA3D_Buffer* VULKAN_INTERNAL_CreateBuffer(
+	VkDeviceSize size,
+	VulkanResourceAccessType resourceAccessType
+) {
+	VulkanBuffer *result = SDL_malloc(sizeof(VulkanBuffer));
+	SDL_memset(result, '\0', sizeof(VulkanBuffer));
 
 	result->size = size;
 	result->resourceAccessType = resourceAccessType;
+	result->subBufferCapacity = 4;
+	result->subBuffers = SDL_malloc(
+		sizeof(VulkanSubBuffer) * result->subBufferCapacity
+	);
 
 	return (FNA3D_Buffer*) result;
 }
@@ -3813,18 +3831,26 @@ static void VULKAN_INTERNAL_BindPipeline(VulkanRenderer *renderer)
 
 /* Vulkan: Resource Disposal */
 
-static void VULKAN_INTERNAL_FreeBuffer(
-	VulkanRenderer *renderer,
-	VulkanBuffer *buffer
-) {
-	/* TODO: allow freed SubBuffer ranges to be claimed by other buffers */
-}
-
 static void VULKAN_INTERNAL_DestroyBuffer(
 	VulkanRenderer *renderer,
 	VulkanBuffer *buffer
 ) {
-	VULKAN_INTERNAL_FreeBuffer(renderer, buffer);
+	int32_t i;
+
+	if (buffer->bound)
+	{
+		for (i = 0; i < renderer->numBuffersInUse; i += 1)
+		{
+			if (renderer->buffersInUse[i] == buffer)
+			{
+				renderer->buffersInUse[i] = NULL;
+			}
+		}
+	}
+
+	SDL_free(buffer->subBuffers);
+	buffer->subBuffers = NULL;
+
 	SDL_free(buffer);
 }
 
@@ -5863,6 +5889,26 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		NULL
 	);
 
+	for (i = 0; i < PHYSICAL_BUFFER_MAX_COUNT; i += 1)
+	{
+		if (renderer->bufferAllocator->physicalBuffers[i] != NULL)
+		{
+			renderer->vkDestroyBuffer(
+				renderer->logicalDevice,
+				renderer->bufferAllocator->physicalBuffers[i]->buffer,
+				NULL
+			);
+			renderer->vkFreeMemory(
+				renderer->logicalDevice,
+				renderer->bufferAllocator->physicalBuffers[i]->deviceMemory,
+				NULL
+			);
+		}
+	}
+
+	SDL_free(renderer->bufferAllocator);
+	SDL_free(renderer->buffersInUse);
+
 	renderer->vkDestroyDevice(renderer->logicalDevice, NULL);
 	renderer->vkDestroyInstance(renderer->instance, NULL);
 
@@ -6287,7 +6333,7 @@ static void VULKAN_DrawInstancedPrimitives(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanBuffer *indexBuffer = (VulkanBuffer*) indices;
-	VulkanSubBuffer *subbuf = &indexBuffer->subBuffers[
+	VulkanSubBuffer subbuf = indexBuffer->subBuffers[
 		indexBuffer->currentSubBufferIndex
 	];
 
@@ -6306,8 +6352,8 @@ static void VULKAN_DrawInstancedPrimitives(
 
 	renderer->vkCmdBindIndexBuffer(
 		renderer->commandBuffers[renderer->currentFrame],
-		subbuf->physicalBuffer->buffer,
-		subbuf->offset,
+		subbuf.physicalBuffer->buffer,
+		subbuf.offset,
 		XNAToVK_IndexType[indexElementSize]
 	);
 
@@ -6654,7 +6700,7 @@ static void VULKAN_ApplyVertexBufferBindings(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanBuffer *vertexBuffer;
-	VulkanSubBuffer *subbuf;
+	VulkanSubBuffer subbuf;
 	VkDeviceSize offset;
 	VkBuffer buffers[MAX_BOUND_VERTEX_BUFFERS];
 	VkDeviceSize offsets[MAX_BOUND_VERTEX_BUFFERS];
@@ -6684,24 +6730,24 @@ static void VULKAN_ApplyVertexBufferBindings(
 			continue;
 		}
 
-		subbuf = &vertexBuffer->subBuffers[
+		subbuf = vertexBuffer->subBuffers[
 			vertexBuffer->currentSubBufferIndex
 		];
 
-		offset = subbuf->offset + (
-			(bindings[i].vertexOffset + baseVertex) *
+		offset = subbuf.offset + (
+			bindings[i].vertexOffset *
 			bindings[i].vertexDeclaration.vertexStride
 		);
 
 		VULKAN_INTERNAL_MarkAsBound(renderer, vertexBuffer);
-		if (renderer->ldVertexBuffers[i] != subbuf->physicalBuffer->buffer ||
+		if (renderer->ldVertexBuffers[i] != subbuf.physicalBuffer->buffer ||
 			renderer->ldVertexBufferOffsets[i] != offset)
 		{
-			renderer->ldVertexBuffers[i] = subbuf->physicalBuffer->buffer;
+			renderer->ldVertexBuffers[i] = subbuf.physicalBuffer->buffer;
 			renderer->ldVertexBufferOffsets[i] = offset;
 		}
 
-		buffers[bufferCount] = subbuf->physicalBuffer->buffer;
+		buffers[bufferCount] = subbuf.physicalBuffer->buffer;
 		offsets[bufferCount] = offset;
 		bufferCount++;
 	}
