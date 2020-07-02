@@ -2835,7 +2835,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 
 	if (vulkanBuffer->bound)
 	{
-		if (options == FNA3D_SETDATAOPTIONS_NOOVERWRITE)
+		if (options == FNA3D_SETDATAOPTIONS_NONE)
 		{
 			VULKAN_INTERNAL_Stall(renderer);
 			vulkanBuffer->bound = 1;
