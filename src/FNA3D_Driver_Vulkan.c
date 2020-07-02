@@ -938,7 +938,6 @@ static inline float XNAToVK_DepthBiasScale(VkFormat format)
 			return (float) ((1 << 23) - 1);
 
 		default:
-			SDL_assert(0 && "Invalid depth pixel format");
 			return 0.0f;
 	}
 }
@@ -2911,6 +2910,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	};
 	uint8_t layerCount = isCube ? 6 : 1;
 	uint32_t i;
+	uint8_t emptyData = 0;
 
 	imageCreateInfo.flags = isCube ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
 	imageCreateInfo.imageType = imageType;
@@ -3078,6 +3078,15 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	texture->stagingBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
 		texture->memorySize,
 		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE
+	);
+
+	VULKAN_INTERNAL_SetBufferData(
+		(FNA3D_Renderer*) renderer,
+		(FNA3D_Buffer*) texture->stagingBuffer,
+		0,
+		&emptyData,
+		0,
+		FNA3D_SETDATAOPTIONS_NOOVERWRITE
 	);
 
 	return 1;
@@ -8525,6 +8534,21 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		FNA3D_LogError("Failed to create logical device");
 		return NULL;
 	}
+
+	/*
+	 * Initialize buffer allocator and buffer space
+	 */
+
+	renderer->bufferAllocator = (VulkanBufferAllocator*) SDL_malloc(
+		sizeof(VulkanBufferAllocator)
+	);
+	SDL_zerop(renderer->bufferAllocator);
+
+	renderer->maxBuffersInUse = 32;
+	renderer->buffersInUse = (VulkanBuffer**) SDL_malloc(
+		sizeof(VulkanBuffer*) * renderer->maxBuffersInUse
+	);
+	SDL_zerop(renderer->buffersInUse);
 
 	/*
 	 * Choose depth formats
