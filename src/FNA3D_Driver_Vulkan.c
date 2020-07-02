@@ -27,7 +27,7 @@
 #if FNA3D_DRIVER_VULKAN
 
 #define VK_NO_PROTOTYPES
-#include "vulkan.h"
+#include "vulkan/vulkan.h"
 
 #include "FNA3D_Driver.h"
 #include "FNA3D_PipelineCache.h"
