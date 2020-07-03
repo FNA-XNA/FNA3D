@@ -5253,7 +5253,7 @@ static void VULKAN_INTERNAL_IncrementUniformBufferDescriptorPool(
 	}
 }
 
-static void BindResources(VulkanRenderer *renderer)
+static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 {
 	uint8_t	vertexSamplerDescriptorSetNeedsUpdate,
 		fragSamplerDescriptorSetNeedsUpdate;
@@ -6447,7 +6447,7 @@ static void VULKAN_DrawInstancedPrimitives(
 	}
 	VULKAN_INTERNAL_UpdateRenderPass(renderer);
 	VULKAN_INTERNAL_BindPipeline(renderer);
-	BindResources(renderer);
+	VULKAN_INTERNAL_BindResources(renderer);
 
 	renderer->vkCmdBindIndexBuffer(
 		renderer->commandBuffers[renderer->currentFrame],
@@ -6506,7 +6506,7 @@ static void VULKAN_DrawPrimitives(
 	}
 	VULKAN_INTERNAL_UpdateRenderPass(renderer);
 	VULKAN_INTERNAL_BindPipeline(renderer);
-	BindResources(renderer);
+	VULKAN_INTERNAL_BindResources(renderer);
 
 	renderer->vkCmdDraw(
 		renderer->commandBuffers[renderer->currentFrame],
