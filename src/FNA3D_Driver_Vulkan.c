@@ -438,7 +438,6 @@ typedef struct VulkanTexture /* Cast from FNA3D_Texture* */
 	uint32_t depth;
 	VkDeviceSize memorySize;
 	VkFormat surfaceFormat;
-	VulkanBuffer *stagingBuffer;
 	uint32_t layerCount;
 	uint32_t levelCount;
 	VulkanResourceAccessType resourceAccessType;
@@ -454,7 +453,6 @@ static VulkanTexture NullTexture =
 	0,
 	0,
 	VK_FORMAT_UNDEFINED,
-	NULL,
 	0,
 	RESOURCE_ACCESS_NONE
 };
@@ -594,6 +592,8 @@ typedef struct VulkanRenderer
 	VulkanBuffer **buffersInUse;
 	uint32_t numBuffersInUse;
 	uint32_t maxBuffersInUse;
+
+	VulkanPhysicalBuffer *textureStagingBuffer;
 
 	uint32_t numVertexBindings;
 	FNA3D_VertexBufferBinding *vertexBindings;
@@ -2611,7 +2611,8 @@ static VkDeviceSize VULKAN_INTERNAL_NextHighestAlignment(
 
 static VulkanPhysicalBuffer *VULKAN_INTERNAL_NewPhysicalBuffer(
 	VulkanRenderer *renderer,
-	VkDeviceSize size
+	VkDeviceSize size,
+	VkBufferUsageFlags usage
 ) {
 	VkResult vulkanResult;
 	VkBufferCreateInfo bufferCreateInfo =
@@ -2627,12 +2628,7 @@ static VulkanPhysicalBuffer *VULKAN_INTERNAL_NewPhysicalBuffer(
 	SDL_zerop(result);
 
 	bufferCreateInfo.size = size;
-	bufferCreateInfo.usage =
-		VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
-		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-		VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-		VK_BUFFER_USAGE_TRANSFER_DST_BIT |
-		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+	bufferCreateInfo.usage = usage;
 
 	bufferCreateInfo.flags = 0;
 	bufferCreateInfo.queueFamilyIndexCount = 1;
@@ -2741,7 +2737,12 @@ static void VULKAN_INTERNAL_AllocateSubBuffer(
 	{
 		renderer->bufferAllocator->physicalBuffers[i] = VULKAN_INTERNAL_NewPhysicalBuffer(
 			renderer,
-			totalPhysicalSize
+			totalPhysicalSize,
+			VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT |
+			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
 		);
 	}
 
@@ -2928,7 +2929,6 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	};
 	uint8_t layerCount = isCube ? 6 : 1;
 	uint32_t i;
-	uint8_t emptyData = 0;
 
 	imageCreateInfo.flags = isCube ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
 	imageCreateInfo.imageType = imageType;
@@ -3093,20 +3093,6 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	texture->levelCount = levelCount;
 	texture->layerCount = layerCount;
 
-	texture->stagingBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
-		texture->memorySize,
-		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE
-	);
-
-	VULKAN_INTERNAL_SetBufferData(
-		(FNA3D_Renderer*) renderer,
-		(FNA3D_Buffer*) texture->stagingBuffer,
-		0,
-		&emptyData,
-		0,
-		FNA3D_SETDATAOPTIONS_NOOVERWRITE
-	);
-
 	return 1;
 }
 
@@ -3125,8 +3111,6 @@ static void VULKAN_INTERNAL_GetTextureData(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
-	VulkanBuffer *stagingBuffer = vulkanTexture->stagingBuffer;
-	VulkanSubBuffer *subbuf = &stagingBuffer->subBuffers[stagingBuffer->currentSubBufferIndex];
 	VulkanResourceAccessType prevResourceAccess;
 	VkBufferImageCopy imageCopy;
 	uint8_t *dataPtr = (uint8_t*) data;
@@ -3167,7 +3151,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 		renderer->commandBuffers[renderer->currentFrame],
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
-		subbuf->physicalBuffer->buffer,
+		renderer->textureStagingBuffer->buffer,
 		1,
 		&imageCopy
 	);
@@ -3193,7 +3177,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 
 	SDL_memcpy(
 		dataPtr,
-		subbuf->physicalBuffer->mapPointer + subbuf->offset,
+		renderer->textureStagingBuffer->mapPointer,
 		BytesPerImage(w, h, format)
 	);
 }
@@ -3899,9 +3883,6 @@ static void VULKAN_INTERNAL_DestroyTexture(
 		texture->image,
 		NULL
 	);
-
-	VULKAN_INTERNAL_DestroyBuffer(renderer, texture->stagingBuffer);
-	texture->stagingBuffer = NULL;
 
 	SDL_free(texture);
 }
@@ -5740,6 +5721,20 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		renderer->currentFrame = (renderer->currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 
+	renderer->vkFreeMemory(
+		renderer->logicalDevice,
+		renderer->textureStagingBuffer->deviceMemory,
+		NULL
+	);
+
+	renderer->vkDestroyBuffer(
+		renderer->logicalDevice,
+		renderer->textureStagingBuffer->buffer,
+		NULL
+	);
+
+	SDL_free(renderer->textureStagingBuffer);
+
 	MOJOSHADER_vkDestroyContext();
 	VULKAN_INTERNAL_DestroyFauxBackbuffer(renderer);
 
@@ -7239,13 +7234,11 @@ static void VULKAN_SetTextureData2D(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
-	VulkanBuffer *stagingBuffer = vulkanTexture->stagingBuffer;
-	VulkanSubBuffer *subbuf = &stagingBuffer->subBuffers[stagingBuffer->currentSubBufferIndex];
 	VkBufferImageCopy imageCopy;
 
 	VULKAN_BeginFrame(driverData);
 
-	SDL_memcpy(subbuf->physicalBuffer->mapPointer + subbuf->offset, data, dataLength);
+	SDL_memcpy(renderer->textureStagingBuffer->mapPointer, data, dataLength);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -7270,18 +7263,20 @@ static void VULKAN_SetTextureData2D(
 	imageCopy.imageSubresource.baseArrayLayer = 0;
 	imageCopy.imageSubresource.layerCount = 1;
 	imageCopy.imageSubresource.mipLevel = level;
-	imageCopy.bufferOffset = subbuf->offset;
+	imageCopy.bufferOffset = 0;
 	imageCopy.bufferRowLength = 0;
 	imageCopy.bufferImageHeight = 0;
 
 	renderer->vkCmdCopyBufferToImage(
 		renderer->commandBuffers[renderer->currentFrame],
-		subbuf->physicalBuffer->buffer,
+		renderer->textureStagingBuffer->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
 	);
+
+	VULKAN_INTERNAL_Stall(renderer);
 }
 
 static void VULKAN_SetTextureData3D(
@@ -7300,13 +7295,11 @@ static void VULKAN_SetTextureData3D(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
-	VulkanBuffer *stagingBuffer = vulkanTexture->stagingBuffer;
-	VulkanSubBuffer *subbuf = &stagingBuffer->subBuffers[stagingBuffer->currentSubBufferIndex];
 	VkBufferImageCopy imageCopy;
 
 	VULKAN_BeginFrame(driverData);
 
-	SDL_memcpy(subbuf->physicalBuffer->mapPointer + subbuf->offset, data, dataLength);
+	SDL_memcpy(renderer->textureStagingBuffer->mapPointer, data, dataLength);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -7331,18 +7324,20 @@ static void VULKAN_SetTextureData3D(
 	imageCopy.imageSubresource.baseArrayLayer = 0;
 	imageCopy.imageSubresource.layerCount = 1;
 	imageCopy.imageSubresource.mipLevel = level;
-	imageCopy.bufferOffset = subbuf->offset;
+	imageCopy.bufferOffset = 0;
 	imageCopy.bufferRowLength = 0;
 	imageCopy.bufferImageHeight = 0;
 
 	renderer->vkCmdCopyBufferToImage(
 		renderer->commandBuffers[renderer->currentFrame],
-		stagingBuffer->subBuffers[stagingBuffer->currentSubBufferIndex].physicalBuffer->buffer,
+		renderer->textureStagingBuffer->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
 	);
+
+	VULKAN_INTERNAL_Stall(renderer);
 }
 
 static void VULKAN_SetTextureDataCube(
@@ -7360,13 +7355,11 @@ static void VULKAN_SetTextureDataCube(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
-	VulkanBuffer *stagingBuffer = vulkanTexture->stagingBuffer;
-	VulkanSubBuffer *subbuf = &stagingBuffer->subBuffers[stagingBuffer->currentSubBufferIndex];
 	VkBufferImageCopy imageCopy;
 
 	VULKAN_BeginFrame(driverData);
 
-	SDL_memcpy(subbuf->physicalBuffer->mapPointer + subbuf->offset, data, dataLength);
+	SDL_memcpy(renderer->textureStagingBuffer->mapPointer, data, dataLength);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -7391,18 +7384,20 @@ static void VULKAN_SetTextureDataCube(
 	imageCopy.imageSubresource.baseArrayLayer = cubeMapFace;
 	imageCopy.imageSubresource.layerCount = 1;
 	imageCopy.imageSubresource.mipLevel = level;
-	imageCopy.bufferOffset = subbuf->offset;
+	imageCopy.bufferOffset = 0;
 	imageCopy.bufferRowLength = 0; /* assumes tightly packed data */
 	imageCopy.bufferImageHeight = 0; /* assumes tightly packed data */
 
 	renderer->vkCmdCopyBufferToImage(
 		renderer->commandBuffers[renderer->currentFrame],
-		subbuf->physicalBuffer->buffer,
+		renderer->textureStagingBuffer->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
 	);
+
+	VULKAN_INTERNAL_Stall(renderer);
 }
 
 static void VULKAN_SetTextureDataYUV(
@@ -7419,8 +7414,6 @@ static void VULKAN_SetTextureDataYUV(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *tex;
-	VulkanBuffer *stagingBuffer;
-	VulkanSubBuffer *subbuf;
 	uint8_t *dataPtr = (uint8_t*) data;
 	int32_t yDataLength = BytesPerImage(yWidth, yHeight, FNA3D_SURFACEFORMAT_ALPHA8);
 	int32_t uvDataLength = BytesPerImage(uvWidth, uvHeight, FNA3D_SURFACEFORMAT_ALPHA8);
@@ -7438,17 +7431,14 @@ static void VULKAN_SetTextureDataYUV(
 	imageCopy.imageSubresource.baseArrayLayer = 0;
 	imageCopy.imageSubresource.layerCount = 1;
 	imageCopy.imageSubresource.mipLevel = 0;
+	imageCopy.bufferOffset = 0;
 
 	/* Y */
 
 	tex = (VulkanTexture*) y;
-	stagingBuffer = tex->stagingBuffer;
-	subbuf = &stagingBuffer->subBuffers[stagingBuffer->currentSubBufferIndex];
-
-	imageCopy.bufferOffset = subbuf->offset;
 
 	SDL_memcpy(
-		subbuf->physicalBuffer->mapPointer + subbuf->offset,
+		renderer->textureStagingBuffer->mapPointer,
 		dataPtr,
 		yDataLength
 	);
@@ -7473,7 +7463,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	renderer->vkCmdCopyBufferToImage(
 		renderer->commandBuffers[renderer->currentFrame],
-		subbuf->physicalBuffer->buffer,
+		renderer->textureStagingBuffer->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
 		1,
@@ -7489,14 +7479,12 @@ static void VULKAN_SetTextureDataYUV(
 
 	/* U */
 
-	tex = (VulkanTexture*) u;
-	stagingBuffer = tex->stagingBuffer;
-	subbuf = &stagingBuffer->subBuffers[stagingBuffer->currentSubBufferIndex];
+	imageCopy.bufferOffset = yDataLength;
 
-	imageCopy.bufferOffset = subbuf->offset;
+	tex = (VulkanTexture*) u;
 
 	SDL_memcpy(
-		subbuf->physicalBuffer->mapPointer + subbuf->offset,
+		renderer->textureStagingBuffer->mapPointer + yDataLength,
 		dataPtr + yDataLength,
 		uvDataLength
 	);
@@ -7516,7 +7504,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	renderer->vkCmdCopyBufferToImage(
 		renderer->commandBuffers[renderer->currentFrame],
-		subbuf->physicalBuffer->buffer,
+		renderer->textureStagingBuffer->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
 		1,
@@ -7525,14 +7513,12 @@ static void VULKAN_SetTextureDataYUV(
 
 	/* V */
 
-	tex = (VulkanTexture*) v;
-	stagingBuffer = tex->stagingBuffer;
-	subbuf = &stagingBuffer->subBuffers[stagingBuffer->currentSubBufferIndex];
+	imageCopy.bufferOffset = yDataLength + uvDataLength;
 
-	imageCopy.bufferOffset = subbuf->offset;
+	tex = (VulkanTexture*) v;
 
 	SDL_memcpy(
-		subbuf->physicalBuffer->mapPointer + subbuf->offset,
+		renderer->textureStagingBuffer->mapPointer + yDataLength + uvDataLength,
 		dataPtr + yDataLength + uvDataLength,
 		uvDataLength
 	);
@@ -7552,12 +7538,14 @@ static void VULKAN_SetTextureDataYUV(
 
 	renderer->vkCmdCopyBufferToImage(
 		renderer->commandBuffers[renderer->currentFrame],
-		subbuf->physicalBuffer->buffer,
+		renderer->textureStagingBuffer->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
 	);
+
+	VULKAN_INTERNAL_Stall(renderer);
 }
 
 static void VULKAN_GetTextureData2D(
@@ -8595,6 +8583,12 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		sizeof(VulkanBuffer*) * renderer->maxBuffersInUse
 	);
 	SDL_zerop(renderer->buffersInUse);
+
+	renderer->textureStagingBuffer = VULKAN_INTERNAL_NewPhysicalBuffer(
+		renderer,
+		67100000,
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+	);
 
 	/*
 	 * Choose depth formats
