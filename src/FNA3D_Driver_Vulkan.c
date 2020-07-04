@@ -461,6 +461,7 @@ typedef struct VulkanPhysicalBuffer
 {
 	VkBuffer buffer;
 	VkDeviceMemory deviceMemory;
+	VkDeviceSize size;
 	uint8_t *mapPointer;
 } VulkanPhysicalBuffer;
 
@@ -1158,6 +1159,8 @@ static void VULKAN_GetTextureData2D(
 	void* data,
 	int32_t dataLength
 );
+
+static void VULKAN_INTERNAL_DestroyTextureStagingBuffer(VulkanRenderer *renderer);
 
 /* Vulkan: Internal Implementation */
 
@@ -2702,6 +2705,8 @@ static VulkanPhysicalBuffer *VULKAN_INTERNAL_NewPhysicalBuffer(
 		return NULL;
 	}
 
+	result->size = size;
+
 	return result;
 }
 
@@ -2891,6 +2896,21 @@ static FNA3D_Buffer* VULKAN_INTERNAL_CreateBuffer(
 	);
 
 	return (FNA3D_Buffer*) result;
+}
+
+static void VULKAN_INTERNAL_MaybeExpandStagingBuffer(
+	VulkanRenderer *renderer,
+	VkDeviceSize size
+) {
+	if (size <= renderer->textureStagingBuffer->size) { return; }
+
+	VULKAN_INTERNAL_DestroyTextureStagingBuffer(renderer);
+
+	renderer->textureStagingBuffer = VULKAN_INTERNAL_NewPhysicalBuffer(
+		renderer,
+		size,
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+	);
 }
 
 /* Vulkan: Texture Objects */
@@ -3114,6 +3134,8 @@ static void VULKAN_INTERNAL_GetTextureData(
 	VulkanResourceAccessType prevResourceAccess;
 	VkBufferImageCopy imageCopy;
 	uint8_t *dataPtr = (uint8_t*) data;
+
+	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
 	/* Cache this so we can restore it later */
 	prevResourceAccess = vulkanTexture->resourceAccessType;
@@ -3836,6 +3858,25 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 	buffer->subBuffers = NULL;
 
 	SDL_free(buffer);
+}
+
+static void VULKAN_INTERNAL_DestroyTextureStagingBuffer(
+	VulkanRenderer *renderer
+) {
+
+	renderer->vkFreeMemory(
+		renderer->logicalDevice,
+		renderer->textureStagingBuffer->deviceMemory,
+		NULL
+	);
+
+	renderer->vkDestroyBuffer(
+		renderer->logicalDevice,
+		renderer->textureStagingBuffer->buffer,
+		NULL
+	);
+
+	SDL_free(renderer->textureStagingBuffer);
 }
 
 static void VULKAN_INTERNAL_DestroyTexture(
@@ -5721,19 +5762,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		renderer->currentFrame = (renderer->currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 
-	renderer->vkFreeMemory(
-		renderer->logicalDevice,
-		renderer->textureStagingBuffer->deviceMemory,
-		NULL
-	);
-
-	renderer->vkDestroyBuffer(
-		renderer->logicalDevice,
-		renderer->textureStagingBuffer->buffer,
-		NULL
-	);
-
-	SDL_free(renderer->textureStagingBuffer);
+	VULKAN_INTERNAL_DestroyTextureStagingBuffer(renderer);
 
 	MOJOSHADER_vkDestroyContext();
 	VULKAN_INTERNAL_DestroyFauxBackbuffer(renderer);
@@ -7237,6 +7266,7 @@ static void VULKAN_SetTextureData2D(
 	VkBufferImageCopy imageCopy;
 
 	VULKAN_BeginFrame(driverData);
+	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
 	SDL_memcpy(renderer->textureStagingBuffer->mapPointer, data, dataLength);
 
@@ -7298,6 +7328,7 @@ static void VULKAN_SetTextureData3D(
 	VkBufferImageCopy imageCopy;
 
 	VULKAN_BeginFrame(driverData);
+	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
 	SDL_memcpy(renderer->textureStagingBuffer->mapPointer, data, dataLength);
 
@@ -7358,6 +7389,7 @@ static void VULKAN_SetTextureDataCube(
 	VkBufferImageCopy imageCopy;
 
 	VULKAN_BeginFrame(driverData);
+	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
 	SDL_memcpy(renderer->textureStagingBuffer->mapPointer, data, dataLength);
 
@@ -7420,6 +7452,7 @@ static void VULKAN_SetTextureDataYUV(
 	VkBufferImageCopy imageCopy;
 
 	VULKAN_BeginFrame(driverData);
+	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, yDataLength + uvDataLength);
 
 	/* Initialize values that are the same for Y, U, and V */
 
@@ -8586,7 +8619,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	renderer->textureStagingBuffer = VULKAN_INTERNAL_NewPhysicalBuffer(
 		renderer,
-		67100000,
+		8000000,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
 	);
 
