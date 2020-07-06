@@ -2652,10 +2652,10 @@ static VulkanPhysicalBuffer *VULKAN_INTERNAL_NewPhysicalBuffer(
 	allocInfo.allocationSize = memoryRequirements.size;
 
 	if (!VULKAN_INTERNAL_FindMemoryType(
-			renderer,
-			memoryRequirements.memoryTypeBits,
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-			&allocInfo.memoryTypeIndex
+		renderer,
+		memoryRequirements.memoryTypeBits,
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		&allocInfo.memoryTypeIndex
 	)) {
 		FNA3D_LogError("Failed to allocate VkBuffer!");
 		return NULL;
@@ -3007,14 +3007,12 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	texture->memorySize = memoryRequirements.size;
 	allocInfo.allocationSize = memoryRequirements.size;
 
-	if (
-		!VULKAN_INTERNAL_FindMemoryType(
-			renderer,
-			memoryRequirements.memoryTypeBits,
-			memoryProperties,
-			&allocInfo.memoryTypeIndex
-		)
-	) {
+	if (!VULKAN_INTERNAL_FindMemoryType(
+		renderer,
+		memoryRequirements.memoryTypeBits,
+		memoryProperties,
+		&allocInfo.memoryTypeIndex
+	)) {
 		FNA3D_LogError(
 			"Could not find valid memory type for image creation"
 		);
