@@ -33,8 +33,10 @@
 /* Internal Structures */
 
 typedef struct MetalTexture MetalTexture;
-typedef struct MetalRenderbuffer MetalRenderbuffer;
+typedef struct MetalSubBuffer MetalSubBuffer;
 typedef struct MetalBuffer MetalBuffer;
+typedef struct MetalBufferAllocator MetalBufferAllocator;
+typedef struct MetalRenderbuffer MetalRenderbuffer;
 typedef struct MetalEffect MetalEffect;
 typedef struct MetalQuery MetalQuery;
 typedef struct PipelineHashMap PipelineHashMap;
@@ -61,18 +63,29 @@ static MetalTexture NullTexture =
 	NULL
 };
 
+struct MetalSubBuffer
+{
+	MTLBuffer *buffer;
+	uint8_t *ptr;
+	int32_t offset;
+};
+
 struct MetalBuffer /* Cast from FNA3D_Buffer* */
 {
-	MTLBuffer *handle;
-	void* contents;
 	int32_t size;
-	int32_t internalOffset;
-	int32_t internalBufferSize;
-	int32_t prevDataLength;
-	int32_t prevInternalOffset;
-	FNA3D_BufferUsage usage;
-	uint8_t boundThisFrame;
-	MetalBuffer *next; /* linked list */
+	int32_t subBufferCount;
+	int32_t subBufferCapacity;
+	int32_t currentSubBufferIndex;
+	uint8_t bound;
+	MetalSubBuffer *subBuffers;
+};
+
+struct MetalBufferAllocator
+{
+	#define PHYSICAL_BUFFER_BASE_SIZE 4000000
+	#define PHYSICAL_BUFFER_MAX_COUNT 7
+	MTLBuffer *physicalBuffers[PHYSICAL_BUFFER_MAX_COUNT];
+	int32_t totalAllocated[PHYSICAL_BUFFER_MAX_COUNT];
 };
 
 struct MetalRenderbuffer /* Cast from FNA3D_Renderbuffer* */
@@ -136,32 +149,12 @@ typedef struct MetalRenderer /* Cast from FNA3D_Renderer* */
 
 	/* Active Metal State */
 	MTLCommandBuffer *commandBuffer;
+	MTLCommandBuffer *committedCommandBuffer;
 	MTLRenderCommandEncoder *renderCommandEncoder;
 	MTLBuffer *currentVisibilityBuffer;
 	MTLVertexDescriptor *currentVertexDescriptor;
 	uint8_t needNewRenderPass;
 	uint8_t frameInProgress;
-
-	/* Frame Tracking */
-	/* FIXME:
-	 * In theory, double- or even triple-buffering could
-	 * significantly help performance by reducing CPU idle
-	 * time. The trade-off is that buffer synchronization
-	 * becomes much more complicated and error-prone.
-	 *
-	 * I've attempted a few implementations of multi-
-	 * buffering, but they all had serious issues and
-	 * typically performed worse than single buffering.
-	 *
-	 * I'm leaving these variables here in case any brave
-	 * souls want to attempt a multi-buffer implementation.
-	 * This could be a huge win for performance, but it'll
-	 * take someone smarter than me to figure this out. ;)
-	 *
-	 * -caleb
-	 */
-	uint8_t maxFramesInFlight;
-	SDL_sem *frameSemaphore;
 
 	/* Autorelease Pool */
 	NSAutoreleasePool *pool;
@@ -204,14 +197,12 @@ typedef struct MetalRenderer /* Cast from FNA3D_Renderer* */
 	MTLPixelFormat D24Format;
 	MTLPixelFormat D24S8Format;
 
-	/* Buffer Binding Cache */
-	MetalBuffer *buffers;
-
-	/* Some vertex declarations may have overlapping attributes :/ */
-	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
-
-	MTLBuffer *ldVertUniformBuffer;
-	MTLBuffer *ldFragUniformBuffer;
+	/* Buffers */
+	MetalBufferAllocator *bufferAllocator;
+	MetalBuffer **buffersInUse;
+	int32_t numBuffersInUse;
+	int32_t maxBuffersInUse;
+	MTLBuffer *ldUniformBuffer;
 	int32_t ldVertUniformOffset;
 	int32_t ldFragUniformOffset;
 	MTLBuffer *ldVertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
@@ -241,6 +232,7 @@ typedef struct MetalRenderer /* Cast from FNA3D_Renderer* */
 	StateHashMap *samplerStateCache;
 
 	/* MojoShader Interop */
+	MOJOSHADER_mtlContext *mtlContext;
 	MOJOSHADER_effect *currentEffect;
 	const MOJOSHADER_effectTechnique *currentTechnique;
 	uint32_t currentPass;
@@ -486,7 +478,7 @@ static MTLPrimitiveType XNAToMTL_Primitive[] =
 
 /* Texture Helper Functions */
 
-static inline int32_t ClosestMSAAPower(int32_t value)
+static inline int32_t METAL_INTERNAL_ClosestMSAAPower(int32_t value)
 {
 	/* Checking for the highest power of two _after_ than the given int:
 	 * http://graphics.stanford.edu/~seander/bithacks.html#RoundUpPowerOf2
@@ -512,7 +504,7 @@ static inline int32_t ClosestMSAAPower(int32_t value)
 	return result >> 1;
 }
 
-static inline int32_t GetCompatibleSampleCount(
+static inline int32_t METAL_INTERNAL_GetCompatibleSampleCount(
 	MetalRenderer *renderer,
 	int32_t sampleCount
 ) {
@@ -523,7 +515,7 @@ static inline int32_t GetCompatibleSampleCount(
 	while (	sampleCount > 0 &&
 		!mtlDeviceSupportsSampleCount(renderer->device, sampleCount))
 	{
-		sampleCount = ClosestMSAAPower(sampleCount / 2);
+		sampleCount = METAL_INTERNAL_ClosestMSAAPower(sampleCount / 2);
 	}
 	return sampleCount;
 }
@@ -550,8 +542,9 @@ static MetalTexture* CreateTexture(
 
 /* Render Command Encoder Functions */
 
-static void SetEncoderStencilReferenceValue(MetalRenderer *renderer)
-{
+static void METAL_INTERNAL_SetEncoderStencilReferenceValue(
+	MetalRenderer *renderer
+) {
 	if (	renderer->renderCommandEncoder != NULL &&
 		!renderer->needNewRenderPass			)
 	{
@@ -562,7 +555,7 @@ static void SetEncoderStencilReferenceValue(MetalRenderer *renderer)
 	}
 }
 
-static void SetEncoderBlendColor(MetalRenderer *renderer)
+static void METAL_INTERNAL_SetEncoderBlendColor(MetalRenderer *renderer)
 {
 	if (	renderer->renderCommandEncoder != NULL &&
 		!renderer->needNewRenderPass			)
@@ -577,7 +570,7 @@ static void SetEncoderBlendColor(MetalRenderer *renderer)
 	}
 }
 
-static void SetEncoderViewport(MetalRenderer *renderer)
+static void METAL_INTERNAL_SetEncoderViewport(MetalRenderer *renderer)
 {
 	if (	renderer->renderCommandEncoder != NULL &&
 		!renderer->needNewRenderPass			)
@@ -594,7 +587,7 @@ static void SetEncoderViewport(MetalRenderer *renderer)
 	}
 }
 
-static void SetEncoderScissorRect(MetalRenderer *renderer)
+static void METAL_INTERNAL_SetEncoderScissorRect(MetalRenderer *renderer)
 {
 	FNA3D_Rect rect = renderer->scissorRect;
 
@@ -626,7 +619,7 @@ static void SetEncoderScissorRect(MetalRenderer *renderer)
 	}
 }
 
-static void SetEncoderCullMode(MetalRenderer *renderer)
+static void METAL_INTERNAL_SetEncoderCullMode(MetalRenderer *renderer)
 {
 	if (	renderer->renderCommandEncoder != NULL &&
 		!renderer->needNewRenderPass			)
@@ -638,7 +631,7 @@ static void SetEncoderCullMode(MetalRenderer *renderer)
 	}
 }
 
-static void SetEncoderFillMode(MetalRenderer *renderer)
+static void METAL_INTERNAL_SetEncoderFillMode(MetalRenderer *renderer)
 {
 	if (	renderer->renderCommandEncoder != NULL &&
 		!renderer->needNewRenderPass			)
@@ -650,7 +643,7 @@ static void SetEncoderFillMode(MetalRenderer *renderer)
 	}
 }
 
-static void SetEncoderDepthBias(MetalRenderer *renderer)
+static void METAL_INTERNAL_SetEncoderDepthBias(MetalRenderer *renderer)
 {
 	if (	renderer->renderCommandEncoder != NULL &&
 		!renderer->needNewRenderPass			)
@@ -664,7 +657,7 @@ static void SetEncoderDepthBias(MetalRenderer *renderer)
 	}
 }
 
-static void EndPass(MetalRenderer *renderer)
+static void METAL_INTERNAL_EndPass(MetalRenderer *renderer)
 {
 	if (renderer->renderCommandEncoder != NULL)
 	{
@@ -674,7 +667,7 @@ static void EndPass(MetalRenderer *renderer)
 }
 
 static void METAL_BeginFrame(FNA3D_Renderer *driverData);
-static void UpdateRenderPass(MetalRenderer *renderer)
+static void METAL_INTERNAL_UpdateRenderPass(MetalRenderer *renderer)
 {
 	MTLRenderPassDescriptor *passDesc;
 	MTLRenderPassColorAttachmentDescriptor *colorAttachment;
@@ -698,7 +691,7 @@ static void UpdateRenderPass(MetalRenderer *renderer)
 	METAL_BeginFrame((FNA3D_Renderer*) renderer);
 
 	/* Wrap up rendering with the old encoder */
-	EndPass(renderer);
+	METAL_INTERNAL_EndPass(renderer);
 
 	/* Generate the descriptor */
 	passDesc = mtlMakeRenderPassDescriptor();
@@ -868,13 +861,13 @@ static void UpdateRenderPass(MetalRenderer *renderer)
 	renderer->shouldClearStencil = 0;
 
 	/* Apply the dynamic state */
-	SetEncoderViewport(renderer);
-	SetEncoderScissorRect(renderer);
-	SetEncoderBlendColor(renderer);
-	SetEncoderStencilReferenceValue(renderer);
-	SetEncoderCullMode(renderer);
-	SetEncoderFillMode(renderer);
-	SetEncoderDepthBias(renderer);
+	METAL_INTERNAL_SetEncoderViewport(renderer);
+	METAL_INTERNAL_SetEncoderScissorRect(renderer);
+	METAL_INTERNAL_SetEncoderBlendColor(renderer);
+	METAL_INTERNAL_SetEncoderStencilReferenceValue(renderer);
+	METAL_INTERNAL_SetEncoderCullMode(renderer);
+	METAL_INTERNAL_SetEncoderFillMode(renderer);
+	METAL_INTERNAL_SetEncoderDepthBias(renderer);
 
 	/* Start visibility buffer counting */
 	if (renderer->currentVisibilityBuffer != NULL)
@@ -899,10 +892,9 @@ static void UpdateRenderPass(MetalRenderer *renderer)
 		}
 	}
 	renderer->ldDepthStencilState = NULL;
-	renderer->ldFragUniformBuffer = NULL;
-	renderer->ldFragUniformOffset = 0;
-	renderer->ldVertUniformBuffer = NULL;
+	renderer->ldUniformBuffer = NULL;
 	renderer->ldVertUniformOffset = 0;
+	renderer->ldFragUniformOffset = 0;
 	renderer->ldPipelineState = NULL;
 	for (i = 0; i < MAX_BOUND_VERTEX_BUFFERS; i += 1)
 	{
@@ -911,103 +903,173 @@ static void UpdateRenderPass(MetalRenderer *renderer)
 	}
 }
 
-/* Pipeline Stall Function */
+/* Pipeline Stall Functions */
 
-static void Stall(MetalRenderer *renderer)
+static inline void METAL_INTERNAL_ResetBuffers(MetalRenderer *renderer)
 {
-	MetalBuffer *buf;
+	int32_t i;
+	for (i = 0; i < renderer->numBuffersInUse; i += 1)
+	{
+		if (renderer->buffersInUse[i] != NULL)
+		{
+			renderer->buffersInUse[i]->bound = 0;
+			renderer->buffersInUse[i]->currentSubBufferIndex = 0;
+			renderer->buffersInUse[i] = NULL;
+		}
+	}
+	renderer->numBuffersInUse = 0;
+}
 
-	EndPass(renderer);
+static void METAL_INTERNAL_Stall(MetalRenderer *renderer)
+{
+	METAL_INTERNAL_EndPass(renderer);
 	mtlCommitCommandBuffer(renderer->commandBuffer);
 	mtlWaitUntilCompleted(renderer->commandBuffer);
 
 	renderer->commandBuffer = mtlMakeCommandBuffer(renderer->queue);
 	renderer->needNewRenderPass = 1;
-	/* FIXME: If maxFramesInFlight > 1, reset the frame semaphore! */
 
-	buf = renderer->buffers;
-	while (buf != NULL)
-	{
-		buf->internalOffset = 0;
-		buf->boundThisFrame = 0;
-		buf->prevDataLength = 0;
-		buf = buf->next;
-	}
+	METAL_INTERNAL_ResetBuffers(renderer);
 }
 
 /* Buffer Helper Functions */
 
-static void CreateBackingBuffer(
-	MetalRenderer *renderer,
-	MetalBuffer *buffer,
-	int32_t prevSize
-) {
-	MTLBuffer *oldBuffer = buffer->handle;
-	MTLBuffer *oldContents = buffer->contents;
-
-	buffer->handle = mtlNewBuffer(
-		renderer->device,
-		buffer->internalBufferSize,
-		buffer->usage == FNA3D_BUFFERUSAGE_WRITEONLY ?
-			MTLResourceOptionsCPUCacheModeWriteCombined :
-			MTLResourceOptionsCPUCacheModeDefaultCache
-	);
-	buffer->contents = mtlGetBufferContents(buffer->handle);
-
-	/* Copy over data from the old buffer */
-	if (oldBuffer != NULL)
-	{
-		SDL_memcpy(
-			buffer->contents,
-			oldContents,
-			sizeof(prevSize)
-		);
-		objc_release(oldBuffer);
-	}
+static int32_t METAL_INTERNAL_NextHighestAlignment(int32_t n, int32_t align)
+{
+	return align * ((n + align - 1) / align);
 }
 
-static MetalBuffer* CreateBuffer(
+static void METAL_INTERNAL_AllocateSubBuffer(
+	MetalRenderer *renderer,
+	MetalBuffer *buffer
+) {
+	/* This allocation strategy uses a "bucketing" system with a fixed
+	 *  number of buckets, each one larger than the last. Buffers will
+	 *  go into the first available bucket that accomodates their size,
+	 *  even if there is a larger bucket already allocated that they
+	 *  could fit into.
+	 *
+	 * Depending on the data, this may lead to unnecessary allocations,
+	 *  but on the other hand it ensures that small buffers don't crowd
+	 *  out the larger buckets that are required for very big buffers.
+	 *  The majority of FNA games probably won't exceed the first bucket.
+	 *
+	 * In the worst case, the first buffer allocated is >64MB and thus
+	 *  requires the 128MB bucket. Any future buffers <64MB will *not*
+	 *  get slotted into the 128MB bucket, even though they could fit.
+	 *  Instead, smaller buckets will be allocated. The larger buckets
+	 *  can receive overflow from the smaller buckets if they get full,
+	 *  but all the smaller buckets will be allocated and filled first.
+	 *
+	 * The maximum bucket size is 256MB, which should be plenty of room.
+	 *  If your game is using over 4+8+16+32+64+128+256 MB of buffer data,
+	 *  you're probably doing something wrong.
+	 *
+	 * -caleb
+	 */
+
+	int32_t totalPhysicalSize, totalAllocated, i, alignedAlloc;
+	MetalSubBuffer *subBuffer;
+
+	/* Which physical buffer should we suballocate from? */
+	for (i = 0; i < PHYSICAL_BUFFER_MAX_COUNT; i += 1)
+	{
+		totalPhysicalSize = PHYSICAL_BUFFER_BASE_SIZE << i;
+		totalAllocated = renderer->bufferAllocator->totalAllocated[i];
+		alignedAlloc = METAL_INTERNAL_NextHighestAlignment(
+			totalAllocated + buffer->size,
+			4
+		);
+
+		if (alignedAlloc <= totalPhysicalSize)
+		{
+			/* It fits! */
+			break;
+		}
+	}
+	if (i == PHYSICAL_BUFFER_MAX_COUNT)
+	{
+		/* FIXME: How should we handle this? */
+		FNA3D_LogError("Oh crap, we're totally out of buffer room!!!");
+		return;
+	}
+
+	/* Create the physical buffer if needed */
+	if (renderer->bufferAllocator->physicalBuffers[i] == NULL)
+	{
+		renderer->bufferAllocator->physicalBuffers[i] = mtlNewBuffer(
+			renderer->device,
+			totalPhysicalSize,
+			0 /* FIXME: MTLResourceHazardTrackingModeUntracked? */
+		);
+	}
+
+	/* Reallocate the subbuffer array if we're at max capacity */
+	if (buffer->subBufferCount == buffer->subBufferCapacity)
+	{
+		buffer->subBufferCapacity *= 2;
+		buffer->subBuffers = SDL_realloc(
+			buffer->subBuffers,
+			sizeof(MetalSubBuffer) * buffer->subBufferCapacity
+		);
+	}
+
+	/* Populate the given MetalSubBuffer */
+	subBuffer = &buffer->subBuffers[buffer->subBufferCount];
+	subBuffer->buffer = renderer->bufferAllocator->physicalBuffers[i];
+	subBuffer->offset = totalAllocated;
+	subBuffer->ptr = (
+		(uint8_t*) mtlGetBufferContents(subBuffer->buffer) +
+		subBuffer->offset
+	);
+
+	/* Mark how much we've just allocated, rounding up for alignment */
+	renderer->bufferAllocator->totalAllocated[i] = alignedAlloc;
+	buffer->subBufferCount += 1;
+}
+
+static FNA3D_Buffer* METAL_INTERNAL_CreateBuffer(
 	FNA3D_Renderer *driverData,
-	FNA3D_BufferUsage usage,
 	int32_t size
 ) {
-	MetalRenderer *renderer = (MetalRenderer*) driverData;
-	MetalBuffer *result, *curr;
-
-	/* Allocate the buffer */
-	result = SDL_malloc(sizeof(MetalBuffer));
+	MetalBuffer *result = SDL_malloc(sizeof(MetalBuffer));
 	SDL_memset(result, '\0', sizeof(MetalBuffer));
 
-	/* Set up the buffer */
-	result->usage = usage;
 	result->size = size;
-	result->internalBufferSize = size;
-	CreateBackingBuffer(renderer, result, -1);
+	result->subBufferCapacity = 4;
+	result->subBuffers = SDL_malloc(
+		sizeof(MetalSubBuffer) * result->subBufferCapacity
+	);
 
-	LinkedList_Add(renderer->buffers, result, curr);
-	return result;
+	return (FNA3D_Buffer*) result;
 }
 
-static void DestroyBuffer(
+static void METAL_INTERNAL_DestroyBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
-	MetalBuffer *mtlBuffer, *curr, *prev;
+	MetalBuffer *mtlBuffer = (MetalBuffer*) buffer;
+	int32_t i;
 
-	mtlBuffer = (MetalBuffer*) buffer;
-	LinkedList_Remove(
-		renderer->buffers,
-		mtlBuffer,
-		curr,
-		prev
-	);
-	objc_release(mtlBuffer->handle);
-	mtlBuffer->handle = NULL;
+	if (mtlBuffer->bound)
+	{
+		for (i = 0; i < renderer->numBuffersInUse; i += 1)
+		{
+			if (renderer->buffersInUse[i] == mtlBuffer)
+			{
+				renderer->buffersInUse[i] = NULL;
+			}
+		}
+	}
+
+	SDL_free(mtlBuffer->subBuffers);
+	mtlBuffer->subBuffers = NULL;
+
 	SDL_free(mtlBuffer);
 }
 
-static void SetBufferData(
+static void METAL_INTERNAL_SetBufferData(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
@@ -1017,55 +1079,75 @@ static void SetBufferData(
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
 	MetalBuffer *mtlBuffer = (MetalBuffer*) buffer;
-	uint8_t *contentsPtr;
-	int32_t sizeRequired, prevSize;
+	int32_t prevIndex;
 
-	/* Handle overwrites */
-	if (mtlBuffer->boundThisFrame)
+	#define CURIDX mtlBuffer->currentSubBufferIndex
+	#define SUBBUF mtlBuffer->subBuffers[CURIDX]
+
+	prevIndex = CURIDX;
+
+	if (mtlBuffer->bound)
 	{
 		if (options == FNA3D_SETDATAOPTIONS_NONE)
 		{
-			Stall(renderer);
-			mtlBuffer->boundThisFrame = 1;
+			METAL_INTERNAL_Stall(renderer);
+			mtlBuffer->bound = 1;
 		}
 		else if (options == FNA3D_SETDATAOPTIONS_DISCARD)
 		{
-			mtlBuffer->internalOffset += mtlBuffer->size;
-			sizeRequired = mtlBuffer->internalOffset + dataLength;
-			if (sizeRequired > mtlBuffer->internalBufferSize)
-			{
-				/* Expand! */
-				prevSize = mtlBuffer->internalBufferSize;
-				mtlBuffer->internalBufferSize *= 2;
-				CreateBackingBuffer(
-					renderer,
-					mtlBuffer,
-					prevSize
-				);
-			}
+			CURIDX += 1;
 		}
 	}
 
-	/* Copy previous contents, if needed */
-	contentsPtr = (uint8_t*) mtlBuffer->contents;
-	if (	dataLength < mtlBuffer->size &&
-		mtlBuffer->prevInternalOffset != mtlBuffer->internalOffset)
+	/* Create a new SubBuffer if needed */
+	if (CURIDX == mtlBuffer->subBufferCount)
+	{
+		METAL_INTERNAL_AllocateSubBuffer(renderer, mtlBuffer);
+	}
+
+	/* Copy over previous contents when needed */
+	if (	options == FNA3D_SETDATAOPTIONS_NONE &&
+		dataLength < mtlBuffer->size &&
+		CURIDX != prevIndex			)
 	{
 		SDL_memcpy(
-			contentsPtr + mtlBuffer->internalOffset,
-			contentsPtr + mtlBuffer->prevInternalOffset,
+			SUBBUF.ptr,
+			mtlBuffer->subBuffers[prevIndex].ptr,
 			mtlBuffer->size
 		);
 	}
 
-	/* Copy the data into the buffer */
+	/* Copy the data! */
 	SDL_memcpy(
-		contentsPtr + mtlBuffer->internalOffset + offsetInBytes,
+		SUBBUF.ptr + offsetInBytes,
 		data,
 		dataLength
 	);
 
-	mtlBuffer->prevInternalOffset = mtlBuffer->internalOffset;
+	#undef SUBBUF
+	#undef CURIDX
+}
+
+static void METAL_INTERNAL_MarkAsBound(
+	MetalRenderer *renderer,
+	MetalBuffer *buf
+) {
+	/* Don't re-bind a bound buffer */
+	if (buf->bound) return;
+
+	buf->bound = 1;
+
+	if (renderer->numBuffersInUse == renderer->maxBuffersInUse)
+	{
+		renderer->maxBuffersInUse *= 2;
+		renderer->buffersInUse = SDL_realloc(
+			renderer->buffersInUse,
+			sizeof(MetalBuffer*) * renderer->maxBuffersInUse
+		);
+	}
+
+	renderer->buffersInUse[renderer->numBuffersInUse] = buf;
+	renderer->numBuffersInUse += 1;
 }
 
 /* Pipeline State Object Creation / Retrieval */
@@ -1084,8 +1166,9 @@ struct PipelineHashMap
 	MTLRenderPipelineState *value;
 };
 
-static int32_t GetBlendStateHashCode(FNA3D_BlendState blendState)
-{
+static int32_t METAL_INTERNAL_GetBlendStateHashCode(
+	FNA3D_BlendState blendState
+) {
 	StateHash hash = GetBlendStateHash(blendState);
 	return (
 		(hash.a ^ (hash.a >> 32)) +
@@ -1093,7 +1176,7 @@ static int32_t GetBlendStateHashCode(FNA3D_BlendState blendState)
 	);
 }
 
-static int32_t HashPixelFormat(MTLPixelFormat format)
+static int32_t METAL_INTERNAL_HashPixelFormat(MTLPixelFormat format)
 {
 	switch (format)
 	{
@@ -1147,16 +1230,16 @@ static int32_t HashPixelFormat(MTLPixelFormat format)
 	return 0;
 }
 
-static PipelineHash GetPipelineHash(MetalRenderer *renderer)
+static PipelineHash METAL_INTERNAL_GetPipelineHash(MetalRenderer *renderer)
 {
 	PipelineHash result;
 	int32_t packedProperties = (
 		  renderer->currentSampleCount << 22
 		| renderer->currentDepthFormat << 20
-		| HashPixelFormat(renderer->currentColorFormats[3]) << 15
-		| HashPixelFormat(renderer->currentColorFormats[2]) << 10
-		| HashPixelFormat(renderer->currentColorFormats[1]) << 5
-		| HashPixelFormat(renderer->currentColorFormats[0])
+		| METAL_INTERNAL_HashPixelFormat(renderer->currentColorFormats[3]) << 15
+		| METAL_INTERNAL_HashPixelFormat(renderer->currentColorFormats[2]) << 10
+		| METAL_INTERNAL_HashPixelFormat(renderer->currentColorFormats[1]) << 5
+		| METAL_INTERNAL_HashPixelFormat(renderer->currentColorFormats[0])
 	);
 	MOJOSHADER_mtlShader *vert, *pixl;
 	MOJOSHADER_mtlGetBoundShaders(&vert, &pixl);
@@ -1164,15 +1247,16 @@ static PipelineHash GetPipelineHash(MetalRenderer *renderer)
 	result.b = (uint64_t) pixl;
 	result.c = (uint64_t) renderer->currentVertexDescriptor;
 	result.d = (
-		(uint64_t) GetBlendStateHashCode(renderer->blendState) << 32 |
+		(uint64_t) METAL_INTERNAL_GetBlendStateHashCode(renderer->blendState) << 32 |
 		(uint64_t) packedProperties
 	);
 	return result;
 }
 
-static MTLRenderPipelineState* FetchRenderPipeline(MetalRenderer *renderer)
-{
-	PipelineHash hash = GetPipelineHash(renderer);
+static MTLRenderPipelineState* METAL_INTERNAL_FetchRenderPipeline(
+	MetalRenderer *renderer
+) {
+	PipelineHash hash = METAL_INTERNAL_GetPipelineHash(renderer);
 	MTLRenderPipelineDescriptor *pipelineDesc;
 	MTLFunction *vertHandle;
 	MTLFunction *fragHandle;
@@ -1342,15 +1426,14 @@ static MTLRenderPipelineState* FetchRenderPipeline(MetalRenderer *renderer)
 
 	/* Clean up */
 	objc_release(pipelineDesc);
-	objc_release(vertHandle);
-	objc_release(fragHandle);
 
 	/* Return the pipeline! */
 	return result;
 }
 
-static MTLDepthStencilState* FetchDepthStencilState(MetalRenderer *renderer)
-{
+static MTLDepthStencilState* METAL_INTERNAL_FetchDepthStencilState(
+	MetalRenderer *renderer
+) {
 	StateHash hash;
 	MTLDepthStencilState *state;
 	MTLDepthStencilDescriptor *dsDesc;
@@ -1502,7 +1585,7 @@ static MTLDepthStencilState* FetchDepthStencilState(MetalRenderer *renderer)
 	return state;
 }
 
-static MTLSamplerState* FetchSamplerState(
+static MTLSamplerState* METAL_INTERNAL_FetchSamplerState(
 	MetalRenderer *renderer,
 	FNA3D_SamplerState *samplerState,
 	uint8_t hasMipmaps
@@ -1589,7 +1672,7 @@ static MTLSamplerState* FetchSamplerState(
 	return state;
 }
 
-static MTLTexture* FetchTransientTexture(
+static MTLTexture* METAL_INTERNAL_FetchTransientTexture(
 	MetalRenderer *renderer,
 	MetalTexture *fromTexture
 ) {
@@ -1634,13 +1717,14 @@ static MTLTexture* FetchTransientTexture(
 	return result->handle;
 }
 
-static MTLVertexDescriptor* FetchVertexBufferBindingsDescriptor(
+static MTLVertexDescriptor* METAL_INTERNAL_FetchVertexBufferBindingsDescriptor(
 	MetalRenderer *renderer,
 	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings
 ) {
 	uint64_t hash;
 	int32_t i, j, k, usage, index, attribLoc;
+	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 	FNA3D_VertexDeclaration vertexDeclaration;
 	FNA3D_VertexElement element;
 	MTLVertexAttributeDescriptor *attrib;
@@ -1675,7 +1759,7 @@ static MTLVertexDescriptor* FetchVertexBufferBindingsDescriptor(
 	 * have to crash :/
 	 * -flibit
 	 */
-	SDL_memset(renderer->attrUse, '\0', sizeof(renderer->attrUse));
+	SDL_memset(attrUse, '\0', sizeof(attrUse));
 	for (i = 0; i < numBindings; i += 1)
 	{
 		/* Describe vertex attributes */
@@ -1685,12 +1769,12 @@ static MTLVertexDescriptor* FetchVertexBufferBindingsDescriptor(
 			element = vertexDeclaration.elements[j];
 			usage = element.vertexElementUsage;
 			index = element.usageIndex;
-			if (renderer->attrUse[usage][index])
+			if (attrUse[usage][index])
 			{
 				index = -1;
 				for (k = 0; k < 16; k += 1)
 				{
-					if (!renderer->attrUse[usage][k])
+					if (!attrUse[usage][k])
 					{
 						index = k;
 						break;
@@ -1703,7 +1787,7 @@ static MTLVertexDescriptor* FetchVertexBufferBindingsDescriptor(
 					);
 				}
 			}
-			renderer->attrUse[usage][index] = 1;
+			attrUse[usage][index] = 1;
 			attribLoc = MOJOSHADER_mtlGetVertexAttribLocation(
 				vertexShader,
 				VertexAttribUsage(usage),
@@ -1762,7 +1846,7 @@ static MTLVertexDescriptor* FetchVertexBufferBindingsDescriptor(
 
 /* Quit */
 
-static void DestroyFramebuffer(MetalRenderer *renderer);
+static void METAL_INTERNAL_DestroyFramebuffer(MetalRenderer *renderer);
 static void METAL_DestroyDevice(FNA3D_Device *device)
 {
 	MetalRenderer *renderer = (MetalRenderer*) device->driverData;
@@ -1770,7 +1854,7 @@ static void METAL_DestroyDevice(FNA3D_Device *device)
 	MetalTexture *tex, *next;
 
 	/* Stop rendering */
-	EndPass(renderer);
+	METAL_INTERNAL_EndPass(renderer);
 
 	/* Release vertex descriptors */
 	for (i = 0; i < hmlen(renderer->vertexDescriptorCache); i += 1)
@@ -1811,15 +1895,26 @@ static void METAL_DestroyDevice(FNA3D_Device *device)
 	}
 	renderer->transientTextures = NULL;
 
+	/* Destroy the physical buffers and allocator */
+	for (i = 0; i < PHYSICAL_BUFFER_MAX_COUNT; i += 1)
+	{
+		if (renderer->bufferAllocator->physicalBuffers[i] != NULL)
+		{
+			objc_release(renderer->bufferAllocator->physicalBuffers[i]);
+		}
+	}
+	SDL_free(renderer->bufferAllocator);
+	SDL_free(renderer->buffersInUse);
+
 	/* Destroy the backbuffer */
-	DestroyFramebuffer(renderer);
+	METAL_INTERNAL_DestroyFramebuffer(renderer);
 	SDL_free(renderer->backbuffer);
 
 	/* Destroy the view */
 	SDL_Metal_DestroyView(renderer->view);
 
 	/* Destroy the MojoShader context */
-	MOJOSHADER_mtlDestroyContext();
+	MOJOSHADER_mtlDestroyContext(renderer->mtlContext);
 
 	SDL_free(renderer);
 	SDL_free(device);
@@ -1830,13 +1925,16 @@ static void METAL_DestroyDevice(FNA3D_Device *device)
 static void METAL_BeginFrame(FNA3D_Renderer *driverData)
 {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
-	if (renderer->frameInProgress)
-	{
-		return;
-	}
 
-	/* Wait for command buffers to complete... */
-	SDL_SemWait(renderer->frameSemaphore);
+	if (renderer->frameInProgress) return;
+
+	/* Wait for the last command buffer to complete... */
+	if (renderer->committedCommandBuffer != NULL)
+	{
+		mtlWaitUntilCompleted(renderer->committedCommandBuffer);
+		objc_release(renderer->committedCommandBuffer);
+		renderer->committedCommandBuffer = NULL;
+	}
 
 	/* The cycle begins anew! */
 	renderer->frameInProgress = 1;
@@ -1844,7 +1942,7 @@ static void METAL_BeginFrame(FNA3D_Renderer *driverData)
 	renderer->commandBuffer = mtlMakeCommandBuffer(renderer->queue);
 }
 
-static void BlitFramebuffer(
+static void METAL_INTERNAL_BlitFramebuffer(
 	MetalRenderer *renderer,
 	MTLTexture *srcTex,
 	FNA3D_Rect srcRect,
@@ -1939,7 +2037,6 @@ static void METAL_SwapBuffers(
 	FNA3D_Rect srcRect, dstRect;
 	CGSize drawableSize;
 	MTLDrawable *drawable;
-	MetalBuffer *buf;
 
 	/* Just in case Present() is called
 	 * before any rendering happens...
@@ -1954,7 +2051,7 @@ static void METAL_SwapBuffers(
 		NULL,
 		FNA3D_DEPTHFORMAT_NONE
 	);
-	EndPass(renderer);
+	METAL_INTERNAL_EndPass(renderer);
 
 	/* Get the drawable size */
 	drawableSize = mtlGetDrawableSize(renderer->layer);
@@ -1993,7 +2090,7 @@ static void METAL_SwapBuffers(
 	drawable = mtlNextDrawable(renderer->layer);
 
 	/* "Blit" the backbuffer to the drawable */
-	BlitFramebuffer(
+	METAL_INTERNAL_BlitFramebuffer(
 		renderer,
 		renderer->currentAttachments[0],
 		srcRect,
@@ -2005,26 +2102,18 @@ static void METAL_SwapBuffers(
 
 	/* Commit the command buffer for presentation */
 	mtlPresentDrawable(renderer->commandBuffer, drawable);
-	mtlAddCompletedHandler(
-		renderer->commandBuffer,
-		^(MTLCommandBuffer* cb) {
-			SDL_SemPost(renderer->frameSemaphore);
-		}
-	);
 	mtlCommitCommandBuffer(renderer->commandBuffer);
+
+	/* Track the committed command buffer */
+	objc_retain(renderer->commandBuffer);
+	renderer->committedCommandBuffer = renderer->commandBuffer;
+	renderer->commandBuffer = NULL;
 
 	/* Release allocations from the past frame */
 	objc_autoreleasePoolPop(renderer->pool);
 
-	/* Reset buffers */
-	buf = renderer->buffers;
-	while (buf != NULL)
-	{
-		buf->internalOffset = 0;
-		buf->boundThisFrame = 0;
-		buf->prevDataLength = 0;
-		buf = buf->next;
-	}
+	/* Reset buffer state */
+	METAL_INTERNAL_ResetBuffers(renderer);
 	MOJOSHADER_mtlEndFrame();
 
 	/* We're done here. */
@@ -2078,19 +2167,22 @@ static void METAL_DrawInstancedPrimitives(
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
 	MetalBuffer *indexBuffer = (MetalBuffer*) indices;
+	MetalSubBuffer subbuf = indexBuffer->subBuffers[
+		indexBuffer->currentSubBufferIndex
+	];
 	int32_t totalIndexOffset;
 
-	indexBuffer->boundThisFrame = 1;
+	METAL_INTERNAL_MarkAsBound(renderer, indexBuffer);
 	totalIndexOffset = (
 		(startIndex * IndexSize(indexElementSize)) +
-		indexBuffer->internalOffset
+		subbuf.offset
 	);
 	mtlDrawIndexedPrimitives(
 		renderer->renderCommandEncoder,
 		XNAToMTL_Primitive[primitiveType],
 		PrimitiveVerts(primitiveType, primitiveCount),
 		XNAToMTL_IndexType[indexElementSize],
-		indexBuffer->handle,
+		subbuf.buffer,
 		totalIndexOffset,
 		instanceCount
 	);
@@ -2151,7 +2243,7 @@ static void METAL_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewpo
 		vp.maxDepth != renderer->viewport.maxDepth	)
 	{
 		renderer->viewport = vp;
-		SetEncoderViewport(renderer); /* Dynamic state! */
+		METAL_INTERNAL_SetEncoderViewport(renderer); /* Dynamic state! */
 	}
 }
 
@@ -2164,7 +2256,7 @@ static void METAL_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor
 		scissor->h != renderer->scissorRect.h	)
 	{
 		renderer->scissorRect = *scissor;
-		SetEncoderScissorRect(renderer); /* Dynamic state! */
+		METAL_INTERNAL_SetEncoderScissorRect(renderer); /* Dynamic state! */
 	}
 }
 
@@ -2190,7 +2282,7 @@ static void METAL_SetBlendFactor(
 		renderer->blendColor.g = blendFactor->g;
 		renderer->blendColor.b = blendFactor->b;
 		renderer->blendColor.a = blendFactor->a;
-		SetEncoderBlendColor(renderer);
+		METAL_INTERNAL_SetEncoderBlendColor(renderer);
 	}
 }
 
@@ -2219,7 +2311,7 @@ static void METAL_SetReferenceStencil(FNA3D_Renderer *driverData, int32_t ref)
 	if (renderer->stencilRef != ref)
 	{
 		renderer->stencilRef = ref;
-		SetEncoderStencilReferenceValue(renderer);
+		METAL_INTERNAL_SetEncoderStencilReferenceValue(renderer);
 	}
 }
 
@@ -2267,19 +2359,19 @@ static void METAL_ApplyRasterizerState(
 	if (rasterizerState->scissorTestEnable != renderer->scissorTestEnable)
 	{
 		renderer->scissorTestEnable = rasterizerState->scissorTestEnable;
-		SetEncoderScissorRect(renderer); /* Dynamic state! */
+		METAL_INTERNAL_SetEncoderScissorRect(renderer); /* Dynamic state! */
 	}
 
 	if (rasterizerState->cullMode != renderer->cullFrontFace)
 	{
 		renderer->cullFrontFace = rasterizerState->cullMode;
-		SetEncoderCullMode(renderer); /* Dynamic state! */
+		METAL_INTERNAL_SetEncoderCullMode(renderer); /* Dynamic state! */
 	}
 
 	if (rasterizerState->fillMode != renderer->fillMode)
 	{
 		renderer->fillMode = rasterizerState->fillMode;
-		SetEncoderFillMode(renderer); /* Dynamic state! */
+		METAL_INTERNAL_SetEncoderFillMode(renderer); /* Dynamic state! */
 	}
 
 	realDepthBias = rasterizerState->depthBias * XNAToMTL_DepthBiasScale(
@@ -2290,7 +2382,7 @@ static void METAL_ApplyRasterizerState(
 	{
 		renderer->depthBias = realDepthBias;
 		renderer->slopeScaleDepthBias = rasterizerState->slopeScaleDepthBias;
-		SetEncoderDepthBias(renderer); /* Dynamic state! */
+		METAL_INTERNAL_SetEncoderDepthBias(renderer); /* Dynamic state! */
 	}
 
 	if (rasterizerState->multiSampleAntiAlias != renderer->multiSampleEnable)
@@ -2323,7 +2415,7 @@ static void METAL_VerifySampler(
 			 * even if they aren't actually used.
 			 * -caleb
 			 */
-			renderer->samplers[index] = FetchSamplerState(
+			renderer->samplers[index] = METAL_INTERNAL_FetchSamplerState(
 				renderer,
 				sampler,
 				0
@@ -2341,7 +2433,7 @@ static void METAL_VerifySampler(
 	}
 
 	/* Update the sampler state, if needed */
-	mtlSamplerState = FetchSamplerState(
+	mtlSamplerState = METAL_INTERNAL_FetchSamplerState(
 		renderer,
 		sampler,
 		mtlTexture->hasMipmaps
@@ -2367,10 +2459,10 @@ static void METAL_VerifyVertexSampler(
 	);
 }
 
-static void BindResources(MetalRenderer *renderer)
+static void METAL_INTERNAL_BindResources(MetalRenderer *renderer)
 {
 	int32_t i;
-	MTLBuffer *vUniform, *fUniform;
+	MTLBuffer *ubo;
 	int32_t vOff, fOff;
 	MTLDepthStencilState *depthStencilState;
 	MTLRenderPipelineState *pipelineState;
@@ -2424,24 +2516,27 @@ static void BindResources(MetalRenderer *renderer)
 	#define UNIFORM_REG 16
 
 	/* Bind the uniform buffers */
-	MOJOSHADER_mtlGetUniformBuffers(
-		(void**) &vUniform,
-		&vOff,
-		(void**) &fUniform,
-		&fOff
-	);
-	if (vUniform != renderer->ldVertUniformBuffer)
+	MOJOSHADER_mtlGetUniformData((void**) &ubo, &vOff, &fOff);
+	if (ubo != renderer->ldUniformBuffer)
 	{
 		mtlSetVertexBuffer(
 			renderer->renderCommandEncoder,
-			vUniform,
+			ubo,
 			vOff,
 			UNIFORM_REG
 		);
-		renderer->ldVertUniformBuffer = vUniform;
+		mtlSetFragmentBuffer(
+			renderer->renderCommandEncoder,
+			ubo,
+			fOff,
+			UNIFORM_REG
+		);
+		renderer->ldUniformBuffer = ubo;
 		renderer->ldVertUniformOffset = vOff;
+		renderer->ldFragUniformOffset = fOff;
 	}
-	else if (vOff != renderer->ldVertUniformOffset)
+
+	if (vOff != renderer->ldVertUniformOffset)
 	{
 		mtlSetVertexBufferOffset(
 			renderer->renderCommandEncoder,
@@ -2451,18 +2546,7 @@ static void BindResources(MetalRenderer *renderer)
 		renderer->ldVertUniformOffset = vOff;
 	}
 
-	if (fUniform != renderer->ldFragUniformBuffer)
-	{
-		mtlSetFragmentBuffer(
-			renderer->renderCommandEncoder,
-			fUniform,
-			fOff,
-			UNIFORM_REG
-		);
-		renderer->ldFragUniformBuffer = fUniform;
-		renderer->ldFragUniformOffset = fOff;
-	}
-	else if (fOff != renderer->ldFragUniformOffset)
+	if (fOff != renderer->ldFragUniformOffset)
 	{
 		mtlSetFragmentBufferOffset(
 			renderer->renderCommandEncoder,
@@ -2475,7 +2559,7 @@ static void BindResources(MetalRenderer *renderer)
 	#undef UNIFORM_REG
 
 	/* Bind the depth-stencil state */
-	depthStencilState = FetchDepthStencilState(renderer);
+	depthStencilState = METAL_INTERNAL_FetchDepthStencilState(renderer);
 	if (depthStencilState != renderer->ldDepthStencilState)
 	{
 		mtlSetDepthStencilState(
@@ -2486,7 +2570,7 @@ static void BindResources(MetalRenderer *renderer)
 	}
 
 	/* Finally, bind the pipeline state */
-	pipelineState = FetchRenderPipeline(renderer);
+	pipelineState = METAL_INTERNAL_FetchRenderPipeline(renderer);
 	if (pipelineState != renderer->ldPipelineState)
 	{
 		mtlSetRenderPipelineState(
@@ -2506,18 +2590,19 @@ static void METAL_ApplyVertexBufferBindings(
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
 	MetalBuffer *vertexBuffer;
+	MetalSubBuffer subbuf;
 	int32_t i, offset;
 
 	/* Translate the bindings array into a descriptor */
-	renderer->currentVertexDescriptor = FetchVertexBufferBindingsDescriptor(
+	renderer->currentVertexDescriptor = METAL_INTERNAL_FetchVertexBufferBindingsDescriptor(
 		renderer,
 		bindings,
 		numBindings
 	);
 
 	/* Prepare for rendering */
-	UpdateRenderPass(renderer);
-	BindResources(renderer);
+	METAL_INTERNAL_UpdateRenderPass(renderer);
+	METAL_INTERNAL_BindResources(renderer);
 
 	/* Bind the vertex buffers */
 	for (i = 0; i < numBindings; i += 1)
@@ -2528,21 +2613,25 @@ static void METAL_ApplyVertexBufferBindings(
 			continue;
 		}
 
-		offset = vertexBuffer->internalOffset + (
+		subbuf = vertexBuffer->subBuffers[
+			vertexBuffer->currentSubBufferIndex
+		];
+
+		offset = subbuf.offset + (
 			(bindings[i].vertexOffset + baseVertex) *
 			bindings[i].vertexDeclaration.vertexStride
 		);
 
-		vertexBuffer->boundThisFrame = 1;
-		if (renderer->ldVertexBuffers[i] != vertexBuffer->handle)
+		METAL_INTERNAL_MarkAsBound(renderer, vertexBuffer);
+		if (renderer->ldVertexBuffers[i] != subbuf.buffer)
 		{
 			mtlSetVertexBuffer(
 				renderer->renderCommandEncoder,
-				vertexBuffer->handle,
+				subbuf.buffer,
 				offset,
 				i
 			);
-			renderer->ldVertexBuffers[i] = vertexBuffer->handle;
+			renderer->ldVertexBuffers[i] = subbuf.buffer;
 			renderer->ldVertexBufferOffsets[i] = offset;
 		}
 		else if (renderer->ldVertexBufferOffsets[i] != offset)
@@ -2577,7 +2666,7 @@ static void METAL_SetRenderTargets(
 		renderer->shouldClearDepth ||
 		renderer->shouldClearStencil	)
 	{
-		UpdateRenderPass(renderer);
+		METAL_INTERNAL_UpdateRenderPass(renderer);
 	}
 
 	/* Force an update to the render pass */
@@ -2667,6 +2756,8 @@ static void METAL_ResolveTarget(
 	/* If the target has mipmaps, regenerate them now. */
 	if (target->levelCount > 1)
 	{
+		METAL_INTERNAL_EndPass(renderer);
+
 		blit = mtlMakeBlitCommandEncoder(renderer->commandBuffer);
 		mtlGenerateMipmapsForTexture(
 			blit,
@@ -2680,7 +2771,7 @@ static void METAL_ResolveTarget(
 
 /* Backbuffer Functions */
 
-static void CreateFramebuffer(
+static void METAL_INTERNAL_CreateFramebuffer(
 	MetalRenderer *renderer,
 	FNA3D_PresentationParameters *presentationParameters
 ) {
@@ -2703,7 +2794,7 @@ static void CreateFramebuffer(
 	/* Update other presentation parameters */
 	BB->surfaceFormat = presentationParameters->backBufferFormat;
 	BB->depthFormat = presentationParameters->depthStencilFormat;
-	BB->multiSampleCount = GetCompatibleSampleCount(
+	BB->multiSampleCount = METAL_INTERNAL_GetCompatibleSampleCount(
 		renderer,
 		presentationParameters->multiSampleCount
 	);
@@ -2772,7 +2863,7 @@ static void CreateFramebuffer(
 	);
 }
 
-static void DestroyFramebuffer(MetalRenderer *renderer)
+static void METAL_INTERNAL_DestroyFramebuffer(MetalRenderer *renderer)
 {
 	objc_release(renderer->backbuffer->colorBuffer);
 	renderer->backbuffer->colorBuffer = NULL;
@@ -2829,8 +2920,8 @@ static void METAL_ResetBackbuffer(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
-	DestroyFramebuffer(renderer);
-	CreateFramebuffer(
+	METAL_INTERNAL_DestroyFramebuffer(renderer);
+	METAL_INTERNAL_CreateFramebuffer(
 		renderer,
 		presentationParameters
 	);
@@ -3076,7 +3167,10 @@ static void METAL_SetTextureData2D(
 		METAL_BeginFrame(driverData);
 
 		/* Fetch a CPU-accessible texture */
-		handle = FetchTransientTexture(renderer, mtlTexture);
+		handle = METAL_INTERNAL_FetchTransientTexture(
+			renderer,
+			mtlTexture
+		);
 	}
 
 	/* Write the data */
@@ -3094,7 +3188,7 @@ static void METAL_SetTextureData2D(
 	if (mtlTexture->isPrivate)
 	{
 		/* End the render pass */
-		EndPass(renderer);
+		METAL_INTERNAL_EndPass(renderer);
 
 		/* Blit! */
 		blit = mtlMakeBlitCommandEncoder(renderer->commandBuffer);
@@ -3113,7 +3207,7 @@ static void METAL_SetTextureData2D(
 
 		/* Submit the blit command to the GPU and wait... */
 		mtlEndEncoding(blit);
-		Stall(renderer);
+		METAL_INTERNAL_Stall(renderer);
 
 		/* We're done with the temp texture */
 		mtlSetPurgeableState(
@@ -3181,7 +3275,10 @@ static void METAL_SetTextureDataCube(
 		METAL_BeginFrame(driverData);
 
 		/* Fetch a CPU-accessible texture */
-		handle = FetchTransientTexture(renderer, mtlTexture);
+		handle = METAL_INTERNAL_FetchTransientTexture(
+			renderer,
+			mtlTexture
+		);
 
 		/* Transient textures have no slices */
 		slice = 0;
@@ -3202,7 +3299,7 @@ static void METAL_SetTextureDataCube(
 	if (mtlTexture->isPrivate)
 	{
 		/* End the render pass */
-		EndPass(renderer);
+		METAL_INTERNAL_EndPass(renderer);
 
 		/* Blit! */
 		blit = mtlMakeBlitCommandEncoder(renderer->commandBuffer);
@@ -3221,7 +3318,7 @@ static void METAL_SetTextureDataCube(
 
 		/* Submit the blit command to the GPU and wait... */
 		mtlEndEncoding(blit);
-		Stall(renderer);
+		METAL_INTERNAL_Stall(renderer);
 
 		/* We're done with the temp texture */
 		mtlSetPurgeableState(
@@ -3310,10 +3407,13 @@ static void METAL_GetTextureData2D(
 		METAL_BeginFrame(driverData);
 
 		/* Fetch a CPU-accessible texture */
-		handle = FetchTransientTexture(renderer, mtlTexture);
+		handle = METAL_INTERNAL_FetchTransientTexture(
+			renderer,
+			mtlTexture
+		);
 
 		/* End the render pass */
-		EndPass(renderer);
+		METAL_INTERNAL_EndPass(renderer);
 
 		/* Blit the actual texture to a CPU-accessible texture */
 		blit = mtlMakeBlitCommandEncoder(renderer->commandBuffer);
@@ -3338,7 +3438,7 @@ static void METAL_GetTextureData2D(
 
 		/* Submit the blit command to the GPU and wait... */
 		mtlEndEncoding(blit);
-		Stall(renderer);
+		METAL_INTERNAL_Stall(renderer);
 	}
 
 	mtlGetTextureBytes(
@@ -3419,13 +3519,16 @@ static void METAL_GetTextureDataCube(
 		METAL_BeginFrame(driverData);
 
 		/* Fetch a CPU-accessible texture */
-		handle = FetchTransientTexture(renderer, mtlTexture);
+		handle = METAL_INTERNAL_FetchTransientTexture(
+			renderer,
+			mtlTexture
+		);
 
 		/* Transient textures have no slices */
 		slice = 0;
 
 		/* End the render pass */
-		EndPass(renderer);
+		METAL_INTERNAL_EndPass(renderer);
 
 		/* Blit the actual texture to a CPU-accessible texture */
 		blit = mtlMakeBlitCommandEncoder(renderer->commandBuffer);
@@ -3450,7 +3553,7 @@ static void METAL_GetTextureDataCube(
 
 		/* Submit the blit command to the GPU and wait... */
 		mtlEndEncoding(blit);
-		Stall(renderer);
+		METAL_INTERNAL_Stall(renderer);
 	}
 
 	mtlGetTextureBytes(
@@ -3485,7 +3588,7 @@ static FNA3D_Renderbuffer* METAL_GenColorRenderbuffer(
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
 	MTLPixelFormat pixelFormat = XNAToMTL_TextureFormat[format];
-	int32_t sampleCount = GetCompatibleSampleCount(
+	int32_t sampleCount = METAL_INTERNAL_GetCompatibleSampleCount(
 		renderer,
 		multiSampleCount
 	);
@@ -3527,7 +3630,7 @@ static FNA3D_Renderbuffer* METAL_GenDepthStencilRenderbuffer(
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
 	MTLPixelFormat pixelFormat = XNAToMTL_DepthFormat(renderer, format);
-	int32_t sampleCount = GetCompatibleSampleCount(
+	int32_t sampleCount = METAL_INTERNAL_GetCompatibleSampleCount(
 		renderer,
 		multiSampleCount
 	);
@@ -3608,19 +3711,15 @@ static FNA3D_Buffer* METAL_GenVertexBuffer(
 	FNA3D_BufferUsage usage,
 	int32_t sizeInBytes
 ) {
-	/* Note that dynamic is NOT used! */
-	return (FNA3D_Buffer*) CreateBuffer(
-		driverData,
-		usage,
-		sizeInBytes
-	);
+	/* Note that dynamic and usage are NOT used! */
+	return METAL_INTERNAL_CreateBuffer(driverData, sizeInBytes);
 }
 
 static void METAL_AddDisposeVertexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
-	DestroyBuffer(driverData, buffer);
+	METAL_INTERNAL_DestroyBuffer(driverData, buffer);
 }
 
 static void METAL_SetVertexBufferData(
@@ -3634,7 +3733,7 @@ static void METAL_SetVertexBufferData(
 	FNA3D_SetDataOptions options
 ) {
 	/* FIXME: Staging buffer for elementSizeInBytes < vertexStride! */
-	SetBufferData(
+	METAL_INTERNAL_SetBufferData(
 		driverData,
 		buffer,
 		offsetInBytes,
@@ -3669,9 +3768,10 @@ static void METAL_GetVertexBufferData(
 		cpy = dataBytes;
 	}
 
+	src = mtlBuffer->subBuffers[mtlBuffer->currentSubBufferIndex].ptr;
 	SDL_memcpy(
 		cpy,
-		(uint8_t*) mtlBuffer->contents + offsetInBytes,
+		src + offsetInBytes,
 		elementCount * vertexStride
 	);
 
@@ -3697,19 +3797,15 @@ static FNA3D_Buffer* METAL_GenIndexBuffer(
 	FNA3D_BufferUsage usage,
 	int32_t sizeInBytes
 ) {
-	/* Note that dynamic is NOT used! */
-	return (FNA3D_Buffer*) CreateBuffer(
-		driverData,
-		usage,
-		sizeInBytes
-	);
+	/* Note that dynamic and usage are NOT used! */
+	return METAL_INTERNAL_CreateBuffer(driverData, sizeInBytes);
 }
 
 static void METAL_AddDisposeIndexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
-	DestroyBuffer(driverData, buffer);
+	METAL_INTERNAL_DestroyBuffer(driverData, buffer);
 }
 
 static void METAL_SetIndexBufferData(
@@ -3720,7 +3816,7 @@ static void METAL_SetIndexBufferData(
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
 ) {
-	SetBufferData(
+	METAL_INTERNAL_SetBufferData(
 		driverData,
 		buffer,
 		offsetInBytes,
@@ -3738,10 +3834,10 @@ static void METAL_GetIndexBufferData(
 	int32_t dataLength
 ) {
 	MetalBuffer *mtlBuffer = (MetalBuffer*) buffer;
-	uint8_t *contentsPtr = (uint8_t*) mtlBuffer->contents;
+	uint8_t *ptr = mtlBuffer->subBuffers[mtlBuffer->currentSubBufferIndex].ptr;
 	SDL_memcpy(
 		data,
-		contentsPtr + offsetInBytes,
+		ptr + offsetInBytes,
 		dataLength
 	);
 }
@@ -3962,7 +4058,7 @@ static void METAL_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 	MetalQuery *mtlQuery = (MetalQuery*) query;
 
 	/* Stop the current pass */
-	EndPass(renderer);
+	METAL_INTERNAL_EndPass(renderer);
 
 	/* Attach the visibility buffer to a new render pass */
 	renderer->currentVisibilityBuffer = mtlQuery->handle;
@@ -4126,7 +4222,7 @@ void METAL_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 	SDL_Metal_DestroyView(tempView);
 }
 
-static void InitializeFauxBackbuffer(MetalRenderer *renderer)
+static void METAL_INTERNAL_InitializeFauxBackbuffer(MetalRenderer *renderer)
 {
 	uint16_t indices[6] =
 	{
@@ -4292,14 +4388,9 @@ FNA3D_Device* METAL_CreateDevice(
 	/* Set device properties */
 	renderer->isMac = (strcmp(SDL_GetPlatform(), "Mac OS X") == 0);
 	renderer->supportsS3tc = renderer->supportsDxt1 = renderer->isMac;
-	if (mtlDeviceSupportsSampleCount(renderer->device, 8))
-	{
-		renderer->maxMultiSampleCount = 8;
-	}
-	else
-	{
-		renderer->maxMultiSampleCount = 4;
-	}
+	renderer->maxMultiSampleCount = (
+		mtlDeviceSupportsSampleCount(renderer->device, 8) ? 8 : 4
+	);
 	renderer->supportsOcclusionQueries = (
 		renderer->isMac ||
 		HasModernAppleGPU(renderer->device)
@@ -4337,20 +4428,14 @@ FNA3D_Device* METAL_CreateDevice(
 		}
 	}
 
-	/* Initialize frame tracking */
-	renderer->maxFramesInFlight = 1;
-	renderer->frameSemaphore = SDL_CreateSemaphore(
-		renderer->maxFramesInFlight
-	);
-
 	/* Initialize MojoShader context */
-	MOJOSHADER_mtlCreateContext(
+	renderer->mtlContext = MOJOSHADER_mtlCreateContext(
 		renderer->device,
-		renderer->maxFramesInFlight,
 		NULL,
 		NULL,
 		NULL
 	);
+	MOJOSHADER_mtlMakeContextCurrent(renderer->mtlContext);
 
 	/* Initialize texture and sampler collections */
 	for (i = 0; i < MAX_TOTAL_SAMPLERS; i += 1)
@@ -4372,8 +4457,8 @@ FNA3D_Device* METAL_CreateDevice(
 		sizeof(MetalBackbuffer)
 	);
 	SDL_memset(renderer->backbuffer, '\0', sizeof(MetalBackbuffer));
-	CreateFramebuffer(renderer, presentationParameters);
-	InitializeFauxBackbuffer(renderer);
+	METAL_INTERNAL_CreateFramebuffer(renderer, presentationParameters);
+	METAL_INTERNAL_InitializeFauxBackbuffer(renderer);
 	METAL_INTERNAL_SetPresentationInterval(
 		renderer,
 		presentationParameters->presentationInterval
@@ -4384,6 +4469,18 @@ FNA3D_Device* METAL_CreateDevice(
 	hmdefault(renderer->depthStencilStateCache, NULL);
 	hmdefault(renderer->samplerStateCache, NULL);
 	hmdefault(renderer->vertexDescriptorCache, NULL);
+
+	/* Initialize buffer allocator */
+	renderer->bufferAllocator = (MetalBufferAllocator*) SDL_malloc(
+		sizeof(MetalBufferAllocator)
+	);
+	SDL_memset(renderer->bufferAllocator, '\0', sizeof(MetalBufferAllocator));
+
+	/* Initialize buffers-in-use array */
+	renderer->maxBuffersInUse = 8; /* arbitrary! */
+	renderer->buffersInUse = (MetalBuffer**) SDL_malloc(
+		sizeof(MetalBuffer*) * renderer->maxBuffersInUse
+	);
 
 	/* Initialize renderer members not covered by SDL_memset('\0') */
 	renderer->multiSampleMask = -1; /* AKA 0xFFFFFFFF, ugh -flibit */
