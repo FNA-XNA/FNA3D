@@ -2712,17 +2712,38 @@ static void VULKAN_INTERNAL_AllocateSubBuffer(
 	VulkanRenderer *renderer,
 	VulkanBuffer *buffer
 ) {
-	VkDeviceSize totalPhysicalSize, totalAllocated, alignment;
+	VkDeviceSize totalPhysicalSize, totalAllocated, alignment, alignedAlloc;
 	uint32_t i;
 	VulkanSubBuffer *subBuffer;
+
+	if (	buffer->resourceAccessType == RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER ||
+		buffer->resourceAccessType == RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER		)
+	{
+		alignment = renderer->physicalDeviceProperties.properties.limits.minUniformBufferOffsetAlignment;
+	}
+	else if (buffer->resourceAccessType == RESOURCE_ACCESS_VERTEX_BUFFER)
+	{
+		/* TODO: this is the max texel size.
+		 * For efficiency we could query texel size by format.
+		 */
+		alignment = 16;
+	}
+	else
+	{
+		alignment = renderer->physicalDeviceProperties.properties.limits.minMemoryMapAlignment;
+	}
 
 	/* Which physical buffer should we suballocate from? */
 	for (i = 0; i < PHYSICAL_BUFFER_MAX_COUNT; i += 1)
 	{
 		totalPhysicalSize = PHYSICAL_BUFFER_BASE_SIZE << i;
 		totalAllocated = renderer->bufferAllocator->totalAllocated[i];
+		alignedAlloc = VULKAN_INTERNAL_NextHighestAlignment(
+			totalAllocated + buffer->size,
+			alignment
+		);
 
-		if (totalPhysicalSize - totalAllocated >= buffer->size)
+		if (alignedAlloc <= totalPhysicalSize)
 		{
 			/* It fits! */
 			break;
@@ -2768,25 +2789,8 @@ static void VULKAN_INTERNAL_AllocateSubBuffer(
 		subBuffer->offset
 	);
 
-	if (	buffer->resourceAccessType == RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER ||
-		buffer->resourceAccessType == RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER		)
-	{
-		alignment = renderer->physicalDeviceProperties.properties.limits.minUniformBufferOffsetAlignment;
-	}
-	else if (buffer->resourceAccessType == RESOURCE_ACCESS_VERTEX_BUFFER)
-	{
-		alignment = 16; /* TODO: this is the max texel size. for efficiency we could query texel size by format */
-	}
-	else
-	{
-		alignment = renderer->physicalDeviceProperties.properties.limits.minMemoryMapAlignment;
-	}
-
 	/* Mark how much we've just allocated, rounding up for alignment */
-	renderer->bufferAllocator->totalAllocated[i] = VULKAN_INTERNAL_NextHighestAlignment(
-		totalAllocated + buffer->size,
-		alignment
-	);
+	renderer->bufferAllocator->totalAllocated[i] = alignedAlloc;
 	buffer->subBufferCount += 1;
 
 	VULKAN_INTERNAL_BufferMemoryBarrier(
