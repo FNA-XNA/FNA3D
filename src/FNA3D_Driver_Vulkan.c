@@ -6762,8 +6762,8 @@ static void VULKAN_ApplyVertexBufferBindings(
 		);
 
 		VULKAN_INTERNAL_MarkAsBound(renderer, vertexBuffer);
-		if (renderer->ldVertexBuffers[i] != subbuf.physicalBuffer->buffer ||
-			renderer->ldVertexBufferOffsets[i] != offset)
+		if (	renderer->ldVertexBuffers[i] != subbuf.physicalBuffer->buffer ||
+			renderer->ldVertexBufferOffsets[i] != offset	)
 		{
 			renderer->ldVertexBuffers[i] = subbuf.physicalBuffer->buffer;
 			renderer->ldVertexBufferOffsets[i] = offset;
