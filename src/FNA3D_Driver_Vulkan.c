@@ -3792,12 +3792,15 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 	/* Shaders */
 
 	vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-	vertShaderStageInfo.module = (VkShaderModule) MOJOSHADER_vkGetShaderModule(vertShader);
 	vertShaderStageInfo.pName = MOJOSHADER_vkGetShaderParseData(vertShader)->mainfn;
 
 	fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	fragShaderStageInfo.module = (VkShaderModule) MOJOSHADER_vkGetShaderModule(fragShader);
 	fragShaderStageInfo.pName = MOJOSHADER_vkGetShaderParseData(fragShader)->mainfn;
+
+	MOJOSHADER_vkGetShaderModules(
+		&vertShaderStageInfo.module,
+		&fragShaderStageInfo.module
+	);
 
 	stageInfos[0] = vertShaderStageInfo;
 	stageInfos[1] = fragShaderStageInfo;
@@ -5766,7 +5769,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 	VULKAN_INTERNAL_DestroyTextureStagingBuffer(renderer);
 
-	MOJOSHADER_vkDestroyContext();
+	MOJOSHADER_vkDestroyContext(renderer->mojoshaderContext);
 	VULKAN_INTERNAL_DestroyFauxBackbuffer(renderer);
 
 	for (i = 0; i < MAX_FRAMES_IN_FLIGHT; i += 1)
