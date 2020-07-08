@@ -4697,7 +4697,7 @@ static void VULKAN_INTERNAL_EndPass(VulkanRenderer *renderer)
 static void VULKAN_INTERNAL_UpdateRenderPass(VulkanRenderer *renderer)
 {
 	if (	!renderer->frameInProgress ||
-			!renderer->needNewRenderPass	)
+		!renderer->needNewRenderPass	)
 	{
 		return;
 	}
@@ -5375,8 +5375,8 @@ static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 	}
 
 	if (	renderer->currentVertUniformBufferDescriptorSet == NULL_DESC_SET ||
-			vUniform != renderer->ldVertUniformBuffer ||
-			vSize != renderer->ldVertUniformSize	)
+		vUniform != renderer->ldVertUniformBuffer ||
+		vSize != renderer->ldVertUniformSize	)
 	{
 		vertUniformBufferInfo.buffer = vUniform;
 		vertUniformBufferInfo.offset = 0;
@@ -5402,8 +5402,8 @@ static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 	}
 
 	if (	renderer->currentFragUniformBufferDescriptorSet == NULL_DESC_SET ||
-			fUniform != renderer->ldFragUniformBuffer ||
-			fSize != renderer->ldFragUniformSize)
+		fUniform != renderer->ldFragUniformBuffer ||
+		fSize != renderer->ldFragUniformSize	)
 	{
 		fragUniformBufferInfo.buffer = fUniform;
 		fragUniformBufferInfo.offset = 0;
@@ -6372,9 +6372,9 @@ static void VULKAN_SetBlendFactor(
 	};
 
 	if (	blendFactor->r != renderer->blendState.blendFactor.r ||
-			blendFactor->g != renderer->blendState.blendFactor.g ||
-			blendFactor->b != renderer->blendState.blendFactor.b ||
-			blendFactor->a != renderer->blendState.blendFactor.a	)
+		blendFactor->g != renderer->blendState.blendFactor.g ||
+		blendFactor->b != renderer->blendState.blendFactor.b ||
+		blendFactor->a != renderer->blendState.blendFactor.a	)
 	{
 		renderer->blendState.blendFactor = *blendFactor;
 
