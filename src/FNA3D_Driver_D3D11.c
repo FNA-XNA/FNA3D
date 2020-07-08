@@ -4224,11 +4224,6 @@ static void D3D11_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 
 static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 {
-#ifdef FNA3D_DXVK_NATIVE
-	/* FIXME: Rip off FNA3D_Driver_Vulkan here... */
-	*flags = SDL_WINDOW_VULKAN;
-	return 1;
-#else
 	void* module = NULL;
 	PFN_D3D11_CREATE_DEVICE D3D11CreateDeviceFunc;
 	D3D_FEATURE_LEVEL levels[] =
@@ -4272,16 +4267,11 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 	/* No window flags required */
 	SDL_SetHint(SDL_HINT_VIDEO_EXTERNAL_CONTEXT, "1");
 	return 1;
-#endif
 }
 
 static void D3D11_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 {
-#ifdef FNA3D_DXVK_NATIVE
-	SDL_Vulkan_GetDrawableSize((SDL_Window*) window, x, y);
-#else
 	SDL_GetWindowSize((SDL_Window*) window, x, y);
-#endif
 }
 
 static void D3D11_INTERNAL_InitializeFauxBackbuffer(
@@ -4839,14 +4829,10 @@ static void D3D11_PLATFORM_GetDefaultAdapter(
 
 static inline void* GetDXGIHandle(SDL_Window *window)
 {
-#ifdef FNA3D_DXVK_NATIVE
-	return (void*) window;
-#else
 	SDL_SysWMinfo info;
 	SDL_VERSION(&info.version);
 	SDL_GetWindowWMInfo((SDL_Window*) window, &info);
 	return (void*) info.info.win.window; /* HWND */
-#endif
 }
 
 static void D3D11_PLATFORM_CreateSwapChain(
