@@ -58,9 +58,8 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
 /* TODO: This _should_ work fine with a value of 3, but keeping it at 1 until
  * things are farther along - @thatcosmonaut
  */
-#define MAX_FRAMES_IN_FLIGHT 1
 
-#define TEXTURE_COUNT MAX_TOTAL_SAMPLERS * MAX_FRAMES_IN_FLIGHT
+#define TEXTURE_COUNT MAX_TOTAL_SAMPLERS
 #define MAX_MULTISAMPLE_MASK_SIZE 2
 #define MAX_QUERIES 16
 
@@ -543,7 +542,6 @@ typedef struct VulkanRenderer
 	VkImageView *swapChainImageViews;
 	uint32_t swapChainImageCount;
 	VkExtent2D swapChainExtent;
-	uint32_t currentFrame;
 
 	VkCommandPool commandPool;
 	VkPipelineCache pipelineCache;
@@ -552,7 +550,7 @@ typedef struct VulkanRenderer
 	VkPipeline currentPipeline;
 	VkPipelineLayout currentPipelineLayout;
 	uint64_t currentVertexBufferBindingHash;
-	VkCommandBuffer commandBuffers[MAX_FRAMES_IN_FLIGHT];
+	VkCommandBuffer commandBuffer;
 
 	/* Queries */
 	VkQueryPool queryPool;
@@ -600,16 +598,16 @@ typedef struct VulkanRenderer
 	FNA3D_VertexBufferBinding *vertexBindings;
 
 	/* Should be equal to swap chain count */
-	VkBuffer ldVertUniformBuffers[MAX_FRAMES_IN_FLIGHT];
-	VkBuffer ldFragUniformBuffers[MAX_FRAMES_IN_FLIGHT];
-	VkDeviceSize ldVertUniformOffsets[MAX_FRAMES_IN_FLIGHT];
-	VkDeviceSize ldFragUniformOffsets[MAX_FRAMES_IN_FLIGHT];
-	VkDeviceSize ldVertUniformSizes[MAX_FRAMES_IN_FLIGHT];
-	VkDeviceSize ldFragUniformSizes[MAX_FRAMES_IN_FLIGHT];
+	VkBuffer ldVertUniformBuffer;
+	VkBuffer ldFragUniformBuffer;
+	VkDeviceSize ldVertUniformOffset;
+	VkDeviceSize ldFragUniformOffset;
+	VkDeviceSize ldVertUniformSize;
+	VkDeviceSize ldFragUniformSize;
 
 	/* Needs to be dynamic because of swap chain count */
-	VkBuffer ldVertexBuffers[MAX_BOUND_VERTEX_BUFFERS * MAX_FRAMES_IN_FLIGHT];
-	VkDeviceSize ldVertexBufferOffsets[MAX_BOUND_VERTEX_BUFFERS * MAX_FRAMES_IN_FLIGHT];
+	VkBuffer ldVertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
+	VkDeviceSize ldVertexBufferOffsets[MAX_BOUND_VERTEX_BUFFERS];
 
 	int32_t stencilRef;
 
@@ -627,13 +625,13 @@ typedef struct VulkanRenderer
 	VkDescriptorSetLayout fragUniformBufferDescriptorSetLayout;
 	VkDescriptorSetLayout fragSamplerDescriptorSetLayouts[MAX_TEXTURE_SAMPLERS];
 
-	VkDescriptorPool *samplerDescriptorPools[MAX_FRAMES_IN_FLIGHT];
-	uint32_t activeSamplerDescriptorPoolIndex[MAX_FRAMES_IN_FLIGHT];
-	uint32_t samplerDescriptorPoolCapacity[MAX_FRAMES_IN_FLIGHT];
+	VkDescriptorPool *samplerDescriptorPools;
+	uint32_t activeSamplerDescriptorPoolIndex;
+	uint32_t samplerDescriptorPoolCapacity;
 
-	VkDescriptorPool *uniformBufferDescriptorPools[MAX_FRAMES_IN_FLIGHT];
-	uint32_t activeUniformBufferDescriptorPoolIndex[MAX_FRAMES_IN_FLIGHT];
-	uint32_t uniformBufferDescriptorPoolCapacity[MAX_FRAMES_IN_FLIGHT];
+	VkDescriptorPool *uniformBufferDescriptorPools;
+	uint32_t activeUniformBufferDescriptorPoolIndex;
+	uint32_t uniformBufferDescriptorPoolCapacity;
 
 	VkDescriptorSet currentVertSamplerDescriptorSet;
 	VkDescriptorSet currentFragSamplerDescriptorSet;
@@ -655,9 +653,9 @@ typedef struct VulkanRenderer
 	FramebufferHashMap *framebufferHashMap;
 	SamplerStateHashMap *samplerStateHashMap;
 
-	VkFence inFlightFences[MAX_FRAMES_IN_FLIGHT];
-	VkSemaphore imageAvailableSemaphores[MAX_FRAMES_IN_FLIGHT];
-	VkSemaphore renderFinishedSemaphores[MAX_FRAMES_IN_FLIGHT];
+	VkFence inFlightFence;
+	VkSemaphore imageAvailableSemaphore;
+	VkSemaphore renderFinishedSemaphore;
 	VkFence *imagesInFlight;
 
 	/* MojoShader Interop */
@@ -670,40 +668,24 @@ typedef struct VulkanRenderer
 	 * so we don't have to stall or invalidate the command buffer
 	 */
 
-	VulkanRenderbuffer **queuedRenderbuffersToDestroy;
-	uint32_t queuedRenderbuffersToDestroyCount;
-	uint32_t queuedRenderbuffersToDestroyCapacity;
+	VulkanRenderbuffer **renderbuffersToDestroy;
+	uint32_t renderbuffersToDestroyCount;
+	uint32_t renderbuffersToDestroyCapacity;
 
-	VulkanRenderbuffer **renderbuffersToDestroy[MAX_FRAMES_IN_FLIGHT];
-	uint32_t renderbuffersToDestroyCount[MAX_FRAMES_IN_FLIGHT];
-	uint32_t renderbuffersToDestroyCapacity[MAX_FRAMES_IN_FLIGHT];
+	VulkanBuffer **buffersToDestroy;
+	uint32_t buffersToDestroyCount;
+	uint32_t buffersToDestroyCapacity;
 
-	VulkanBuffer **queuedBuffersToDestroy;
-	uint32_t queuedBuffersToDestroyCount;
-	uint32_t queuedBuffersToDestroyCapacity;
+	VulkanEffect **effectsToDestroy;
+	uint32_t effectsToDestroyCount;
+	uint32_t effectsToDestroyCapacity;
 
-	VulkanBuffer **buffersToDestroy[MAX_FRAMES_IN_FLIGHT];
-	uint32_t buffersToDestroyCount[MAX_FRAMES_IN_FLIGHT];
-	uint32_t buffersToDestroyCapacity[MAX_FRAMES_IN_FLIGHT];
+	VulkanTexture **texturesToDestroy;
+	uint32_t texturesToDestroyCount;
+	uint32_t texturesToDestroyCapacity;
 
-	VulkanEffect **queuedEffectsToDestroy;
-	uint32_t queuedEffectsToDestroyCount;
-	uint32_t queuedEffectsToDestroyCapacity;
-
-	VulkanEffect **effectsToDestroy[MAX_FRAMES_IN_FLIGHT];
-	uint32_t effectsToDestroyCount[MAX_FRAMES_IN_FLIGHT];
-	uint32_t effectsToDestroyCapacity[MAX_FRAMES_IN_FLIGHT];
-
-	VulkanTexture **queuedTexturesToDestroy;
-	uint32_t queuedTexturesToDestroyCount;
-	uint32_t queuedTexturesToDestroyCapacity;
-
-	VulkanTexture **texturesToDestroy[MAX_FRAMES_IN_FLIGHT];
-	uint32_t texturesToDestroyCount[MAX_FRAMES_IN_FLIGHT];
-	uint32_t texturesToDestroyCapacity[MAX_FRAMES_IN_FLIGHT];
-
-	uint8_t commandBufferActive[MAX_FRAMES_IN_FLIGHT];
-	uint8_t frameInProgress[MAX_FRAMES_IN_FLIGHT];
+	uint8_t commandBufferActive;
+	uint8_t frameInProgress;
 	uint8_t renderPassInProgress;
 	uint8_t needNewRenderPass;
 	uint8_t renderTargetBound;
@@ -2037,7 +2019,7 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 	}
 
 	renderer->vkCmdPipelineBarrier(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		srcStages,
 		dstStages,
 		0,
@@ -2134,7 +2116,7 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer->needNewRenderPass = 1;
 	}
 	renderer->vkCmdPipelineBarrier(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		srcStages,
 		dstStages,
 		0,
@@ -2413,12 +2395,12 @@ static void VULKAN_INTERNAL_RecreateSwapchain(
 	VkExtent2D extent;
 	VkResult result;
 
-	if (renderer->commandBufferActive[renderer->currentFrame])
+	if (renderer->commandBufferActive)
 	{
 		VULKAN_INTERNAL_EndPass(renderer);
 
 		renderer->vkEndCommandBuffer(
-			renderer->commandBuffers[renderer->currentFrame]
+			renderer->commandBuffer
 		);
 
 		submitInfo.waitSemaphoreCount = 0;
@@ -2427,8 +2409,7 @@ static void VULKAN_INTERNAL_RecreateSwapchain(
 		submitInfo.signalSemaphoreCount = 0;
 		submitInfo.pSignalSemaphores = NULL;
 		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers =
-			&renderer->commandBuffers[renderer->currentFrame];
+		submitInfo.pCommandBuffers = &renderer->commandBuffer;
 
 		result = renderer->vkQueueSubmit(
 			renderer->graphicsQueue,
@@ -2445,8 +2426,8 @@ static void VULKAN_INTERNAL_RecreateSwapchain(
 		}
 	}
 
-	renderer->commandBufferActive[renderer->currentFrame] = 0;
-	renderer->frameInProgress[renderer->currentFrame] = 0;
+	renderer->commandBufferActive = 0;
+	renderer->frameInProgress = 0;
 
 	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
 
@@ -2514,12 +2495,15 @@ static void VULKAN_INTERNAL_Stall(VulkanRenderer *renderer)
 	};
 	VkResult result;
 
-	if (!renderer->commandBufferActive[renderer->currentFrame]) { return; }
+	if (!renderer->commandBufferActive)
+	{
+		return;
+	}
 
 	VULKAN_INTERNAL_EndPass(renderer);
 
 	renderer->vkEndCommandBuffer(
-		renderer->commandBuffers[renderer->currentFrame]
+		renderer->commandBuffer
 	);
 
 	submitInfo.waitSemaphoreCount = 0;
@@ -2528,19 +2512,19 @@ static void VULKAN_INTERNAL_Stall(VulkanRenderer *renderer)
 	submitInfo.signalSemaphoreCount = 0;
 	submitInfo.pSignalSemaphores = NULL;
 	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &renderer->commandBuffers[renderer->currentFrame];
+	submitInfo.pCommandBuffers = &renderer->commandBuffer;
 
 	renderer->vkResetFences(
 		renderer->logicalDevice,
 		1,
-		&renderer->inFlightFences[renderer->currentFrame]
+		&renderer->inFlightFence
 	);
 
 	result = renderer->vkQueueSubmit(
 		renderer->graphicsQueue,
 		1,
 		&submitInfo,
-		renderer->inFlightFences[renderer->currentFrame]
+		renderer->inFlightFence
 	);
 
 	if (result != VK_SUCCESS)
@@ -2552,7 +2536,7 @@ static void VULKAN_INTERNAL_Stall(VulkanRenderer *renderer)
 	result = renderer->vkWaitForFences(
 		renderer->logicalDevice,
 		1,
-		&renderer->inFlightFences[renderer->currentFrame],
+		&renderer->inFlightFence,
 		VK_TRUE,
 		UINT64_MAX
 	);
@@ -2568,12 +2552,12 @@ static void VULKAN_INTERNAL_Stall(VulkanRenderer *renderer)
 	VULKAN_INTERNAL_ResetBuffers(renderer);
 
 	renderer->vkResetCommandBuffer(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
 	);
 
 	renderer->vkBeginCommandBuffer(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		&beginInfo
 	);
 }
@@ -2588,20 +2572,20 @@ static void VULKAN_INTERNAL_RemoveBuffer(
 	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
 
 	/* Queue buffer for destruction */
-	if (renderer->queuedBuffersToDestroyCount + 1 >= renderer->queuedBuffersToDestroyCapacity)
+	if (renderer->buffersToDestroyCount + 1 >= renderer->buffersToDestroyCapacity)
 	{
-		renderer->queuedBuffersToDestroyCapacity *= 2;
+		renderer->buffersToDestroyCapacity *= 2;
 
-		renderer->queuedBuffersToDestroy = SDL_realloc(
-			renderer->queuedBuffersToDestroy,
-			sizeof(VulkanBuffer*) * renderer->queuedBuffersToDestroyCapacity
+		renderer->buffersToDestroy = SDL_realloc(
+			renderer->buffersToDestroy,
+			sizeof(VulkanBuffer*) * renderer->buffersToDestroyCapacity
 		);
 	}
 
-	renderer->queuedBuffersToDestroy[
-		renderer->queuedBuffersToDestroyCount
+	renderer->buffersToDestroy[
+		renderer->buffersToDestroyCount
 	] = vulkanBuffer;
-	renderer->queuedBuffersToDestroyCount += 1;
+	renderer->buffersToDestroyCount += 1;
 }
 
 static inline VkDeviceSize VULKAN_INTERNAL_NextHighestAlignment(
@@ -3191,7 +3175,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 	imageCopy.bufferOffset = 0;
 
 	renderer->vkCmdCopyImageToBuffer(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
 		renderer->textureStagingBuffer->buffer,
@@ -3253,10 +3237,10 @@ static void VULKAN_INTERNAL_SetViewportCommand(VulkanRenderer *renderer)
 	vulkanViewport.minDepth = renderer->viewport.minDepth;
 	vulkanViewport.maxDepth = renderer->viewport.maxDepth;
 
-	if (renderer->frameInProgress[renderer->currentFrame])
+	if (renderer->frameInProgress)
 	{
 		renderer->vkCmdSetViewport(
-			renderer->commandBuffers[renderer->currentFrame],
+			renderer->commandBuffer,
 			0,
 			1,
 			&vulkanViewport
@@ -3290,7 +3274,7 @@ static void VULKAN_INTERNAL_SetScissorRectCommand(VulkanRenderer *renderer)
 		vulkanScissorRect.extent = extent;
 
 		renderer->vkCmdSetScissor(
-			renderer->commandBuffers[renderer->currentFrame],
+			renderer->commandBuffer,
 			0,
 			1,
 			&vulkanScissorRect
@@ -3304,7 +3288,7 @@ static void VULKAN_INTERNAL_SetStencilReferenceValueCommand(
 	if (renderer->renderPassInProgress)
 	{
 		renderer->vkCmdSetStencilReference(
-			renderer->commandBuffers[renderer->currentFrame],
+			renderer->commandBuffer,
 			VK_STENCIL_FACE_FRONT_AND_BACK,
 			renderer->stencilRef
 		);
@@ -3316,7 +3300,7 @@ static void VULKAN_INTERNAL_SetDepthBiasCommand(VulkanRenderer *renderer)
 	if (renderer->renderPassInProgress)
 	{
 		renderer->vkCmdSetDepthBias(
-			renderer->commandBuffers[renderer->currentFrame],
+			renderer->commandBuffer,
 			renderer->rasterizerState.depthBias,
 			0.0, /* no clamp */
 			renderer->rasterizerState.slopeScaleDepthBias
@@ -3582,8 +3566,7 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 	hash.depthStencilState = GetDepthStencilStateHash(
 		renderer->depthStencilState
 	);
-	hash.vertexBufferBindingsHash =
-		renderer->currentVertexBufferBindingHash;
+	hash.vertexBufferBindingsHash = renderer->currentVertexBufferBindingHash;
 	hash.primitiveType = renderer->currentPrimitiveType;
 	hash.sampleMask = renderer->multiSampleMask[0];
 	MOJOSHADER_vkGetBoundShaders(&vertShader, &fragShader);
@@ -3850,7 +3833,7 @@ static void VULKAN_INTERNAL_BindPipeline(VulkanRenderer *renderer)
 	if (pipeline != renderer->currentPipeline)
 	{
 		renderer->vkCmdBindPipeline(
-			renderer->commandBuffers[renderer->currentFrame],
+			renderer->commandBuffer,
 			VK_PIPELINE_BIND_POINT_GRAPHICS,
 			pipeline
 		);
@@ -3988,124 +3971,41 @@ static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer *renderer)
 {
 	uint32_t i;
 
-	for (i = 0; i < renderer->renderbuffersToDestroyCount[renderer->currentFrame]; i += 1)
+	for (i = 0; i < renderer->renderbuffersToDestroyCount; i += 1)
 	{
 		VULKAN_INTERNAL_DestroyRenderbuffer(
 			renderer,
-			renderer->renderbuffersToDestroy[renderer->currentFrame][i]
+			renderer->renderbuffersToDestroy[i]
 		);
 	}
-	renderer->renderbuffersToDestroyCount[renderer->currentFrame] = 0;
+	renderer->renderbuffersToDestroyCount = 0;
 
-	for (i = 0; i < renderer->buffersToDestroyCount[renderer->currentFrame]; i += 1)
+	for (i = 0; i < renderer->buffersToDestroyCount; i += 1)
 	{
 		VULKAN_INTERNAL_DestroyBuffer(
 			renderer,
-			renderer->buffersToDestroy[renderer->currentFrame][i]
+			renderer->buffersToDestroy[i]
 		);
 	}
-	renderer->buffersToDestroyCount[renderer->currentFrame] = 0;
+	renderer->buffersToDestroyCount = 0;
 
-	for (i = 0; i < renderer->effectsToDestroyCount[renderer->currentFrame]; i += 1)
+	for (i = 0; i < renderer->effectsToDestroyCount; i += 1)
 	{
 		VULKAN_INTERNAL_DestroyEffect(
 			renderer,
-			renderer->effectsToDestroy[renderer->currentFrame][i]
+			renderer->effectsToDestroy[i]
 		);
 	}
-	renderer->effectsToDestroyCount[renderer->currentFrame] = 0;
+	renderer->effectsToDestroyCount = 0;
 
-	for (i = 0; i < renderer->texturesToDestroyCount[renderer->currentFrame]; i += 1)
+	for (i = 0; i < renderer->texturesToDestroyCount; i += 1)
 	{
 		VULKAN_INTERNAL_DestroyTexture(
 			renderer,
-			renderer->texturesToDestroy[renderer->currentFrame][i]
+			renderer->texturesToDestroy[i]
 		);
 	}
-	renderer->texturesToDestroyCount[renderer->currentFrame] = 0;
-
-	/* Rotate */
-
-	if (renderer->queuedRenderbuffersToDestroyCount > renderer->renderbuffersToDestroyCapacity[renderer->currentFrame])
-	{
-		renderer->renderbuffersToDestroyCapacity[
-			renderer->currentFrame
-		] = renderer->queuedRenderbuffersToDestroyCount;
-
-		renderer->renderbuffersToDestroy[renderer->currentFrame] = SDL_realloc(
-			renderer->renderbuffersToDestroy[renderer->currentFrame],
-			sizeof(VulkanRenderbuffer*) * renderer->renderbuffersToDestroyCapacity[renderer->currentFrame]
-		);
-	}
-
-	for (i = 0; i < renderer->queuedRenderbuffersToDestroyCount; i += 1)
-	{
-		renderer->renderbuffersToDestroy[renderer->currentFrame][i] =
-			renderer->queuedRenderbuffersToDestroy[i];
-	}
-	renderer->renderbuffersToDestroyCount[renderer->currentFrame] =
-		renderer->queuedRenderbuffersToDestroyCount;
-	renderer->queuedRenderbuffersToDestroyCount = 0;
-
-	if (renderer->queuedBuffersToDestroyCount > renderer->buffersToDestroyCapacity[renderer->currentFrame])
-	{
-		renderer->buffersToDestroyCapacity[renderer->currentFrame] =
-			renderer->queuedBuffersToDestroyCount;
-
-		renderer->buffersToDestroy[renderer->currentFrame] = SDL_realloc(
-			renderer->buffersToDestroy[renderer->currentFrame],
-			sizeof(VulkanBuffer*) * renderer->buffersToDestroyCapacity[renderer->currentFrame]
-		);
-	}
-
-	for (i = 0; i < renderer->queuedBuffersToDestroyCount; i += 1)
-	{
-		renderer->buffersToDestroy[renderer->currentFrame][i] =
-			renderer->queuedBuffersToDestroy[i];
-	}
-	renderer->buffersToDestroyCount[renderer->currentFrame] =
-		renderer->queuedBuffersToDestroyCount;
-	renderer->queuedBuffersToDestroyCount = 0;
-
-	if (renderer->queuedEffectsToDestroyCount > renderer->effectsToDestroyCapacity[renderer->currentFrame])
-	{
-		renderer->effectsToDestroyCapacity[renderer->currentFrame] =
-			renderer->queuedEffectsToDestroyCount;
-
-		renderer->effectsToDestroy[renderer->currentFrame] = SDL_realloc(
-			renderer->effectsToDestroy[renderer->currentFrame],
-			sizeof(VulkanEffect*) * renderer->effectsToDestroyCapacity[renderer->currentFrame]
-		);
-	}
-
-	for (i = 0; i < renderer->queuedEffectsToDestroyCount; i += 1)
-	{
-		renderer->effectsToDestroy[renderer->currentFrame][i] =
-			renderer->queuedEffectsToDestroy[i];
-	}
-	renderer->effectsToDestroyCount[renderer->currentFrame] =
-		renderer->queuedEffectsToDestroyCount;
-	renderer->queuedEffectsToDestroyCount = 0;
-
-	if (renderer->queuedTexturesToDestroyCount > renderer->texturesToDestroyCapacity[renderer->currentFrame])
-	{
-		renderer->texturesToDestroyCapacity[renderer->currentFrame] =
-			renderer->queuedTexturesToDestroyCount;
-
-		renderer->texturesToDestroy[renderer->currentFrame] = SDL_realloc(
-			renderer->texturesToDestroy[renderer->currentFrame],
-			sizeof(VulkanTexture*) * renderer->texturesToDestroyCapacity[renderer->currentFrame]
-		);
-	}
-
-	for (i = 0; i < renderer->queuedTexturesToDestroyCount; i += 1)
-	{
-		renderer->texturesToDestroy[renderer->currentFrame][i] =
-			renderer->queuedTexturesToDestroy[i];
-	}
-	renderer->texturesToDestroyCount[renderer->currentFrame] =
-		renderer->queuedTexturesToDestroyCount;
-	renderer->queuedTexturesToDestroyCount = 0;
+	renderer->texturesToDestroyCount = 0;
 }
 
 /* Vulkan: The Faux-Backbuffer */
@@ -4668,7 +4568,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 		renderer->blendState.blendFactor.a / 255.0f
 	};
 	VkImageAspectFlags depthAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-	uint32_t swapChainOffset, i;
+	uint32_t i;
 
 	renderer->renderPass = VULKAN_INTERNAL_FetchRenderPass(renderer);
 	framebuffer = VULKAN_INTERNAL_FetchFramebuffer(
@@ -4727,7 +4627,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	}
 
 	renderer->vkCmdBeginRenderPass(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		&renderPassBeginInfo,
 		VK_SUBPASS_CONTENTS_INLINE
 	);
@@ -4739,12 +4639,12 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	VULKAN_INTERNAL_SetStencilReferenceValueCommand(renderer);
 
 	renderer->vkCmdSetBlendConstants(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		blendConstants
 	);
 
 	renderer->vkCmdSetDepthBias(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		renderer->rasterizerState.depthBias,
 		0, /* Unused */
 		renderer->rasterizerState.slopeScaleDepthBias
@@ -4754,9 +4654,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 
 	/* Reset bindings for the current frame in flight */
 
-	swapChainOffset = MAX_TOTAL_SAMPLERS * renderer->currentFrame;
-
-	for (i = swapChainOffset; i < swapChainOffset + MAX_TOTAL_SAMPLERS; i += 1)
+	for (i = 0; i < MAX_TOTAL_SAMPLERS; i += 1)
 	{
 		if (renderer->textures[i] != &NullTexture)
 		{
@@ -4768,17 +4666,15 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 		}
 	}
 
-	renderer->ldFragUniformBuffers[renderer->currentFrame] = NULL_BUFFER;
-	renderer->ldFragUniformOffsets[renderer->currentFrame] = 0;
-	renderer->ldFragUniformSizes[renderer->currentFrame] = 0;
-	renderer->ldVertUniformBuffers[renderer->currentFrame] = NULL_BUFFER;
-	renderer->ldVertUniformOffsets[renderer->currentFrame] = 0;
-	renderer->ldVertUniformSizes[renderer->currentFrame] = 0;
+	renderer->ldFragUniformBuffer = NULL_BUFFER;
+	renderer->ldFragUniformOffset = 0;
+	renderer->ldFragUniformSize = 0;
+	renderer->ldVertUniformBuffer = NULL_BUFFER;
+	renderer->ldVertUniformOffset = 0;
+	renderer->ldVertUniformSize = 0;
 	renderer->currentPipeline = NULL_PIPELINE;
 
-	swapChainOffset = MAX_BOUND_VERTEX_BUFFERS * renderer->currentFrame;
-
-	for (i = swapChainOffset; i < swapChainOffset + MAX_BOUND_VERTEX_BUFFERS; i += 1)
+	for (i = 0; i < MAX_BOUND_VERTEX_BUFFERS; i += 1)
 	{
 		renderer->ldVertexBuffers[i] = NULL_BUFFER;
 		renderer->ldVertexBufferOffsets[i] = 0;
@@ -4792,7 +4688,7 @@ static void VULKAN_INTERNAL_EndPass(VulkanRenderer *renderer)
 	if (renderer->renderPassInProgress)
 	{
 		renderer->vkCmdEndRenderPass(
-			renderer->commandBuffers[renderer->currentFrame]
+			renderer->commandBuffer
 		);
 		renderer->renderPassInProgress = 0;
 	}
@@ -4800,8 +4696,8 @@ static void VULKAN_INTERNAL_EndPass(VulkanRenderer *renderer)
 
 static void VULKAN_INTERNAL_UpdateRenderPass(VulkanRenderer *renderer)
 {
-	if (	!renderer->frameInProgress[renderer->currentFrame] ||
-		!renderer->needNewRenderPass	)
+	if (	!renderer->frameInProgress ||
+			!renderer->needNewRenderPass	)
 	{
 		return;
 	}
@@ -4896,7 +4792,7 @@ static void VULKAN_INTERNAL_RenderPassClear(
 	}
 
 	renderer->vkCmdClearAttachments(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		attachmentCount,
 		clearAttachments,
 		1,
@@ -4953,7 +4849,7 @@ static void VULKAN_INTERNAL_OutsideRenderPassClear(
 			);
 
 			renderer->vkCmdClearColorImage(
-				renderer->commandBuffers[renderer->currentFrame],
+				renderer->commandBuffer,
 				renderer->colorAttachments[i]->image,
 				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 				&clearValue,
@@ -4995,7 +4891,7 @@ static void VULKAN_INTERNAL_OutsideRenderPassClear(
 				);
 
 				renderer->vkCmdClearColorImage(
-					renderer->commandBuffers[renderer->currentFrame],
+					renderer->commandBuffer,
 					renderer->colorMultiSampleAttachments[i]->image,
 					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 					&clearValue,
@@ -5052,7 +4948,7 @@ static void VULKAN_INTERNAL_OutsideRenderPassClear(
 		);
 
 		renderer->vkCmdClearDepthStencilImage(
-			renderer->commandBuffers[renderer->currentFrame],
+			renderer->commandBuffer,
 			renderer->depthStencilAttachment->image,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			&clearDepthStencilValue,
@@ -5088,16 +4984,16 @@ static void VULKAN_INTERNAL_IncrementSamplerDescriptorPool(
 	};
 	VkResult vulkanResult;
 
-	renderer->activeSamplerDescriptorPoolIndex[renderer->currentFrame] += 1;
+	renderer->activeSamplerDescriptorPoolIndex += 1;
 
 	/* if we have used all the pools, allocate a new one */
-	if (renderer->activeSamplerDescriptorPoolIndex[renderer->currentFrame] >= renderer->samplerDescriptorPoolCapacity[renderer->currentFrame])
+	if (renderer->activeSamplerDescriptorPoolIndex >= renderer->samplerDescriptorPoolCapacity)
 	{
-		renderer->samplerDescriptorPoolCapacity[renderer->currentFrame] += 1;
+		renderer->samplerDescriptorPoolCapacity += 1;
 
-		renderer->samplerDescriptorPools[renderer->currentFrame] = SDL_realloc(
-			renderer->samplerDescriptorPools[renderer->currentFrame],
-			sizeof(VkDescriptorPool) * renderer->samplerDescriptorPoolCapacity[renderer->currentFrame]
+		renderer->samplerDescriptorPools = SDL_realloc(
+			renderer->samplerDescriptorPools,
+			sizeof(VkDescriptorPool) * renderer->samplerDescriptorPoolCapacity
 		);
 
 		samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
@@ -5111,8 +5007,8 @@ static void VULKAN_INTERNAL_IncrementSamplerDescriptorPool(
 			renderer->logicalDevice,
 			&samplerPoolInfo,
 			NULL,
-			&renderer->samplerDescriptorPools[renderer->currentFrame][
-				renderer->activeSamplerDescriptorPoolIndex[renderer->currentFrame]
+			&renderer->samplerDescriptorPools[
+				renderer->activeSamplerDescriptorPoolIndex
 			]
 		);
 
@@ -5135,16 +5031,16 @@ static void VULKAN_INTERNAL_IncrementUniformBufferDescriptorPool(
 	};
 	VkResult vulkanResult;
 
-	renderer->activeUniformBufferDescriptorPoolIndex[renderer->currentFrame] += 1;
+	renderer->activeUniformBufferDescriptorPoolIndex += 1;
 
 	/* if we have used all the pools, allocate a new one */
-	if (renderer->activeUniformBufferDescriptorPoolIndex[renderer->currentFrame] >= renderer->uniformBufferDescriptorPoolCapacity[renderer->currentFrame])
+	if (renderer->activeUniformBufferDescriptorPoolIndex >= renderer->uniformBufferDescriptorPoolCapacity)
 	{
-		renderer->uniformBufferDescriptorPoolCapacity[renderer->currentFrame] += 1;
+		renderer->uniformBufferDescriptorPoolCapacity += 1;
 
-		renderer->uniformBufferDescriptorPools[renderer->currentFrame] = SDL_realloc(
-			renderer->uniformBufferDescriptorPools[renderer->currentFrame],
-			sizeof(VkDescriptorPool) * renderer->uniformBufferDescriptorPoolCapacity[renderer->currentFrame]
+		renderer->uniformBufferDescriptorPools = SDL_realloc(
+			renderer->uniformBufferDescriptorPools,
+			sizeof(VkDescriptorPool) * renderer->uniformBufferDescriptorPoolCapacity
 		);
 
 		bufferPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
@@ -5159,11 +5055,7 @@ static void VULKAN_INTERNAL_IncrementUniformBufferDescriptorPool(
 			&bufferPoolInfo,
 			NULL,
 			&renderer->uniformBufferDescriptorPools[
-				renderer->currentFrame
-			][
-				renderer->activeUniformBufferDescriptorPoolIndex[
-					renderer->currentFrame
-				]
+				renderer->activeUniformBufferDescriptorPoolIndex
 			]
 		);
 
@@ -5242,8 +5134,8 @@ static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 	fragUniformBufferDescriptorSetNeedsUpdate =
 		(renderer->currentFragUniformBufferDescriptorSet == NULL_DESC_SET);
 
-	vertArrayOffset = (renderer->currentFrame * MAX_TOTAL_SAMPLERS) + MAX_TEXTURE_SAMPLERS;
-	fragArrayOffset = (renderer->currentFrame * MAX_TOTAL_SAMPLERS);
+	vertArrayOffset = MAX_TEXTURE_SAMPLERS;
+	fragArrayOffset = 0;
 
 	for (i = 0; i < renderer->currentPipelineLayoutHash.vertSamplerCount; i += 1)
 	{
@@ -5357,8 +5249,8 @@ static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 
 	if (samplerLayoutsToUpdateCount > 0)
 	{
-		samplerAllocateInfo.descriptorPool = renderer->samplerDescriptorPools[renderer->currentFrame][
-			renderer->activeSamplerDescriptorPoolIndex[renderer->currentFrame]
+		samplerAllocateInfo.descriptorPool = renderer->samplerDescriptorPools[
+			renderer->activeSamplerDescriptorPoolIndex
 		];
 		samplerAllocateInfo.descriptorSetCount = samplerLayoutsToUpdateCount;
 		samplerAllocateInfo.pSetLayouts = samplerLayoutsToUpdate;
@@ -5378,11 +5270,7 @@ static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 			);
 
 			samplerAllocateInfo.descriptorPool = renderer->samplerDescriptorPools[
-				renderer->currentFrame
-			][
-				renderer->activeSamplerDescriptorPoolIndex[
-					renderer->currentFrame
-				]
+				renderer->activeSamplerDescriptorPoolIndex
 			];
 
 			vulkanResult = renderer->vkAllocateDescriptorSets(
@@ -5487,21 +5375,21 @@ static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 	}
 
 	if (	renderer->currentVertUniformBufferDescriptorSet == NULL_DESC_SET ||
-		vUniform != renderer->ldVertUniformBuffers[renderer->currentFrame] ||
-		vSize != renderer->ldVertUniformSizes[renderer->currentFrame]	)
+			vUniform != renderer->ldVertUniformBuffer ||
+			vSize != renderer->ldVertUniformSize	)
 	{
 		vertUniformBufferInfo.buffer = vUniform;
 		vertUniformBufferInfo.offset = 0;
 		vertUniformBufferInfo.range = vSize;
 
 		vertUniformBufferDescriptorSetNeedsUpdate = 1;
-		renderer->ldVertUniformBuffers[renderer->currentFrame] = vUniform;
-		renderer->ldVertUniformOffsets[renderer->currentFrame] = vOff;
-		renderer->ldVertUniformSizes[renderer->currentFrame] = vSize;
+		renderer->ldVertUniformBuffer = vUniform;
+		renderer->ldVertUniformOffset = vOff;
+		renderer->ldVertUniformSize = vSize;
 	}
-	else if (vOff != renderer->ldVertUniformOffsets[renderer->currentFrame])
+	else if (vOff != renderer->ldVertUniformOffset)
 	{
-		renderer->ldVertUniformOffsets[renderer->currentFrame] = vOff;
+		renderer->ldVertUniformOffset = vOff;
 	}
 
 	/* we can't bind a NULL UBO so we have dummy data instead */
@@ -5514,21 +5402,21 @@ static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 	}
 
 	if (	renderer->currentFragUniformBufferDescriptorSet == NULL_DESC_SET ||
-		fUniform != renderer->ldFragUniformBuffers[renderer->currentFrame] ||
-		fSize != renderer->ldFragUniformSizes[renderer->currentFrame]	)
+			fUniform != renderer->ldFragUniformBuffer ||
+			fSize != renderer->ldFragUniformSize)
 	{
 		fragUniformBufferInfo.buffer = fUniform;
 		fragUniformBufferInfo.offset = 0;
 		fragUniformBufferInfo.range = fSize;
 
 		fragUniformBufferDescriptorSetNeedsUpdate = 1;
-		renderer->ldFragUniformBuffers[renderer->currentFrame] = fUniform;
-		renderer->ldFragUniformOffsets[renderer->currentFrame] = fOff;
-		renderer->ldFragUniformSizes[renderer->currentFrame] = fSize;
+		renderer->ldFragUniformBuffer = fUniform;
+		renderer->ldFragUniformOffset = fOff;
+		renderer->ldFragUniformSize = fSize;
 	}
-	else if (fOff != renderer->ldFragUniformOffsets[renderer->currentFrame])
+	else if (fOff != renderer->ldFragUniformOffset)
 	{
-		renderer->ldFragUniformOffsets[renderer->currentFrame] = fOff;
+		renderer->ldFragUniformOffset = fOff;
 	}
 
 	if (vertUniformBufferDescriptorSetNeedsUpdate)
@@ -5549,8 +5437,8 @@ static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 
 	if (uniformBufferLayoutCount > 0)
 	{
-		uniformBufferAllocateInfo.descriptorPool = renderer->uniformBufferDescriptorPools[renderer->currentFrame][
-			renderer->activeUniformBufferDescriptorPoolIndex[renderer->currentFrame]
+		uniformBufferAllocateInfo.descriptorPool = renderer->uniformBufferDescriptorPools[
+			renderer->activeUniformBufferDescriptorPoolIndex
 		];
 		uniformBufferAllocateInfo.descriptorSetCount = uniformBufferLayoutCount;
 		uniformBufferAllocateInfo.pSetLayouts = uniformBufferLayouts;
@@ -5570,11 +5458,7 @@ static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 			);
 
 			uniformBufferAllocateInfo.descriptorPool = renderer->uniformBufferDescriptorPools[
-				renderer->currentFrame
-			][
-				renderer->activeUniformBufferDescriptorPoolIndex[
-					renderer->currentFrame
-				]
+				renderer->activeUniformBufferDescriptorPoolIndex
 			];
 
 			vulkanResult = renderer->vkAllocateDescriptorSets(
@@ -5640,7 +5524,7 @@ static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 	}
 
 	dynamicOffsets[dynamicOffsetsCount] =
-		(uint32_t) renderer->ldVertUniformOffsets[renderer->currentFrame];
+		(uint32_t) renderer->ldVertUniformOffset;
 	dynamicOffsetsCount += 1;
 
 	/* frag ubo */
@@ -5651,7 +5535,7 @@ static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 	}
 
 	dynamicOffsets[dynamicOffsetsCount] =
-		(uint32_t) renderer->ldFragUniformOffsets[renderer->currentFrame];
+		(uint32_t) renderer->ldFragUniformOffset;
 	dynamicOffsetsCount += 1;
 
 	renderer->vkUpdateDescriptorSets(
@@ -5668,7 +5552,7 @@ static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 	descriptorSetsToBind[3] = renderer->currentFragUniformBufferDescriptorSet;
 
 	renderer->vkCmdBindDescriptorSets(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
 		renderer->currentPipelineLayout,
 		0,
@@ -5746,7 +5630,7 @@ static VkSampler VULKAN_INTERNAL_FetchSamplerState(
 static void VULKAN_DestroyDevice(FNA3D_Device *device)
 {
 	VulkanRenderer *renderer = (VulkanRenderer*) device->driverData;
-	uint32_t i, j;
+	uint32_t i;
 
 	VkResult waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
 
@@ -5761,37 +5645,30 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	VULKAN_INTERNAL_DestroyTexture(renderer, renderer->dummyVertTexture);
 	VULKAN_INTERNAL_DestroyTexture(renderer, renderer->dummyFragTexture);
 
-	for (i = 0; i < MAX_FRAMES_IN_FLIGHT + 1; i += 1)
-	{
-		VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
-		renderer->currentFrame = (renderer->currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
-	}
+	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
 
 	VULKAN_INTERNAL_DestroyTextureStagingBuffer(renderer);
 
 	MOJOSHADER_vkDestroyContext(renderer->mojoshaderContext);
 	VULKAN_INTERNAL_DestroyFauxBackbuffer(renderer);
 
-	for (i = 0; i < MAX_FRAMES_IN_FLIGHT; i += 1)
-	{
-		renderer->vkDestroySemaphore(
-			renderer->logicalDevice,
-			renderer->imageAvailableSemaphores[i],
-			NULL
-		);
+	renderer->vkDestroySemaphore(
+		renderer->logicalDevice,
+		renderer->imageAvailableSemaphore,
+		NULL
+	);
 
-		renderer->vkDestroySemaphore(
-			renderer->logicalDevice,
-			renderer->renderFinishedSemaphores[i],
-			NULL
-		);
+	renderer->vkDestroySemaphore(
+		renderer->logicalDevice,
+		renderer->renderFinishedSemaphore,
+		NULL
+	);
 
-		renderer->vkDestroyFence(
-			renderer->logicalDevice,
-			renderer->inFlightFences[i],
-			NULL
-		);
-	}
+	renderer->vkDestroyFence(
+		renderer->logicalDevice,
+		renderer->inFlightFence,
+		NULL
+	);
 
 	renderer->vkDestroyQueryPool(
 		renderer->logicalDevice,
@@ -5859,25 +5736,22 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		NULL
 	);
 
-	for (i = 0; i < MAX_FRAMES_IN_FLIGHT; i += 1)
+	for (i = 0; i < renderer->uniformBufferDescriptorPoolCapacity; i += 1)
 	{
-		for (j = 0; j < renderer->uniformBufferDescriptorPoolCapacity[i]; j += 1)
-		{
-			renderer->vkDestroyDescriptorPool(
-				renderer->logicalDevice,
-				renderer->uniformBufferDescriptorPools[i][j],
-				NULL
-			);
-		}
+		renderer->vkDestroyDescriptorPool(
+			renderer->logicalDevice,
+			renderer->uniformBufferDescriptorPools[i],
+			NULL
+		);
+	}
 
-		for (j = 0; j < renderer->samplerDescriptorPoolCapacity[i]; j += 1)
-		{
-			renderer->vkDestroyDescriptorPool(
-				renderer->logicalDevice,
-				renderer->samplerDescriptorPools[i][j],
-				NULL
-			);
-		}
+	for (i = 0; i < renderer->samplerDescriptorPoolCapacity; i += 1)
+	{
+		renderer->vkDestroyDescriptorPool(
+			renderer->logicalDevice,
+			renderer->samplerDescriptorPools[i],
+			NULL
+		);
 	}
 
 	for (i = 0; i < hmlenu(renderer->renderPassHashMap); i += 1)
@@ -5949,18 +5823,10 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 	SDL_free(renderer->imagesInFlight);
 
-	SDL_free(renderer->queuedRenderbuffersToDestroy);
-	SDL_free(renderer->queuedBuffersToDestroy);
-	SDL_free(renderer->queuedEffectsToDestroy);
-	SDL_free(renderer->queuedTexturesToDestroy);
-
-	for (i = 0; i < MAX_FRAMES_IN_FLIGHT; i += 1)
-	{
-		SDL_free(renderer->renderbuffersToDestroy[i]);
-		SDL_free(renderer->buffersToDestroy[i]);
-		SDL_free(renderer->effectsToDestroy[i]);
-		SDL_free(renderer->texturesToDestroy[i]);
-	}
+	SDL_free(renderer->renderbuffersToDestroy);
+	SDL_free(renderer->buffersToDestroy);
+	SDL_free(renderer->effectsToDestroy);
+	SDL_free(renderer->texturesToDestroy);
 
 	SDL_free(renderer);
 	SDL_free(device);
@@ -5978,7 +5844,7 @@ static void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 	VkResult result;
 	uint32_t i;
 
-	if (renderer->frameInProgress[renderer->currentFrame])
+	if (renderer->frameInProgress)
 	{
 		return;
 	}
@@ -5986,7 +5852,7 @@ static void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 	result = renderer->vkWaitForFences(
 		renderer->logicalDevice,
 		1,
-		&renderer->inFlightFences[renderer->currentFrame],
+		&renderer->inFlightFence,
 		VK_TRUE,
 		UINT64_MAX
 	);
@@ -5996,33 +5862,33 @@ static void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 	/* perform cleanup */
 
 	renderer->vkResetCommandBuffer(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
 	);
 
 	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
 
-	for (i = 0; i < renderer->samplerDescriptorPoolCapacity[renderer->currentFrame]; i += 1)
+	for (i = 0; i < renderer->samplerDescriptorPoolCapacity; i += 1)
 	{
 		renderer->vkResetDescriptorPool(
 			renderer->logicalDevice,
-			renderer->samplerDescriptorPools[renderer->currentFrame][i],
+			renderer->samplerDescriptorPools[i],
 			0
 		);
 	}
 
-	renderer->activeSamplerDescriptorPoolIndex[renderer->currentFrame] = 0;
+	renderer->activeSamplerDescriptorPoolIndex = 0;
 
-	for (i = 0; i < renderer->uniformBufferDescriptorPoolCapacity[renderer->currentFrame]; i += 1)
+	for (i = 0; i < renderer->uniformBufferDescriptorPoolCapacity; i += 1)
 	{
 		renderer->vkResetDescriptorPool(
 			renderer->logicalDevice,
-			renderer->uniformBufferDescriptorPools[renderer->currentFrame][i],
+			renderer->uniformBufferDescriptorPools[i],
 			0
 		);
 	}
 
-	renderer->activeUniformBufferDescriptorPoolIndex[renderer->currentFrame] = 0;
+	renderer->activeUniformBufferDescriptorPoolIndex = 0;
 
 	renderer->currentVertSamplerDescriptorSet = NULL_DESC_SET;
 	renderer->currentFragSamplerDescriptorSet = NULL_DESC_SET;
@@ -6033,12 +5899,12 @@ static void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 	VULKAN_INTERNAL_ResetBuffers(renderer);
 
 	renderer->vkBeginCommandBuffer(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		&beginInfo
 	);
 
-	renderer->commandBufferActive[renderer->currentFrame] = 1;
-	renderer->frameInProgress[renderer->currentFrame] = 1;
+	renderer->commandBufferActive= 1;
+	renderer->frameInProgress = 1;
 	renderer->needNewRenderPass = 1;
 }
 
@@ -6073,7 +5939,7 @@ static void VULKAN_SwapBuffers(
 		renderer->logicalDevice,
 		renderer->swapChain,
 		UINT64_MAX,
-		renderer->imageAvailableSemaphores[renderer->currentFrame],
+		renderer->imageAvailableSemaphore,
 		VK_NULL_HANDLE,
 		&swapChainImageIndex
 	);
@@ -6101,8 +5967,7 @@ static void VULKAN_SwapBuffers(
 		);
 	}
 
-	renderer->imagesInFlight[swapChainImageIndex] =
-		renderer->inFlightFences[renderer->currentFrame];
+	renderer->imagesInFlight[swapChainImageIndex] = renderer->inFlightFence;
 
 	/* Must end render pass before blitting */
 	VULKAN_INTERNAL_EndPass(renderer);
@@ -6184,7 +6049,7 @@ static void VULKAN_SwapBuffers(
 	blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 
 	renderer->vkCmdBlitImage(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		renderer->fauxBackbufferColor.handle->image,
 		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 		renderer->swapChainImages[swapChainImageIndex],
@@ -6223,10 +6088,10 @@ static void VULKAN_SwapBuffers(
 	/* End framebuffer blit! */
 
 	vulkanResult = renderer->vkEndCommandBuffer(
-		renderer->commandBuffers[renderer->currentFrame]
+		renderer->commandBuffer
 	);
 
-	renderer->commandBufferActive[renderer->currentFrame] = 0;
+	renderer->commandBufferActive = 0;
 
 	if (vulkanResult != VK_SUCCESS)
 	{
@@ -6236,26 +6101,26 @@ static void VULKAN_SwapBuffers(
 
 	submitInfo.waitSemaphoreCount = 1;
 	submitInfo.pWaitSemaphores =
-		&renderer->imageAvailableSemaphores[renderer->currentFrame];
+		&renderer->imageAvailableSemaphore;
 	submitInfo.pWaitDstStageMask = waitStages;
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores =
-		&renderer->renderFinishedSemaphores[renderer->currentFrame];
+		&renderer->renderFinishedSemaphore;
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers =
-		&renderer->commandBuffers[renderer->currentFrame];
+		&renderer->commandBuffer;
 
 	renderer->vkResetFences(
 		renderer->logicalDevice,
 		1,
-		&renderer->inFlightFences[renderer->currentFrame]
+		&renderer->inFlightFence
 	);
 
 	result = renderer->vkQueueSubmit(
 		renderer->graphicsQueue,
 		1,
 		&submitInfo,
-		renderer->inFlightFences[renderer->currentFrame]
+		renderer->inFlightFence
 	);
 
 	if (result != VK_SUCCESS)
@@ -6267,7 +6132,7 @@ static void VULKAN_SwapBuffers(
 
 	presentInfo.waitSemaphoreCount = 1;
 	presentInfo.pWaitSemaphores =
-		&renderer->renderFinishedSemaphores[renderer->currentFrame];
+		&renderer->renderFinishedSemaphore;
 	presentInfo.swapchainCount = 1;
 	presentInfo.pSwapchains = &renderer->swapChain;
 	presentInfo.pImageIndices = &swapChainImageIndex;
@@ -6290,17 +6155,15 @@ static void VULKAN_SwapBuffers(
 		FNA3D_LogError("failed to present image");
 	}
 
-	renderer->currentFrame = (renderer->currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
-
 	renderer->vkWaitForFences(
 		renderer->logicalDevice,
 		1,
-		&renderer->inFlightFences[renderer->currentFrame],
+		&renderer->inFlightFence,
 		VK_TRUE,
 		UINT64_MAX
 	);
 
-	renderer->frameInProgress[renderer->currentFrame] = 0;
+	renderer->frameInProgress = 0;
 }
 
 /* Drawing */
@@ -6380,14 +6243,14 @@ static void VULKAN_DrawInstancedPrimitives(
 	VULKAN_INTERNAL_BindResources(renderer);
 
 	renderer->vkCmdBindIndexBuffer(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		subbuf.physicalBuffer->buffer,
 		subbuf.offset,
 		XNAToVK_IndexType[indexElementSize]
 	);
 
 	renderer->vkCmdDrawIndexed(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		PrimitiveVerts(primitiveType, primitiveCount),
 		instanceCount,
 		startIndex,
@@ -6439,7 +6302,7 @@ static void VULKAN_DrawPrimitives(
 	VULKAN_INTERNAL_BindResources(renderer);
 
 	renderer->vkCmdDraw(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		PrimitiveVerts(primitiveType, primitiveCount),
 		1,
 		vertexStart,
@@ -6509,16 +6372,16 @@ static void VULKAN_SetBlendFactor(
 	};
 
 	if (	blendFactor->r != renderer->blendState.blendFactor.r ||
-		blendFactor->g != renderer->blendState.blendFactor.g ||
-		blendFactor->b != renderer->blendState.blendFactor.b ||
-		blendFactor->a != renderer->blendState.blendFactor.a	)
+			blendFactor->g != renderer->blendState.blendFactor.g ||
+			blendFactor->b != renderer->blendState.blendFactor.b ||
+			blendFactor->a != renderer->blendState.blendFactor.a	)
 	{
 		renderer->blendState.blendFactor = *blendFactor;
 
-		if (renderer->frameInProgress[renderer->currentFrame])
+		if (renderer->frameInProgress)
 		{
 			renderer->vkCmdSetBlendConstants(
-				renderer->commandBuffers[renderer->currentFrame],
+				renderer->commandBuffer,
 				blendConstants
 			);
 		}
@@ -6648,18 +6511,16 @@ static void VULKAN_VerifySampler(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkSampler vkSamplerState;
-	uint32_t texArrayOffset = (renderer->currentFrame * MAX_TOTAL_SAMPLERS);
-	uint32_t textureIndex = texArrayOffset + index;
 
 	if (texture == NULL)
 	{
-		if (renderer->textures[textureIndex] != &NullTexture)
+		if (renderer->textures[index] != &NullTexture)
 		{
-			renderer->textures[textureIndex] = &NullTexture;
-			renderer->textureNeedsUpdate[textureIndex] = 1;
+			renderer->textures[index] = &NullTexture;
+			renderer->textureNeedsUpdate[index] = 1;
 		}
 
-		if (renderer->samplers[textureIndex] == NULL_SAMPLER)
+		if (renderer->samplers[index] == NULL_SAMPLER)
 		{
 			vkSamplerState = VULKAN_INTERNAL_FetchSamplerState(
 				renderer,
@@ -6667,8 +6528,8 @@ static void VULKAN_VerifySampler(
 				0
 			);
 
-			renderer->samplers[textureIndex] = vkSamplerState;
-			renderer->samplerNeedsUpdate[textureIndex] = 1;
+			renderer->samplers[index] = vkSamplerState;
+			renderer->samplerNeedsUpdate[index] = 1;
 		}
 
 		return;
@@ -6687,10 +6548,10 @@ static void VULKAN_VerifySampler(
 		&vulkanTexture->resourceAccessType
 	);
 
-	if (vulkanTexture != renderer->textures[textureIndex])
+	if (vulkanTexture != renderer->textures[index])
 	{
-		renderer->textures[textureIndex] = vulkanTexture;
-		renderer->textureNeedsUpdate[textureIndex] = 1;
+		renderer->textures[index] = vulkanTexture;
+		renderer->textureNeedsUpdate[index] = 1;
 	}
 
 	vkSamplerState = VULKAN_INTERNAL_FetchSamplerState(
@@ -6699,10 +6560,10 @@ static void VULKAN_VerifySampler(
 		vulkanTexture->levelCount
 	);
 
-	if (vkSamplerState != renderer->samplers[textureIndex])
+	if (vkSamplerState != renderer->samplers[index])
 	{
-		renderer->samplers[textureIndex] = vkSamplerState;
-		renderer->samplerNeedsUpdate[textureIndex] = 1;
+		renderer->samplers[index] = vkSamplerState;
+		renderer->samplerNeedsUpdate[index] = 1;
 	}
 }
 
@@ -6784,7 +6645,7 @@ static void VULKAN_ApplyVertexBufferBindings(
 	if (bufferCount > 0)
 	{
 		renderer->vkCmdBindVertexBuffers(
-			renderer->commandBuffers[renderer->currentFrame],
+			renderer->commandBuffer,
 			0,
 			bufferCount,
 			buffers,
@@ -6959,7 +6820,7 @@ static void VULKAN_ResolveTarget(
 			blit.dstSubresource.mipLevel = level;
 
 			renderer->vkCmdBlitImage(
-				renderer->commandBuffers[renderer->currentFrame],
+				renderer->commandBuffer,
 				vulkanTexture->image,
 				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 				vulkanTexture->image,
@@ -7217,7 +7078,6 @@ static void VULKAN_AddDisposeTexture(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
-	uint32_t texArrayOffset = (renderer->currentFrame * MAX_TOTAL_SAMPLERS);
 	uint32_t i;
 
 	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
@@ -7231,7 +7091,7 @@ static void VULKAN_AddDisposeTexture(
 		}
 	}
 
-	for (i = texArrayOffset; i < texArrayOffset + TEXTURE_COUNT; i += 1)
+	for (i = 0; i < TEXTURE_COUNT; i += 1)
 	{
 		if (vulkanTexture == renderer->textures[i])
 		{
@@ -7241,17 +7101,17 @@ static void VULKAN_AddDisposeTexture(
 	}
 
 	/* Queue texture for destruction */
-	if (renderer->queuedTexturesToDestroyCount + 1 >= renderer->queuedTexturesToDestroyCapacity)
+	if (renderer->texturesToDestroyCount + 1 >= renderer->texturesToDestroyCapacity)
 	{
-		renderer->queuedTexturesToDestroyCapacity *= 2;
+		renderer->texturesToDestroyCapacity *= 2;
 
-		renderer->queuedTexturesToDestroy = SDL_realloc(
-			renderer->queuedTexturesToDestroy,
-			sizeof(VulkanTexture*) * renderer->queuedTexturesToDestroyCapacity
+		renderer->texturesToDestroy = SDL_realloc(
+			renderer->texturesToDestroy,
+			sizeof(VulkanTexture*) * renderer->texturesToDestroyCapacity
 		);
 	}
-	renderer->queuedTexturesToDestroy[renderer->queuedTexturesToDestroyCount] = vulkanTexture;
-	renderer->queuedTexturesToDestroyCount += 1;
+	renderer->texturesToDestroy[renderer->texturesToDestroyCount] = vulkanTexture;
+	renderer->texturesToDestroyCount += 1;
 }
 
 static void VULKAN_SetTextureData2D(
@@ -7303,7 +7163,7 @@ static void VULKAN_SetTextureData2D(
 	imageCopy.bufferImageHeight = 0;
 
 	renderer->vkCmdCopyBufferToImage(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		renderer->textureStagingBuffer->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
@@ -7365,7 +7225,7 @@ static void VULKAN_SetTextureData3D(
 	imageCopy.bufferImageHeight = 0;
 
 	renderer->vkCmdCopyBufferToImage(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		renderer->textureStagingBuffer->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
@@ -7426,7 +7286,7 @@ static void VULKAN_SetTextureDataCube(
 	imageCopy.bufferImageHeight = 0; /* assumes tightly packed data */
 
 	renderer->vkCmdCopyBufferToImage(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		renderer->textureStagingBuffer->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
@@ -7500,7 +7360,7 @@ static void VULKAN_SetTextureDataYUV(
 	imageCopy.bufferImageHeight = yHeight;
 
 	renderer->vkCmdCopyBufferToImage(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		renderer->textureStagingBuffer->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
@@ -7541,7 +7401,7 @@ static void VULKAN_SetTextureDataYUV(
 	);
 
 	renderer->vkCmdCopyBufferToImage(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		renderer->textureStagingBuffer->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
@@ -7575,7 +7435,7 @@ static void VULKAN_SetTextureDataYUV(
 	);
 
 	renderer->vkCmdCopyBufferToImage(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		renderer->textureStagingBuffer->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
@@ -7834,18 +7694,18 @@ static void VULKAN_AddDisposeRenderbuffer(
 		}
 	}
 
-	if (renderer->queuedRenderbuffersToDestroyCount + 1 >= renderer->queuedRenderbuffersToDestroyCapacity)
+	if (renderer->renderbuffersToDestroyCount + 1 >= renderer->renderbuffersToDestroyCapacity)
 	{
-		renderer->queuedRenderbuffersToDestroyCapacity *= 2;
+		renderer->renderbuffersToDestroyCapacity *= 2;
 
-		renderer->queuedRenderbuffersToDestroy = SDL_realloc(
-			renderer->queuedRenderbuffersToDestroy,
-			sizeof(VulkanRenderbuffer*) * renderer->queuedRenderbuffersToDestroyCapacity
+		renderer->renderbuffersToDestroy = SDL_realloc(
+			renderer->renderbuffersToDestroy,
+			sizeof(VulkanRenderbuffer*) * renderer->renderbuffersToDestroyCapacity
 		);
 	}
 
-	renderer->queuedRenderbuffersToDestroy[renderer->queuedRenderbuffersToDestroyCount] = vlkRenderBuffer;
-	renderer->queuedRenderbuffersToDestroyCount += 1;
+	renderer->renderbuffersToDestroy[renderer->renderbuffersToDestroyCount] = vlkRenderBuffer;
+	renderer->renderbuffersToDestroyCount += 1;
 }
 
 /* Vertex Buffers */
@@ -8098,18 +7958,18 @@ static void VULKAN_AddDisposeEffect(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanEffect *vulkanEffect = (VulkanEffect*) effect;
 
-	if (renderer->queuedEffectsToDestroyCount + 1 >= renderer->queuedEffectsToDestroyCapacity)
+	if (renderer->effectsToDestroyCount + 1 >= renderer->effectsToDestroyCapacity)
 	{
-		renderer->queuedEffectsToDestroyCapacity *= 2;
+		renderer->effectsToDestroyCapacity *= 2;
 
-		renderer->queuedEffectsToDestroy = SDL_realloc(
-			renderer->queuedEffectsToDestroy,
-			sizeof(VulkanEffect*) * renderer->queuedEffectsToDestroyCapacity
+		renderer->effectsToDestroy = SDL_realloc(
+			renderer->effectsToDestroy,
+			sizeof(VulkanEffect*) * renderer->effectsToDestroyCapacity
 		);
 	}
 
-	renderer->queuedEffectsToDestroy[renderer->queuedEffectsToDestroyCount] = vulkanEffect;
-	renderer->queuedEffectsToDestroyCount += 1;
+	renderer->effectsToDestroy[renderer->effectsToDestroyCount] = vulkanEffect;
+	renderer->effectsToDestroyCount += 1;
 }
 
 static void VULKAN_SetEffectTechnique(
@@ -8242,14 +8102,14 @@ static void VULKAN_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 	VULKAN_INTERNAL_EndPass(renderer);
 
 	renderer->vkCmdResetQueryPool(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		renderer->queryPool,
 		vulkanQuery->index,
 		1
 	);
 
 	renderer->vkCmdBeginQuery(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		renderer->queryPool,
 		vulkanQuery->index,
 		VK_QUERY_CONTROL_PRECISE_BIT
@@ -8266,7 +8126,7 @@ static void VULKAN_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
 	 */
 
 	renderer->vkCmdEndQuery(
-		renderer->commandBuffers[renderer->currentFrame],
+		renderer->commandBuffer,
 		renderer->queryPool,
 		vulkanQuery->index
 	);
@@ -8409,7 +8269,7 @@ static void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 	if (renderer->supportsDebugUtils)
 	{
 		renderer->vkCmdInsertDebugUtilsLabelEXT(
-			renderer->commandBuffers[renderer->currentFrame],
+			renderer->commandBuffer,
 			&labelInfo
 		);
 	}
@@ -8546,11 +8406,8 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->presentInterval = presentationParameters->presentationInterval;
 	renderer->deviceWindowHandle = presentationParameters->deviceWindowHandle;
 
-	for (i = 0; i < MAX_FRAMES_IN_FLIGHT; i += 1)
-	{
-		renderer->commandBufferActive[i] = 0;
-		renderer->frameInProgress[i] = 0;
-	}
+	renderer->commandBufferActive = 0;
+	renderer->frameInProgress = 0;
 
 	/*
 	 * Create the vkInstance
@@ -8677,67 +8534,36 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	 * Create "deferred destroy" storage
 	 */
 
-	for (i = 0; i < MAX_FRAMES_IN_FLIGHT; i += 1)
-	{
-		renderer->renderbuffersToDestroyCapacity[i] = 16;
-		renderer->renderbuffersToDestroyCount[i] = 0;
+	renderer->renderbuffersToDestroyCapacity = 16;
+	renderer->renderbuffersToDestroyCount = 0;
 
-		renderer->renderbuffersToDestroy[i] = (VulkanRenderbuffer**) SDL_malloc(
-			sizeof(VulkanRenderbuffer*) *
-			renderer->renderbuffersToDestroyCapacity[i]
-		);
-
-		renderer->buffersToDestroyCapacity[i] = 16;
-		renderer->buffersToDestroyCount[i] = 0;
-
-		renderer->buffersToDestroy[i] = (VulkanBuffer**) SDL_malloc(
-			sizeof(VulkanBuffer*) *
-			renderer->buffersToDestroyCapacity[i]
-		);
-
-		renderer->effectsToDestroyCapacity[i] = 16;
-		renderer->effectsToDestroyCount[i] = 0;
-
-		renderer->effectsToDestroy[i] = (VulkanEffect**) SDL_malloc(
-			sizeof(VulkanEffect*) *
-			renderer->effectsToDestroyCapacity[i]
-		);
-
-		renderer->texturesToDestroyCapacity[i] = 16;
-		renderer->texturesToDestroyCount[i] = 0;
-
-		renderer->texturesToDestroy[i] = (VulkanTexture**) SDL_malloc(
-			sizeof(VulkanTexture*) *
-			renderer->texturesToDestroyCapacity[i]
-		);
-	}
-
-	renderer->queuedRenderbuffersToDestroyCapacity = 16;
-	renderer->queuedRenderbuffersToDestroyCount = 0;
-
-	renderer->queuedRenderbuffersToDestroy = (VulkanRenderbuffer**) SDL_malloc(
-		sizeof(VulkanRenderbuffer*) * renderer->queuedRenderbuffersToDestroyCapacity
+	renderer->renderbuffersToDestroy = (VulkanRenderbuffer**) SDL_malloc(
+		sizeof(VulkanRenderbuffer*) *
+		renderer->renderbuffersToDestroyCapacity
 	);
 
-	renderer->queuedBuffersToDestroyCapacity = 16;
-	renderer->queuedBuffersToDestroyCount = 0;
+	renderer->buffersToDestroyCapacity = 16;
+	renderer->buffersToDestroyCount = 0;
 
-	renderer->queuedBuffersToDestroy = (VulkanBuffer**) SDL_malloc(
-		sizeof(VulkanBuffer*) * renderer->queuedBuffersToDestroyCapacity
+	renderer->buffersToDestroy = (VulkanBuffer**) SDL_malloc(
+		sizeof(VulkanBuffer*) *
+		renderer->buffersToDestroyCapacity
 	);
 
-	renderer->queuedEffectsToDestroyCapacity = 16;
-	renderer->queuedEffectsToDestroyCount = 0;
+	renderer->effectsToDestroyCapacity = 16;
+	renderer->effectsToDestroyCount = 0;
 
-	renderer->queuedEffectsToDestroy = (VulkanEffect**) SDL_malloc(
-		sizeof(VulkanEffect*) * renderer->queuedEffectsToDestroyCapacity
+	renderer->effectsToDestroy = (VulkanEffect**) SDL_malloc(
+		sizeof(VulkanEffect*) *
+		renderer->effectsToDestroyCapacity
 	);
 
-	renderer->queuedTexturesToDestroyCapacity = 16;
-	renderer->queuedTexturesToDestroyCount = 0;
+	renderer->texturesToDestroyCapacity = 16;
+	renderer->texturesToDestroyCount = 0;
 
-	renderer->queuedTexturesToDestroy = (VulkanTexture**) SDL_malloc(
-		sizeof(VulkanTexture*) * renderer->queuedTexturesToDestroyCapacity
+	renderer->texturesToDestroy = (VulkanTexture**) SDL_malloc(
+		sizeof(VulkanTexture*) *
+		renderer->texturesToDestroyCapacity
 	);
 
 	/*
@@ -8748,7 +8574,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		&renderer->instance,
 		&renderer->physicalDevice,
 		&renderer->logicalDevice,
-		MAX_FRAMES_IN_FLIGHT,
+		1,
 		(PFN_MOJOSHADER_vkGetInstanceProcAddr) vkGetInstanceProcAddr,
 		(PFN_MOJOSHADER_vkGetDeviceProcAddr) renderer->vkGetDeviceProcAddr,
 		renderer->queueFamilyIndices.graphicsFamily,
@@ -8783,46 +8609,44 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	 */
 
 	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
-	for (i = 0; i < MAX_FRAMES_IN_FLIGHT; i += 1)
+
+	vulkanResult = renderer->vkCreateSemaphore(
+		renderer->logicalDevice,
+		&semaphoreInfo,
+		NULL,
+		&renderer->imageAvailableSemaphore
+	);
+
+	if (vulkanResult != VK_SUCCESS)
 	{
-		vulkanResult = renderer->vkCreateSemaphore(
-			renderer->logicalDevice,
-			&semaphoreInfo,
-			NULL,
-			&renderer->imageAvailableSemaphores[i]
-		);
+		LogVulkanResult("vkCreateFence", vulkanResult);
+		return NULL;
+	}
 
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResult("vkCreateFence", vulkanResult);
-			return NULL;
-		}
+	vulkanResult = renderer->vkCreateSemaphore(
+		renderer->logicalDevice,
+		&semaphoreInfo,
+		NULL,
+		&renderer->renderFinishedSemaphore
+	);
 
-		vulkanResult = renderer->vkCreateSemaphore(
-			renderer->logicalDevice,
-			&semaphoreInfo,
-			NULL,
-			&renderer->renderFinishedSemaphores[i]
-		);
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateSemaphore", vulkanResult);
+		return NULL;
+	}
 
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResult("vkCreateSemaphore", vulkanResult);
-			return NULL;
-		}
+	vulkanResult = renderer->vkCreateFence(
+		renderer->logicalDevice,
+		&fenceInfo,
+		NULL,
+		&renderer->inFlightFence
+	);
 
-		vulkanResult = renderer->vkCreateFence(
-			renderer->logicalDevice,
-			&fenceInfo,
-			NULL,
-			&renderer->inFlightFences[i]
-		);
-
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResult("vkCreateSemaphore", vulkanResult);
-			return NULL;
-		}
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateSemaphore", vulkanResult);
+		return NULL;
 	}
 
 	renderer->imagesInFlight = (VkFence*) SDL_malloc(
@@ -8857,12 +8681,12 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	}
 
 	commandBufferAllocateInfo.commandPool = renderer->commandPool;
-	commandBufferAllocateInfo.commandBufferCount = MAX_FRAMES_IN_FLIGHT;
+	commandBufferAllocateInfo.commandBufferCount = 1;
 
 	renderer->vkAllocateCommandBuffers(
 		renderer->logicalDevice,
 		&commandBufferAllocateInfo,
-		renderer->commandBuffers
+		&renderer->commandBuffer
 	);
 
 	/*
@@ -9082,62 +8906,59 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	 * Create descriptor pools
 	 */
 
-	for (i = 0; i < MAX_FRAMES_IN_FLIGHT; i += 1)
+	renderer->samplerDescriptorPools = (VkDescriptorPool*) SDL_malloc(
+		sizeof(VkDescriptorPool)
+	);
+
+	renderer->uniformBufferDescriptorPools = (VkDescriptorPool*) SDL_malloc(
+		sizeof(VkDescriptorPool)
+	);
+
+	uniformBufferPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	uniformBufferPoolSize.descriptorCount = UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE;
+
+	uniformBufferPoolInfo.poolSizeCount = 1;
+	uniformBufferPoolInfo.pPoolSizes = &uniformBufferPoolSize;
+	uniformBufferPoolInfo.maxSets = UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE;
+
+	vulkanResult = renderer->vkCreateDescriptorPool(
+		renderer->logicalDevice,
+		&uniformBufferPoolInfo,
+		NULL,
+		&renderer->uniformBufferDescriptorPools[0]
+	);
+
+	if (vulkanResult != VK_SUCCESS)
 	{
-		renderer->samplerDescriptorPools[i] = (VkDescriptorPool*) SDL_malloc(
-			sizeof(VkDescriptorPool)
-		);
-
-		renderer->uniformBufferDescriptorPools[i] = (VkDescriptorPool*) SDL_malloc(
-			sizeof(VkDescriptorPool)
-		);
-
-		uniformBufferPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-		uniformBufferPoolSize.descriptorCount = UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE;
-
-		uniformBufferPoolInfo.poolSizeCount = 1;
-		uniformBufferPoolInfo.pPoolSizes = &uniformBufferPoolSize;
-		uniformBufferPoolInfo.maxSets = UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE;
-
-		vulkanResult = renderer->vkCreateDescriptorPool(
-			renderer->logicalDevice,
-			&uniformBufferPoolInfo,
-			NULL,
-			&renderer->uniformBufferDescriptorPools[i][0]
-		);
-
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResult("vkCreateDescriptorPool", vulkanResult);
-			return NULL;
-		}
-
-		renderer->uniformBufferDescriptorPoolCapacity[i] = 1;
-		renderer->activeUniformBufferDescriptorPoolIndex[i] = 0;
-
-		samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		samplerPoolSize.descriptorCount = SAMPLER_DESCRIPTOR_POOL_SIZE;
-
-		samplerPoolInfo.poolSizeCount = 1;
-		samplerPoolInfo.pPoolSizes = &samplerPoolSize;
-		samplerPoolInfo.maxSets = SAMPLER_DESCRIPTOR_POOL_SIZE;
-
-		vulkanResult = renderer->vkCreateDescriptorPool(
-			renderer->logicalDevice,
-			&samplerPoolInfo,
-			NULL,
-			&renderer->samplerDescriptorPools[i][0]
-		);
-
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResult("vkCreateDescriptorPool", vulkanResult);
-			return NULL;
-		}
-
-		renderer->samplerDescriptorPoolCapacity[i] = 1;
-		renderer->activeSamplerDescriptorPoolIndex[i] = 0;
+		LogVulkanResult("vkCreateDescriptorPool", vulkanResult);
+		return NULL;
 	}
+
+	renderer->uniformBufferDescriptorPoolCapacity = 1;
+	renderer->activeUniformBufferDescriptorPoolIndex = 0;
+
+	samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	samplerPoolSize.descriptorCount = SAMPLER_DESCRIPTOR_POOL_SIZE;
+
+	samplerPoolInfo.poolSizeCount = 1;
+	samplerPoolInfo.pPoolSizes = &samplerPoolSize;
+	samplerPoolInfo.maxSets = SAMPLER_DESCRIPTOR_POOL_SIZE;
+
+	vulkanResult = renderer->vkCreateDescriptorPool(
+		renderer->logicalDevice,
+		&samplerPoolInfo,
+		NULL,
+		&renderer->samplerDescriptorPools[0]
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateDescriptorPool", vulkanResult);
+		return NULL;
+	}
+
+	renderer->samplerDescriptorPoolCapacity = 1;
+	renderer->activeSamplerDescriptorPoolIndex = 0;
 
 	/*
 	 * Init various renderer properties
