@@ -38,6 +38,7 @@ endif()
 
 # Defines
 add_definitions(
+	-DFNA3D_DRIVER_VULKAN
 	-DFNA3D_DRIVER_OPENGL
 )
 add_definitions(
@@ -55,11 +56,9 @@ add_definitions(
 if(APPLE)
 	add_definitions(
 		-DFNA3D_DRIVER_METAL
-		-DSUPPORT_PROFILE_METAL=1
 	)
 else()
 	add_definitions(
-		-DFNA3D_DRIVER_VULKAN
 		-DSUPPORT_PROFILE_METAL=0
 	)
 endif()
@@ -67,7 +66,6 @@ endif()
 if(WIN32)
 	add_definitions(
 		-DFNA3D_DRIVER_D3D11
-		-DSUPPORT_PROFILE_HLSL=1
 	)
 else()
 	add_definitions(
