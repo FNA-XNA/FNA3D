@@ -322,6 +322,14 @@ static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] =
 
 /* Internal Structures */
 
+typedef struct CommandStream
+{
+	VkCommandPool pool;
+	VkCommandBuffer buffer;
+	SDL_mutex *lock;
+	uint8_t active;
+} CommandStream;
+
 typedef struct SurfaceFormatMapping
 {
 	VkFormat formatColor;
@@ -543,14 +551,15 @@ typedef struct VulkanRenderer
 	uint32_t swapChainImageCount;
 	VkExtent2D swapChainExtent;
 
-	VkCommandPool commandPool;
 	VkPipelineCache pipelineCache;
 
 	VkRenderPass renderPass;
 	VkPipeline currentPipeline;
 	VkPipelineLayout currentPipelineLayout;
 	uint64_t currentVertexBufferBindingHash;
-	VkCommandBuffer commandBuffer;
+
+	/* TODO: Decouple render commands and data commands! */
+	CommandStream commands;
 
 	/* Queries */
 	VkQueryPool queryPool;
@@ -684,7 +693,6 @@ typedef struct VulkanRenderer
 	uint32_t texturesToDestroyCount;
 	uint32_t texturesToDestroyCapacity;
 
-	uint8_t commandBufferActive;
 	uint8_t frameInProgress;
 	uint8_t renderPassInProgress;
 	uint8_t needNewRenderPass;
@@ -1118,8 +1126,6 @@ static inline void LogVulkanResult(
 }
 
 /* Forward Declarations for Internal Functions */
-
-static void VULKAN_INTERNAL_EndPass(VulkanRenderer *renderer);
 
 static void VULKAN_BeginFrame(FNA3D_Renderer *driverData);
 
@@ -1951,6 +1957,115 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	return 1;
 }
 
+/* Vulkan: Command Buffers */
+
+static void VULKAN_INTERNAL_CreateCommandStream(
+	VulkanRenderer *renderer,
+	CommandStream *stream
+) {
+	VkResult result;
+	VkCommandPoolCreateInfo commandPoolCreateInfo;
+	VkCommandBufferAllocateInfo commandBufferAllocateInfo;
+
+	commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	commandPoolCreateInfo.pNext = NULL;
+	commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	commandPoolCreateInfo.queueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily;
+	result = renderer->vkCreateCommandPool(
+		renderer->logicalDevice,
+		&commandPoolCreateInfo,
+		NULL,
+		&stream->pool
+	);
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateCommandPool", result);
+	}
+
+	commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	commandBufferAllocateInfo.pNext = NULL;
+	commandBufferAllocateInfo.commandPool = stream->pool;
+	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	commandBufferAllocateInfo.commandBufferCount = 1;
+	result = renderer->vkAllocateCommandBuffers(
+		renderer->logicalDevice,
+		&commandBufferAllocateInfo,
+		&stream->buffer
+	);
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkAllocateCommandBuffers", result);
+	}
+
+	stream->lock = SDL_CreateMutex();
+	stream->active = 0;
+}
+
+static void VULKAN_INTERNAL_DestroyCommandStream(
+	VulkanRenderer *renderer,
+	CommandStream *stream
+) {
+	renderer->vkDestroyCommandPool(
+		renderer->logicalDevice,
+		stream->pool,
+		NULL
+	);
+	SDL_DestroyMutex(stream->lock);
+}
+
+static void VULKAN_INTERNAL_BeginCommandStream(
+	VulkanRenderer *renderer,
+	CommandStream *stream
+) {
+	VkResult result;
+	VkCommandBufferBeginInfo beginInfo;
+
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.pNext = NULL;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	beginInfo.pInheritanceInfo = NULL;
+	result = renderer->vkBeginCommandBuffer(
+		stream->buffer,
+		&beginInfo
+	);
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkBeginCommandBuffer", result);
+	}
+
+	stream->active = 1;
+}
+
+static void VULKAN_INTERNAL_EndCommandStream(
+	VulkanRenderer *renderer,
+	CommandStream *stream
+) {
+	VkResult result = renderer->vkEndCommandBuffer(
+		stream->buffer
+	);
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkEndCommandBuffer", result);
+	}
+
+	stream->active = 0;
+}
+
+static void VULKAN_INTERNAL_ResetCommandStream(
+	VulkanRenderer *renderer,
+	CommandStream *stream
+) {
+	SDL_assert(!stream->active);
+	VkResult result = renderer->vkResetCommandBuffer(
+		stream->buffer,
+		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+	);
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkResetCommandBuffer", result);
+	}
+}
+
 /* Vulkan: Memory Barriers */
 
 static void VULKAN_INTERNAL_BufferMemoryBarrier(
@@ -2014,12 +2129,15 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 
 	if (renderer->renderPassInProgress)
 	{
-		VULKAN_INTERNAL_EndPass(renderer);
+		renderer->vkCmdEndRenderPass(
+			renderer->commands.buffer
+		);
+		renderer->renderPassInProgress = 0;
 		renderer->needNewRenderPass = 1;
 	}
 
 	renderer->vkCmdPipelineBarrier(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		srcStages,
 		dstStages,
 		0,
@@ -2112,11 +2230,14 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 
 	if (renderer->renderPassInProgress)
 	{
-		VULKAN_INTERNAL_EndPass(renderer);
+		renderer->vkCmdEndRenderPass(
+			renderer->commands.buffer
+		);
+		renderer->renderPassInProgress = 0;
 		renderer->needNewRenderPass = 1;
 	}
 	renderer->vkCmdPipelineBarrier(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		srcStages,
 		dstStages,
 		0,
@@ -2395,12 +2516,19 @@ static void VULKAN_INTERNAL_RecreateSwapchain(
 	VkExtent2D extent;
 	VkResult result;
 
-	if (renderer->commandBufferActive)
+	if (renderer->commands.active)
 	{
-		VULKAN_INTERNAL_EndPass(renderer);
+		if (renderer->renderPassInProgress)
+		{
+			renderer->vkCmdEndRenderPass(
+				renderer->commands.buffer
+			);
+			renderer->renderPassInProgress = 0;
+		}
 
-		renderer->vkEndCommandBuffer(
-			renderer->commandBuffer
+		VULKAN_INTERNAL_EndCommandStream(
+			renderer,
+			&renderer->commands
 		);
 
 		submitInfo.waitSemaphoreCount = 0;
@@ -2409,7 +2537,7 @@ static void VULKAN_INTERNAL_RecreateSwapchain(
 		submitInfo.signalSemaphoreCount = 0;
 		submitInfo.pSignalSemaphores = NULL;
 		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &renderer->commandBuffer;
+		submitInfo.pCommandBuffers = &renderer->commands.buffer;
 
 		result = renderer->vkQueueSubmit(
 			renderer->graphicsQueue,
@@ -2426,16 +2554,11 @@ static void VULKAN_INTERNAL_RecreateSwapchain(
 		}
 	}
 
-	renderer->commandBufferActive = 0;
 	renderer->frameInProgress = 0;
 
 	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
 
-	renderer->vkResetCommandPool(
-		renderer->logicalDevice,
-		renderer->commandPool,
-		VK_COMMAND_POOL_RESET_RELEASE_RESOURCES_BIT
-	);
+	VULKAN_INTERNAL_ResetCommandStream(renderer, &renderer->commands);
 
 	VULKAN_INTERNAL_QuerySwapChainSupport(
 		renderer,
@@ -2489,22 +2612,22 @@ static void VULKAN_INTERNAL_Stall(VulkanRenderer *renderer)
 	{
 		VK_STRUCTURE_TYPE_SUBMIT_INFO
 	};
-	VkCommandBufferBeginInfo beginInfo =
-	{
-		VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
-	};
 	VkResult result;
 
-	if (!renderer->commandBufferActive)
+	if (!renderer->commands.active)
 	{
 		return;
 	}
 
-	VULKAN_INTERNAL_EndPass(renderer);
+	if (renderer->renderPassInProgress)
+	{
+		renderer->vkCmdEndRenderPass(
+			renderer->commands.buffer
+		);
+		renderer->renderPassInProgress = 0;
+	}
 
-	renderer->vkEndCommandBuffer(
-		renderer->commandBuffer
-	);
+	VULKAN_INTERNAL_EndCommandStream(renderer, &renderer->commands);
 
 	submitInfo.waitSemaphoreCount = 0;
 	submitInfo.pWaitSemaphores = NULL;
@@ -2512,7 +2635,7 @@ static void VULKAN_INTERNAL_Stall(VulkanRenderer *renderer)
 	submitInfo.signalSemaphoreCount = 0;
 	submitInfo.pSignalSemaphores = NULL;
 	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &renderer->commandBuffer;
+	submitInfo.pCommandBuffers = &renderer->commands.buffer;
 
 	renderer->vkResetFences(
 		renderer->logicalDevice,
@@ -2551,15 +2674,8 @@ static void VULKAN_INTERNAL_Stall(VulkanRenderer *renderer)
 
 	VULKAN_INTERNAL_ResetBuffers(renderer);
 
-	renderer->vkResetCommandBuffer(
-		renderer->commandBuffer,
-		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
-	);
-
-	renderer->vkBeginCommandBuffer(
-		renderer->commandBuffer,
-		&beginInfo
-	);
+	VULKAN_INTERNAL_ResetCommandStream(renderer, &renderer->commands);
+	VULKAN_INTERNAL_BeginCommandStream(renderer, &renderer->commands);
 }
 
 /* Vulkan: Buffer Objects */
@@ -3175,7 +3291,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 	imageCopy.bufferOffset = 0;
 
 	renderer->vkCmdCopyImageToBuffer(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
 		renderer->textureStagingBuffer->buffer,
@@ -3240,7 +3356,7 @@ static void VULKAN_INTERNAL_SetViewportCommand(VulkanRenderer *renderer)
 	if (renderer->frameInProgress)
 	{
 		renderer->vkCmdSetViewport(
-			renderer->commandBuffer,
+			renderer->commands.buffer,
 			0,
 			1,
 			&vulkanViewport
@@ -3274,7 +3390,7 @@ static void VULKAN_INTERNAL_SetScissorRectCommand(VulkanRenderer *renderer)
 		vulkanScissorRect.extent = extent;
 
 		renderer->vkCmdSetScissor(
-			renderer->commandBuffer,
+			renderer->commands.buffer,
 			0,
 			1,
 			&vulkanScissorRect
@@ -3288,7 +3404,7 @@ static void VULKAN_INTERNAL_SetStencilReferenceValueCommand(
 	if (renderer->renderPassInProgress)
 	{
 		renderer->vkCmdSetStencilReference(
-			renderer->commandBuffer,
+			renderer->commands.buffer,
 			VK_STENCIL_FACE_FRONT_AND_BACK,
 			renderer->stencilRef
 		);
@@ -3300,7 +3416,7 @@ static void VULKAN_INTERNAL_SetDepthBiasCommand(VulkanRenderer *renderer)
 	if (renderer->renderPassInProgress)
 	{
 		renderer->vkCmdSetDepthBias(
-			renderer->commandBuffer,
+			renderer->commands.buffer,
 			renderer->rasterizerState.depthBias,
 			0.0, /* no clamp */
 			renderer->rasterizerState.slopeScaleDepthBias
@@ -3833,7 +3949,7 @@ static void VULKAN_INTERNAL_BindPipeline(VulkanRenderer *renderer)
 	if (pipeline != renderer->currentPipeline)
 	{
 		renderer->vkCmdBindPipeline(
-			renderer->commandBuffer,
+			renderer->commands.buffer,
 			VK_PIPELINE_BIND_POINT_GRAPHICS,
 			pipeline
 		);
@@ -4554,21 +4670,27 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 static void VULKAN_INTERNAL_BeginRenderPass(
 	VulkanRenderer *renderer
 ) {
-	VkRenderPassBeginInfo renderPassBeginInfo =
-	{
-		VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO
-	};
+	VkRenderPassBeginInfo renderPassBeginInfo;
 	VkFramebuffer framebuffer;
-	VkOffset2D offset = { 0, 0 };
-	const float blendConstants[] =
-	{
-		renderer->blendState.blendFactor.r / 255.0f,
-		renderer->blendState.blendFactor.g / 255.0f,
-		renderer->blendState.blendFactor.b / 255.0f,
-		renderer->blendState.blendFactor.a / 255.0f
-	};
-	VkImageAspectFlags depthAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+	VkImageAspectFlags depthAspectFlags;
+	float blendConstants[4];
 	uint32_t i;
+
+	if (	!renderer->frameInProgress ||
+		!renderer->needNewRenderPass	)
+	{
+		return;
+	}
+
+	VULKAN_BeginFrame((FNA3D_Renderer*) renderer);
+
+	if (renderer->renderPassInProgress)
+	{
+		renderer->vkCmdEndRenderPass(
+			renderer->commands.buffer
+		);
+		renderer->renderPassInProgress = 0;
+	}
 
 	renderer->renderPass = VULKAN_INTERNAL_FetchRenderPass(renderer);
 	framebuffer = VULKAN_INTERNAL_FetchFramebuffer(
@@ -4576,7 +4698,8 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 		renderer->renderPass
 	);
 
-	renderPassBeginInfo.renderArea.offset = offset;
+	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	renderPassBeginInfo.renderArea.offset.x = 0;
 	renderPassBeginInfo.renderArea.extent.width =
 		renderer->colorAttachments[0]->dimensions.width;
 	renderPassBeginInfo.renderArea.extent.height =
@@ -4606,6 +4729,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 
 	if (renderer->depthStencilAttachment != NULL)
 	{
+		depthAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
 		if (DepthFormatContainsStencil(
 			renderer->depthStencilAttachment->surfaceFormat
 		)) {
@@ -4627,7 +4751,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	}
 
 	renderer->vkCmdBeginRenderPass(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		&renderPassBeginInfo,
 		VK_SUBPASS_CONTENTS_INLINE
 	);
@@ -4638,13 +4762,17 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	VULKAN_INTERNAL_SetScissorRectCommand(renderer);
 	VULKAN_INTERNAL_SetStencilReferenceValueCommand(renderer);
 
+	blendConstants[0] = renderer->blendState.blendFactor.r / 255.0f;
+	blendConstants[1] = renderer->blendState.blendFactor.g / 255.0f;
+	blendConstants[2] = renderer->blendState.blendFactor.b / 255.0f;
+	blendConstants[3] = renderer->blendState.blendFactor.a / 255.0f;
 	renderer->vkCmdSetBlendConstants(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		blendConstants
 	);
 
 	renderer->vkCmdSetDepthBias(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		renderer->rasterizerState.depthBias,
 		0, /* Unused */
 		renderer->rasterizerState.slopeScaleDepthBias
@@ -4680,38 +4808,6 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 		renderer->ldVertexBufferOffsets[i] = 0;
 	}
 
-	renderer->needNewRenderPass = 0;
-}
-
-static void VULKAN_INTERNAL_EndPass(VulkanRenderer *renderer)
-{
-	if (renderer->renderPassInProgress)
-	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commandBuffer
-		);
-		renderer->renderPassInProgress = 0;
-	}
-}
-
-static void VULKAN_INTERNAL_UpdateRenderPass(VulkanRenderer *renderer)
-{
-	if (	!renderer->frameInProgress ||
-		!renderer->needNewRenderPass	)
-	{
-		return;
-	}
-
-	VULKAN_BeginFrame((FNA3D_Renderer*) renderer);
-
-	if (renderer->renderPassInProgress)
-	{
-		VULKAN_INTERNAL_EndPass(renderer);
-	}
-
-	/* TODO: Optimize this to pick a render pass with a LOAD_OP_CLEAR */
-
-	VULKAN_INTERNAL_BeginRenderPass(renderer);
 	renderer->needNewRenderPass = 0;
 }
 
@@ -4792,7 +4888,7 @@ static void VULKAN_INTERNAL_RenderPassClear(
 	}
 
 	renderer->vkCmdClearAttachments(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		attachmentCount,
 		clearAttachments,
 		1,
@@ -4849,7 +4945,7 @@ static void VULKAN_INTERNAL_OutsideRenderPassClear(
 			);
 
 			renderer->vkCmdClearColorImage(
-				renderer->commandBuffer,
+				renderer->commands.buffer,
 				renderer->colorAttachments[i]->image,
 				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 				&clearValue,
@@ -4891,7 +4987,7 @@ static void VULKAN_INTERNAL_OutsideRenderPassClear(
 				);
 
 				renderer->vkCmdClearColorImage(
-					renderer->commandBuffer,
+					renderer->commands.buffer,
 					renderer->colorMultiSampleAttachments[i]->image,
 					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 					&clearValue,
@@ -4948,7 +5044,7 @@ static void VULKAN_INTERNAL_OutsideRenderPassClear(
 		);
 
 		renderer->vkCmdClearDepthStencilImage(
-			renderer->commandBuffer,
+			renderer->commands.buffer,
 			renderer->depthStencilAttachment->image,
 			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 			&clearDepthStencilValue,
@@ -5070,9 +5166,9 @@ static void VULKAN_INTERNAL_IncrementUniformBufferDescriptorPool(
 static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 {
 	uint8_t	vertexSamplerDescriptorSetNeedsUpdate,
-		fragSamplerDescriptorSetNeedsUpdate;
+			fragSamplerDescriptorSetNeedsUpdate;
 	uint8_t	vertUniformBufferDescriptorSetNeedsUpdate,
-		fragUniformBufferDescriptorSetNeedsUpdate;
+			fragUniformBufferDescriptorSetNeedsUpdate;
 	uint32_t vertArrayOffset, fragArrayOffset, i;
 	VkWriteDescriptorSet writeDescriptorSets[MAX_TOTAL_SAMPLERS + 2];
 	uint32_t writeDescriptorSetCount = 0;
@@ -5552,7 +5648,7 @@ static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 	descriptorSetsToBind[3] = renderer->currentFragUniformBufferDescriptorSet;
 
 	renderer->vkCmdBindDescriptorSets(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
 		renderer->currentPipelineLayout,
 		0,
@@ -5676,10 +5772,9 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		NULL
 	);
 
-	renderer->vkDestroyCommandPool(
-		renderer->logicalDevice,
-		renderer->commandPool,
-		NULL
+	VULKAN_INTERNAL_DestroyCommandStream(
+		renderer,
+		&renderer->commands
 	);
 
 	for (i = 0; i < hmlenu(renderer->pipelineHashMap); i += 1)
@@ -5837,10 +5932,6 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 static void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VkCommandBufferBeginInfo beginInfo =
-	{
-		VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
-	};
 	VkResult result;
 	uint32_t i;
 
@@ -5859,12 +5950,9 @@ static void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 
 	LogVulkanResult("vkWaitForFences", result);
 
-	/* perform cleanup */
+	/* Cleanup */
 
-	renderer->vkResetCommandBuffer(
-		renderer->commandBuffer,
-		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
-	);
+	VULKAN_INTERNAL_ResetCommandStream(renderer, &renderer->commands);
 
 	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
 
@@ -5898,12 +5986,8 @@ static void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 	MOJOSHADER_vkEndFrame();
 	VULKAN_INTERNAL_ResetBuffers(renderer);
 
-	renderer->vkBeginCommandBuffer(
-		renderer->commandBuffer,
-		&beginInfo
-	);
+	VULKAN_INTERNAL_BeginCommandStream(renderer, &renderer->commands);
 
-	renderer->commandBufferActive= 1;
 	renderer->frameInProgress = 1;
 	renderer->needNewRenderPass = 1;
 }
@@ -5919,7 +6003,6 @@ static void VULKAN_SwapBuffers(
 	VkImageBlit blit;
 	FNA3D_Rect srcRect;
 	FNA3D_Rect dstRect;
-	VkResult vulkanResult;
 	VkPipelineStageFlags waitStages[] =
 	{
 		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
@@ -5970,7 +6053,13 @@ static void VULKAN_SwapBuffers(
 	renderer->imagesInFlight[swapChainImageIndex] = renderer->inFlightFence;
 
 	/* Must end render pass before blitting */
-	VULKAN_INTERNAL_EndPass(renderer);
+	if (renderer->renderPassInProgress)
+	{
+		renderer->vkCmdEndRenderPass(
+			renderer->commands.buffer
+		);
+		renderer->renderPassInProgress = 0;
+	}
 
 	if (sourceRectangle != NULL)
 	{
@@ -6049,7 +6138,7 @@ static void VULKAN_SwapBuffers(
 	blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 
 	renderer->vkCmdBlitImage(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		renderer->fauxBackbufferColor.handle->image,
 		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 		renderer->swapChainImages[swapChainImageIndex],
@@ -6087,17 +6176,10 @@ static void VULKAN_SwapBuffers(
 
 	/* End framebuffer blit! */
 
-	vulkanResult = renderer->vkEndCommandBuffer(
-		renderer->commandBuffer
+	VULKAN_INTERNAL_EndCommandStream(
+		renderer,
+		&renderer->commands
 	);
-
-	renderer->commandBufferActive = 0;
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkEndCommandBuffer", vulkanResult);
-		return;
-	}
 
 	submitInfo.waitSemaphoreCount = 1;
 	submitInfo.pWaitSemaphores =
@@ -6108,7 +6190,7 @@ static void VULKAN_SwapBuffers(
 		&renderer->renderFinishedSemaphore;
 	submitInfo.commandBufferCount = 1;
 	submitInfo.pCommandBuffers =
-		&renderer->commandBuffer;
+		&renderer->commands.buffer;
 
 	renderer->vkResetFences(
 		renderer->logicalDevice,
@@ -6182,10 +6264,8 @@ static void VULKAN_Clear(
 
 	if (renderer->renderPassInProgress)
 	{
-		if (renderer->needNewRenderPass)
-		{
-			VULKAN_INTERNAL_UpdateRenderPass(renderer);
-		}
+		// May need a new render pass!
+		VULKAN_INTERNAL_BeginRenderPass(renderer);
 
 		VULKAN_INTERNAL_RenderPassClear(
 			renderer,
@@ -6238,19 +6318,19 @@ static void VULKAN_DrawInstancedPrimitives(
 		renderer->currentPrimitiveType = primitiveType;
 		renderer->needNewRenderPass = 1;
 	}
-	VULKAN_INTERNAL_UpdateRenderPass(renderer);
+	VULKAN_INTERNAL_BeginRenderPass(renderer);
 	VULKAN_INTERNAL_BindPipeline(renderer);
 	VULKAN_INTERNAL_BindResources(renderer);
 
 	renderer->vkCmdBindIndexBuffer(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		subbuf.physicalBuffer->buffer,
 		subbuf.offset,
 		XNAToVK_IndexType[indexElementSize]
 	);
 
 	renderer->vkCmdDrawIndexed(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		PrimitiveVerts(primitiveType, primitiveCount),
 		instanceCount,
 		startIndex,
@@ -6297,12 +6377,12 @@ static void VULKAN_DrawPrimitives(
 		renderer->currentPrimitiveType = primitiveType;
 		renderer->needNewRenderPass = 1;
 	}
-	VULKAN_INTERNAL_UpdateRenderPass(renderer);
+	VULKAN_INTERNAL_BeginRenderPass(renderer);
 	VULKAN_INTERNAL_BindPipeline(renderer);
 	VULKAN_INTERNAL_BindResources(renderer);
 
 	renderer->vkCmdDraw(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		PrimitiveVerts(primitiveType, primitiveCount),
 		1,
 		vertexStart,
@@ -6381,7 +6461,7 @@ static void VULKAN_SetBlendFactor(
 		if (renderer->frameInProgress)
 		{
 			renderer->vkCmdSetBlendConstants(
-				renderer->commandBuffer,
+				renderer->commands.buffer,
 				blendConstants
 			);
 		}
@@ -6645,7 +6725,7 @@ static void VULKAN_ApplyVertexBufferBindings(
 	if (bufferCount > 0)
 	{
 		renderer->vkCmdBindVertexBuffers(
-			renderer->commandBuffer,
+			renderer->commands.buffer,
 			0,
 			bufferCount,
 			buffers,
@@ -6761,7 +6841,13 @@ static void VULKAN_ResolveTarget(
 	/* If the target has mipmaps, regenerate them now */
 	if (target->levelCount > 1)
 	{
-		VULKAN_INTERNAL_EndPass(renderer);
+		if (renderer->renderPassInProgress)
+		{
+			renderer->vkCmdEndRenderPass(
+				renderer->commands.buffer
+			);
+			renderer->renderPassInProgress = 0;
+		}
 
 		origAccessType = vulkanTexture->resourceAccessType;
 
@@ -6820,7 +6906,7 @@ static void VULKAN_ResolveTarget(
 			blit.dstSubresource.mipLevel = level;
 
 			renderer->vkCmdBlitImage(
-				renderer->commandBuffer,
+				renderer->commands.buffer,
 				vulkanTexture->image,
 				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
 				vulkanTexture->image,
@@ -7163,7 +7249,7 @@ static void VULKAN_SetTextureData2D(
 	imageCopy.bufferImageHeight = 0;
 
 	renderer->vkCmdCopyBufferToImage(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		renderer->textureStagingBuffer->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
@@ -7225,7 +7311,7 @@ static void VULKAN_SetTextureData3D(
 	imageCopy.bufferImageHeight = 0;
 
 	renderer->vkCmdCopyBufferToImage(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		renderer->textureStagingBuffer->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
@@ -7286,7 +7372,7 @@ static void VULKAN_SetTextureDataCube(
 	imageCopy.bufferImageHeight = 0; /* assumes tightly packed data */
 
 	renderer->vkCmdCopyBufferToImage(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		renderer->textureStagingBuffer->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
@@ -7360,7 +7446,7 @@ static void VULKAN_SetTextureDataYUV(
 	imageCopy.bufferImageHeight = yHeight;
 
 	renderer->vkCmdCopyBufferToImage(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		renderer->textureStagingBuffer->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
@@ -7401,7 +7487,7 @@ static void VULKAN_SetTextureDataYUV(
 	);
 
 	renderer->vkCmdCopyBufferToImage(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		renderer->textureStagingBuffer->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
@@ -7435,7 +7521,7 @@ static void VULKAN_SetTextureDataYUV(
 	);
 
 	renderer->vkCmdCopyBufferToImage(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		renderer->textureStagingBuffer->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
@@ -8099,17 +8185,23 @@ static void VULKAN_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 	VulkanQuery *vulkanQuery = (VulkanQuery*) query;
 
 	/* Need to do this between passes */
-	VULKAN_INTERNAL_EndPass(renderer);
+	if (renderer->renderPassInProgress)
+	{
+		renderer->vkCmdEndRenderPass(
+			renderer->commands.buffer
+		);
+		renderer->renderPassInProgress = 0;
+	}
 
 	renderer->vkCmdResetQueryPool(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		renderer->queryPool,
 		vulkanQuery->index,
 		1
 	);
 
 	renderer->vkCmdBeginQuery(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		renderer->queryPool,
 		vulkanQuery->index,
 		VK_QUERY_CONTROL_PRECISE_BIT
@@ -8126,7 +8218,7 @@ static void VULKAN_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
 	 */
 
 	renderer->vkCmdEndQuery(
-		renderer->commandBuffer,
+		renderer->commands.buffer,
 		renderer->queryPool,
 		vulkanQuery->index
 	);
@@ -8269,7 +8361,7 @@ static void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 	if (renderer->supportsDebugUtils)
 	{
 		renderer->vkCmdInsertDebugUtilsLabelEXT(
-			renderer->commandBuffer,
+			renderer->commands.buffer,
 			&labelInfo
 		);
 	}
@@ -8350,13 +8442,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO
 	};
 
-	/* Variables: Create command pool and buffers */
-	VkCommandPoolCreateInfo commandPoolCreateInfo;
-	VkCommandBufferAllocateInfo commandBufferAllocateInfo =
-	{
-		VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO
-	};
-
 	/* Variables: Create pipeline cache */
 	VkPipelineCacheCreateInfo pipelineCacheCreateInfo = { VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO };
 
@@ -8406,7 +8491,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->presentInterval = presentationParameters->presentationInterval;
 	renderer->deviceWindowHandle = presentationParameters->deviceWindowHandle;
 
-	renderer->commandBufferActive = 0;
 	renderer->frameInProgress = 0;
 
 	/*
@@ -8662,32 +8746,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	 * Create command pool and buffers
 	 */
 
-	SDL_zero(commandPoolCreateInfo);
-	commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-	commandPoolCreateInfo.queueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily;
-	commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-
-	vulkanResult = renderer->vkCreateCommandPool(
-		renderer->logicalDevice,
-		&commandPoolCreateInfo,
-		NULL,
-		&renderer->commandPool
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkCreateCommandPool", vulkanResult);
-		return 0;
-	}
-
-	commandBufferAllocateInfo.commandPool = renderer->commandPool;
-	commandBufferAllocateInfo.commandBufferCount = 1;
-
-	renderer->vkAllocateCommandBuffers(
-		renderer->logicalDevice,
-		&commandBufferAllocateInfo,
-		&renderer->commandBuffer
-	);
+	VULKAN_INTERNAL_CreateCommandStream(renderer, &renderer->commands);
 
 	/*
 	 * Create the initial faux-backbuffer
