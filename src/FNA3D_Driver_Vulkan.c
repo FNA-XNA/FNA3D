@@ -5166,9 +5166,9 @@ static void VULKAN_INTERNAL_IncrementUniformBufferDescriptorPool(
 static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 {
 	uint8_t	vertexSamplerDescriptorSetNeedsUpdate,
-			fragSamplerDescriptorSetNeedsUpdate;
+		fragSamplerDescriptorSetNeedsUpdate;
 	uint8_t	vertUniformBufferDescriptorSetNeedsUpdate,
-			fragUniformBufferDescriptorSetNeedsUpdate;
+		fragUniformBufferDescriptorSetNeedsUpdate;
 	uint32_t vertArrayOffset, fragArrayOffset, i;
 	VkWriteDescriptorSet writeDescriptorSets[MAX_TOTAL_SAMPLERS + 2];
 	uint32_t writeDescriptorSetCount = 0;
