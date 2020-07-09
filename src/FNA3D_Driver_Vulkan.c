@@ -2127,6 +2127,15 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 		dstStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	}
 
+	if (renderer->renderPassInProgress)
+	{
+		renderer->vkCmdEndRenderPass(
+			renderer->commands.buffer
+		);
+		renderer->renderPassInProgress = 0;
+		renderer->needNewRenderPass = 1;
+	}
+
 	renderer->vkCmdPipelineBarrier(
 		renderer->commands.buffer,
 		srcStages,
@@ -2219,6 +2228,14 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 		dstStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	}
 
+	if (renderer->renderPassInProgress)
+	{
+		renderer->vkCmdEndRenderPass(
+			renderer->commands.buffer
+		);
+		renderer->renderPassInProgress = 0;
+		renderer->needNewRenderPass = 1;
+	}
 	renderer->vkCmdPipelineBarrier(
 		renderer->commands.buffer,
 		srcStages,
@@ -2602,6 +2619,14 @@ static void VULKAN_INTERNAL_Stall(VulkanRenderer *renderer)
 		return;
 	}
 
+	if (renderer->renderPassInProgress)
+	{
+		renderer->vkCmdEndRenderPass(
+			renderer->commands.buffer
+		);
+		renderer->renderPassInProgress = 0;
+	}
+
 	VULKAN_INTERNAL_EndCommandStream(renderer, &renderer->commands);
 
 	submitInfo.waitSemaphoreCount = 0;
@@ -2868,14 +2893,6 @@ static void VULKAN_INTERNAL_AllocateSubBuffer(
 	renderer->bufferAllocator->totalAllocated[i] = alignedAlloc;
 	buffer->subBufferCount += 1;
 
-	if (renderer->renderPassInProgress)
-	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commands.buffer
-		);
-		renderer->renderPassInProgress = 0;
-		renderer->needNewRenderPass = 1;
-	}
 	VULKAN_INTERNAL_BufferMemoryBarrier(
 		renderer,
 		buffer->resourceAccessType,
@@ -2927,14 +2944,6 @@ static void VULKAN_INTERNAL_SetBufferData(
 	{
 		if (options == FNA3D_SETDATAOPTIONS_NONE)
 		{
-			if (renderer->renderPassInProgress)
-			{
-				renderer->vkCmdEndRenderPass(
-					renderer->commands.buffer
-				);
-				renderer->renderPassInProgress = 0;
-				/* FIXME: needNewRenderPass? */
-			}
 			VULKAN_INTERNAL_Stall(renderer);
 			vulkanBuffer->bound = 1;
 		}
@@ -3251,15 +3260,6 @@ static void VULKAN_INTERNAL_GetTextureData(
 
 	/* Cache this so we can restore it later */
 	prevResourceAccess = vulkanTexture->resourceAccessType;
-
-	if (renderer->renderPassInProgress)
-	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commands.buffer
-		);
-		renderer->renderPassInProgress = 0;
-		renderer->needNewRenderPass = 1;
-	}
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -4170,15 +4170,6 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 
 	VULKAN_BeginFrame((FNA3D_Renderer*) renderer);
 
-	if (renderer->renderPassInProgress)
-	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commands.buffer
-		);
-		renderer->renderPassInProgress = 0;
-		renderer->needNewRenderPass = 1;
-	}
-
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
 		RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
@@ -4764,6 +4755,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 		&renderPassBeginInfo,
 		VK_SUBPASS_CONTENTS_INLINE
 	);
+
 	renderer->renderPassInProgress = 1;
 
 	VULKAN_INTERNAL_SetViewportCommand(renderer);
@@ -6623,15 +6615,6 @@ static void VULKAN_VerifySampler(
 		return;
 	}
 
-	if (renderer->renderPassInProgress)
-	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commands.buffer
-		);
-		renderer->renderPassInProgress = 0;
-		renderer->needNewRenderPass = 1;
-	}
-
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
 		RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
@@ -7238,15 +7221,6 @@ static void VULKAN_SetTextureData2D(
 
 	SDL_memcpy(renderer->textureStagingBuffer->mapPointer, data, dataLength);
 
-	if (renderer->renderPassInProgress)
-	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commands.buffer
-		);
-		renderer->renderPassInProgress = 0;
-		renderer->needNewRenderPass = 1;
-	}
-
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
@@ -7309,15 +7283,6 @@ static void VULKAN_SetTextureData3D(
 
 	SDL_memcpy(renderer->textureStagingBuffer->mapPointer, data, dataLength);
 
-	if (renderer->renderPassInProgress)
-	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commands.buffer
-		);
-		renderer->renderPassInProgress = 0;
-		renderer->needNewRenderPass = 1;
-	}
-
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
@@ -7379,15 +7344,6 @@ static void VULKAN_SetTextureDataCube(
 
 	SDL_memcpy(renderer->textureStagingBuffer->mapPointer, data, dataLength);
 
-	if (renderer->renderPassInProgress)
-	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commands.buffer
-		);
-		renderer->renderPassInProgress = 0;
-		renderer->needNewRenderPass = 1;
-	}
-
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
@@ -7448,15 +7404,6 @@ static void VULKAN_SetTextureDataYUV(
 
 	VULKAN_BeginFrame(driverData);
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, yDataLength + uvDataLength);
-
-	if (renderer->renderPassInProgress)
-	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commands.buffer
-		);
-		renderer->renderPassInProgress = 0;
-		renderer->needNewRenderPass = 1;
-	}
 
 	/* Initialize values that are the same for Y, U, and V */
 
@@ -7715,14 +7662,6 @@ static FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 
 		renderbuffer->colorBuffer->multiSampleCount = multiSampleCount;
 
-		if (renderer->renderPassInProgress)
-		{
-			renderer->vkCmdEndRenderPass(
-				renderer->commands.buffer
-			);
-			renderer->renderPassInProgress = 0;
-			renderer->needNewRenderPass = 1;
-		}
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
 			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
@@ -7796,14 +7735,6 @@ static FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 		return NULL;
 	}
 
-	if (renderer->renderPassInProgress)
-	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commands.buffer
-		);
-		renderer->renderPassInProgress = 0;
-		renderer->needNewRenderPass = 1;
-	}
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
 		RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
@@ -7933,15 +7864,6 @@ static void VULKAN_GetVertexBufferData(
 		cpy = dataBytes;
 	}
 
-	if (renderer->renderPassInProgress)
-	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commands.buffer
-		);
-		renderer->renderPassInProgress = 0;
-		renderer->needNewRenderPass = 1;
-	}
-
 	VULKAN_INTERNAL_BufferMemoryBarrier(
 		renderer,
 		RESOURCE_ACCESS_TRANSFER_READ,
@@ -8025,15 +7947,6 @@ static void VULKAN_GetIndexBufferData(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
 	VulkanSubBuffer *subbuf = &vulkanBuffer->subBuffers[vulkanBuffer->currentSubBufferIndex];
-
-	if (renderer->renderPassInProgress)
-	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commands.buffer
-		);
-		renderer->renderPassInProgress = 0;
-		renderer->needNewRenderPass = 1;
-	}
 
 	VULKAN_INTERNAL_BufferMemoryBarrier(
 		renderer,
