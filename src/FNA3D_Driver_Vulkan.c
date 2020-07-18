@@ -55,10 +55,6 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
 
 /* Constants/Limits */
 
-/* TODO: This _should_ work fine with a value of 3, but keeping it at 1 until
- * things are farther along - @thatcosmonaut
- */
-
 #define TEXTURE_COUNT MAX_TOTAL_SAMPLERS
 #define MAX_MULTISAMPLE_MASK_SIZE 2
 #define MAX_QUERIES 16
@@ -2055,8 +2051,9 @@ static void VULKAN_INTERNAL_ResetCommandStream(
 	VulkanRenderer *renderer,
 	CommandStream *stream
 ) {
+	VkResult result;
 	SDL_assert(!stream->active);
-	VkResult result = renderer->vkResetCommandBuffer(
+	result = renderer->vkResetCommandBuffer(
 		stream->buffer,
 		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
 	);
@@ -3002,7 +2999,6 @@ static FNA3D_Buffer* VULKAN_INTERNAL_CreateBuffer(
 static void VULKAN_INTERNAL_DestroyTextureStagingBuffer(
 	VulkanRenderer *renderer
 ) {
-
 	renderer->vkFreeMemory(
 		renderer->logicalDevice,
 		renderer->textureStagingBuffer->deviceMemory,
