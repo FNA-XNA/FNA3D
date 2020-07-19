@@ -689,7 +689,6 @@ typedef struct VulkanRenderer
 	uint32_t texturesToDestroyCount;
 	uint32_t texturesToDestroyCapacity;
 
-	uint8_t frameInProgress;
 	uint8_t renderPassInProgress;
 	uint8_t needNewRenderPass;
 	uint8_t renderTargetBound;
@@ -1121,9 +1120,7 @@ static inline void LogVulkanResult(
 	}
 }
 
-/* Forward Declarations for Internal Functions */
-
-static void VULKAN_BeginFrame(FNA3D_Renderer *driverData);
+/* Forward Declarations */
 
 static void VULKAN_GetBackbufferSize(
 	FNA3D_Renderer *driverData,
@@ -2085,8 +2082,6 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 		return;
 	}
 
-	VULKAN_BeginFrame((FNA3D_Renderer*) renderer);
-
 	memoryBarrier.srcAccessMask = 0;
 	memoryBarrier.dstAccessMask = 0;
 	memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -2174,8 +2169,6 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	{
 		return;
 	}
-
-	VULKAN_BeginFrame((FNA3D_Renderer*) renderer);
 
 	memoryBarrier.srcAccessMask = 0;
 	memoryBarrier.dstAccessMask = 0;
@@ -2551,8 +2544,6 @@ static void VULKAN_INTERNAL_RecreateSwapchain(
 		}
 	}
 
-	renderer->frameInProgress = 0;
-
 	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
 
 	VULKAN_INTERNAL_ResetCommandStream(renderer, &renderer->commands);
@@ -2584,6 +2575,8 @@ static void VULKAN_INTERNAL_RecreateSwapchain(
 	}
 
 	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
+
+	VULKAN_INTERNAL_BeginCommandStream(renderer, &renderer->commands);
 }
 
 static void VULKAN_INTERNAL_ResetBuffers(VulkanRenderer *renderer)
@@ -3349,7 +3342,7 @@ static void VULKAN_INTERNAL_SetViewportCommand(VulkanRenderer *renderer)
 	vulkanViewport.minDepth = renderer->viewport.minDepth;
 	vulkanViewport.maxDepth = renderer->viewport.maxDepth;
 
-	if (renderer->frameInProgress)
+	if (renderer->commands.active)
 	{
 		renderer->vkCmdSetViewport(
 			renderer->commands.buffer,
@@ -3960,7 +3953,7 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 	VulkanRenderer *renderer,
 	VulkanBuffer *buffer
 ) {
-	int32_t i;
+	uint32_t i;
 
 	if (buffer->bound)
 	{
@@ -4163,8 +4156,6 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 	renderer->fauxBackbufferHeight = presentationParameters->backBufferHeight;
 
 	renderer->fauxBackbufferSurfaceFormat = presentationParameters->backBufferFormat;
-
-	VULKAN_BeginFrame((FNA3D_Renderer*) renderer);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -4666,19 +4657,19 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 static void VULKAN_INTERNAL_BeginRenderPass(
 	VulkanRenderer *renderer
 ) {
-	VkRenderPassBeginInfo renderPassBeginInfo;
+	VkRenderPassBeginInfo renderPassBeginInfo =
+	{
+		VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO
+	};
 	VkFramebuffer framebuffer;
 	VkImageAspectFlags depthAspectFlags;
 	float blendConstants[4];
 	uint32_t i;
 
-	if (	!renderer->frameInProgress ||
-		!renderer->needNewRenderPass	)
+	if (!renderer->needNewRenderPass)
 	{
 		return;
 	}
-
-	VULKAN_BeginFrame((FNA3D_Renderer*) renderer);
 
 	if (renderer->renderPassInProgress)
 	{
@@ -4694,7 +4685,6 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 		renderer->renderPass
 	);
 
-	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
 	renderPassBeginInfo.renderArea.offset.x = 0;
 	renderPassBeginInfo.renderArea.extent.width =
 		renderer->colorAttachments[0]->dimensions.width;
@@ -4773,8 +4763,6 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 		0, /* Unused */
 		renderer->rasterizerState.slopeScaleDepthBias
 	);
-
-	/* TODO: Visibility buffer */
 
 	/* Reset bindings for the current frame in flight */
 
@@ -5927,65 +5915,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 static void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
 {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VkResult result;
-	uint32_t i;
-
-	if (renderer->frameInProgress)
-	{
-		return;
-	}
-
-	result = renderer->vkWaitForFences(
-		renderer->logicalDevice,
-		1,
-		&renderer->inFlightFence,
-		VK_TRUE,
-		UINT64_MAX
-	);
-
-	LogVulkanResult("vkWaitForFences", result);
-
-	/* Cleanup */
-
-	VULKAN_INTERNAL_ResetCommandStream(renderer, &renderer->commands);
-
-	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
-
-	for (i = 0; i < renderer->samplerDescriptorPoolCapacity; i += 1)
-	{
-		renderer->vkResetDescriptorPool(
-			renderer->logicalDevice,
-			renderer->samplerDescriptorPools[i],
-			0
-		);
-	}
-
-	renderer->activeSamplerDescriptorPoolIndex = 0;
-
-	for (i = 0; i < renderer->uniformBufferDescriptorPoolCapacity; i += 1)
-	{
-		renderer->vkResetDescriptorPool(
-			renderer->logicalDevice,
-			renderer->uniformBufferDescriptorPools[i],
-			0
-		);
-	}
-
-	renderer->activeUniformBufferDescriptorPoolIndex = 0;
-
-	renderer->currentVertSamplerDescriptorSet = NULL_DESC_SET;
-	renderer->currentFragSamplerDescriptorSet = NULL_DESC_SET;
-	renderer->currentVertUniformBufferDescriptorSet = NULL_DESC_SET;
-	renderer->currentFragUniformBufferDescriptorSet = NULL_DESC_SET;
-
-	MOJOSHADER_vkEndFrame();
-	VULKAN_INTERNAL_ResetBuffers(renderer);
-
-	VULKAN_INTERNAL_BeginCommandStream(renderer, &renderer->commands);
-
-	renderer->frameInProgress = 1;
-	renderer->needNewRenderPass = 1;
+	/* No-op */
 }
 
 static void VULKAN_SwapBuffers(
@@ -6011,9 +5941,9 @@ static void VULKAN_SwapBuffers(
 	{
 		VK_STRUCTURE_TYPE_PRESENT_INFO_KHR
 	};
-	uint32_t swapChainImageIndex;
+	uint32_t swapChainImageIndex, i;
 
-	/* begin next frame */
+	/* Begin next frame */
 	result = renderer->vkAcquireNextImageKHR(
 		renderer->logicalDevice,
 		renderer->swapChain,
@@ -6226,22 +6156,60 @@ static void VULKAN_SwapBuffers(
 		VULKAN_INTERNAL_RecreateSwapchain(renderer);
 		return;
 	}
-
-	if (result != VK_SUCCESS)
+	else if (result != VK_SUCCESS)
 	{
 		LogVulkanResult("vkQueuePresentKHR", result);
 		FNA3D_LogError("failed to present image");
 	}
 
-	renderer->vkWaitForFences(
+	/* Wait for frame completion */
+	result = renderer->vkWaitForFences(
 		renderer->logicalDevice,
 		1,
 		&renderer->inFlightFence,
 		VK_TRUE,
 		UINT64_MAX
 	);
+	LogVulkanResult("vkWaitForFences", result);
 
-	renderer->frameInProgress = 0;
+	/* Cleanup */
+
+	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
+
+	for (i = 0; i < renderer->samplerDescriptorPoolCapacity; i += 1)
+	{
+		renderer->vkResetDescriptorPool(
+			renderer->logicalDevice,
+			renderer->samplerDescriptorPools[i],
+			0
+		);
+	}
+
+	renderer->activeSamplerDescriptorPoolIndex = 0;
+
+	for (i = 0; i < renderer->uniformBufferDescriptorPoolCapacity; i += 1)
+	{
+		renderer->vkResetDescriptorPool(
+			renderer->logicalDevice,
+			renderer->uniformBufferDescriptorPools[i],
+			0
+		);
+	}
+
+	renderer->activeUniformBufferDescriptorPoolIndex = 0;
+
+	renderer->currentVertSamplerDescriptorSet = NULL_DESC_SET;
+	renderer->currentFragSamplerDescriptorSet = NULL_DESC_SET;
+	renderer->currentVertUniformBufferDescriptorSet = NULL_DESC_SET;
+	renderer->currentFragUniformBufferDescriptorSet = NULL_DESC_SET;
+
+	MOJOSHADER_vkEndFrame();
+	VULKAN_INTERNAL_ResetBuffers(renderer);
+
+	/* Restart the command stream for the next frame */
+	VULKAN_INTERNAL_ResetCommandStream(renderer, &renderer->commands);
+	VULKAN_INTERNAL_BeginCommandStream(renderer, &renderer->commands);
+	renderer->needNewRenderPass = 1;
 }
 
 /* Drawing */
@@ -6454,7 +6422,7 @@ static void VULKAN_SetBlendFactor(
 	{
 		renderer->blendState.blendFactor = *blendFactor;
 
-		if (renderer->frameInProgress)
+		if (renderer->commands.active)
 		{
 			renderer->vkCmdSetBlendConstants(
 				renderer->commands.buffer,
@@ -7212,7 +7180,6 @@ static void VULKAN_SetTextureData2D(
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
 
-	VULKAN_BeginFrame(driverData);
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
 	SDL_memcpy(renderer->textureStagingBuffer->mapPointer, data, dataLength);
@@ -7274,7 +7241,6 @@ static void VULKAN_SetTextureData3D(
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
 
-	VULKAN_BeginFrame(driverData);
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
 	SDL_memcpy(renderer->textureStagingBuffer->mapPointer, data, dataLength);
@@ -7335,7 +7301,6 @@ static void VULKAN_SetTextureDataCube(
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
 
-	VULKAN_BeginFrame(driverData);
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
 	SDL_memcpy(renderer->textureStagingBuffer->mapPointer, data, dataLength);
@@ -7398,7 +7363,6 @@ static void VULKAN_SetTextureDataYUV(
 	int32_t uvDataLength = BytesPerImage(uvWidth, uvHeight, FNA3D_SURFACEFORMAT_ALPHA8);
 	VkBufferImageCopy imageCopy;
 
-	VULKAN_BeginFrame(driverData);
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, yDataLength + uvDataLength);
 
 	/* Initialize values that are the same for Y, U, and V */
@@ -8075,8 +8039,6 @@ static void VULKAN_ApplyEffect(
 	const MOJOSHADER_effectTechnique *technique = fnaEffect->effect->current_technique;
 	uint32_t numPasses;
 
-	VULKAN_BeginFrame(driverData);
-
 	if (effectData == renderer->currentEffect)
 	{
 		if (	technique == renderer->currentTechnique &&
@@ -8119,8 +8081,6 @@ static void VULKAN_BeginPassRestore(
 ) {
 	MOJOSHADER_effect *effectData = ((VulkanEffect *) effect)->effect;
 	uint32_t whatever;
-
-	VULKAN_BeginFrame(driverData);
 
 	MOJOSHADER_effectBegin(
 			effectData,
@@ -8487,8 +8447,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->presentInterval = presentationParameters->presentationInterval;
 	renderer->deviceWindowHandle = presentationParameters->deviceWindowHandle;
 
-	renderer->frameInProgress = 0;
-
 	/*
 	 * Create the vkInstance
 	 */
@@ -8743,6 +8701,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	 */
 
 	VULKAN_INTERNAL_CreateCommandStream(renderer, &renderer->commands);
+	VULKAN_INTERNAL_BeginCommandStream(renderer, &renderer->commands);
 
 	/*
 	 * Create the initial faux-backbuffer
