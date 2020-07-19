@@ -1897,6 +1897,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	/* specifying used device features */
 
 	deviceFeatures.occlusionQueryPrecise = VK_TRUE;
+	deviceFeatures.fillModeNonSolid = VK_TRUE;
 
 	/* creating the logical device */
 
