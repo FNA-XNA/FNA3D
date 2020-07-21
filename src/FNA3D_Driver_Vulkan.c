@@ -5942,6 +5942,12 @@ static void VULKAN_SwapBuffers(
 	{
 		VK_STRUCTURE_TYPE_PRESENT_INFO_KHR
 	};
+	struct
+	{
+		VkStructureType sType;
+		const void *pNext;
+		uint64_t frameToken;
+	} presentInfoGGP;
 	uint32_t swapChainImageIndex, i;
 
 	/* Begin next frame */
@@ -6139,6 +6145,21 @@ static void VULKAN_SwapBuffers(
 		return;
 	}
 
+	if (renderer->physicalDeviceDriverProperties.driverID == VK_DRIVER_ID_GGP_PROPRIETARY)
+	{
+		const void* token = SDL_GetWindowData(
+			overrideWindowHandle,
+			"GgpFrameToken"
+		);
+		presentInfoGGP.sType = VK_STRUCTURE_TYPE_PRESENT_FRAME_TOKEN_GGP;
+		presentInfoGGP.pNext = NULL;
+		presentInfoGGP.frameToken = (uint64_t) (size_t) token;
+		presentInfo.pNext = &presentInfoGGP;
+	}
+	else
+	{
+		presentInfo.pNext = NULL;
+	}
 	presentInfo.waitSemaphoreCount = 1;
 	presentInfo.pWaitSemaphores =
 		&renderer->renderFinishedSemaphore;
@@ -8382,7 +8403,8 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 		VK_KHR_MAINTENANCE1_EXTENSION_NAME,
 		VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,
-		VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME
+		VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,
+		"VK_GGP_frame_token"
 	};
 	uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 
@@ -8486,6 +8508,10 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	 * Choose/Create vkDevice
 	 */
 
+	if (SDL_strcmp(SDL_GetPlatform(), "Stadia") != 0)
+	{
+		deviceExtensionCount -= 1;
+	}
 	if (!VULKAN_INTERNAL_DeterminePhysicalDevice(
 		renderer,
 		deviceExtensionNames,
