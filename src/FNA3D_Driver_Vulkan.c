@@ -1822,7 +1822,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	renderer->physicalDeviceProperties.pNext =
 		&renderer->physicalDeviceDriverProperties;
 
-	renderer->vkGetPhysicalDeviceProperties2(
+	renderer->vkGetPhysicalDeviceProperties2KHR(
 		renderer->physicalDevice,
 		&renderer->physicalDeviceProperties
 	);
