@@ -137,6 +137,7 @@ VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkEndCommandBuffer, (VkCommandBuffer co
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkFreeCommandBuffers, (VkDevice device, VkCommandPool commandPool, uint32_t commandBufferCount, const VkCommandBuffer *pCommandBuffers))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkFreeMemory, (VkDevice device, VkDeviceMemory memory, const VkAllocationCallbacks *pAllocator))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkGetBufferMemoryRequirements, (VkDevice device, VkBuffer buffer, VkMemoryRequirements *pMemoryRequirements))
+VULKAN_DEVICE_FUNCTION(BaseVK, void, vkGetBufferMemoryRequirements2KHR, (VkDevice device, const VkBufferMemoryRequirementsInfo2* pInfo, VkMemoryRequirements2* pMemoryRequirements))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkGetDeviceQueue, (VkDevice device, uint32_t queueFamilyIndex, uint32_t queueIndex, VkQueue *pQueue))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkGetImageMemoryRequirements, (VkDevice device, VkImage image, VkMemoryRequirements *pMemoryRequirements))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkGetImageMemoryRequirements2KHR, (VkDevice device, const VkImageMemoryRequirementsInfo2* pInfo, VkMemoryRequirements2* pMemoryRequirements))

@@ -2712,11 +2712,34 @@ static VulkanPhysicalBuffer *VULKAN_INTERNAL_NewPhysicalBuffer(
 	{
 		VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO
 	};
-	VkMemoryRequirements memoryRequirements;
+	VkMemoryDedicatedAllocateInfoKHR dedicatedInfo =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
+		NULL,
+		NULL,
+		VK_NULL_HANDLE
+	};
 	VkMemoryAllocateInfo allocInfo =
 	{
 		VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO
 	};
+	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
+		NULL
+	};
+	VkMemoryRequirements2KHR memoryRequirements =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
+		&dedicatedRequirements
+	};
+	VkBufferMemoryRequirementsInfo2KHR bufferRequirementsInfo =
+	{
+		VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2_KHR,
+		NULL,
+		NULL
+	};
+
 	VulkanPhysicalBuffer *result = (VulkanPhysicalBuffer*) SDL_malloc(sizeof(VulkanPhysicalBuffer));
 	SDL_zerop(result);
 
@@ -2727,29 +2750,44 @@ static VulkanPhysicalBuffer *VULKAN_INTERNAL_NewPhysicalBuffer(
 	bufferCreateInfo.queueFamilyIndexCount = 1;
 	bufferCreateInfo.pQueueFamilyIndices = &renderer->queueFamilyIndices.graphicsFamily;
 
-	renderer->vkCreateBuffer(
+	vulkanResult = renderer->vkCreateBuffer(
 		renderer->logicalDevice,
 		&bufferCreateInfo,
 		NULL,
 		&result->buffer
 	);
 
-	renderer->vkGetBufferMemoryRequirements(
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateBuffer", vulkanResult);
+		FNA3D_LogError("Failed to create buffer");
+		return (VulkanPhysicalBuffer*) NULL;
+	}
+
+	bufferRequirementsInfo.buffer = result->buffer;
+
+	renderer->vkGetBufferMemoryRequirements2KHR(
 		renderer->logicalDevice,
-		result->buffer,
+		&bufferRequirementsInfo,
 		&memoryRequirements
 	);
 
-	allocInfo.allocationSize = memoryRequirements.size;
+	allocInfo.allocationSize = memoryRequirements.memoryRequirements.size;
 
 	if (!VULKAN_INTERNAL_FindMemoryType(
 		renderer,
-		memoryRequirements.memoryTypeBits,
+		memoryRequirements.memoryRequirements.memoryTypeBits,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
 		&allocInfo.memoryTypeIndex
 	)) {
 		FNA3D_LogError("Failed to allocate VkBuffer!");
 		return NULL;
+	}
+
+	if (dedicatedRequirements.prefersDedicatedAllocation)
+	{
+		dedicatedInfo.buffer = result->buffer;
+		allocInfo.pNext = &dedicatedInfo;
 	}
 
 	vulkanResult = renderer->vkAllocateMemory(
