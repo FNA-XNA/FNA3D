@@ -3051,10 +3051,32 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	{
 		VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO
 	};
-	VkMemoryRequirements memoryRequirements;
+	VkMemoryDedicatedAllocateInfoKHR dedicatedInfo =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR,
+		NULL,
+		NULL,
+		VK_NULL_HANDLE
+	};
 	VkMemoryAllocateInfo allocInfo =
 	{
 		VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO
+	};
+	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
+		NULL
+	};
+	VkMemoryRequirements2KHR memoryRequirements =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
+		&dedicatedRequirements
+	};
+	VkImageMemoryRequirementsInfo2KHR imageRequirementsInfo =
+	{
+		VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR,
+		NULL,
+		NULL
 	};
 	VkImageViewCreateInfo imageViewCreateInfo =
 	{
@@ -3092,18 +3114,20 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 		return 0;
 	}
 
-	renderer->vkGetImageMemoryRequirements(
+	imageRequirementsInfo.image = texture->image;
+
+	renderer->vkGetImageMemoryRequirements2KHR(
 		renderer->logicalDevice,
-		texture->image,
+		&imageRequirementsInfo,
 		&memoryRequirements
 	);
 
-	texture->memorySize = memoryRequirements.size;
-	allocInfo.allocationSize = memoryRequirements.size;
+	texture->memorySize = memoryRequirements.memoryRequirements.size;
+	allocInfo.allocationSize = memoryRequirements.memoryRequirements.size;
 
 	if (!VULKAN_INTERNAL_FindMemoryType(
 		renderer,
-		memoryRequirements.memoryTypeBits,
+		memoryRequirements.memoryRequirements.memoryTypeBits,
 		memoryProperties,
 		&allocInfo.memoryTypeIndex
 	)) {
@@ -3111,6 +3135,12 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 			"Could not find valid memory type for image creation"
 		);
 		return 0;
+	}
+
+	if (dedicatedRequirements.prefersDedicatedAllocation)
+	{
+		dedicatedInfo.image = texture->image;
+		allocInfo.pNext = &dedicatedInfo;
 	}
 
 	result = renderer->vkAllocateMemory(
@@ -8404,6 +8434,8 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		VK_KHR_MAINTENANCE1_EXTENSION_NAME,
 		VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,
 		VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,
+		VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
+		VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
 		"VK_GGP_frame_token"
 	};
 	uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
