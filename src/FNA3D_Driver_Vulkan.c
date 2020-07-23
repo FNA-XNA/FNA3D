@@ -6519,28 +6519,15 @@ static void VULKAN_SetBlendState(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 
-	if (renderer->blendState.blendFactor.r != blendState->blendFactor.r ||
-		renderer->blendState.blendFactor.g != blendState->blendFactor.g ||
-		renderer->blendState.blendFactor.b != blendState->blendFactor.b ||
-		renderer->blendState.blendFactor.a != blendState->blendFactor.a)
-	{
-		VULKAN_SetBlendFactor(
-			driverData,
-			&blendState->blendFactor
-		);
+	VULKAN_SetBlendFactor(
+		driverData,
+		&blendState->blendFactor
+	);
 
-		renderer->needNewPipeline = 1;
-	}
-
-	if (renderer->blendState.multiSampleMask != blendState->multiSampleMask)
-	{
-		VULKAN_SetMultiSampleMask(
-			driverData,
-			blendState->multiSampleMask
-		);
-
-		renderer->needNewPipeline = 1;
-	}
+	VULKAN_SetMultiSampleMask(
+		driverData,
+		blendState->multiSampleMask
+	);
 
 	SDL_memcpy(&renderer->blendState, blendState, sizeof(FNA3D_BlendState));
 }
