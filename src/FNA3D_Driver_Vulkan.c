@@ -669,6 +669,9 @@ typedef struct VulkanRenderer
 	const MOJOSHADER_effectTechnique *currentTechnique;
 	uint32_t currentPass;
 
+	VkShaderModule currentVertShader;
+	VkShaderModule currentFragShader;
+
 	/* Storing references to objects that need to be destroyed
 	 * so we don't have to stall or invalidate the command buffer
 	 */
@@ -692,6 +695,7 @@ typedef struct VulkanRenderer
 	uint8_t renderPassInProgress;
 	uint8_t needNewRenderPass;
 	uint8_t renderTargetBound;
+	uint8_t needNewPipeline;
 
 	/* Depth Formats (may not match the format implied by the name!) */
 	VkFormat D16Format;
@@ -4002,17 +4006,29 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 
 static void VULKAN_INTERNAL_BindPipeline(VulkanRenderer *renderer)
 {
-	VkPipeline pipeline = VULKAN_INTERNAL_FetchPipeline(renderer);
+	VkShaderModule vertShader, fragShader;
+	MOJOSHADER_vkGetShaderModules(&vertShader, &fragShader);
 
-	if (pipeline != renderer->currentPipeline)
+	if (	renderer->needNewPipeline ||
+			renderer->currentVertShader != vertShader ||
+			renderer->currentFragShader != fragShader	)
 	{
-		renderer->vkCmdBindPipeline(
-			renderer->commands.buffer,
-			VK_PIPELINE_BIND_POINT_GRAPHICS,
-			pipeline
-		);
+		VkPipeline pipeline = VULKAN_INTERNAL_FetchPipeline(renderer);
 
-		renderer->currentPipeline = pipeline;
+		if (pipeline != renderer->currentPipeline)
+		{
+			renderer->vkCmdBindPipeline(
+				renderer->commands.buffer,
+				VK_PIPELINE_BIND_POINT_GRAPHICS,
+				pipeline
+			);
+
+			renderer->currentPipeline = pipeline;
+		}
+
+		renderer->needNewPipeline = 0;
+		renderer->currentVertShader = vertShader;
+		renderer->currentFragShader = fragShader;
 	}
 }
 
@@ -4753,6 +4769,8 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 		renderer,
 		renderer->renderPass
 	);
+
+	renderer->needNewPipeline = 1;
 
 	renderPassBeginInfo.renderArea.offset.x = 0;
 	renderPassBeginInfo.renderArea.extent.width =
@@ -6511,6 +6529,7 @@ static void VULKAN_SetBlendFactor(
 		blendFactor->a != renderer->blendState.blendFactor.a	)
 	{
 		renderer->blendState.blendFactor = *blendFactor;
+		renderer->needNewPipeline = 1;
 
 		if (renderer->commands.active)
 		{
@@ -6540,6 +6559,7 @@ static void VULKAN_SetMultiSampleMask(FNA3D_Renderer *driverData, int32_t mask)
 	if (renderer->multiSampleMask[0] != mask)
 	{
 		renderer->multiSampleMask[0] = mask;
+		renderer->needNewPipeline = 1;
 	}
 }
 
@@ -6567,17 +6587,21 @@ static void VULKAN_SetBlendState(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 
-	SDL_memcpy(&renderer->blendState, blendState, sizeof(FNA3D_BlendState));
-
-	/* Dynamic state */
 	VULKAN_SetBlendFactor(
 		driverData,
 		&blendState->blendFactor
 	);
+
 	VULKAN_SetMultiSampleMask(
 		driverData,
 		blendState->multiSampleMask
 	);
+
+	if (SDL_memcmp(&renderer->blendState, blendState, sizeof(FNA3D_BlendState)) != 0)
+	{
+		SDL_memcpy(&renderer->blendState, blendState, sizeof(FNA3D_BlendState));
+		renderer->needNewPipeline = 1;
+	}
 }
 
 static void VULKAN_SetDepthStencilState(
@@ -6585,11 +6609,17 @@ static void VULKAN_SetDepthStencilState(
 	FNA3D_DepthStencilState *depthStencilState
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	SDL_memcpy(
-		&renderer->depthStencilState,
-		depthStencilState,
-		sizeof(FNA3D_DepthStencilState)
-	);
+
+	if (SDL_memcmp(&renderer->depthStencilState, depthStencilState, sizeof(FNA3D_DepthStencilState)) != 0)
+	{
+		renderer->needNewPipeline = 1;
+
+		SDL_memcpy(
+			&renderer->depthStencilState,
+			depthStencilState,
+			sizeof(FNA3D_DepthStencilState)
+		);
+	}
 
 	/* Dynamic state */
 	VULKAN_SetReferenceStencil(
@@ -6609,6 +6639,7 @@ static void VULKAN_ApplyRasterizerState(
 	{
 		renderer->rasterizerState.scissorTestEnable = rasterizerState->scissorTestEnable;
 		VULKAN_INTERNAL_SetScissorRectCommand(renderer);
+		renderer->needNewPipeline = 1;
 	}
 
 	realDepthBias = rasterizerState->depthBias * XNAToVK_DepthBiasScale(
@@ -6624,6 +6655,7 @@ static void VULKAN_ApplyRasterizerState(
 		renderer->rasterizerState.depthBias = realDepthBias;
 		renderer->rasterizerState.slopeScaleDepthBias = rasterizerState->slopeScaleDepthBias;
 		VULKAN_INTERNAL_SetDepthBiasCommand(renderer);
+		renderer->needNewPipeline = 1;
 	}
 
 	if (	rasterizerState->cullMode != renderer->rasterizerState.cullMode ||
@@ -6633,6 +6665,7 @@ static void VULKAN_ApplyRasterizerState(
 		renderer->rasterizerState.cullMode = rasterizerState->cullMode;
 		renderer->rasterizerState.fillMode = rasterizerState->fillMode;
 		renderer->rasterizerState.multiSampleAntiAlias = rasterizerState->multiSampleAntiAlias;
+		renderer->needNewPipeline = 1;
 	}
 }
 
@@ -6742,7 +6775,12 @@ static void VULKAN_ApplyVertexBufferBindings(
 	);
 	renderer->vertexBindings = bindings;
 	renderer->numVertexBindings = numBindings;
-	renderer->currentVertexBufferBindingHash = hash;
+
+	if (hash != renderer->currentVertexBufferBindingHash)
+	{
+		renderer->currentVertexBufferBindingHash = hash;
+		renderer->needNewPipeline = 1;
+	}
 
 	bufferCount = 0;
 
@@ -9078,6 +9116,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->currentDepthFormat = presentationParameters->depthStencilFormat;
 	renderer->currentPipeline = NULL_PIPELINE;
 	renderer->needNewRenderPass = 1;
+	renderer->needNewPipeline = 1;
 
 	/*
 	 * Check for DXT1/S3TC support
