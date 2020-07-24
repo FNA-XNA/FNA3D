@@ -4010,8 +4010,8 @@ static void VULKAN_INTERNAL_BindPipeline(VulkanRenderer *renderer)
 	MOJOSHADER_vkGetShaderModules(&vertShader, &fragShader);
 
 	if (	renderer->needNewPipeline ||
-			renderer->currentVertShader != vertShader ||
-			renderer->currentFragShader != fragShader	)
+		renderer->currentVertShader != vertShader ||
+		renderer->currentFragShader != fragShader	)
 	{
 		VkPipeline pipeline = VULKAN_INTERNAL_FetchPipeline(renderer);
 
