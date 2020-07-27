@@ -4946,6 +4946,14 @@ static void VULKAN_INTERNAL_RenderPassClear(
 
 		if (clearDepth)
 		{
+			if (depth < 0.0f)
+			{
+				depth = 0.0f;
+			}
+			else if (depth > 1.0f)
+			{
+				depth = 1.0f;
+			}
 			clearAttachments[attachmentCount].aspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
 			clearAttachments[attachmentCount].clearValue.depthStencil.depth = depth;
 		}
@@ -4989,7 +4997,7 @@ static void VULKAN_INTERNAL_OutsideRenderPassClear(
 		renderer->depthStencilAttachment != NULL
 	);
 	VkImageAspectFlags depthAspectMask = 0;
-	VkClearDepthStencilValue clearDepthStencilValue = { depth, stencil };
+	VkClearDepthStencilValue clearDepthStencilValue;
 	VkImageSubresourceRange subresourceRange;
 
 	if (clearColor)
@@ -5091,6 +5099,20 @@ static void VULKAN_INTERNAL_OutsideRenderPassClear(
 		if (clearStencil)
 		{
 			depthAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+		}
+
+		clearDepthStencilValue.stencil = stencil;
+		if (depth < 0.0f)
+		{
+			clearDepthStencilValue.depth = 0.0f;
+		}
+		else if (depth > 1.0f)
+		{
+			clearDepthStencilValue.depth = 1.0f;
+		}
+		else
+		{
+			clearDepthStencilValue.depth = depth;
 		}
 
 		subresourceRange.aspectMask = depthAspectMask;
