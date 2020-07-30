@@ -1059,12 +1059,7 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 	SDL_free(device);
 }
 
-/* Begin/End Frame */
-
-static void D3D11_BeginFrame(FNA3D_Renderer *driverData)
-{
-	/* No-op */
-}
+/* Presentation */
 
 static void D3D11_INTERNAL_UpdateBackbufferVertexBuffer(
 	D3D11Renderer *renderer,

@@ -523,10 +523,7 @@ FNA3DAPI FNA3D_Device* FNA3D_CreateDevice(
 /* Destroys a rendering context previously returned by FNA3D_CreateDevice. */
 FNA3DAPI void FNA3D_DestroyDevice(FNA3D_Device *device);
 
-/* Begin/End Frame */
-
-/* This should be the first thing you call when rendering a frame. */
-FNA3DAPI void FNA3D_BeginFrame(FNA3D_Device *device);
+/* Presentation */
 
 /* Presents the backbuffer to the window.
  *

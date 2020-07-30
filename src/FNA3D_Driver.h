@@ -248,9 +248,7 @@ struct FNA3D_Device
 
 	void (*DestroyDevice)(FNA3D_Device *device);
 
-	/* Begin/End Frame */
-
-	void (*BeginFrame)(FNA3D_Renderer *driverData);
+	/* Presentation */
 
 	void (*SwapBuffers)(
 		FNA3D_Renderer *driverData,
@@ -682,7 +680,6 @@ struct FNA3D_Device
 	result->func = name##_##func;
 #define ASSIGN_DRIVER(name) \
 	ASSIGN_DRIVER_FUNC(DestroyDevice, name) \
-	ASSIGN_DRIVER_FUNC(BeginFrame, name) \
 	ASSIGN_DRIVER_FUNC(SwapBuffers, name) \
 	ASSIGN_DRIVER_FUNC(Clear, name) \
 	ASSIGN_DRIVER_FUNC(DrawIndexedPrimitives, name) \

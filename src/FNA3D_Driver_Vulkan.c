@@ -6020,12 +6020,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	SDL_free(device);
 }
 
-/* Begin/End Frame */
-
-static void VULKAN_BeginFrame(FNA3D_Renderer *driverData)
-{
-	/* No-op */
-}
+/* Presentation */
 
 static void VULKAN_SwapBuffers(
 	FNA3D_Renderer *driverData,

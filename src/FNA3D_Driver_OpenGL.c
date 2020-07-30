@@ -1226,12 +1226,7 @@ static void OPENGL_DestroyDevice(FNA3D_Device *device)
 	SDL_free(device);
 }
 
-/* Begin/End Frame */
-
-static void OPENGL_BeginFrame(FNA3D_Renderer *driverData)
-{
-	/* No-op */
-}
+/* Presentation */
 
 static inline void ExecuteCommands(OpenGLRenderer *renderer)
 {

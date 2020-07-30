@@ -206,16 +206,7 @@ void FNA3D_DestroyDevice(FNA3D_Device *device)
 	device->DestroyDevice(device);
 }
 
-/* Begin/End Frame */
-
-void FNA3D_BeginFrame(FNA3D_Device *device)
-{
-	if (device == NULL)
-	{
-		return;
-	}
-	device->BeginFrame(device->driverData);
-}
+/* Presentation */
 
 void FNA3D_SwapBuffers(
 	FNA3D_Device *device,

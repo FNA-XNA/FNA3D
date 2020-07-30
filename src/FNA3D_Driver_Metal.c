@@ -666,7 +666,26 @@ static void METAL_INTERNAL_EndPass(MetalRenderer *renderer)
 	}
 }
 
-static void METAL_BeginFrame(FNA3D_Renderer *driverData);
+static void METAL_INTERNAL_BeginFrame(FNA3D_Renderer *driverData)
+{
+	MetalRenderer *renderer = (MetalRenderer*) driverData;
+
+	if (renderer->frameInProgress) return;
+
+	/* Wait for the last command buffer to complete... */
+	if (renderer->committedCommandBuffer != NULL)
+	{
+		mtlWaitUntilCompleted(renderer->committedCommandBuffer);
+		objc_release(renderer->committedCommandBuffer);
+		renderer->committedCommandBuffer = NULL;
+	}
+
+	/* The cycle begins anew! */
+	renderer->frameInProgress = 1;
+	renderer->pool = objc_autoreleasePoolPush();
+	renderer->commandBuffer = mtlMakeCommandBuffer(renderer->queue);
+}
+
 static void METAL_INTERNAL_UpdateRenderPass(MetalRenderer *renderer)
 {
 	MTLRenderPassDescriptor *passDesc;
@@ -688,7 +707,7 @@ static void METAL_INTERNAL_UpdateRenderPass(MetalRenderer *renderer)
 	 * ensures that we catch any unexpected draws.
 	 * -caleb
 	 */
-	METAL_BeginFrame((FNA3D_Renderer*) renderer);
+	METAL_INTERNAL_BeginFrame((FNA3D_Renderer*) renderer);
 
 	/* Wrap up rendering with the old encoder */
 	METAL_INTERNAL_EndPass(renderer);
@@ -1920,27 +1939,7 @@ static void METAL_DestroyDevice(FNA3D_Device *device)
 	SDL_free(device);
 }
 
-/* Begin/End Frame */
-
-static void METAL_BeginFrame(FNA3D_Renderer *driverData)
-{
-	MetalRenderer *renderer = (MetalRenderer*) driverData;
-
-	if (renderer->frameInProgress) return;
-
-	/* Wait for the last command buffer to complete... */
-	if (renderer->committedCommandBuffer != NULL)
-	{
-		mtlWaitUntilCompleted(renderer->committedCommandBuffer);
-		objc_release(renderer->committedCommandBuffer);
-		renderer->committedCommandBuffer = NULL;
-	}
-
-	/* The cycle begins anew! */
-	renderer->frameInProgress = 1;
-	renderer->pool = objc_autoreleasePoolPush();
-	renderer->commandBuffer = mtlMakeCommandBuffer(renderer->queue);
-}
+/* Presentation */
 
 static void METAL_INTERNAL_BlitFramebuffer(
 	MetalRenderer *renderer,
@@ -2041,7 +2040,7 @@ static void METAL_SwapBuffers(
 	/* Just in case Present() is called
 	 * before any rendering happens...
 	 */
-	METAL_BeginFrame(driverData);
+	METAL_INTERNAL_BeginFrame(driverData);
 
 	/* Bind the backbuffer and finalize rendering */
 	METAL_SetRenderTargets(
@@ -3164,7 +3163,7 @@ static void METAL_SetTextureData2D(
 	if (mtlTexture->isPrivate)
 	{
 		/* We need an active command buffer */
-		METAL_BeginFrame(driverData);
+		METAL_INTERNAL_BeginFrame(driverData);
 
 		/* Fetch a CPU-accessible texture */
 		handle = METAL_INTERNAL_FetchTransientTexture(
@@ -3272,7 +3271,7 @@ static void METAL_SetTextureDataCube(
 	if (mtlTexture->isPrivate)
 	{
 		/* We need an active command buffer */
-		METAL_BeginFrame(driverData);
+		METAL_INTERNAL_BeginFrame(driverData);
 
 		/* Fetch a CPU-accessible texture */
 		handle = METAL_INTERNAL_FetchTransientTexture(
@@ -3404,7 +3403,7 @@ static void METAL_GetTextureData2D(
 	if (mtlTexture->isPrivate)
 	{
 		/* We need an active command buffer */
-		METAL_BeginFrame(driverData);
+		METAL_INTERNAL_BeginFrame(driverData);
 
 		/* Fetch a CPU-accessible texture */
 		handle = METAL_INTERNAL_FetchTransientTexture(
@@ -3516,7 +3515,7 @@ static void METAL_GetTextureDataCube(
 	if (mtlTexture->isPrivate)
 	{
 		/* We need an active command buffer */
-		METAL_BeginFrame(driverData);
+		METAL_INTERNAL_BeginFrame(driverData);
 
 		/* Fetch a CPU-accessible texture */
 		handle = METAL_INTERNAL_FetchTransientTexture(
@@ -3960,7 +3959,7 @@ static void METAL_ApplyEffect(
 	 * wait until one begins to avoid overwriting
 	 * the previous frame's uniform buffers.
 	 */
-	METAL_BeginFrame(driverData);
+	METAL_INTERNAL_BeginFrame(driverData);
 
 	if (effectData == renderer->currentEffect)
 	{
@@ -4007,7 +4006,7 @@ static void METAL_BeginPassRestore(
 	 * wait until one begins to avoid overwriting
 	 * the previous frame's uniform buffers.
 	 */
-	METAL_BeginFrame(driverData);
+	METAL_INTERNAL_BeginFrame(driverData);
 
 	MOJOSHADER_effectBegin(
 		effectData,
