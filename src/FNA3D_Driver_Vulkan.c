@@ -326,13 +326,197 @@ static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] =
 
 /* Internal Structures */
 
-typedef struct CommandStream
+typedef enum VulkanCommandType
 {
-	VkCommandPool pool;
-	VkCommandBuffer buffer;
-	SDL_mutex *lock;
-	uint8_t active;
-} CommandStream;
+	CMDTYPE_BIND_DESCRIPTOR_SETS,
+	CMDTYPE_BIND_INDEX_BUFFER,
+	CMDTYPE_BIND_PIPELINE,
+	CMDTYPE_BIND_VERTEX_BUFFERS,
+	CMDTYPE_CLEAR_ATTACHMENTS,
+	CMDTYPE_CLEAR_COLOR_IMAGE,
+	CMDTYPE_CLEAR_DEPTH_STENCIL_IMAGE,
+	CMDTYPE_DRAW,
+	CMDTYPE_DRAW_INDEXED,
+	CMDTYPE_SET_BLEND_CONSTANTS,
+	CMDTYPE_SET_DEPTH_BIAS,
+	CMDTYPE_BLIT_IMAGE,
+	CMDTYPE_COPY_BUFFER_TO_IMAGE,
+	CMDTYPE_COPY_IMAGE_TO_BUFFER,
+	CMDTYPE_PIPELINE_BARRIER,
+	CMDTYPE_SET_SCISSOR,
+	CMDTYPE_SET_VIEWPORT,
+	CMDTYPE_SET_STENCIL_REFERENCE,
+	CMDTYPE_INSERT_DEBUG_UTILS_LABEL,
+	CMDTYPE_RESET_QUERY_POOL,
+	CMDTYPE_BEGIN_QUERY,
+	CMDTYPE_END_QUERY,
+	CMDTYPE_BEGIN_RENDER_PASS,
+	CMDTYPE_END_RENDER_PASS
+} VulkanCommandType;
+
+typedef struct VulkanCommand
+{
+	VulkanCommandType type;
+	int32_t threadId;
+	FNA3DNAMELESS union
+	{
+		struct
+		{
+			VkPipelineLayout layout;
+			VkDescriptorSet descriptorSets[4];
+			uint32_t dynamicOffsetCount;
+			uint32_t dynamicOffsets[4];
+		} bindDescriptorSets;
+
+		struct
+		{
+			VkBuffer buffer;
+			VkDeviceSize offset;
+			VkIndexType indexType;
+		} bindIndexBuffer;
+
+		struct
+		{
+			VkPipeline pipeline;
+		} bindPipeline;
+
+		struct
+		{
+			uint32_t bindingCount;
+			VkBuffer buffers[MAX_BOUND_VERTEX_BUFFERS];
+			VkDeviceSize offsets[MAX_BOUND_VERTEX_BUFFERS];
+		} bindVertexBuffers;
+
+		struct
+		{
+			uint32_t attachmentCount;
+			VkClearAttachment attachments[MAX_RENDERTARGET_BINDINGS + 1];
+			VkClearRect rect;
+		} clearAttachments;
+
+		struct
+		{
+			VkImage image;
+			VkClearColorValue color;
+			VkImageSubresourceRange range;
+		} clearColorImage;
+
+		struct
+		{
+			VkImage image;
+			VkClearDepthStencilValue depthStencil;
+			VkImageSubresourceRange range;
+		} clearDepthStencilImage;
+
+		struct
+		{
+			uint32_t vertexCount;
+			uint32_t firstVertex;
+		} draw;
+
+		struct
+		{
+			uint32_t indexCount;
+			uint32_t instanceCount;
+			uint32_t firstIndex;
+			int32_t vertexOffset;
+		} drawIndexed;
+
+		struct
+		{
+			float blendConstants[4];
+		} setBlendConstants;
+
+		struct
+		{
+			float depthBiasConstantFactor;
+			float depthBiasSlopeFactor;
+		} setDepthBias;
+
+		struct
+		{
+			VkImage srcImage;
+			VkImage dstImage;
+			VkImageBlit region;
+			VkFilter filter;
+		} blitImage;
+
+		struct
+		{
+			VkBuffer srcBuffer;
+			VkImage dstImage;
+			VkImageLayout dstImageLayout;
+			VkBufferImageCopy region;
+		} copyBufferToImage;
+
+		struct
+		{
+			VkImage srcImage;
+			VkImageLayout srcImageLayout;
+			VkBuffer dstBuffer;
+			VkBufferImageCopy region;
+		} copyImageToBuffer;
+
+		struct
+		{
+			VkPipelineStageFlags srcStageMask;
+			VkPipelineStageFlags dstStageMask;
+			uint32_t bufferMemoryBarrierCount;
+			VkBufferMemoryBarrier bufferMemoryBarrier;
+			uint32_t imageMemoryBarrierCount;
+			VkImageMemoryBarrier imageMemoryBarrier;
+		} pipelineBarrier;
+
+		struct
+		{
+			VkRect2D scissor;
+		} setScissor;
+
+		struct
+		{
+			VkViewport viewport;
+		} setViewport;
+
+		struct
+		{
+			uint32_t reference;
+		} setStencilReference;
+
+		struct
+		{
+			VkDebugUtilsLabelEXT labelInfo;
+		} insertDebugUtilsLabel;
+
+		struct
+		{
+			VkQueryPool queryPool;
+			uint32_t firstQuery;
+		} resetQueryPool;
+
+		struct
+		{
+			VkQueryPool queryPool;
+			uint32_t query;
+		} beginQuery;
+
+		struct
+		{
+			VkQueryPool queryPool;
+			uint32_t query;
+		} endQuery;
+
+		struct
+		{
+			VkRenderPassBeginInfo beginInfo;
+		} beginRenderPass;
+
+		struct
+		{
+			/* Nothing to do here... */
+			uint8_t dummy;
+		} endRenderPass;
+	};
+} VulkanCommand;
 
 typedef struct QueueFamilyIndices
 {
@@ -561,8 +745,13 @@ typedef struct VulkanRenderer
 	VkPipelineLayout currentPipelineLayout;
 	uint64_t currentVertexBufferBindingHash;
 
-	/* TODO: Decouple render commands and data commands! */
-	CommandStream commands;
+	/* Command Buffers */
+	VkCommandPool commandPool;
+	VkCommandBuffer commandBuffer;
+	uint32_t commandCapacity;
+	uint32_t numActiveCommands;
+	VulkanCommand *commands;
+	SDL_mutex *commandLock;
 
 	/* Queries */
 	VkQueryPool queryPool;
@@ -1103,6 +1292,10 @@ static void VULKAN_GetTextureData2D(
 	void* data,
 	int32_t dataLength
 );
+
+static void VULKAN_INTERNAL_ResetBuffers(VulkanRenderer *renderer);
+
+static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer);
 
 /* Vulkan: Internal Implementation */
 
@@ -1912,73 +2105,48 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 
 /* Vulkan: Command Buffers */
 
-static void VULKAN_INTERNAL_CreateCommandStream(
+static void VULKAN_INTERNAL_EncodeCommand(
 	VulkanRenderer *renderer,
-	CommandStream *stream
+	VulkanCommand cmd
 ) {
-	VkResult result;
-	VkCommandPoolCreateInfo commandPoolCreateInfo;
-	VkCommandBufferAllocateInfo commandBufferAllocateInfo;
+	SDL_LockMutex(renderer->commandLock);
 
-	commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-	commandPoolCreateInfo.pNext = NULL;
-	commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-	commandPoolCreateInfo.queueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily;
-	result = renderer->vkCreateCommandPool(
-		renderer->logicalDevice,
-		&commandPoolCreateInfo,
-		NULL,
-		&stream->pool
-	);
-	if (result != VK_SUCCESS)
+	/* Grow the array if needed */
+	if (renderer->numActiveCommands == renderer->commandCapacity)
 	{
-		LogVulkanResult("vkCreateCommandPool", result);
+		renderer->commandCapacity *= 2;
+		renderer->commands = (VulkanCommand*) SDL_realloc(
+			renderer->commands,
+			sizeof(VulkanCommand) * renderer->commandCapacity
+		);
 	}
 
-	commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	commandBufferAllocateInfo.pNext = NULL;
-	commandBufferAllocateInfo.commandPool = stream->pool;
-	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	commandBufferAllocateInfo.commandBufferCount = 1;
-	result = renderer->vkAllocateCommandBuffers(
-		renderer->logicalDevice,
-		&commandBufferAllocateInfo,
-		&stream->buffer
-	);
-	if (result != VK_SUCCESS)
+	/* Store the calling thread */
+	cmd.threadId = SDL_GetThreadID(NULL);
+
+	/* Add the command to the array */
+	renderer->commands[renderer->numActiveCommands] = cmd;
+	renderer->numActiveCommands += 1;
+
+	SDL_UnlockMutex(renderer->commandLock);
+}
+
+static void VULKAN_INTERNAL_RecordCommands(VulkanRenderer *renderer)
+{
+	VkCommandBufferBeginInfo beginInfo =
 	{
-		LogVulkanResult("vkAllocateCommandBuffers", result);
-	}
-
-	stream->lock = SDL_CreateMutex();
-	stream->active = 0;
-}
-
-static void VULKAN_INTERNAL_DestroyCommandStream(
-	VulkanRenderer *renderer,
-	CommandStream *stream
-) {
-	renderer->vkDestroyCommandPool(
-		renderer->logicalDevice,
-		stream->pool,
-		NULL
-	);
-	SDL_DestroyMutex(stream->lock);
-}
-
-static void VULKAN_INTERNAL_BeginCommandStream(
-	VulkanRenderer *renderer,
-	CommandStream *stream
-) {
+		VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO
+	};
+	uint32_t i;
+	VulkanCommand *cmd;
 	VkResult result;
-	VkCommandBufferBeginInfo beginInfo;
 
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.pNext = NULL;
+	/* renderer->commandLock must be LOCKED at this point! */
+
+	/* Begin recording */
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	beginInfo.pInheritanceInfo = NULL;
 	result = renderer->vkBeginCommandBuffer(
-		stream->buffer,
+		renderer->commandBuffer,
 		&beginInfo
 	);
 	if (result != VK_SUCCESS)
@@ -1986,38 +2154,444 @@ static void VULKAN_INTERNAL_BeginCommandStream(
 		LogVulkanResult("vkBeginCommandBuffer", result);
 	}
 
-	stream->active = 1;
-}
+	/* TODO: Run ordering pass */
 
-static void VULKAN_INTERNAL_EndCommandStream(
-	VulkanRenderer *renderer,
-	CommandStream *stream
-) {
-	VkResult result = renderer->vkEndCommandBuffer(
-		stream->buffer
+	/* Record the commands, in order! */
+	for (i = 0; i < renderer->numActiveCommands; i += 1)
+	{
+		cmd = &renderer->commands[i];
+		switch (cmd->type)
+		{
+			case CMDTYPE_BIND_DESCRIPTOR_SETS:
+				renderer->vkCmdBindDescriptorSets(
+					renderer->commandBuffer,
+					VK_PIPELINE_BIND_POINT_GRAPHICS,
+					cmd->bindDescriptorSets.layout,
+					0,
+					4, /* FIXME: When we batch them, this will need to change. */
+					cmd->bindDescriptorSets.descriptorSets,
+					cmd->bindDescriptorSets.dynamicOffsetCount,
+					cmd->bindDescriptorSets.dynamicOffsets
+				);
+				break;
+
+			case CMDTYPE_BIND_INDEX_BUFFER:
+				renderer->vkCmdBindIndexBuffer(
+					renderer->commandBuffer,
+					cmd->bindIndexBuffer.buffer,
+					cmd->bindIndexBuffer.offset,
+					cmd->bindIndexBuffer.indexType
+				);
+				break;
+
+			case CMDTYPE_BIND_PIPELINE:
+				renderer->vkCmdBindPipeline(
+					renderer->commandBuffer,
+					VK_PIPELINE_BIND_POINT_GRAPHICS,
+					cmd->bindPipeline.pipeline
+				);
+				break;
+
+			case CMDTYPE_BIND_VERTEX_BUFFERS:
+				renderer->vkCmdBindVertexBuffers(
+					renderer->commandBuffer,
+					0,
+					cmd->bindVertexBuffers.bindingCount,
+					cmd->bindVertexBuffers.buffers,
+					cmd->bindVertexBuffers.offsets
+				);
+				break;
+
+			case CMDTYPE_CLEAR_ATTACHMENTS:
+				renderer->vkCmdClearAttachments(
+					renderer->commandBuffer,
+					cmd->clearAttachments.attachmentCount,
+					cmd->clearAttachments.attachments,
+					1,
+					&cmd->clearAttachments.rect
+				);
+				break;
+
+			case CMDTYPE_CLEAR_COLOR_IMAGE:
+				renderer->vkCmdClearColorImage(
+					renderer->commandBuffer,
+					cmd->clearColorImage.image,
+					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+					&cmd->clearColorImage.color,
+					1,
+					&cmd->clearColorImage.range
+				);
+				break;
+
+			case CMDTYPE_CLEAR_DEPTH_STENCIL_IMAGE:
+				renderer->vkCmdClearDepthStencilImage(
+					renderer->commandBuffer,
+					cmd->clearDepthStencilImage.image,
+					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+					&cmd->clearDepthStencilImage.depthStencil,
+					1,
+					&cmd->clearDepthStencilImage.range
+				);
+				break;
+
+			case CMDTYPE_DRAW:
+				renderer->vkCmdDraw(
+					renderer->commandBuffer,
+					cmd->draw.vertexCount,
+					1,
+					cmd->draw.firstVertex,
+					0
+				);
+				break;
+
+			case CMDTYPE_DRAW_INDEXED:
+				renderer->vkCmdDrawIndexed(
+					renderer->commandBuffer,
+					cmd->drawIndexed.indexCount,
+					cmd->drawIndexed.instanceCount,
+					cmd->drawIndexed.firstIndex,
+					cmd->drawIndexed.vertexOffset,
+					0
+				);
+				break;
+
+			case CMDTYPE_SET_BLEND_CONSTANTS:
+				renderer->vkCmdSetBlendConstants(
+					renderer->commandBuffer,
+					cmd->setBlendConstants.blendConstants
+				);
+				break;
+
+			case CMDTYPE_SET_DEPTH_BIAS:
+				renderer->vkCmdSetDepthBias(
+					renderer->commandBuffer,
+					cmd->setDepthBias.depthBiasConstantFactor,
+					0.0f, /* no clamp */
+					cmd->setDepthBias.depthBiasSlopeFactor
+				);
+				break;
+
+			case CMDTYPE_BLIT_IMAGE:
+				renderer->vkCmdBlitImage(
+					renderer->commandBuffer,
+					cmd->blitImage.srcImage,
+					VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+					cmd->blitImage.dstImage,
+					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+					1,
+					&cmd->blitImage.region,
+					cmd->blitImage.filter
+				);
+				break;
+
+			case CMDTYPE_COPY_BUFFER_TO_IMAGE:
+				renderer->vkCmdCopyBufferToImage(
+					renderer->commandBuffer,
+					cmd->copyBufferToImage.srcBuffer,
+					cmd->copyBufferToImage.dstImage,
+					cmd->copyBufferToImage.dstImageLayout,
+					1,
+					&cmd->copyBufferToImage.region
+				);
+				break;
+
+			case CMDTYPE_COPY_IMAGE_TO_BUFFER:
+				renderer->vkCmdCopyImageToBuffer(
+					renderer->commandBuffer,
+					cmd->copyImageToBuffer.srcImage,
+					cmd->copyImageToBuffer.srcImageLayout,
+					cmd->copyImageToBuffer.dstBuffer,
+					1,
+					&cmd->copyImageToBuffer.region
+				);
+				break;
+
+			case CMDTYPE_PIPELINE_BARRIER:
+				renderer->vkCmdPipelineBarrier(
+					renderer->commandBuffer,
+					cmd->pipelineBarrier.srcStageMask,
+					cmd->pipelineBarrier.dstStageMask,
+					0,
+					0,
+					NULL,
+					cmd->pipelineBarrier.bufferMemoryBarrierCount,
+					&cmd->pipelineBarrier.bufferMemoryBarrier,
+					cmd->pipelineBarrier.imageMemoryBarrierCount,
+					&cmd->pipelineBarrier.imageMemoryBarrier
+				);
+				break;
+
+			case CMDTYPE_SET_SCISSOR:
+				renderer->vkCmdSetScissor(
+					renderer->commandBuffer,
+					0,
+					1,
+					&cmd->setScissor.scissor
+				);
+				break;
+
+			case CMDTYPE_SET_VIEWPORT:
+				renderer->vkCmdSetViewport(
+					renderer->commandBuffer,
+					0,
+					1,
+					&cmd->setViewport.viewport
+				);
+				break;
+
+			case CMDTYPE_SET_STENCIL_REFERENCE:
+				renderer->vkCmdSetStencilReference(
+					renderer->commandBuffer,
+					VK_STENCIL_FACE_FRONT_AND_BACK,
+					cmd->setStencilReference.reference
+				);
+				break;
+
+			case CMDTYPE_INSERT_DEBUG_UTILS_LABEL:
+				renderer->vkCmdInsertDebugUtilsLabelEXT(
+					renderer->commandBuffer,
+					&cmd->insertDebugUtilsLabel.labelInfo
+				);
+				break;
+
+			case CMDTYPE_RESET_QUERY_POOL:
+				renderer->vkCmdResetQueryPool(
+					renderer->commandBuffer,
+					cmd->resetQueryPool.queryPool,
+					cmd->resetQueryPool.firstQuery,
+					1
+				);
+				break;
+
+			case CMDTYPE_BEGIN_QUERY:
+				renderer->vkCmdBeginQuery(
+					renderer->commandBuffer,
+					cmd->beginQuery.queryPool,
+					cmd->beginQuery.query,
+					VK_QUERY_CONTROL_PRECISE_BIT
+				);
+				break;
+
+			case CMDTYPE_END_QUERY:
+				renderer->vkCmdEndQuery(
+					renderer->commandBuffer,
+					cmd->endQuery.queryPool,
+					cmd->endQuery.query
+				);
+				break;
+
+			case CMDTYPE_BEGIN_RENDER_PASS:
+				renderer->vkCmdBeginRenderPass(
+					renderer->commandBuffer,
+					&cmd->beginRenderPass.beginInfo,
+					VK_SUBPASS_CONTENTS_INLINE
+				);
+				break;
+
+			case CMDTYPE_END_RENDER_PASS:
+				renderer->vkCmdEndRenderPass(renderer->commandBuffer);
+				break;
+		}
+	}
+
+	/* End command recording */
+	result = renderer->vkEndCommandBuffer(
+		renderer->commandBuffer
 	);
 	if (result != VK_SUCCESS)
 	{
 		LogVulkanResult("vkEndCommandBuffer", result);
 	}
-
-	stream->active = 0;
 }
 
-static void VULKAN_INTERNAL_ResetCommandStream(
-	VulkanRenderer *renderer,
-	CommandStream *stream
-) {
-	VkResult result;
-	SDL_assert(!stream->active);
+static void VULKAN_INTERNAL_WaitAndReset(VulkanRenderer *renderer)
+{
+	VkResult result = renderer->vkWaitForFences(
+		renderer->logicalDevice,
+		1,
+		&renderer->inFlightFence,
+		VK_TRUE,
+		UINT64_MAX
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkWaitForFences", result);
+		return;
+	}
+
+	/* Reset buffer and subbuffer binding info */
+	VULKAN_INTERNAL_ResetBuffers(renderer);
+
+	/* Reset the command buffer */
 	result = renderer->vkResetCommandBuffer(
-		stream->buffer,
+		renderer->commandBuffer,
 		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
 	);
 	if (result != VK_SUCCESS)
 	{
 		LogVulkanResult("vkResetCommandBuffer", result);
 	}
+}
+
+static void VULKAN_INTERNAL_Flush(VulkanRenderer *renderer)
+{
+	VkResult result;
+	VkSubmitInfo submitInfo =
+	{
+		VK_STRUCTURE_TYPE_SUBMIT_INFO
+	};
+
+	/* Keep this locked until the end of the function! */
+	SDL_LockMutex(renderer->commandLock);
+
+	/* TODO: Batch descriptor set updates */
+
+	/* Record commands into the command buffer */
+	VULKAN_INTERNAL_RecordCommands(renderer);
+	renderer->numActiveCommands = 0;
+
+	/* Submit the command buffer */
+	submitInfo.waitSemaphoreCount = 0;
+	submitInfo.pWaitSemaphores = NULL;
+	submitInfo.pWaitDstStageMask = NULL;
+	submitInfo.signalSemaphoreCount = 0;
+	submitInfo.pSignalSemaphores = NULL;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &renderer->commandBuffer;
+
+	renderer->vkResetFences(
+		renderer->logicalDevice,
+		1,
+		&renderer->inFlightFence
+	);
+
+	result = renderer->vkQueueSubmit(
+		renderer->graphicsQueue,
+		1,
+		&submitInfo,
+		renderer->inFlightFence
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkQueueSubmit", result);
+		return;
+	}
+
+	/* Wait for completion */
+	VULKAN_INTERNAL_WaitAndReset(renderer);
+
+	/* We're done operating on commands for now! */
+	SDL_UnlockMutex(renderer->commandLock);
+}
+
+static void VULKAN_INTERNAL_FlushAndPresent(
+	VulkanRenderer *renderer,
+	void* overrideWindowHandle,
+	uint32_t swapChainImageIndex
+) {
+	VkResult result;
+	VkSubmitInfo submitInfo =
+	{
+		VK_STRUCTURE_TYPE_SUBMIT_INFO
+	};
+	VkPipelineStageFlags waitStages[] =
+	{
+		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+	};
+	VkPresentInfoKHR presentInfo =
+	{
+		VK_STRUCTURE_TYPE_PRESENT_INFO_KHR
+	};
+	struct
+	{
+		VkStructureType sType;
+		const void *pNext;
+		uint64_t frameToken;
+	} presentInfoGGP;
+
+	/* Keep this locked until the end of the function! */
+	SDL_LockMutex(renderer->commandLock);
+
+	/* TODO: Batch descriptor set updates */
+
+	/* Record commands into the command buffer */
+	VULKAN_INTERNAL_RecordCommands(renderer);
+	renderer->numActiveCommands = 0;
+
+	/* Prepare the command buffer for submission */
+	submitInfo.waitSemaphoreCount = 1;
+	submitInfo.pWaitSemaphores = &renderer->imageAvailableSemaphore;
+	submitInfo.pWaitDstStageMask = waitStages;
+	submitInfo.signalSemaphoreCount = 1;
+	submitInfo.pSignalSemaphores = &renderer->renderFinishedSemaphore;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &renderer->commandBuffer;
+
+	renderer->vkResetFences(
+		renderer->logicalDevice,
+		1,
+		&renderer->inFlightFence
+	);
+
+	result = renderer->vkQueueSubmit(
+		renderer->graphicsQueue,
+		1,
+		&submitInfo,
+		renderer->inFlightFence
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkQueueSubmit", result);
+		return;
+	}
+
+	if (renderer->physicalDeviceDriverProperties.driverID == VK_DRIVER_ID_GGP_PROPRIETARY)
+	{
+		const void* token = SDL_GetWindowData(
+			(SDL_Window*) overrideWindowHandle,
+			"GgpFrameToken"
+		);
+		presentInfoGGP.sType = VK_STRUCTURE_TYPE_PRESENT_FRAME_TOKEN_GGP;
+		presentInfoGGP.pNext = NULL;
+		presentInfoGGP.frameToken = (uint64_t) (size_t) token;
+		presentInfo.pNext = &presentInfoGGP;
+	}
+	else
+	{
+		presentInfo.pNext = NULL;
+	}
+	presentInfo.waitSemaphoreCount = 1;
+	presentInfo.pWaitSemaphores =
+		&renderer->renderFinishedSemaphore;
+	presentInfo.swapchainCount = 1;
+	presentInfo.pSwapchains = &renderer->swapChain;
+	presentInfo.pImageIndices = &swapChainImageIndex;
+	presentInfo.pResults = NULL;
+
+	result = renderer->vkQueuePresentKHR(
+		renderer->presentQueue,
+		&presentInfo
+	);
+
+	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
+	{
+		VULKAN_INTERNAL_RecreateSwapchain(renderer);
+		return;
+	}
+	else if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkQueuePresentKHR", result);
+		FNA3D_LogError("failed to present image");
+	}
+
+	/* Wait for frame completion */
+	VULKAN_INTERNAL_WaitAndReset(renderer);
+
+	/* We're done operating on commands for now! */
+	SDL_UnlockMutex(renderer->commandLock);
 }
 
 /* Vulkan: Memory Barriers */
@@ -2036,6 +2610,14 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 	};
 	VulkanResourceAccessType prevAccess, nextAccess;
 	const VulkanResourceAccessInfo *prevAccessInfo, *nextAccessInfo;
+	VulkanCommand endPassCmd =
+	{
+		CMDTYPE_END_RENDER_PASS
+	};
+	VulkanCommand pipelineBarrierCmd =
+	{
+		CMDTYPE_PIPELINE_BARRIER
+	};
 
 	if (subBuffer->resourceAccessType == nextResourceAccessType)
 	{
@@ -2081,25 +2663,20 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 
 	if (renderer->renderPassInProgress)
 	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commands.buffer
+		VULKAN_INTERNAL_EncodeCommand(
+			renderer,
+			endPassCmd
 		);
 		renderer->renderPassInProgress = 0;
 		renderer->needNewRenderPass = 1;
 	}
 
-	renderer->vkCmdPipelineBarrier(
-		renderer->commands.buffer,
-		srcStages,
-		dstStages,
-		0,
-		0,
-		NULL,
-		1,
-		&memoryBarrier,
-		0,
-		NULL
-	);
+	pipelineBarrierCmd.pipelineBarrier.srcStageMask = srcStages;
+	pipelineBarrierCmd.pipelineBarrier.dstStageMask = dstStages;
+	pipelineBarrierCmd.pipelineBarrier.bufferMemoryBarrierCount = 1;
+	pipelineBarrierCmd.pipelineBarrier.bufferMemoryBarrier = memoryBarrier;
+	pipelineBarrierCmd.pipelineBarrier.imageMemoryBarrierCount = 0;
+	VULKAN_INTERNAL_EncodeCommand(renderer, pipelineBarrierCmd);
 
 	subBuffer->resourceAccessType = nextResourceAccessType;
 }
@@ -2124,6 +2701,14 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	};
 	VulkanResourceAccessType prevAccess;
 	const VulkanResourceAccessInfo *pPrevAccessInfo, *pNextAccessInfo;
+	VulkanCommand endPassCmd =
+	{
+		CMDTYPE_END_RENDER_PASS
+	};
+	VulkanCommand pipelineBarrierCmd =
+	{
+		CMDTYPE_PIPELINE_BARRIER
+	};
 
 	if (*resourceAccessType == nextAccess)
 	{
@@ -2180,24 +2765,20 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 
 	if (renderer->renderPassInProgress)
 	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commands.buffer
+		VULKAN_INTERNAL_EncodeCommand(
+			renderer,
+			endPassCmd
 		);
 		renderer->renderPassInProgress = 0;
 		renderer->needNewRenderPass = 1;
 	}
-	renderer->vkCmdPipelineBarrier(
-		renderer->commands.buffer,
-		srcStages,
-		dstStages,
-		0,
-		0,
-		NULL,
-		0,
-		NULL,
-		1,
-		&memoryBarrier
-	);
+
+	pipelineBarrierCmd.pipelineBarrier.srcStageMask = srcStages;
+	pipelineBarrierCmd.pipelineBarrier.dstStageMask = dstStages;
+	pipelineBarrierCmd.pipelineBarrier.bufferMemoryBarrierCount = 0;
+	pipelineBarrierCmd.pipelineBarrier.imageMemoryBarrierCount = 1;
+	pipelineBarrierCmd.pipelineBarrier.imageMemoryBarrier = memoryBarrier;
+	VULKAN_INTERNAL_EncodeCommand(renderer, pipelineBarrierCmd);
 
 	*resourceAccessType = nextAccess;
 }
@@ -2453,9 +3034,12 @@ static void VULKAN_INTERNAL_DestroySwapchain(VulkanRenderer *renderer)
 	);
 }
 
-static void VULKAN_INTERNAL_RecreateSwapchain(
-	VulkanRenderer *renderer
-) {
+static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer)
+{
+	VulkanCommand endPassCmd =
+	{
+		CMDTYPE_END_RENDER_PASS
+	};
 	VkSubmitInfo submitInfo =
 	{
 		VK_STRUCTURE_TYPE_SUBMIT_INFO
@@ -2463,49 +3047,20 @@ static void VULKAN_INTERNAL_RecreateSwapchain(
 	CreateSwapchainResult createSwapchainResult;
 	SwapChainSupportDetails swapChainSupportDetails;
 	VkExtent2D extent;
-	VkResult result;
 
-	if (renderer->commands.active)
+	if (renderer->renderPassInProgress)
 	{
-		if (renderer->renderPassInProgress)
-		{
-			renderer->vkCmdEndRenderPass(
-				renderer->commands.buffer
-			);
-			renderer->renderPassInProgress = 0;
-		}
-
-		VULKAN_INTERNAL_EndCommandStream(
+		VULKAN_INTERNAL_EncodeCommand(
 			renderer,
-			&renderer->commands
+			endPassCmd
 		);
-
-		submitInfo.waitSemaphoreCount = 0;
-		submitInfo.pWaitSemaphores = NULL;
-		submitInfo.pWaitDstStageMask = NULL;
-		submitInfo.signalSemaphoreCount = 0;
-		submitInfo.pSignalSemaphores = NULL;
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &renderer->commands.buffer;
-
-		result = renderer->vkQueueSubmit(
-			renderer->graphicsQueue,
-			1,
-			&submitInfo,
-			NULL_FENCE
-		);
-
-		if (result != VK_SUCCESS)
-		{
-			FNA3D_LogError("failed to submit draw command buffer");
-			LogVulkanResult("vkQueueSubmit", result);
-			return;
-		}
+		renderer->renderPassInProgress = 0;
 	}
 
-	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
+	/* FIXME: Is this right? */
+	VULKAN_INTERNAL_Flush(renderer);
 
-	VULKAN_INTERNAL_ResetCommandStream(renderer, &renderer->commands);
+	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
 
 	VULKAN_INTERNAL_QuerySwapChainSupport(
 		renderer,
@@ -2534,9 +3089,9 @@ static void VULKAN_INTERNAL_RecreateSwapchain(
 	}
 
 	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
-
-	VULKAN_INTERNAL_BeginCommandStream(renderer, &renderer->commands);
 }
+
+/* Vulkan: Buffer Objects */
 
 static void VULKAN_INTERNAL_ResetBuffers(VulkanRenderer *renderer)
 {
@@ -2552,82 +3107,6 @@ static void VULKAN_INTERNAL_ResetBuffers(VulkanRenderer *renderer)
 	}
 	renderer->numBuffersInUse = 0;
 }
-
-/* Vulkan: The Pipeline Stall(TM) */
-
-static void VULKAN_INTERNAL_Stall(VulkanRenderer *renderer)
-{
-	VkSubmitInfo submitInfo =
-	{
-		VK_STRUCTURE_TYPE_SUBMIT_INFO
-	};
-	VkResult result;
-
-	if (!renderer->commands.active)
-	{
-		return;
-	}
-
-	if (renderer->renderPassInProgress)
-	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commands.buffer
-		);
-		renderer->renderPassInProgress = 0;
-	}
-
-	VULKAN_INTERNAL_EndCommandStream(renderer, &renderer->commands);
-
-	submitInfo.waitSemaphoreCount = 0;
-	submitInfo.pWaitSemaphores = NULL;
-	submitInfo.pWaitDstStageMask = NULL;
-	submitInfo.signalSemaphoreCount = 0;
-	submitInfo.pSignalSemaphores = NULL;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &renderer->commands.buffer;
-
-	renderer->vkResetFences(
-		renderer->logicalDevice,
-		1,
-		&renderer->inFlightFence
-	);
-
-	result = renderer->vkQueueSubmit(
-		renderer->graphicsQueue,
-		1,
-		&submitInfo,
-		renderer->inFlightFence
-	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResult("vkQueueSubmit", result);
-		return;
-	}
-
-	result = renderer->vkWaitForFences(
-		renderer->logicalDevice,
-		1,
-		&renderer->inFlightFence,
-		VK_TRUE,
-		UINT64_MAX
-	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResult("vkWaitForFences", result);
-		return;
-	}
-
-	renderer->needNewRenderPass = 1;
-
-	VULKAN_INTERNAL_ResetBuffers(renderer);
-
-	VULKAN_INTERNAL_ResetCommandStream(renderer, &renderer->commands);
-	VULKAN_INTERNAL_BeginCommandStream(renderer, &renderer->commands);
-}
-
-/* Vulkan: Buffer Objects */
 
 static void VULKAN_INTERNAL_RemoveBuffer(
 	FNA3D_Renderer *driverData,
@@ -2931,7 +3410,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 	{
 		if (options == FNA3D_SETDATAOPTIONS_NONE)
 		{
-			VULKAN_INTERNAL_Stall(renderer);
+			VULKAN_INTERNAL_Flush(renderer);
 			vulkanBuffer->bound = 1;
 		}
 		else if (options == FNA3D_SETDATAOPTIONS_DISCARD)
@@ -3270,6 +3749,10 @@ static void VULKAN_INTERNAL_GetTextureData(
 	VulkanResourceAccessType prevResourceAccess;
 	VkBufferImageCopy imageCopy;
 	uint8_t *dataPtr = (uint8_t*) data;
+	VulkanCommand copyImageCmd =
+	{
+		CMDTYPE_COPY_IMAGE_TO_BUFFER
+	};
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
@@ -3305,13 +3788,13 @@ static void VULKAN_INTERNAL_GetTextureData(
 	imageCopy.imageSubresource.mipLevel = level;
 	imageCopy.bufferOffset = 0;
 
-	renderer->vkCmdCopyImageToBuffer(
-		renderer->commands.buffer,
-		vulkanTexture->image,
-		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
-		renderer->textureStagingBuffer->buffer,
-		1,
-		&imageCopy
+	copyImageCmd.copyImageToBuffer.srcImage = vulkanTexture->image;
+	copyImageCmd.copyImageToBuffer.srcImageLayout = AccessMap[vulkanTexture->resourceAccessType].imageLayout;
+	copyImageCmd.copyImageToBuffer.dstBuffer = renderer->textureStagingBuffer->buffer;
+	copyImageCmd.copyImageToBuffer.region = imageCopy;
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		copyImageCmd
 	);
 
 	/* Restore the image layout and wait for completion of the render pass */
@@ -3329,7 +3812,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 		&vulkanTexture->resourceAccessType
 	);
 
-	VULKAN_INTERNAL_Stall(renderer);
+	VULKAN_INTERNAL_Flush(renderer);
 
 	/* Read from staging buffer */
 
@@ -3346,6 +3829,10 @@ static void VULKAN_INTERNAL_SetViewportCommand(VulkanRenderer *renderer)
 {
 	int32_t targetHeight, meh;
 	VkViewport vulkanViewport;
+	VulkanCommand setViewportCmd =
+	{
+		CMDTYPE_SET_VIEWPORT
+	};
 
 	/* Flipping the viewport for compatibility with D3D */
 	vulkanViewport.x = (float) renderer->viewport.x;
@@ -3368,15 +3855,11 @@ static void VULKAN_INTERNAL_SetViewportCommand(VulkanRenderer *renderer)
 	vulkanViewport.minDepth = renderer->viewport.minDepth;
 	vulkanViewport.maxDepth = renderer->viewport.maxDepth;
 
-	if (renderer->commands.active)
-	{
-		renderer->vkCmdSetViewport(
-			renderer->commands.buffer,
-			0,
-			1,
-			&vulkanViewport
-		);
-	}
+	setViewportCmd.setViewport.viewport = vulkanViewport;
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		setViewportCmd
+	);
 }
 
 static void VULKAN_INTERNAL_SetScissorRectCommand(VulkanRenderer *renderer)
@@ -3384,6 +3867,10 @@ static void VULKAN_INTERNAL_SetScissorRectCommand(VulkanRenderer *renderer)
 	VkOffset2D offset;
 	VkExtent2D extent;
 	VkRect2D vulkanScissorRect;
+	VulkanCommand setScissorCmd =
+	{
+		CMDTYPE_SET_SCISSOR
+	};
 
 	if (renderer->renderPassInProgress)
 	{
@@ -3404,11 +3891,10 @@ static void VULKAN_INTERNAL_SetScissorRectCommand(VulkanRenderer *renderer)
 		vulkanScissorRect.offset = offset;
 		vulkanScissorRect.extent = extent;
 
-		renderer->vkCmdSetScissor(
-			renderer->commands.buffer,
-			0,
-			1,
-			&vulkanScissorRect
+		setScissorCmd.setScissor.scissor = vulkanScissorRect;
+		VULKAN_INTERNAL_EncodeCommand(
+			renderer,
+			setScissorCmd
 		);
 	}
 }
@@ -3416,25 +3902,37 @@ static void VULKAN_INTERNAL_SetScissorRectCommand(VulkanRenderer *renderer)
 static void VULKAN_INTERNAL_SetStencilReferenceValueCommand(
 	VulkanRenderer *renderer
 ) {
+	VulkanCommand setRefCmd =
+	{
+		CMDTYPE_SET_STENCIL_REFERENCE
+	};
+
 	if (renderer->renderPassInProgress)
 	{
-		renderer->vkCmdSetStencilReference(
-			renderer->commands.buffer,
-			VK_STENCIL_FACE_FRONT_AND_BACK,
-			renderer->stencilRef
+		setRefCmd.setStencilReference.reference = renderer->stencilRef;
+		VULKAN_INTERNAL_EncodeCommand(
+			renderer,
+			setRefCmd
 		);
 	}
 }
 
 static void VULKAN_INTERNAL_SetDepthBiasCommand(VulkanRenderer *renderer)
 {
+	VulkanCommand setDepthBiasCmd =
+	{
+		CMDTYPE_SET_DEPTH_BIAS
+	};
+
 	if (renderer->renderPassInProgress)
 	{
-		renderer->vkCmdSetDepthBias(
-			renderer->commands.buffer,
-			renderer->rasterizerState.depthBias,
-			0.0, /* no clamp */
-			renderer->rasterizerState.slopeScaleDepthBias
+		setDepthBiasCmd.setDepthBias.depthBiasConstantFactor =
+			renderer->rasterizerState.depthBias;
+		setDepthBiasCmd.setDepthBias.depthBiasSlopeFactor =
+			renderer->rasterizerState.slopeScaleDepthBias;
+		VULKAN_INTERNAL_EncodeCommand(
+			renderer,
+			setDepthBiasCmd
 		);
 	}
 }
@@ -3959,6 +4457,10 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 
 static void VULKAN_INTERNAL_BindPipeline(VulkanRenderer *renderer)
 {
+	VulkanCommand bindPipelineCmd =
+	{
+		CMDTYPE_BIND_PIPELINE
+	};
 	VkShaderModule vertShader, fragShader;
 	MOJOSHADER_vkGetShaderModules(&vertShader, &fragShader);
 
@@ -3970,10 +4472,10 @@ static void VULKAN_INTERNAL_BindPipeline(VulkanRenderer *renderer)
 
 		if (pipeline != renderer->currentPipeline)
 		{
-			renderer->vkCmdBindPipeline(
-				renderer->commands.buffer,
-				VK_PIPELINE_BIND_POINT_GRAPHICS,
-				pipeline
+			bindPipelineCmd.bindPipeline.pipeline = pipeline;
+			VULKAN_INTERNAL_EncodeCommand(
+				renderer,
+				bindPipelineCmd
 			);
 
 			renderer->currentPipeline = pipeline;
@@ -4697,13 +5199,29 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 static void VULKAN_INTERNAL_BeginRenderPass(
 	VulkanRenderer *renderer
 ) {
+	VulkanCommand endPassCmd =
+	{
+		CMDTYPE_END_RENDER_PASS
+	};
 	VkRenderPassBeginInfo renderPassBeginInfo =
 	{
 		VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO
 	};
+	VulkanCommand beginPassCmd =
+	{
+		CMDTYPE_BEGIN_RENDER_PASS
+	};
 	VkFramebuffer framebuffer;
 	VkImageAspectFlags depthAspectFlags;
 	float blendConstants[4];
+	VulkanCommand setBlendConstantsCmd =
+	{
+		CMDTYPE_SET_BLEND_CONSTANTS
+	};
+	VulkanCommand setDepthBiasCmd =
+	{
+		CMDTYPE_SET_DEPTH_BIAS
+	};
 	uint32_t i;
 
 	if (!renderer->needNewRenderPass)
@@ -4713,8 +5231,9 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 
 	if (renderer->renderPassInProgress)
 	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commands.buffer
+		VULKAN_INTERNAL_EncodeCommand(
+			renderer,
+			endPassCmd
 		);
 		renderer->renderPassInProgress = 0;
 	}
@@ -4778,10 +5297,10 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 		);
 	}
 
-	renderer->vkCmdBeginRenderPass(
-		renderer->commands.buffer,
-		&renderPassBeginInfo,
-		VK_SUBPASS_CONTENTS_INLINE
+	beginPassCmd.beginRenderPass.beginInfo = renderPassBeginInfo;
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		beginPassCmd
 	);
 
 	renderer->renderPassInProgress = 1;
@@ -4789,21 +5308,22 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	VULKAN_INTERNAL_SetViewportCommand(renderer);
 	VULKAN_INTERNAL_SetScissorRectCommand(renderer);
 	VULKAN_INTERNAL_SetStencilReferenceValueCommand(renderer);
+	VULKAN_INTERNAL_SetDepthBiasCommand(renderer);
 
 	blendConstants[0] = renderer->blendState.blendFactor.r / 255.0f;
 	blendConstants[1] = renderer->blendState.blendFactor.g / 255.0f;
 	blendConstants[2] = renderer->blendState.blendFactor.b / 255.0f;
 	blendConstants[3] = renderer->blendState.blendFactor.a / 255.0f;
-	renderer->vkCmdSetBlendConstants(
-		renderer->commands.buffer,
-		blendConstants
+
+	SDL_memcpy(
+		setBlendConstantsCmd.setBlendConstants.blendConstants,
+		blendConstants,
+		sizeof(blendConstants)
 	);
 
-	renderer->vkCmdSetDepthBias(
-		renderer->commands.buffer,
-		renderer->rasterizerState.depthBias,
-		0, /* Unused */
-		renderer->rasterizerState.slopeScaleDepthBias
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		setBlendConstantsCmd
 	);
 
 	/* Reset bindings for the current frame in flight */
@@ -4860,6 +5380,10 @@ static void VULKAN_INTERNAL_RenderPassClear(
 		renderer->depthStencilAttachment != NULL
 	);
 	uint32_t i, attachmentCount;
+	VulkanCommand clearAttachmentsCmd =
+	{
+		CMDTYPE_CLEAR_ATTACHMENTS
+	};
 
 	if (!clearColor && !shouldClearDepthStencil)
 	{
@@ -4921,12 +5445,16 @@ static void VULKAN_INTERNAL_RenderPassClear(
 		attachmentCount += 1;
 	}
 
-	renderer->vkCmdClearAttachments(
-		renderer->commands.buffer,
-		attachmentCount,
+	clearAttachmentsCmd.clearAttachments.attachmentCount = attachmentCount;
+	SDL_memcpy(
+		clearAttachmentsCmd.clearAttachments.attachments,
 		clearAttachments,
-		1,
-		&clearRect
+		sizeof(clearAttachments)
+	);
+	clearAttachmentsCmd.clearAttachments.rect = clearRect;
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		clearAttachmentsCmd
 	);
 }
 
@@ -4947,10 +5475,18 @@ static void VULKAN_INTERNAL_OutsideRenderPassClear(
 		color->z,
 		color->w
 	}};
+	VulkanCommand clearColorCmd =
+	{
+		CMDTYPE_CLEAR_COLOR_IMAGE
+	};
 	uint8_t shouldClearDepthStencil = (
 		(clearDepth || clearStencil) &&
 		renderer->depthStencilAttachment != NULL
 	);
+	VulkanCommand clearDepthStencilCmd =
+	{
+		CMDTYPE_CLEAR_DEPTH_STENCIL_IMAGE
+	};
 	VkImageAspectFlags depthAspectMask = 0;
 	VkClearDepthStencilValue clearDepthStencilValue;
 	VkImageSubresourceRange subresourceRange;
@@ -4978,13 +5514,13 @@ static void VULKAN_INTERNAL_OutsideRenderPassClear(
 				&renderer->colorAttachments[i]->resourceAccessType
 			);
 
-			renderer->vkCmdClearColorImage(
-				renderer->commands.buffer,
-				renderer->colorAttachments[i]->image,
-				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-				&clearValue,
-				1,
-				&subresourceRange
+			clearColorCmd.clearColorImage.image =
+				renderer->colorAttachments[i]->image;
+			clearColorCmd.clearColorImage.color = clearValue;
+			clearColorCmd.clearColorImage.range = subresourceRange;
+			VULKAN_INTERNAL_EncodeCommand(
+				renderer,
+				clearColorCmd
 			);
 
 			VULKAN_INTERNAL_ImageMemoryBarrier(
@@ -5020,13 +5556,13 @@ static void VULKAN_INTERNAL_OutsideRenderPassClear(
 					&renderer->colorMultiSampleAttachments[i]->resourceAccessType
 				);
 
-				renderer->vkCmdClearColorImage(
-					renderer->commands.buffer,
-					renderer->colorMultiSampleAttachments[i]->image,
-					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-					&clearValue,
-					1,
-					&subresourceRange
+				clearColorCmd.clearColorImage.image =
+					renderer->colorMultiSampleAttachments[i]->image;
+				/* clearValue is already set */
+				clearColorCmd.clearColorImage.range = subresourceRange;
+				VULKAN_INTERNAL_EncodeCommand(
+					renderer,
+					clearColorCmd
 				);
 
 				VULKAN_INTERNAL_ImageMemoryBarrier(
@@ -5091,13 +5627,15 @@ static void VULKAN_INTERNAL_OutsideRenderPassClear(
 			&renderer->depthStencilAttachment->resourceAccessType
 		);
 
-		renderer->vkCmdClearDepthStencilImage(
-			renderer->commands.buffer,
-			renderer->depthStencilAttachment->image,
-			VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-			&clearDepthStencilValue,
-			1,
-			&subresourceRange
+		clearDepthStencilCmd.clearDepthStencilImage.image =
+			renderer->depthStencilAttachment->image;
+		clearDepthStencilCmd.clearDepthStencilImage.depthStencil =
+			clearDepthStencilValue;
+		clearDepthStencilCmd.clearDepthStencilImage.range =
+			subresourceRange;
+		VULKAN_INTERNAL_EncodeCommand(
+			renderer,
+			clearDepthStencilCmd
 		);
 
 		VULKAN_INTERNAL_ImageMemoryBarrier(
@@ -5267,6 +5805,10 @@ static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 	uint32_t vertSamplerDescriptorsToAllocate = 0;
 	uint32_t fragSamplerDescriptorsToAllocate = 0;
 	uint32_t totalSamplerDescriptorsToAllocate = 0;
+	VulkanCommand bindDescriptorSetsCmd =
+	{
+		CMDTYPE_BIND_DESCRIPTOR_SETS
+	};
 	VkResult vulkanResult;
 
 	vertexSamplerDescriptorSetNeedsUpdate =
@@ -5695,15 +6237,21 @@ static void VULKAN_INTERNAL_BindResources(VulkanRenderer *renderer)
 	descriptorSetsToBind[2] = renderer->currentVertUniformBufferDescriptorSet;
 	descriptorSetsToBind[3] = renderer->currentFragUniformBufferDescriptorSet;
 
-	renderer->vkCmdBindDescriptorSets(
-		renderer->commands.buffer,
-		VK_PIPELINE_BIND_POINT_GRAPHICS,
-		renderer->currentPipelineLayout,
-		0,
-		4,
+	bindDescriptorSetsCmd.bindDescriptorSets.layout = renderer->currentPipelineLayout;
+	SDL_memcpy(
+		bindDescriptorSetsCmd.bindDescriptorSets.descriptorSets,
 		descriptorSetsToBind,
-		dynamicOffsetsCount,
-		dynamicOffsets
+		sizeof(descriptorSetsToBind)
+	);
+	bindDescriptorSetsCmd.bindDescriptorSets.dynamicOffsetCount = dynamicOffsetsCount;
+	SDL_memcpy(
+		bindDescriptorSetsCmd.bindDescriptorSets.dynamicOffsets,
+		dynamicOffsets,
+		sizeof(dynamicOffsets)
+	);
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		bindDescriptorSetsCmd
 	);
 }
 
@@ -5775,8 +6323,11 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 {
 	VulkanRenderer *renderer = (VulkanRenderer*) device->driverData;
 	uint32_t i;
+	VkResult waitResult;
 
-	VkResult waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
+	VULKAN_INTERNAL_Flush(renderer);
+
+	waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
 
 	if (waitResult != VK_SUCCESS)
 	{
@@ -5820,10 +6371,13 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		NULL
 	);
 
-	VULKAN_INTERNAL_DestroyCommandStream(
-		renderer,
-		&renderer->commands
+	renderer->vkDestroyCommandPool(
+		renderer->logicalDevice,
+		renderer->commandPool,
+		NULL
 	);
+
+	SDL_free(renderer->commands);
 
 	for (i = 0; i < hmlenu(renderer->pipelineHashMap); i += 1)
 	{
@@ -5988,24 +6542,14 @@ static void VULKAN_SwapBuffers(
 	VkImageBlit blit;
 	FNA3D_Rect srcRect;
 	FNA3D_Rect dstRect;
-	VkPipelineStageFlags waitStages[] =
+	VulkanCommand endPassCmd =
 	{
-		VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT
+		CMDTYPE_END_RENDER_PASS
 	};
-	VkSubmitInfo submitInfo =
+	VulkanCommand blitCmd =
 	{
-		VK_STRUCTURE_TYPE_SUBMIT_INFO
+		CMDTYPE_BLIT_IMAGE
 	};
-	VkPresentInfoKHR presentInfo =
-	{
-		VK_STRUCTURE_TYPE_PRESENT_INFO_KHR
-	};
-	struct
-	{
-		VkStructureType sType;
-		const void *pNext;
-		uint64_t frameToken;
-	} presentInfoGGP;
 	uint32_t swapChainImageIndex, i;
 
 	/* Begin next frame */
@@ -6046,8 +6590,9 @@ static void VULKAN_SwapBuffers(
 	/* Must end render pass before blitting */
 	if (renderer->renderPassInProgress)
 	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commands.buffer
+		VULKAN_INTERNAL_EncodeCommand(
+			renderer,
+			endPassCmd
 		);
 		renderer->renderPassInProgress = 0;
 	}
@@ -6128,15 +6673,13 @@ static void VULKAN_SwapBuffers(
 	blit.dstSubresource.layerCount = 1;
 	blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 
-	renderer->vkCmdBlitImage(
-		renderer->commands.buffer,
-		renderer->fauxBackbufferColor.handle->image,
-		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-		renderer->swapChainImages[swapChainImageIndex],
-		VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-		1,
-		&blit,
-		VK_FILTER_LINEAR /* FIXME: Where is the final blit filter defined? -cosmonaut */
+	blitCmd.blitImage.srcImage = renderer->fauxBackbufferColor.handle->image;
+	blitCmd.blitImage.dstImage = renderer->swapChainImages[swapChainImageIndex];
+	blitCmd.blitImage.region = blit;
+	blitCmd.blitImage.filter = VK_FILTER_LINEAR; /* FIXME: Where is the final blit filter defined? -cosmonaut */
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		blitCmd
 	);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
@@ -6165,92 +6708,13 @@ static void VULKAN_SwapBuffers(
 		&renderer->fauxBackbufferColor.handle->resourceAccessType
 	);
 
-	/* End framebuffer blit! */
+	/* Record and submit the commands, then present! */
 
-	VULKAN_INTERNAL_EndCommandStream(
+	VULKAN_INTERNAL_FlushAndPresent(
 		renderer,
-		&renderer->commands
+		overrideWindowHandle,
+		swapChainImageIndex
 	);
-
-	submitInfo.waitSemaphoreCount = 1;
-	submitInfo.pWaitSemaphores =
-		&renderer->imageAvailableSemaphore;
-	submitInfo.pWaitDstStageMask = waitStages;
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores =
-		&renderer->renderFinishedSemaphore;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers =
-		&renderer->commands.buffer;
-
-	renderer->vkResetFences(
-		renderer->logicalDevice,
-		1,
-		&renderer->inFlightFence
-	);
-
-	result = renderer->vkQueueSubmit(
-		renderer->graphicsQueue,
-		1,
-		&submitInfo,
-		renderer->inFlightFence
-	);
-
-	if (result != VK_SUCCESS)
-	{
-		FNA3D_LogError("failed to submit draw command buffer");
-		LogVulkanResult("vkQueueSubmit", result);
-		return;
-	}
-
-	if (renderer->physicalDeviceDriverProperties.driverID == VK_DRIVER_ID_GGP_PROPRIETARY)
-	{
-		const void* token = SDL_GetWindowData(
-			overrideWindowHandle,
-			"GgpFrameToken"
-		);
-		presentInfoGGP.sType = VK_STRUCTURE_TYPE_PRESENT_FRAME_TOKEN_GGP;
-		presentInfoGGP.pNext = NULL;
-		presentInfoGGP.frameToken = (uint64_t) (size_t) token;
-		presentInfo.pNext = &presentInfoGGP;
-	}
-	else
-	{
-		presentInfo.pNext = NULL;
-	}
-	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores =
-		&renderer->renderFinishedSemaphore;
-	presentInfo.swapchainCount = 1;
-	presentInfo.pSwapchains = &renderer->swapChain;
-	presentInfo.pImageIndices = &swapChainImageIndex;
-	presentInfo.pResults = NULL;
-
-	result = renderer->vkQueuePresentKHR(
-		renderer->presentQueue,
-		&presentInfo
-	);
-
-	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
-	{
-		VULKAN_INTERNAL_RecreateSwapchain(renderer);
-		return;
-	}
-	else if (result != VK_SUCCESS)
-	{
-		LogVulkanResult("vkQueuePresentKHR", result);
-		FNA3D_LogError("failed to present image");
-	}
-
-	/* Wait for frame completion */
-	result = renderer->vkWaitForFences(
-		renderer->logicalDevice,
-		1,
-		&renderer->inFlightFence,
-		VK_TRUE,
-		UINT64_MAX
-	);
-	LogVulkanResult("vkWaitForFences", result);
 
 	/* Cleanup */
 
@@ -6284,11 +6748,6 @@ static void VULKAN_SwapBuffers(
 	renderer->currentFragUniformBufferDescriptorSet = NULL_DESC_SET;
 
 	MOJOSHADER_vkEndFrame();
-	VULKAN_INTERNAL_ResetBuffers(renderer);
-
-	/* Restart the command stream for the next frame */
-	VULKAN_INTERNAL_ResetCommandStream(renderer, &renderer->commands);
-	VULKAN_INTERNAL_BeginCommandStream(renderer, &renderer->commands);
 	renderer->needNewRenderPass = 1;
 }
 
@@ -6352,6 +6811,14 @@ static void VULKAN_DrawInstancedPrimitives(
 	VulkanSubBuffer subbuf = indexBuffer->subBuffers[
 		indexBuffer->currentSubBufferIndex
 	];
+	VulkanCommand bindIndexCmd =
+	{
+		CMDTYPE_BIND_INDEX_BUFFER
+	};
+	VulkanCommand drawIndexedCmd =
+	{
+		CMDTYPE_DRAW_INDEXED
+	};
 
 	/* Note that minVertexIndex/numVertices are NOT used! */
 
@@ -6366,20 +6833,25 @@ static void VULKAN_DrawInstancedPrimitives(
 	VULKAN_INTERNAL_BindPipeline(renderer);
 	VULKAN_INTERNAL_BindResources(renderer);
 
-	renderer->vkCmdBindIndexBuffer(
-		renderer->commands.buffer,
-		subbuf.physicalBuffer->buffer,
-		subbuf.offset,
-		XNAToVK_IndexType[indexElementSize]
+	bindIndexCmd.bindIndexBuffer.buffer = subbuf.physicalBuffer->buffer;
+	bindIndexCmd.bindIndexBuffer.offset = subbuf.offset;
+	bindIndexCmd.bindIndexBuffer.indexType =
+		XNAToVK_IndexType[indexElementSize];
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		bindIndexCmd
 	);
 
-	renderer->vkCmdDrawIndexed(
-		renderer->commands.buffer,
-		PrimitiveVerts(primitiveType, primitiveCount),
-		instanceCount,
-		startIndex,
-		baseVertex,
-		0
+	drawIndexedCmd.drawIndexed.indexCount = PrimitiveVerts(
+		primitiveType,
+		primitiveCount
+	);
+	drawIndexedCmd.drawIndexed.instanceCount = instanceCount;
+	drawIndexedCmd.drawIndexed.firstIndex = startIndex;
+	drawIndexedCmd.drawIndexed.vertexOffset = baseVertex;
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		drawIndexedCmd
 	);
 }
 
@@ -6415,6 +6887,10 @@ static void VULKAN_DrawPrimitives(
 	int32_t primitiveCount
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommand drawCmd =
+	{
+		CMDTYPE_DRAW
+	};
 
 	if (primitiveType != renderer->currentPrimitiveType)
 	{
@@ -6425,12 +6901,14 @@ static void VULKAN_DrawPrimitives(
 	VULKAN_INTERNAL_BindPipeline(renderer);
 	VULKAN_INTERNAL_BindResources(renderer);
 
-	renderer->vkCmdDraw(
-		renderer->commands.buffer,
-		PrimitiveVerts(primitiveType, primitiveCount),
-		1,
-		vertexStart,
-		0
+	drawCmd.draw.vertexCount = PrimitiveVerts(
+		primitiveType,
+		primitiveCount
+	);
+	drawCmd.draw.firstVertex = vertexStart;
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		drawCmd
 	);
 }
 
@@ -6494,6 +6972,10 @@ static void VULKAN_SetBlendFactor(
 		blendFactor->b,
 		blendFactor->a
 	};
+	VulkanCommand setBlendConstantsCmd =
+	{
+		CMDTYPE_SET_BLEND_CONSTANTS
+	};
 
 	if (	blendFactor->r != renderer->blendState.blendFactor.r ||
 		blendFactor->g != renderer->blendState.blendFactor.g ||
@@ -6503,13 +6985,15 @@ static void VULKAN_SetBlendFactor(
 		renderer->blendState.blendFactor = *blendFactor;
 		renderer->needNewPipeline = 1;
 
-		if (renderer->commands.active)
-		{
-			renderer->vkCmdSetBlendConstants(
-				renderer->commands.buffer,
-				blendConstants
-			);
-		}
+		SDL_memcpy(
+			setBlendConstantsCmd.setBlendConstants.blendConstants,
+			blendConstants,
+			sizeof(blendConstants)
+		);
+		VULKAN_INTERNAL_EncodeCommand(
+			renderer,
+			setBlendConstantsCmd
+		);
 	}
 }
 
@@ -6737,6 +7221,10 @@ static void VULKAN_ApplyVertexBufferBindings(
 	uint32_t bufferCount;
 	MOJOSHADER_vkShader *vertexShader, *blah;
 	uint64_t hash;
+	VulkanCommand bindBuffersCmd =
+	{
+		CMDTYPE_BIND_VERTEX_BUFFERS
+	};
 
 	/* Check VertexBufferBindings */
 	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
@@ -6788,12 +7276,20 @@ static void VULKAN_ApplyVertexBufferBindings(
 
 	if (bufferCount > 0)
 	{
-		renderer->vkCmdBindVertexBuffers(
-			renderer->commands.buffer,
-			0,
-			bufferCount,
+		bindBuffersCmd.bindVertexBuffers.bindingCount = bufferCount;
+		SDL_memcpy(
+			bindBuffersCmd.bindVertexBuffers.buffers,
 			buffers,
-			offsets
+			sizeof(buffers)
+		);
+		SDL_memcpy(
+			bindBuffersCmd.bindVertexBuffers.offsets,
+			offsets,
+			sizeof(offsets)
+		);
+		VULKAN_INTERNAL_EncodeCommand(
+			renderer,
+			bindBuffersCmd
 		);
 	}
 }
@@ -6896,6 +7392,14 @@ static void VULKAN_ResolveTarget(
 	int32_t level;
 	VulkanResourceAccessType origAccessType;
 	VkImageBlit blit;
+	VulkanCommand endPassCmd =
+	{
+		CMDTYPE_END_RENDER_PASS
+	};
+	VulkanCommand blitCmd =
+	{
+		CMDTYPE_BLIT_IMAGE
+	};
 
 	/* The target is resolved during the render pass. */
 
@@ -6904,8 +7408,9 @@ static void VULKAN_ResolveTarget(
 	{
 		if (renderer->renderPassInProgress)
 		{
-			renderer->vkCmdEndRenderPass(
-				renderer->commands.buffer
+			VULKAN_INTERNAL_EncodeCommand(
+				renderer,
+				endPassCmd
 			);
 			renderer->renderPassInProgress = 0;
 		}
@@ -6966,15 +7471,13 @@ static void VULKAN_ResolveTarget(
 			blit.dstSubresource.layerCount = layerCount;
 			blit.dstSubresource.mipLevel = level;
 
-			renderer->vkCmdBlitImage(
-				renderer->commands.buffer,
-				vulkanTexture->image,
-				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-				vulkanTexture->image,
-				VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-				1,
-				&blit,
-				VK_FILTER_LINEAR
+			blitCmd.blitImage.srcImage = vulkanTexture->image;
+			blitCmd.blitImage.dstImage = vulkanTexture->image;
+			blitCmd.blitImage.region = blit;
+			blitCmd.blitImage.filter = VK_FILTER_LINEAR;
+			VULKAN_INTERNAL_EncodeCommand(
+				renderer,
+				blitCmd
 			);
 		}
 
@@ -7278,6 +7781,10 @@ static void VULKAN_SetTextureData2D(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
+	VulkanCommand copyCmd =
+	{
+		CMDTYPE_COPY_BUFFER_TO_IMAGE
+	};
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
@@ -7310,16 +7817,16 @@ static void VULKAN_SetTextureData2D(
 	imageCopy.bufferRowLength = 0;
 	imageCopy.bufferImageHeight = 0;
 
-	renderer->vkCmdCopyBufferToImage(
-		renderer->commands.buffer,
-		renderer->textureStagingBuffer->buffer,
-		vulkanTexture->image,
-		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
-		1,
-		&imageCopy
+	copyCmd.copyBufferToImage.srcBuffer = renderer->textureStagingBuffer->buffer;
+	copyCmd.copyBufferToImage.dstImage = vulkanTexture->image;
+	copyCmd.copyBufferToImage.dstImageLayout = AccessMap[vulkanTexture->resourceAccessType].imageLayout;
+	copyCmd.copyBufferToImage.region = imageCopy;
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		copyCmd
 	);
 
-	VULKAN_INTERNAL_Stall(renderer);
+	VULKAN_INTERNAL_Flush(renderer);
 }
 
 static void VULKAN_SetTextureData3D(
@@ -7338,6 +7845,10 @@ static void VULKAN_SetTextureData3D(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
+	VulkanCommand copyCmd =
+	{
+		CMDTYPE_COPY_BUFFER_TO_IMAGE
+	};
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
@@ -7370,16 +7881,16 @@ static void VULKAN_SetTextureData3D(
 	imageCopy.bufferRowLength = 0;
 	imageCopy.bufferImageHeight = 0;
 
-	renderer->vkCmdCopyBufferToImage(
-		renderer->commands.buffer,
-		renderer->textureStagingBuffer->buffer,
-		vulkanTexture->image,
-		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
-		1,
-		&imageCopy
+	copyCmd.copyBufferToImage.srcBuffer = renderer->textureStagingBuffer->buffer;
+	copyCmd.copyBufferToImage.dstImage = vulkanTexture->image;
+	copyCmd.copyBufferToImage.dstImageLayout = AccessMap[vulkanTexture->resourceAccessType].imageLayout;
+	copyCmd.copyBufferToImage.region = imageCopy;
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		copyCmd
 	);
 
-	VULKAN_INTERNAL_Stall(renderer);
+	VULKAN_INTERNAL_Flush(renderer);
 }
 
 static void VULKAN_SetTextureDataCube(
@@ -7397,6 +7908,10 @@ static void VULKAN_SetTextureDataCube(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
+	VulkanCommand copyCmd =
+	{
+		CMDTYPE_COPY_BUFFER_TO_IMAGE
+	};
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
@@ -7429,16 +7944,16 @@ static void VULKAN_SetTextureDataCube(
 	imageCopy.bufferRowLength = 0; /* assumes tightly packed data */
 	imageCopy.bufferImageHeight = 0; /* assumes tightly packed data */
 
-	renderer->vkCmdCopyBufferToImage(
-		renderer->commands.buffer,
-		renderer->textureStagingBuffer->buffer,
-		vulkanTexture->image,
-		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
-		1,
-		&imageCopy
+	copyCmd.copyBufferToImage.srcBuffer = renderer->textureStagingBuffer->buffer;
+	copyCmd.copyBufferToImage.dstImage = vulkanTexture->image;
+	copyCmd.copyBufferToImage.dstImageLayout = AccessMap[vulkanTexture->resourceAccessType].imageLayout;
+	copyCmd.copyBufferToImage.region = imageCopy;
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		copyCmd
 	);
 
-	VULKAN_INTERNAL_Stall(renderer);
+	VULKAN_INTERNAL_Flush(renderer);
 }
 
 static void VULKAN_SetTextureDataYUV(
@@ -7459,6 +7974,10 @@ static void VULKAN_SetTextureDataYUV(
 	int32_t yDataLength = BytesPerImage(yWidth, yHeight, FNA3D_SURFACEFORMAT_ALPHA8);
 	int32_t uvDataLength = BytesPerImage(uvWidth, uvHeight, FNA3D_SURFACEFORMAT_ALPHA8);
 	VkBufferImageCopy imageCopy;
+	VulkanCommand copyCmd =
+	{
+		CMDTYPE_COPY_BUFFER_TO_IMAGE
+	};
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, yDataLength + uvDataLength);
 
@@ -7502,13 +8021,13 @@ static void VULKAN_SetTextureDataYUV(
 	imageCopy.bufferRowLength = yWidth;
 	imageCopy.bufferImageHeight = yHeight;
 
-	renderer->vkCmdCopyBufferToImage(
-		renderer->commands.buffer,
-		renderer->textureStagingBuffer->buffer,
-		tex->image,
-		AccessMap[tex->resourceAccessType].imageLayout,
-		1,
-		&imageCopy
+	copyCmd.copyBufferToImage.srcBuffer = renderer->textureStagingBuffer->buffer;
+	copyCmd.copyBufferToImage.dstImage = tex->image;
+	copyCmd.copyBufferToImage.dstImageLayout = AccessMap[tex->resourceAccessType].imageLayout;
+	copyCmd.copyBufferToImage.region = imageCopy;
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		copyCmd
 	);
 
 	/* These apply to both U and V */
@@ -7543,13 +8062,13 @@ static void VULKAN_SetTextureDataYUV(
 		&tex->resourceAccessType
 	);
 
-	renderer->vkCmdCopyBufferToImage(
-		renderer->commands.buffer,
-		renderer->textureStagingBuffer->buffer,
-		tex->image,
-		AccessMap[tex->resourceAccessType].imageLayout,
-		1,
-		&imageCopy
+	copyCmd.copyBufferToImage.srcBuffer = renderer->textureStagingBuffer->buffer;
+	copyCmd.copyBufferToImage.dstImage = tex->image;
+	copyCmd.copyBufferToImage.dstImageLayout = AccessMap[tex->resourceAccessType].imageLayout;
+	copyCmd.copyBufferToImage.region = imageCopy;
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		copyCmd
 	);
 
 	/* V */
@@ -7577,16 +8096,16 @@ static void VULKAN_SetTextureDataYUV(
 		&tex->resourceAccessType
 	);
 
-	renderer->vkCmdCopyBufferToImage(
-		renderer->commands.buffer,
-		renderer->textureStagingBuffer->buffer,
-		tex->image,
-		AccessMap[tex->resourceAccessType].imageLayout,
-		1,
-		&imageCopy
+	copyCmd.copyBufferToImage.srcBuffer = renderer->textureStagingBuffer->buffer;
+	copyCmd.copyBufferToImage.dstImage = tex->image;
+	copyCmd.copyBufferToImage.dstImageLayout = AccessMap[tex->resourceAccessType].imageLayout;
+	copyCmd.copyBufferToImage.region = imageCopy;
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		copyCmd
 	);
 
-	VULKAN_INTERNAL_Stall(renderer);
+	VULKAN_INTERNAL_Flush(renderer);
 }
 
 static void VULKAN_GetTextureData2D(
@@ -8232,28 +8751,41 @@ static void VULKAN_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanQuery *vulkanQuery = (VulkanQuery*) query;
+	VulkanCommand endPassCmd =
+	{
+		CMDTYPE_END_RENDER_PASS
+	};
+	VulkanCommand resetQueryPoolCmd =
+	{
+		CMDTYPE_RESET_QUERY_POOL
+	};
+	VulkanCommand beginQueryCmd =
+	{
+		CMDTYPE_BEGIN_QUERY
+	};
 
 	/* Need to do this between passes */
 	if (renderer->renderPassInProgress)
 	{
-		renderer->vkCmdEndRenderPass(
-			renderer->commands.buffer
+		VULKAN_INTERNAL_EncodeCommand(
+			renderer,
+			endPassCmd
 		);
 		renderer->renderPassInProgress = 0;
 	}
 
-	renderer->vkCmdResetQueryPool(
-		renderer->commands.buffer,
-		renderer->queryPool,
-		vulkanQuery->index,
-		1
+	resetQueryPoolCmd.resetQueryPool.firstQuery = vulkanQuery->index;
+	resetQueryPoolCmd.resetQueryPool.queryPool = renderer->queryPool;
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		resetQueryPoolCmd
 	);
 
-	renderer->vkCmdBeginQuery(
-		renderer->commands.buffer,
-		renderer->queryPool,
-		vulkanQuery->index,
-		VK_QUERY_CONTROL_PRECISE_BIT
+	beginQueryCmd.beginQuery.queryPool = renderer->queryPool;
+	beginQueryCmd.beginQuery.query = vulkanQuery->index;
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		beginQueryCmd
 	);
 }
 
@@ -8261,15 +8793,20 @@ static void VULKAN_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanQuery *vulkanQuery = (VulkanQuery*) query;
+	VulkanCommand endQueryCmd =
+	{
+		CMDTYPE_END_QUERY
+	};
 
 	/* Assume that the user is calling this in
 	 * the same pass as they started it
 	 */
 
-	renderer->vkCmdEndQuery(
-		renderer->commands.buffer,
-		renderer->queryPool,
-		vulkanQuery->index
+	endQueryCmd.endQuery.queryPool = renderer->queryPool;
+	endQueryCmd.endQuery.query = vulkanQuery->index;
+	VULKAN_INTERNAL_EncodeCommand(
+		renderer,
+		endQueryCmd
 	);
 }
 
@@ -8405,13 +8942,18 @@ static void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 	{
 		VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT
 	};
-	labelInfo.pLabelName = text;
+	VulkanCommand insertLabelCmd =
+	{
+		CMDTYPE_INSERT_DEBUG_UTILS_LABEL
+	};
 
 	if (renderer->supportsDebugUtils)
 	{
-		renderer->vkCmdInsertDebugUtilsLabelEXT(
-			renderer->commands.buffer,
-			&labelInfo
+		labelInfo.pLabelName = text;
+		insertLabelCmd.insertDebugUtilsLabel.labelInfo = labelInfo;
+		VULKAN_INTERNAL_EncodeCommand(
+			renderer,
+			insertLabelCmd
 		);
 	}
 }
@@ -8483,6 +9025,16 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	/* Variables: Choose depth formats */
 	VkImageFormatProperties imageFormatProperties;
+
+	/* Variables: Create command pool and command buffer */
+	VkCommandPoolCreateInfo commandPoolCreateInfo =
+	{
+		VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO
+	};
+	VkCommandBufferAllocateInfo commandBufferAllocateInfo =
+	{
+		VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO
+	};
 
 	/* Variables: Create fence and semaphores */
 	VkFenceCreateInfo fenceInfo =
@@ -8800,8 +9352,44 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	 * Create command pool and buffers
 	 */
 
-	VULKAN_INTERNAL_CreateCommandStream(renderer, &renderer->commands);
-	VULKAN_INTERNAL_BeginCommandStream(renderer, &renderer->commands);
+	commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	commandPoolCreateInfo.pNext = NULL;
+	commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	commandPoolCreateInfo.queueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily;
+	vulkanResult = renderer->vkCreateCommandPool(
+		renderer->logicalDevice,
+		&commandPoolCreateInfo,
+		NULL,
+		&renderer->commandPool
+	);
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateCommandPool", vulkanResult);
+	}
+
+	commandBufferAllocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	commandBufferAllocateInfo.pNext = NULL;
+	commandBufferAllocateInfo.commandPool = renderer->commandPool;
+	commandBufferAllocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	commandBufferAllocateInfo.commandBufferCount = 1;
+	vulkanResult = renderer->vkAllocateCommandBuffers(
+		renderer->logicalDevice,
+		&commandBufferAllocateInfo,
+		&renderer->commandBuffer
+	);
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
+	}
+
+	/*
+	 * Create the dynamic deferred command array
+	 */
+	renderer->commandCapacity = 128; /* Arbitrary! */
+	renderer->commands = (VulkanCommand*) SDL_malloc(
+		sizeof(VulkanCommand) * renderer->commandCapacity
+	);
+	renderer->commandLock = SDL_CreateMutex();
 
 	/*
 	 * Create the initial faux-backbuffer
