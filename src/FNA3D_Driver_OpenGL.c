@@ -2525,7 +2525,8 @@ static void OPENGL_SetRenderTargets(
 	FNA3D_RenderTargetBinding *renderTargets,
 	int32_t numRenderTargets,
 	FNA3D_Renderbuffer *depthStencilBuffer,
-	FNA3D_DepthFormat depthFormat
+	FNA3D_DepthFormat depthFormat,
+	uint8_t preserveDepthStencilContents
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLRenderbuffer *rb = (OpenGLRenderbuffer*) depthStencilBuffer;

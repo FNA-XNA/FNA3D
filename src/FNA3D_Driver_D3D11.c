@@ -935,7 +935,8 @@ static void D3D11_SetRenderTargets(
 	FNA3D_RenderTargetBinding *renderTargets,
 	int32_t numRenderTargets,
 	FNA3D_Renderbuffer *depthStencilBuffer,
-	FNA3D_DepthFormat depthFormat
+	FNA3D_DepthFormat depthFormat,
+	uint8_t preserveDepthStencilContents
 );
 static void D3D11_GetTextureData2D(
 	FNA3D_Renderer *driverData,
@@ -1325,7 +1326,8 @@ static void D3D11_INTERNAL_BlitFramebuffer(D3D11Renderer *renderer, int32_t w, i
 		NULL,
 		0,
 		NULL,
-		FNA3D_DEPTHFORMAT_NONE
+		FNA3D_DEPTHFORMAT_NONE,
+		0
 	);
 
 	SDL_UnlockMutex(renderer->ctxLock);
@@ -2031,7 +2033,8 @@ static void D3D11_SetRenderTargets(
 	FNA3D_RenderTargetBinding *renderTargets,
 	int32_t numRenderTargets,
 	FNA3D_Renderbuffer *depthStencilBuffer,
-	FNA3D_DepthFormat depthFormat
+	FNA3D_DepthFormat depthFormat,
+	uint8_t preserveDepthStencilContents
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *tex;
@@ -2386,7 +2389,8 @@ static void D3D11_INTERNAL_CreateFramebuffer(
 		NULL,
 		0,
 		NULL,
-		FNA3D_DEPTHFORMAT_NONE
+		FNA3D_DEPTHFORMAT_NONE,
+		0
 	);
 
 	#undef BB

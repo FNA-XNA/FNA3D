@@ -484,7 +484,8 @@ void FNA3D_SetRenderTargets(
 	FNA3D_RenderTargetBinding *renderTargets,
 	int32_t numRenderTargets,
 	FNA3D_Renderbuffer *depthStencilBuffer,
-	FNA3D_DepthFormat depthFormat
+	FNA3D_DepthFormat depthFormat,
+	uint8_t preserveDepthStencilContents
 ) {
 	if (device == NULL)
 	{
@@ -495,7 +496,8 @@ void FNA3D_SetRenderTargets(
 		renderTargets,
 		numRenderTargets,
 		depthStencilBuffer,
-		depthFormat
+		depthFormat,
+		preserveDepthStencilContents
 	);
 }
 
