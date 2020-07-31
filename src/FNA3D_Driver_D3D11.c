@@ -940,7 +940,6 @@ static void D3D11_SetRenderTargets(
 static void D3D11_GetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -2525,7 +2524,6 @@ static void D3D11_ReadBackbuffer(
 	D3D11_GetTextureData2D(
 		driverData,
 		(FNA3D_Texture*) &backbufferTexture,
-		renderer->backbuffer->surfaceFormat,
 		x,
 		y,
 		w,
@@ -2862,7 +2860,6 @@ static void D3D11_AddDisposeTexture(
 static void D3D11_SetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -2876,9 +2873,9 @@ static void D3D11_SetTextureData2D(
 	D3D11_BOX dstBox;
 
 	/* DXT formats require w and h to be multiples of 4 */
-	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
-		format == FNA3D_SURFACEFORMAT_DXT3 ||
-		format == FNA3D_SURFACEFORMAT_DXT5	)
+	if (	d3dTexture->format == FNA3D_SURFACEFORMAT_DXT1 ||
+		d3dTexture->format == FNA3D_SURFACEFORMAT_DXT3 ||
+		d3dTexture->format == FNA3D_SURFACEFORMAT_DXT5	)
 	{
 		w = (w + 3) & ~3;
 		h = (h + 3) & ~3;
@@ -2898,7 +2895,7 @@ static void D3D11_SetTextureData2D(
 		CalcSubresource(level, 0, d3dTexture->levelCount),
 		&dstBox,
 		data,
-		BytesPerRow(w, format),
+		BytesPerRow(w, d3dTexture->format),
 		0
 	);
 	SDL_UnlockMutex(renderer->ctxLock);
@@ -2907,7 +2904,6 @@ static void D3D11_SetTextureData2D(
 static void D3D11_SetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t z,
@@ -2923,9 +2919,9 @@ static void D3D11_SetTextureData3D(
 	D3D11_BOX dstBox;
 
 	/* DXT formats require w and h to be multiples of 4 */
-	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
-		format == FNA3D_SURFACEFORMAT_DXT3 ||
-		format == FNA3D_SURFACEFORMAT_DXT5	)
+	if (	d3dTexture->format == FNA3D_SURFACEFORMAT_DXT1 ||
+		d3dTexture->format == FNA3D_SURFACEFORMAT_DXT3 ||
+		d3dTexture->format == FNA3D_SURFACEFORMAT_DXT5	)
 	{
 		w = (w + 3) & ~3;
 		h = (h + 3) & ~3;
@@ -2945,8 +2941,8 @@ static void D3D11_SetTextureData3D(
 		CalcSubresource(level, 0, d3dTexture->levelCount),
 		&dstBox,
 		data,
-		BytesPerRow(w, format),
-		BytesPerImage(w, h, format)
+		BytesPerRow(w, d3dTexture->format),
+		BytesPerImage(w, h, d3dTexture->format)
 	);
 	SDL_UnlockMutex(renderer->ctxLock);
 }
@@ -2954,7 +2950,6 @@ static void D3D11_SetTextureData3D(
 static void D3D11_SetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -2969,9 +2964,9 @@ static void D3D11_SetTextureDataCube(
 	D3D11_BOX dstBox;
 
 	/* DXT formats require w and h to be multiples of 4 */
-	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
-		format == FNA3D_SURFACEFORMAT_DXT3 ||
-		format == FNA3D_SURFACEFORMAT_DXT5	)
+	if (	d3dTexture->format == FNA3D_SURFACEFORMAT_DXT1 ||
+		d3dTexture->format == FNA3D_SURFACEFORMAT_DXT3 ||
+		d3dTexture->format == FNA3D_SURFACEFORMAT_DXT5	)
 	{
 		w = (w + 3) & ~3;
 		h = (h + 3) & ~3;
@@ -2995,8 +2990,8 @@ static void D3D11_SetTextureDataCube(
 		),
 		&dstBox,
 		data,
-		BytesPerRow(w, format),
-		BytesPerImage(w, h, format)
+		BytesPerRow(w, d3dTexture->format),
+		BytesPerImage(w, h, d3dTexture->format)
 	);
 	SDL_UnlockMutex(renderer->ctxLock);
 }
@@ -3060,7 +3055,6 @@ static void D3D11_SetTextureDataYUV(
 static void D3D11_GetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -3079,12 +3073,12 @@ static void D3D11_GetTextureData2D(
 	D3D11_MAPPED_SUBRESOURCE subresource;
 	uint8_t *dataPtr = (uint8_t*) data;
 	int32_t row;
-	int32_t formatSize = Texture_GetFormatSize(format);
+	int32_t formatSize = Texture_GetFormatSize(tex->format);
 	HRESULT res;
 
-	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
-		format == FNA3D_SURFACEFORMAT_DXT3 ||
-		format == FNA3D_SURFACEFORMAT_DXT5	)
+	if (	tex->format == FNA3D_SURFACEFORMAT_DXT1 ||
+		tex->format == FNA3D_SURFACEFORMAT_DXT3 ||
+		tex->format == FNA3D_SURFACEFORMAT_DXT5	)
 	{
 		FNA3D_LogError(
 			"GetData with compressed textures unsupported!"
@@ -3162,7 +3156,6 @@ static void D3D11_GetTextureData2D(
 static void D3D11_GetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t z,
@@ -3181,7 +3174,6 @@ static void D3D11_GetTextureData3D(
 static void D3D11_GetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -3209,12 +3201,12 @@ static void D3D11_GetTextureDataCube(
 	D3D11_MAPPED_SUBRESOURCE subresource;
 	uint8_t *dataPtr = (uint8_t*) data;
 	int32_t row;
-	int32_t formatSize = Texture_GetFormatSize(format);
+	int32_t formatSize = Texture_GetFormatSize(tex->format);
 	HRESULT res;
 
-	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
-		format == FNA3D_SURFACEFORMAT_DXT3 ||
-		format == FNA3D_SURFACEFORMAT_DXT5	)
+	if (	tex->format == FNA3D_SURFACEFORMAT_DXT1 ||
+		tex->format == FNA3D_SURFACEFORMAT_DXT3 ||
+		tex->format == FNA3D_SURFACEFORMAT_DXT5	)
 	{
 		FNA3D_LogError(
 			"GetData with compressed textures unsupported!"

@@ -54,6 +54,7 @@ struct OpenGLTexture /* Cast from FNA3D_Texture* */
 	float anisotropy;
 	int32_t maxMipmapLevel;
 	float lodBias;
+	FNA3D_SurfaceFormat format;
 	FNA3DNAMELESS union
 	{
 		struct
@@ -81,6 +82,7 @@ static OpenGLTexture NullTexture =
 	0.0f,
 	0,
 	0.0f,
+	FNA3D_SURFACEFORMAT_COLOR,
 	{
 		{ 0, 0 }
 	},
@@ -710,7 +712,6 @@ struct FNA3D_Command
 		struct
 		{
 			FNA3D_Texture *texture;
-			FNA3D_SurfaceFormat format;
 			int32_t x;
 			int32_t y;
 			int32_t w;
@@ -723,7 +724,6 @@ struct FNA3D_Command
 		struct
 		{
 			FNA3D_Texture *texture;
-			FNA3D_SurfaceFormat format;
 			int32_t x;
 			int32_t y;
 			int32_t z;
@@ -738,7 +738,6 @@ struct FNA3D_Command
 		struct
 		{
 			FNA3D_Texture *texture;
-			FNA3D_SurfaceFormat format;
 			int32_t x;
 			int32_t y;
 			int32_t w;
@@ -752,7 +751,6 @@ struct FNA3D_Command
 		struct
 		{
 			FNA3D_Texture *texture;
-			FNA3D_SurfaceFormat format;
 			int32_t x;
 			int32_t y;
 			int32_t w;
@@ -765,7 +763,6 @@ struct FNA3D_Command
 		struct
 		{
 			FNA3D_Texture *texture;
-			FNA3D_SurfaceFormat format;
 			int32_t x;
 			int32_t y;
 			int32_t z;
@@ -780,7 +777,6 @@ struct FNA3D_Command
 		struct
 		{
 			FNA3D_Texture *texture;
-			FNA3D_SurfaceFormat format;
 			int32_t x;
 			int32_t y;
 			int32_t w;
@@ -928,7 +924,6 @@ static void FNA3D_ExecuteCommand(
 			FNA3D_SetTextureData2D(
 				device,
 				cmd->setTextureData2D.texture,
-				cmd->setTextureData2D.format,
 				cmd->setTextureData2D.x,
 				cmd->setTextureData2D.y,
 				cmd->setTextureData2D.w,
@@ -942,7 +937,6 @@ static void FNA3D_ExecuteCommand(
 			FNA3D_SetTextureData3D(
 				device,
 				cmd->setTextureData3D.texture,
-				cmd->setTextureData3D.format,
 				cmd->setTextureData3D.x,
 				cmd->setTextureData3D.y,
 				cmd->setTextureData3D.z,
@@ -958,7 +952,6 @@ static void FNA3D_ExecuteCommand(
 			FNA3D_SetTextureDataCube(
 				device,
 				cmd->setTextureDataCube.texture,
-				cmd->setTextureDataCube.format,
 				cmd->setTextureDataCube.x,
 				cmd->setTextureDataCube.y,
 				cmd->setTextureDataCube.w,
@@ -973,7 +966,6 @@ static void FNA3D_ExecuteCommand(
 			FNA3D_GetTextureData2D(
 				device,
 				cmd->getTextureData2D.texture,
-				cmd->getTextureData2D.format,
 				cmd->getTextureData2D.x,
 				cmd->getTextureData2D.y,
 				cmd->getTextureData2D.w,
@@ -987,7 +979,6 @@ static void FNA3D_ExecuteCommand(
 			FNA3D_GetTextureData3D(
 				device,
 				cmd->getTextureData3D.texture,
-				cmd->getTextureData3D.format,
 				cmd->getTextureData3D.x,
 				cmd->getTextureData3D.y,
 				cmd->getTextureData3D.z,
@@ -1003,7 +994,6 @@ static void FNA3D_ExecuteCommand(
 			FNA3D_GetTextureDataCube(
 				device,
 				cmd->getTextureDataCube.texture,
-				cmd->getTextureDataCube.format,
 				cmd->getTextureDataCube.x,
 				cmd->getTextureDataCube.y,
 				cmd->getTextureDataCube.w,
@@ -3444,6 +3434,7 @@ static int32_t OPENGL_GetBackbufferMultiSampleCount(FNA3D_Renderer *driverData)
 static inline OpenGLTexture* OPENGL_INTERNAL_CreateTexture(
 	OpenGLRenderer *renderer,
 	GLenum target,
+	FNA3D_SurfaceFormat format,
 	int32_t levelCount
 ) {
 	OpenGLTexture* result = (OpenGLTexture*) SDL_malloc(
@@ -3460,6 +3451,7 @@ static inline OpenGLTexture* OPENGL_INTERNAL_CreateTexture(
 	result->anisotropy = 4.0f;
 	result->maxMipmapLevel = 0;
 	result->lodBias = 0.0f;
+	result->format = format;
 	result->next = NULL;
 
 	BindTexture(renderer, result);
@@ -3553,6 +3545,7 @@ static FNA3D_Texture* OPENGL_CreateTexture2D(
 	result = (OpenGLTexture*) OPENGL_INTERNAL_CreateTexture(
 		renderer,
 		GL_TEXTURE_2D,
+		format,
 		levelCount
 	);
 
@@ -3632,6 +3625,7 @@ static FNA3D_Texture* OPENGL_CreateTexture3D(
 	result = OPENGL_INTERNAL_CreateTexture(
 		renderer,
 		GL_TEXTURE_3D,
+		format,
 		levelCount
 	);
 
@@ -3683,6 +3677,7 @@ static FNA3D_Texture* OPENGL_CreateTextureCube(
 	result = OPENGL_INTERNAL_CreateTexture(
 		renderer,
 		GL_TEXTURE_CUBE_MAP,
+		format,
 		levelCount
 	);
 
@@ -3784,7 +3779,6 @@ static void OPENGL_AddDisposeTexture(
 static void OPENGL_SetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -3794,6 +3788,7 @@ static void OPENGL_SetTextureData2D(
 	int32_t dataLength
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	OpenGLTexture *glTexture = (OpenGLTexture*) texture;
 	GLenum glFormat;
 	int32_t packSize;
 	FNA3D_Command cmd;
@@ -3802,7 +3797,6 @@ static void OPENGL_SetTextureData2D(
 	{
 		cmd.type = FNA3D_COMMAND_SETTEXTUREDATA2D;
 		cmd.setTextureData2D.texture = texture;
-		cmd.setTextureData2D.format = format;
 		cmd.setTextureData2D.x = x;
 		cmd.setTextureData2D.y = y;
 		cmd.setTextureData2D.w = w;
@@ -3814,9 +3808,9 @@ static void OPENGL_SetTextureData2D(
 		return;
 	}
 
-	BindTexture(renderer, (OpenGLTexture*) texture);
+	BindTexture(renderer, glTexture);
 
-	glFormat = XNAToGL_TextureFormat[format];
+	glFormat = XNAToGL_TextureFormat[glTexture->format];
 	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
 	{
 		/* Note that we're using glInternalFormat, not glFormat.
@@ -3832,7 +3826,7 @@ static void OPENGL_SetTextureData2D(
 			y,
 			w,
 			h,
-			XNAToGL_TextureInternalFormat[format],
+			XNAToGL_TextureInternalFormat[glTexture->format],
 			dataLength,
 			data
 		);
@@ -3840,7 +3834,7 @@ static void OPENGL_SetTextureData2D(
 	else
 	{
 		/* Set pixel alignment to match texel size in bytes. */
-		packSize = OPENGL_INTERNAL_Texture_GetPixelStoreAlignment(format);
+		packSize = OPENGL_INTERNAL_Texture_GetPixelStoreAlignment(glTexture->format);
 		if (packSize != 4)
 		{
 			renderer->glPixelStorei(
@@ -3857,7 +3851,7 @@ static void OPENGL_SetTextureData2D(
 			w,
 			h,
 			glFormat,
-			XNAToGL_TextureDataType[format],
+			XNAToGL_TextureDataType[glTexture->format],
 			data
 		);
 
@@ -3875,7 +3869,6 @@ static void OPENGL_SetTextureData2D(
 static void OPENGL_SetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t z,
@@ -3887,6 +3880,7 @@ static void OPENGL_SetTextureData3D(
 	int32_t dataLength
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	OpenGLTexture *glTexture = (OpenGLTexture*) texture;
 	FNA3D_Command cmd;
 
 	SDL_assert(renderer->supports_3DTexture);
@@ -3895,7 +3889,6 @@ static void OPENGL_SetTextureData3D(
 	{
 		cmd.type = FNA3D_COMMAND_SETTEXTUREDATA3D;
 		cmd.setTextureData3D.texture = texture;
-		cmd.setTextureData3D.format = format;
 		cmd.setTextureData3D.x = x;
 		cmd.setTextureData3D.y = y;
 		cmd.setTextureData3D.z = z;
@@ -3909,7 +3902,7 @@ static void OPENGL_SetTextureData3D(
 		return;
 	}
 
-	BindTexture(renderer, (OpenGLTexture*) texture);
+	BindTexture(renderer, glTexture);
 
 	renderer->glTexSubImage3D(
 		GL_TEXTURE_3D,
@@ -3920,8 +3913,8 @@ static void OPENGL_SetTextureData3D(
 		w,
 		h,
 		d,
-		XNAToGL_TextureFormat[format],
-		XNAToGL_TextureDataType[format],
+		XNAToGL_TextureFormat[glTexture->format],
+		XNAToGL_TextureDataType[glTexture->format],
 		data
 	);
 }
@@ -3929,7 +3922,6 @@ static void OPENGL_SetTextureData3D(
 static void OPENGL_SetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -3940,6 +3932,7 @@ static void OPENGL_SetTextureDataCube(
 	int32_t dataLength
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	OpenGLTexture *glTexture = (OpenGLTexture*) texture;
 	GLenum glFormat;
 	FNA3D_Command cmd;
 
@@ -3947,7 +3940,6 @@ static void OPENGL_SetTextureDataCube(
 	{
 		cmd.type = FNA3D_COMMAND_SETTEXTUREDATACUBE;
 		cmd.setTextureDataCube.texture = texture;
-		cmd.setTextureDataCube.format = format;
 		cmd.setTextureDataCube.x = x;
 		cmd.setTextureDataCube.y = y;
 		cmd.setTextureDataCube.w = w;
@@ -3960,9 +3952,9 @@ static void OPENGL_SetTextureDataCube(
 		return;
 	}
 
-	BindTexture(renderer, (OpenGLTexture*) texture);
+	BindTexture(renderer, glTexture);
 
-	glFormat = XNAToGL_TextureFormat[format];
+	glFormat = XNAToGL_TextureFormat[glTexture->format];
 	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
 	{
 		/* Note that we're using glInternalFormat, not glFormat.
@@ -3978,7 +3970,7 @@ static void OPENGL_SetTextureDataCube(
 			y,
 			w,
 			h,
-			XNAToGL_TextureInternalFormat[format],
+			XNAToGL_TextureInternalFormat[glTexture->format],
 			dataLength,
 			data
 		);
@@ -3993,7 +3985,7 @@ static void OPENGL_SetTextureDataCube(
 			w,
 			h,
 			glFormat,
-			XNAToGL_TextureDataType[format],
+			XNAToGL_TextureDataType[glTexture->format],
 			data
 		);
 	}
@@ -4059,7 +4051,6 @@ static void OPENGL_SetTextureDataYUV(
 static void OPENGL_GetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -4084,7 +4075,6 @@ static void OPENGL_GetTextureData2D(
 	{
 		cmd.type = FNA3D_COMMAND_GETTEXTUREDATA2D;
 		cmd.getTextureData2D.texture = texture;
-		cmd.getTextureData2D.format = format;
 		cmd.getTextureData2D.x = x;
 		cmd.getTextureData2D.y = y;
 		cmd.getTextureData2D.w = w;
@@ -4113,7 +4103,7 @@ static void OPENGL_GetTextureData2D(
 	textureWidth = glTexture->twod.width >> level;
 	textureHeight = glTexture->twod.height >> level;
 	BindTexture(renderer, glTexture);
-	glFormat = XNAToGL_TextureFormat[format];
+	glFormat = XNAToGL_TextureFormat[glTexture->format];
 	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
 	{
 		FNA3D_LogError(
@@ -4131,13 +4121,13 @@ static void OPENGL_GetTextureData2D(
 			GL_TEXTURE_2D,
 			level,
 			glFormat,
-			XNAToGL_TextureDataType[format],
+			XNAToGL_TextureDataType[glTexture->format],
 			data
 		);
 	}
 	else
 	{
-		glFormatSize = Texture_GetFormatSize(format);
+		glFormatSize = Texture_GetFormatSize(glTexture->format);
 
 		/* Get the whole texture... */
 		texData = (uint8_t*) SDL_malloc(
@@ -4150,7 +4140,7 @@ static void OPENGL_GetTextureData2D(
 			GL_TEXTURE_2D,
 			level,
 			glFormat,
-			XNAToGL_TextureDataType[format],
+			XNAToGL_TextureDataType[glTexture->format],
 			texData
 		);
 
@@ -4171,7 +4161,6 @@ static void OPENGL_GetTextureData2D(
 static void OPENGL_GetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t z,
@@ -4193,7 +4182,6 @@ static void OPENGL_GetTextureData3D(
 static void OPENGL_GetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -4219,7 +4207,6 @@ static void OPENGL_GetTextureDataCube(
 	{
 		cmd.type = FNA3D_COMMAND_GETTEXTUREDATACUBE;
 		cmd.getTextureDataCube.texture = texture;
-		cmd.getTextureDataCube.format = format;
 		cmd.getTextureDataCube.x = x;
 		cmd.getTextureDataCube.y = y;
 		cmd.getTextureDataCube.w = w;
@@ -4235,7 +4222,7 @@ static void OPENGL_GetTextureDataCube(
 	glTexture = (OpenGLTexture*) texture;
 	textureSize = glTexture->cube.size >> level;
 	BindTexture(renderer, glTexture);
-	glFormat = XNAToGL_TextureFormat[format];
+	glFormat = XNAToGL_TextureFormat[glTexture->format];
 	if (glFormat == GL_COMPRESSED_TEXTURE_FORMATS)
 	{
 		FNA3D_LogError(
@@ -4253,13 +4240,13 @@ static void OPENGL_GetTextureDataCube(
 			GL_TEXTURE_CUBE_MAP_POSITIVE_X + cubeMapFace,
 			level,
 			glFormat,
-			XNAToGL_TextureDataType[format],
+			XNAToGL_TextureDataType[glTexture->format],
 			data
 		);
 	}
 	else
 	{
-		glFormatSize = Texture_GetFormatSize(format);
+		glFormatSize = Texture_GetFormatSize(glTexture->format);
 
 		/* Get the whole texture... */
 		texData = (uint8_t*) SDL_malloc(
@@ -4272,7 +4259,7 @@ static void OPENGL_GetTextureDataCube(
 			GL_TEXTURE_CUBE_MAP_POSITIVE_X + cubeMapFace,
 			level,
 			glFormat,
-			XNAToGL_TextureDataType[format],
+			XNAToGL_TextureDataType[glTexture->format],
 			texData
 		);
 

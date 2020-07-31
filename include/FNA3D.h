@@ -933,7 +933,6 @@ FNA3DAPI void FNA3D_AddDisposeTexture(
 /* Uploads image data to a 2D texture object.
  *
  * texture:	The texture to be updated.
- * format:	Should match the format provided to CreateTexture2D.
  * x:		The x offset of the subregion being updated.
  * y:		The y offset of the subregion being updated.
  * w:		The width of the subregion being updated.
@@ -945,7 +944,6 @@ FNA3DAPI void FNA3D_AddDisposeTexture(
 FNA3DAPI void FNA3D_SetTextureData2D(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -958,7 +956,6 @@ FNA3DAPI void FNA3D_SetTextureData2D(
 /* Uploads image data to a 3D texture object.
  *
  * texture:	The texture to be updated.
- * format:	Should match the format provided to CreateTexture3D.
  * x:		The x offset of the subregion being updated.
  * y:		The y offset of the subregion being updated.
  * z:		The z offset of the subregion being updated.
@@ -972,7 +969,6 @@ FNA3DAPI void FNA3D_SetTextureData2D(
 FNA3DAPI void FNA3D_SetTextureData3D(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t z,
@@ -987,7 +983,6 @@ FNA3DAPI void FNA3D_SetTextureData3D(
 /* Uploads image data to a single face of a texture cube object.
  *
  * texture:	The texture to be updated.
- * format:	Should match the format provided to CreateTextureCube.
  * x:		The x offset of the subregion being updated.
  * y:		The y offset of the subregion being updated.
  * w:		The width of the subregion being updated.
@@ -1000,7 +995,6 @@ FNA3DAPI void FNA3D_SetTextureData3D(
 FNA3DAPI void FNA3D_SetTextureDataCube(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -1041,7 +1035,6 @@ FNA3DAPI void FNA3D_SetTextureDataYUV(
  * unless there's absolutely no other way to use the image data!
  *
  * texture:	The texture object being read.
- * format:	Should match the format provided to CreateTexture2D.
  * x:		The x offset of the subregion being read.
  * y:		The y offset of the subregion being read.
  * w:		The width of the subregion being read.
@@ -1053,7 +1046,6 @@ FNA3DAPI void FNA3D_SetTextureDataYUV(
 FNA3DAPI void FNA3D_GetTextureData2D(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -1068,7 +1060,6 @@ FNA3DAPI void FNA3D_GetTextureData2D(
  * unless there's absolutely no other way to use the image data!
  *
  * texture:	The texture object being read.
- * format:	Should match the format provided to CreateTexture3D.
  * x:		The x offset of the subregion being read.
  * y:		The y offset of the subregion being read.
  * z:		The z offset of the subregion being read.
@@ -1082,7 +1073,6 @@ FNA3DAPI void FNA3D_GetTextureData2D(
 FNA3DAPI void FNA3D_GetTextureData3D(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t z,
@@ -1100,7 +1090,6 @@ FNA3DAPI void FNA3D_GetTextureData3D(
  * image data!
  *
  * texture:	The texture object being read.
- * format:	Should match the format provided to CreateTextureCube.
  * x:		The x offset of the subregion being read.
  * y:		The y offset of the subregion being read.
  * w:		The width of the subregion being read.
@@ -1113,7 +1102,6 @@ FNA3DAPI void FNA3D_GetTextureData3D(
 FNA3DAPI void FNA3D_GetTextureDataCube(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,

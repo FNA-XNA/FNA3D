@@ -668,7 +668,6 @@ void FNA3D_AddDisposeTexture(
 void FNA3D_SetTextureData2D(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -684,7 +683,6 @@ void FNA3D_SetTextureData2D(
 	device->SetTextureData2D(
 		device->driverData,
 		texture,
-		format,
 		x,
 		y,
 		w,
@@ -698,7 +696,6 @@ void FNA3D_SetTextureData2D(
 void FNA3D_SetTextureData3D(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t z,
@@ -716,7 +713,6 @@ void FNA3D_SetTextureData3D(
 	device->SetTextureData3D(
 		device->driverData,
 		texture,
-		format,
 		x,
 		y,
 		z,
@@ -732,7 +728,6 @@ void FNA3D_SetTextureData3D(
 void FNA3D_SetTextureDataCube(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -749,7 +744,6 @@ void FNA3D_SetTextureDataCube(
 	device->SetTextureDataCube(
 		device->driverData,
 		texture,
-		format,
 		x,
 		y,
 		w,
@@ -794,7 +788,6 @@ void FNA3D_SetTextureDataYUV(
 void FNA3D_GetTextureData2D(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -810,7 +803,6 @@ void FNA3D_GetTextureData2D(
 	device->GetTextureData2D(
 		device->driverData,
 		texture,
-		format,
 		x,
 		y,
 		w,
@@ -824,7 +816,6 @@ void FNA3D_GetTextureData2D(
 void FNA3D_GetTextureData3D(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t z,
@@ -842,7 +833,6 @@ void FNA3D_GetTextureData3D(
 	device->GetTextureData3D(
 		device->driverData,
 		texture,
-		format,
 		x,
 		y,
 		z,
@@ -858,7 +848,6 @@ void FNA3D_GetTextureData3D(
 void FNA3D_GetTextureDataCube(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -875,7 +864,6 @@ void FNA3D_GetTextureDataCube(
 	device->GetTextureDataCube(
 		device->driverData,
 		texture,
-		format,
 		x,
 		y,
 		w,

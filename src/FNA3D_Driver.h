@@ -428,7 +428,6 @@ struct FNA3D_Device
 	void (*SetTextureData2D)(
 		FNA3D_Renderer *driverData,
 		FNA3D_Texture *texture,
-		FNA3D_SurfaceFormat format,
 		int32_t x,
 		int32_t y,
 		int32_t w,
@@ -440,7 +439,6 @@ struct FNA3D_Device
 	void (*SetTextureData3D)(
 		FNA3D_Renderer *driverData,
 		FNA3D_Texture *texture,
-		FNA3D_SurfaceFormat format,
 		int32_t x,
 		int32_t y,
 		int32_t z,
@@ -454,7 +452,6 @@ struct FNA3D_Device
 	void (*SetTextureDataCube)(
 		FNA3D_Renderer *driverData,
 		FNA3D_Texture *texture,
-		FNA3D_SurfaceFormat format,
 		int32_t x,
 		int32_t y,
 		int32_t w,
@@ -479,7 +476,6 @@ struct FNA3D_Device
 	void (*GetTextureData2D)(
 		FNA3D_Renderer *driverData,
 		FNA3D_Texture *texture,
-		FNA3D_SurfaceFormat format,
 		int32_t x,
 		int32_t y,
 		int32_t w,
@@ -491,7 +487,6 @@ struct FNA3D_Device
 	void (*GetTextureData3D)(
 		FNA3D_Renderer *driverData,
 		FNA3D_Texture *texture,
-		FNA3D_SurfaceFormat format,
 		int32_t x,
 		int32_t y,
 		int32_t z,
@@ -505,7 +500,6 @@ struct FNA3D_Device
 	void (*GetTextureDataCube)(
 		FNA3D_Renderer *driverData,
 		FNA3D_Texture *texture,
-		FNA3D_SurfaceFormat format,
 		int32_t x,
 		int32_t y,
 		int32_t w,

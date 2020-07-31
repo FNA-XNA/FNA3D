@@ -2933,7 +2933,6 @@ static void METAL_ResetBackbuffer(
 static void METAL_GetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -2967,7 +2966,6 @@ static void METAL_ReadBackbuffer(
 	METAL_GetTextureData2D(
 		driverData,
 		(FNA3D_Texture*) &backbufferTexture,
-		renderer->backbuffer->surfaceFormat,
 		x,
 		y,
 		w,
@@ -3142,7 +3140,6 @@ static void METAL_AddDisposeTexture(
 static void METAL_SetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -3179,7 +3176,7 @@ static void METAL_SetTextureData2D(
 		level,
 		0,
 		data,
-		BytesPerRow(w, format),
+		BytesPerRow(w, mtlTexture->format),
 		0
 	);
 
@@ -3219,7 +3216,6 @@ static void METAL_SetTextureData2D(
 static void METAL_SetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t z,
@@ -3230,25 +3226,25 @@ static void METAL_SetTextureData3D(
 	void* data,
 	int32_t dataLength
 ) {
+	MetalTexture *mtlTexture = (MetalTexture*) texture;
 	MTLOrigin origin = {x, y, z};
 	MTLSize size = {w, h, d};
 	MTLRegion region = {origin, size};
 
 	mtlReplaceRegion(
-		((MetalTexture*) texture)->handle,
+		mtlTexture->handle,
 		region,
 		level,
 		0,
 		data,
-		BytesPerRow(w, format),
-		BytesPerImage(w, h, format)
+		BytesPerRow(w, mtlTexture->format),
+		BytesPerImage(w, h, mtlTexture->format)
 	);
 }
 
 static void METAL_SetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -3290,7 +3286,7 @@ static void METAL_SetTextureDataCube(
 		level,
 		slice,
 		data,
-		BytesPerRow(w, format),
+		BytesPerRow(w, mtlTexture->format),
 		0
 	);
 
@@ -3382,7 +3378,6 @@ static void METAL_SetTextureDataYUV(
 static void METAL_GetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -3443,7 +3438,7 @@ static void METAL_GetTextureData2D(
 	mtlGetTextureBytes(
 		handle,
 		data,
-		BytesPerRow(w, format),
+		BytesPerRow(w, mtlTexture->format),
 		0,
 		region,
 		level,
@@ -3463,7 +3458,6 @@ static void METAL_GetTextureData2D(
 static void METAL_GetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t z,
@@ -3474,15 +3468,16 @@ static void METAL_GetTextureData3D(
 	void* data,
 	int32_t dataLength
 ) {
+	MetalTexture *mtlTexture = (MetalTexture*) texture;
 	MTLOrigin origin = {x, y, z};
 	MTLSize size = {w, h, d};
 	MTLRegion region = {origin, size};
 
 	mtlGetTextureBytes(
-		((MetalTexture*) texture)->handle,
+		mtlTexture->handle,
 		data,
-		BytesPerRow(w, format),
-		BytesPerImage(w, h, format),
+		BytesPerRow(w, mtlTexture->format),
+		BytesPerImage(w, h, mtlTexture->format),
 		region,
 		level,
 		0
@@ -3492,7 +3487,6 @@ static void METAL_GetTextureData3D(
 static void METAL_GetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -3558,7 +3552,7 @@ static void METAL_GetTextureDataCube(
 	mtlGetTextureBytes(
 		handle,
 		data,
-		BytesPerRow(w, format),
+		BytesPerRow(w, mtlTexture->format),
 		0,
 		region,
 		level,

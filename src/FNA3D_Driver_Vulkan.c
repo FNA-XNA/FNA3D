@@ -77,6 +77,14 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
 
 static const VkComponentMapping IDENTITY_SWIZZLE =
 {
+	VK_COMPONENT_SWIZZLE_IDENTITY,
+	VK_COMPONENT_SWIZZLE_IDENTITY,
+	VK_COMPONENT_SWIZZLE_IDENTITY,
+	VK_COMPONENT_SWIZZLE_IDENTITY
+};
+
+static const VkComponentMapping RGBA_SWIZZLE =
+{
 	VK_COMPONENT_SWIZZLE_R,
 	VK_COMPONENT_SWIZZLE_G,
 	VK_COMPONENT_SWIZZLE_B,
@@ -326,12 +334,6 @@ typedef struct CommandStream
 	uint8_t active;
 } CommandStream;
 
-typedef struct SurfaceFormatMapping
-{
-	VkFormat formatColor;
-	VkComponentMapping swizzle;
-} SurfaceFormatMapping;
-
 typedef struct QueueFamilyIndices
 {
 	uint32_t graphicsFamily;
@@ -444,6 +446,11 @@ typedef struct VulkanTexture /* Cast from FNA3D_Texture* */
 	uint32_t layerCount;
 	uint32_t levelCount;
 	VulkanResourceAccessType resourceAccessType;
+	FNA3DNAMELESS union
+	{
+		FNA3D_SurfaceFormat colorFormat;
+		FNA3D_DepthFormat depthStencilFormat;
+	};
 } VulkanTexture;
 
 static VulkanTexture NullTexture =
@@ -562,15 +569,14 @@ typedef struct VulkanRenderer
 	int8_t freeQueryIndexStack[MAX_QUERIES];
 	int8_t freeQueryIndexStackHead;
 
-	SurfaceFormatMapping surfaceFormatMapping;
-	FNA3D_SurfaceFormat fauxBackbufferSurfaceFormat;
+	VkFormat swapchainFormat;
+	VkComponentMapping swapchainSwizzle;
 	VulkanColorBuffer fauxBackbufferColor;
 	VulkanTexture *fauxBackbufferMultiSampleColor;
 	VulkanDepthStencilBuffer fauxBackbufferDepthStencil;
 	VkFramebuffer fauxBackbufferFramebuffer;
 	uint32_t fauxBackbufferWidth;
 	uint32_t fauxBackbufferHeight;
-	FNA3D_DepthFormat fauxBackbufferDepthFormat;
 	uint32_t fauxBackbufferMultiSampleCount;
 
 	VulkanTexture *colorAttachments[MAX_RENDERTARGET_BINDINGS];
@@ -760,140 +766,94 @@ static inline VkSampleCountFlagBits XNAToVK_SampleCount(int32_t sampleCount)
 	}
 }
 
-static SurfaceFormatMapping XNAToVK_SurfaceFormat[] =
+static VkComponentMapping XNAToVK_SurfaceSwizzle[] =
 {
-	/* SurfaceFormat.Color */
-	{
-		VK_FORMAT_R8G8B8A8_UNORM
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.Color */
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.Bgr565 */
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.Bgra5551 */
+	{			/* SurfaceFormat.Bgra4444 */
+		VK_COMPONENT_SWIZZLE_G,
+		VK_COMPONENT_SWIZZLE_R,
+		VK_COMPONENT_SWIZZLE_A,
+		VK_COMPONENT_SWIZZLE_B
 	},
-	/* SurfaceFormat.Bgr565 */
-	{
-		VK_FORMAT_R5G6B5_UNORM_PACK16
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.Dxt1 */
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.Dxt3 */
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.Dxt5 */
+	{			/* SurfaceFormat.NormalizedByte2 */
+		VK_COMPONENT_SWIZZLE_R,
+		VK_COMPONENT_SWIZZLE_G,
+		VK_COMPONENT_SWIZZLE_ONE,
+		VK_COMPONENT_SWIZZLE_ONE
 	},
-	/* SurfaceFormat.Bgra5551 */
-	{
-		VK_FORMAT_A1R5G5B5_UNORM_PACK16
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.NormalizedByte4 */
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.Rgba1010102 */
+	{			/* SurfaceFormat.Rg32 */
+		VK_COMPONENT_SWIZZLE_R,
+		VK_COMPONENT_SWIZZLE_G,
+		VK_COMPONENT_SWIZZLE_ONE,
+		VK_COMPONENT_SWIZZLE_ONE
 	},
-	/* SurfaceFormat.Bgra4444 */
-	{
-		VK_FORMAT_B4G4R4A4_UNORM_PACK16,
-		{
-			VK_COMPONENT_SWIZZLE_G,
-			VK_COMPONENT_SWIZZLE_R,
-			VK_COMPONENT_SWIZZLE_A,
-			VK_COMPONENT_SWIZZLE_B
-		}
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.Rgba64 */
+	{			/* SurfaceFormat.Alpha8 */
+		VK_COMPONENT_SWIZZLE_ZERO,
+		VK_COMPONENT_SWIZZLE_ZERO,
+		VK_COMPONENT_SWIZZLE_ZERO,
+		VK_COMPONENT_SWIZZLE_R
 	},
-	/* SurfaceFormat.Dxt1 */
-	{
-		VK_FORMAT_BC1_RGBA_UNORM_BLOCK
+	{			/* SurfaceFormat.Single */
+		VK_COMPONENT_SWIZZLE_R,
+		VK_COMPONENT_SWIZZLE_ONE,
+		VK_COMPONENT_SWIZZLE_ONE,
+		VK_COMPONENT_SWIZZLE_ONE
 	},
-	/* SurfaceFormat.Dxt3 */
-	{
-		VK_FORMAT_BC2_UNORM_BLOCK
+	{			/* SurfaceFormat.Vector2 */
+		VK_COMPONENT_SWIZZLE_R,
+		VK_COMPONENT_SWIZZLE_G,
+		VK_COMPONENT_SWIZZLE_ONE,
+		VK_COMPONENT_SWIZZLE_ONE
 	},
-	/* SurfaceFormat.Dxt5 */
-	{
-		VK_FORMAT_BC3_UNORM_BLOCK
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.Vector4 */
+	{			/* SurfaceFormat.HalfSingle */
+		VK_COMPONENT_SWIZZLE_R,
+		VK_COMPONENT_SWIZZLE_ONE,
+		VK_COMPONENT_SWIZZLE_ONE,
+		VK_COMPONENT_SWIZZLE_ONE
 	},
-	/* SurfaceFormat.NormalizedByte2 */
-	{
-		VK_FORMAT_R8G8_SNORM,
-		{
-			VK_COMPONENT_SWIZZLE_R,
-			VK_COMPONENT_SWIZZLE_G,
-			VK_COMPONENT_SWIZZLE_ONE,
-			VK_COMPONENT_SWIZZLE_ONE
-		}
+	{			/* SurfaceFormat.HalfVector2 */
+		VK_COMPONENT_SWIZZLE_R,
+		VK_COMPONENT_SWIZZLE_G,
+		VK_COMPONENT_SWIZZLE_ONE,
+		VK_COMPONENT_SWIZZLE_ONE
 	},
-	/* SurfaceFormat.NormalizedByte4 */
-	{
-		VK_FORMAT_R8G8B8A8_SNORM
-	},
-	/* SurfaceFormat.Rgba1010102 */
-	{
-		VK_FORMAT_A2R10G10B10_UNORM_PACK32
-	},
-	/* SurfaceFormat.Rg32 */
-	{
-		VK_FORMAT_R16G16_UNORM,
-		{
-			VK_COMPONENT_SWIZZLE_R,
-			VK_COMPONENT_SWIZZLE_G,
-			VK_COMPONENT_SWIZZLE_ONE,
-			VK_COMPONENT_SWIZZLE_ONE
-		}
-	},
-	/* SurfaceFormat.Rgba64 */
-	{
-		VK_FORMAT_R16G16B16A16_UNORM
-	},
-	/* SurfaceFormat.Alpha8 */
-	{
-		VK_FORMAT_R8_UNORM,
-		{
-			VK_COMPONENT_SWIZZLE_ZERO,
-			VK_COMPONENT_SWIZZLE_ZERO,
-			VK_COMPONENT_SWIZZLE_ZERO,
-			VK_COMPONENT_SWIZZLE_R
-		}
-	},
-	/* SurfaceFormat.Single */
-	{
-		VK_FORMAT_R32_SFLOAT,
-		{
-			VK_COMPONENT_SWIZZLE_R,
-			VK_COMPONENT_SWIZZLE_ONE,
-			VK_COMPONENT_SWIZZLE_ONE,
-			VK_COMPONENT_SWIZZLE_ONE
-		}
-	},
-	/* SurfaceFormat.Vector2 */
-	{
-		VK_FORMAT_R32G32_SFLOAT,
-		{
-			VK_COMPONENT_SWIZZLE_R,
-			VK_COMPONENT_SWIZZLE_G,
-			VK_COMPONENT_SWIZZLE_ONE,
-			VK_COMPONENT_SWIZZLE_ONE
-		}
-	},
-	/* SurfaceFormat.Vector4 */
-	{
-		VK_FORMAT_R32G32B32A32_SFLOAT
-	},
-	/* SurfaceFormat.HalfSingle */
-	{
-		VK_FORMAT_R16_SFLOAT,
-		{
-			VK_COMPONENT_SWIZZLE_R,
-			VK_COMPONENT_SWIZZLE_ONE,
-			VK_COMPONENT_SWIZZLE_ONE,
-			VK_COMPONENT_SWIZZLE_ONE
-		}
-	},
-	/* SurfaceFormat.HalfVector2 */
-	{
-		VK_FORMAT_R16G16_SFLOAT,
-		{
-			VK_COMPONENT_SWIZZLE_R,
-			VK_COMPONENT_SWIZZLE_G,
-			VK_COMPONENT_SWIZZLE_ONE,
-			VK_COMPONENT_SWIZZLE_ONE
-		}
-	},
-	/* SurfaceFormat.HalfVector4 */
-	{
-		VK_FORMAT_R16G16B16A16_SFLOAT
-	},
-	/* SurfaceFormat.HdrBlendable */
-	{
-		VK_FORMAT_R16G16B16A16_SFLOAT
-	},
-	/* SurfaceFormat.ColorBgraEXT */
-	{
-		VK_FORMAT_R8G8B8A8_UNORM
-	}
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.HalfVector4 */
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.HdrBlendable */
+	IDENTITY_SWIZZLE	/* SurfaceFormat.ColorBgraEXT */
+};
+
+static VkFormat XNAToVK_SurfaceFormat[] =
+{
+	VK_FORMAT_R8G8B8A8_UNORM,		/* SurfaceFormat.Color */
+	VK_FORMAT_R5G6B5_UNORM_PACK16,		/* SurfaceFormat.Bgr565 */
+	VK_FORMAT_A1R5G5B5_UNORM_PACK16,	/* SurfaceFormat.Bgra5551 */
+	VK_FORMAT_B4G4R4A4_UNORM_PACK16,	/* SurfaceFormat.Bgra4444 */
+	VK_FORMAT_BC1_RGBA_UNORM_BLOCK,		/* SurfaceFormat.Dxt1 */
+	VK_FORMAT_BC2_UNORM_BLOCK,		/* SurfaceFormat.Dxt3 */
+	VK_FORMAT_BC3_UNORM_BLOCK,		/* SurfaceFormat.Dxt5 */
+	VK_FORMAT_R8G8_SNORM,			/* SurfaceFormat.NormalizedByte2 */
+	VK_FORMAT_R8G8B8A8_SNORM,		/* SurfaceFormat.NormalizedByte4 */
+	VK_FORMAT_A2R10G10B10_UNORM_PACK32,	/* SurfaceFormat.Rgba1010102 */
+	VK_FORMAT_R16G16_UNORM,			/* SurfaceFormat.Rg32 */
+	VK_FORMAT_R16G16B16A16_UNORM,		/* SurfaceFormat.Rgba64 */
+	VK_FORMAT_R8_UNORM,			/* SurfaceFormat.Alpha8 */
+	VK_FORMAT_R32_SFLOAT,			/* SurfaceFormat.Single */
+	VK_FORMAT_R32G32_SFLOAT,		/* SurfaceFormat.Vector2 */
+	VK_FORMAT_R32G32B32A32_SFLOAT,		/* SurfaceFormat.Vector4 */
+	VK_FORMAT_R16_SFLOAT,			/* SurfaceFormat.HalfSingle */
+	VK_FORMAT_R16G16_SFLOAT,		/* SurfaceFormat.HalfVector2 */
+	VK_FORMAT_R16G16B16A16_SFLOAT,		/* SurfaceFormat.HalfVector4 */
+	VK_FORMAT_R16G16B16A16_SFLOAT,		/* SurfaceFormat.HdrBlendable */
+	VK_FORMAT_R8G8B8A8_UNORM		/* SurfaceFormat.ColorBgraEXT */
 };
 
 static inline VkFormat XNAToVK_DepthFormat(
@@ -1135,7 +1095,6 @@ static void VULKAN_GetBackbufferSize(
 static void VULKAN_GetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -2294,10 +2253,6 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO
 	};
 	VkImageView swapChainImageView;
-	SurfaceFormatMapping surfaceFormatMapping =
-	{
-		VK_FORMAT_B8G8R8A8_UNORM
-	};
 
 	if (!VULKAN_INTERNAL_QuerySwapChainSupport(
 		renderer,
@@ -2309,8 +2264,10 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
+	renderer->swapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
+	renderer->swapchainSwizzle = IDENTITY_SWIZZLE;
 	if (!VULKAN_INTERNAL_ChooseSwapSurfaceFormat(
-		surfaceFormatMapping.formatColor,
+		renderer->swapchainFormat,
 		swapChainSupportDetails.formats,
 		swapChainSupportDetails.formatsLength,
 		&surfaceFormat
@@ -2320,8 +2277,6 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		FNA3D_LogError("Device does not support swap chain format");
 		return CREATE_SWAPCHAIN_FAIL;
 	}
-
-	renderer->surfaceFormatMapping = surfaceFormatMapping;
 
 	if (!VULKAN_INTERNAL_ChooseSwapPresentMode(
 		renderer->presentInterval,
@@ -2432,7 +2387,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		createInfo.image = swapChainImages[i];
 		createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 		createInfo.format = surfaceFormat.format;
-		createInfo.components = surfaceFormatMapping.swizzle;
+		createInfo.components = renderer->swapchainSwizzle;
 		createInfo.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 		createInfo.subresourceRange.baseMipLevel = 0;
 		createInfo.subresourceRange.levelCount = 1;
@@ -3302,7 +3257,6 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 static void VULKAN_INTERNAL_GetTextureData(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -3383,7 +3337,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 	SDL_memcpy(
 		dataPtr,
 		renderer->textureStagingBuffer->mapPointer,
-		BytesPerImage(w, h, format)
+		BytesPerImage(w, h, vulkanTexture->colorFormat)
 	);
 }
 
@@ -4219,8 +4173,8 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 		1,
 		VK_SAMPLE_COUNT_1_BIT,
 		1,
-		renderer->surfaceFormatMapping.formatColor,
-		renderer->surfaceFormatMapping.swizzle,
+		renderer->swapchainFormat,
+		renderer->swapchainSwizzle,
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_TYPE_2D,
@@ -4236,11 +4190,11 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 		FNA3D_LogError("Failed to create faux backbuffer colorbuffer");
 		return 0;
 	}
+	renderer->fauxBackbufferColor.handle->colorFormat =
+		presentationParameters->backBufferFormat;
 
 	renderer->fauxBackbufferWidth = presentationParameters->backBufferWidth;
 	renderer->fauxBackbufferHeight = presentationParameters->backBufferHeight;
-
-	renderer->fauxBackbufferSurfaceFormat = presentationParameters->backBufferFormat;
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -4279,8 +4233,8 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 			1,
 			XNAToVK_SampleCount(presentationParameters->multiSampleCount),
 			1,
-			renderer->surfaceFormatMapping.formatColor,
-			renderer->surfaceFormatMapping.swizzle,
+			renderer->swapchainFormat,
+			renderer->swapchainSwizzle,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_TYPE_2D,
@@ -4288,6 +4242,8 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			renderer->fauxBackbufferMultiSampleColor
 		);
+		/* FIXME: Swapchain format may not be an FNA3D_SurfaceFormat! */
+		renderer->fauxBackbufferMultiSampleColor = FNA3D_SURFACEFORMAT_COLOR;
 
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
@@ -4305,10 +4261,8 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 
 	/* Create faux backbuffer depth stencil image */
 
-	renderer->fauxBackbufferDepthFormat = presentationParameters->depthStencilFormat;
 	renderer->fauxBackbufferDepthStencil.handle = NULL;
-
-	if (renderer->fauxBackbufferDepthFormat != FNA3D_DEPTHFORMAT_NONE)
+	if (presentationParameters->depthStencilFormat != FNA3D_DEPTHFORMAT_NONE)
 	{
 		renderer->fauxBackbufferDepthStencil.handle = (VulkanTexture*) SDL_malloc(
 			sizeof(VulkanTexture)
@@ -4321,7 +4275,7 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 
 		vulkanDepthStencilFormat = XNAToVK_DepthFormat(
 			renderer,
-			renderer->fauxBackbufferDepthFormat
+			presentationParameters->depthStencilFormat
 		);
 
 		if (DepthFormatContainsStencil(vulkanDepthStencilFormat))
@@ -4341,7 +4295,7 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 			),
 			1,
 			vulkanDepthStencilFormat,
-			IDENTITY_SWIZZLE,
+			RGBA_SWIZZLE,
 			depthAspectFlags,
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_TYPE_2D,
@@ -4355,6 +4309,8 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 			FNA3D_LogError("Failed to create depth stencil image");
 			return 0;
 		}
+		renderer->fauxBackbufferDepthStencil.handle->depthStencilFormat =
+			presentationParameters->depthStencilFormat;
 
 		/* Layout transition if required */
 
@@ -6876,12 +6832,8 @@ static void VULKAN_SetRenderTargets(
 			renderer->colorMultiSampleAttachments[0] =
 				renderer->fauxBackbufferMultiSampleColor;
 		}
-
-		if (renderer->fauxBackbufferDepthFormat != FNA3D_DEPTHFORMAT_NONE)
-		{
-			renderer->depthStencilAttachment =
-				renderer->fauxBackbufferDepthStencil.handle;
-		}
+		renderer->depthStencilAttachment =
+			renderer->fauxBackbufferDepthStencil.handle;
 
 		renderer->renderTargetBound = 0;
 	}
@@ -7089,7 +7041,6 @@ static void VULKAN_ReadBackbuffer(
 	VULKAN_GetTextureData2D(
 		driverData,
 		(FNA3D_Texture*) renderer->fauxBackbufferColor.handle,
-		renderer->fauxBackbufferSurfaceFormat,
 		x,
 		y,
 		w,
@@ -7114,14 +7065,18 @@ static FNA3D_SurfaceFormat VULKAN_GetBackbufferSurfaceFormat(
 	FNA3D_Renderer *driverData
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	return renderer->fauxBackbufferSurfaceFormat;
+	return renderer->fauxBackbufferColor.handle->colorFormat;
 }
 
 static FNA3D_DepthFormat VULKAN_GetBackbufferDepthFormat(
 	FNA3D_Renderer *driverData
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	return renderer->fauxBackbufferDepthFormat;
+	if (renderer->fauxBackbufferDepthStencil.handle == NULL)
+	{
+		return FNA3D_DEPTHFORMAT_NONE;
+	}
+	return renderer->fauxBackbufferDepthStencil.handle->depthStencilFormat;
 }
 
 static int32_t VULKAN_GetBackbufferMultiSampleCount(FNA3D_Renderer *driverData)
@@ -7142,7 +7097,6 @@ static FNA3D_Texture* VULKAN_CreateTexture2D(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *result;
-	SurfaceFormatMapping surfaceFormatMapping = XNAToVK_SurfaceFormat[format];
 	uint32_t usageFlags = (
 		VK_IMAGE_USAGE_SAMPLED_BIT |
 		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
@@ -7166,8 +7120,8 @@ static FNA3D_Texture* VULKAN_CreateTexture2D(
 		isRenderTarget,
 		VK_SAMPLE_COUNT_1_BIT,
 		levelCount,
-		surfaceFormatMapping.formatColor,
-		surfaceFormatMapping.swizzle,
+		XNAToVK_SurfaceFormat[format],
+		XNAToVK_SurfaceSwizzle[format],
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_TYPE_2D,
@@ -7175,6 +7129,7 @@ static FNA3D_Texture* VULKAN_CreateTexture2D(
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		result
 	);
+	result->colorFormat = format;
 
 	return (FNA3D_Texture*) result;
 }
@@ -7189,7 +7144,6 @@ static FNA3D_Texture* VULKAN_CreateTexture3D(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *result;
-	SurfaceFormatMapping surfaceFormatMapping = XNAToVK_SurfaceFormat[format];
 	uint32_t usageFlags = (
 		VK_IMAGE_USAGE_SAMPLED_BIT |
 		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
@@ -7208,8 +7162,8 @@ static FNA3D_Texture* VULKAN_CreateTexture3D(
 		0,
 		VK_SAMPLE_COUNT_1_BIT,
 		levelCount,
-		surfaceFormatMapping.formatColor,
-		surfaceFormatMapping.swizzle,
+		XNAToVK_SurfaceFormat[format],
+		XNAToVK_SurfaceSwizzle[format],
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_TYPE_3D,
@@ -7217,6 +7171,7 @@ static FNA3D_Texture* VULKAN_CreateTexture3D(
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		result
 	);
+	result->colorFormat = format;
 
 	return (FNA3D_Texture*) result;
 }
@@ -7230,7 +7185,6 @@ static FNA3D_Texture* VULKAN_CreateTextureCube(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *result;
-	SurfaceFormatMapping surfaceFormatMapping = XNAToVK_SurfaceFormat[format];
 	uint32_t usageFlags = (
 		VK_IMAGE_USAGE_SAMPLED_BIT |
 		VK_IMAGE_USAGE_TRANSFER_DST_BIT |
@@ -7254,8 +7208,8 @@ static FNA3D_Texture* VULKAN_CreateTextureCube(
 		isRenderTarget,
 		VK_SAMPLE_COUNT_1_BIT,
 		levelCount,
-		surfaceFormatMapping.formatColor,
-		surfaceFormatMapping.swizzle,
+		XNAToVK_SurfaceFormat[format],
+		XNAToVK_SurfaceSwizzle[format],
 		VK_IMAGE_ASPECT_COLOR_BIT,
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_TYPE_2D,
@@ -7263,6 +7217,7 @@ static FNA3D_Texture* VULKAN_CreateTextureCube(
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		result
 	);
+	result->colorFormat = format;
 
 	return (FNA3D_Texture*) result;
 }
@@ -7312,7 +7267,6 @@ static void VULKAN_AddDisposeTexture(
 static void VULKAN_SetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -7371,7 +7325,6 @@ static void VULKAN_SetTextureData2D(
 static void VULKAN_SetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t z,
@@ -7432,7 +7385,6 @@ static void VULKAN_SetTextureData3D(
 static void VULKAN_SetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -7640,7 +7592,6 @@ static void VULKAN_SetTextureDataYUV(
 static void VULKAN_GetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -7652,7 +7603,6 @@ static void VULKAN_GetTextureData2D(
 	VULKAN_INTERNAL_GetTextureData(
 		driverData,
 		texture,
-		format,
 		x,
 		y,
 		w,
@@ -7667,7 +7617,6 @@ static void VULKAN_GetTextureData2D(
 static void VULKAN_GetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t z,
@@ -7686,7 +7635,6 @@ static void VULKAN_GetTextureData3D(
 static void VULKAN_GetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -7699,7 +7647,6 @@ static void VULKAN_GetTextureDataCube(
 	VULKAN_INTERNAL_GetTextureData(
 		driverData,
 		texture,
-		format,
 		x,
 		y,
 		w,
@@ -7723,7 +7670,6 @@ static FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vlkTexture = (VulkanTexture*) texture;
-	SurfaceFormatMapping surfaceFormatMapping = XNAToVK_SurfaceFormat[format];
 	VulkanRenderbuffer *renderbuffer;
 
 	/* Create and return the renderbuffer */
@@ -7755,8 +7701,8 @@ static FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 			1,
 			XNAToVK_SampleCount(multiSampleCount),
 			1,
-			surfaceFormatMapping.formatColor,
-			surfaceFormatMapping.swizzle,
+			XNAToVK_SurfaceFormat[format],
+			XNAToVK_SurfaceSwizzle[format],
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_TYPE_2D,
@@ -7764,6 +7710,7 @@ static FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			renderbuffer->colorBuffer->multiSampleTexture
 		);
+		renderbuffer->colorBuffer->multiSampleTexture->colorFormat = format;
 
 		renderbuffer->colorBuffer->multiSampleCount = multiSampleCount;
 
@@ -7828,7 +7775,7 @@ static FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 		XNAToVK_SampleCount(multiSampleCount),
 		1,
 		depthFormat,
-		IDENTITY_SWIZZLE,
+		RGBA_SWIZZLE,
 		depthAspectFlags,
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_TYPE_2D,
@@ -7839,6 +7786,7 @@ static FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 		FNA3D_LogError("Failed to create depth stencil image");
 		return NULL;
 	}
+	renderbuffer->depthBuffer->handle->depthStencilFormat = format;
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -9141,17 +9089,17 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	renderer->vkGetPhysicalDeviceFormatProperties(
 		renderer->physicalDevice,
-		XNAToVK_SurfaceFormat[FNA3D_SURFACEFORMAT_DXT1].formatColor,
+		XNAToVK_SurfaceFormat[FNA3D_SURFACEFORMAT_DXT1],
 		&formatPropsBC1
 	);
 	renderer->vkGetPhysicalDeviceFormatProperties(
 		renderer->physicalDevice,
-		XNAToVK_SurfaceFormat[FNA3D_SURFACEFORMAT_DXT3].formatColor,
+		XNAToVK_SurfaceFormat[FNA3D_SURFACEFORMAT_DXT3],
 		&formatPropsBC2
 	);
 	renderer->vkGetPhysicalDeviceFormatProperties(
 		renderer->physicalDevice,
-		XNAToVK_SurfaceFormat[FNA3D_SURFACEFORMAT_DXT5].formatColor,
+		XNAToVK_SurfaceFormat[FNA3D_SURFACEFORMAT_DXT5],
 		&formatPropsBC3
 	);
 
