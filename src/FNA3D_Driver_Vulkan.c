@@ -75,13 +75,13 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
 #define NULL_SAMPLER (VkSampler) 0
 #define NULL_RENDER_PASS (VkRenderPass) 0
 
-static const VkComponentMapping IDENTITY_SWIZZLE =
-{
-	VK_COMPONENT_SWIZZLE_IDENTITY,
-	VK_COMPONENT_SWIZZLE_IDENTITY,
-	VK_COMPONENT_SWIZZLE_IDENTITY,
-	VK_COMPONENT_SWIZZLE_IDENTITY
-};
+#define IDENTITY_SWIZZLE \
+{ \
+	VK_COMPONENT_SWIZZLE_IDENTITY, \
+	VK_COMPONENT_SWIZZLE_IDENTITY, \
+	VK_COMPONENT_SWIZZLE_IDENTITY, \
+	VK_COMPONENT_SWIZZLE_IDENTITY \
+}
 
 static const VkComponentMapping RGBA_SWIZZLE =
 {
@@ -2265,7 +2265,10 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	}
 
 	renderer->swapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
-	renderer->swapchainSwizzle = IDENTITY_SWIZZLE;
+	renderer->swapchainSwizzle.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+	renderer->swapchainSwizzle.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+	renderer->swapchainSwizzle.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+	renderer->swapchainSwizzle.a = VK_COMPONENT_SWIZZLE_IDENTITY;
 	if (!VULKAN_INTERNAL_ChooseSwapSurfaceFormat(
 		renderer->swapchainFormat,
 		swapChainSupportDetails.formats,
