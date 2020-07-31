@@ -114,6 +114,7 @@ typedef struct MetalBackbuffer
 	FNA3D_SurfaceFormat surfaceFormat;
 	FNA3D_DepthFormat depthFormat;
 	int32_t multiSampleCount;
+	uint8_t preserveDepthStencil;
 
 	MTLTexture *colorBuffer;
 	MTLTexture *multiSampleColorBuffer;
@@ -216,6 +217,7 @@ typedef struct MetalRenderer /* Cast from FNA3D_Renderer* */
 	MTLTexture *currentDepthStencilBuffer;
 	FNA3D_DepthFormat currentDepthFormat;
 	int32_t currentSampleCount;
+	uint8_t preserveDepthStencil;
 
 	/* Clear Cache */
 	FNA3D_Vec4 clearColor;
@@ -792,7 +794,9 @@ static void METAL_INTERNAL_UpdateRenderPass(MetalRenderer *renderer)
 		);
 		mtlSetAttachmentStoreAction(
 			depthAttachment,
-			MTLStoreActionStore
+			(renderer->preserveDepthStencil) ?
+				MTLStoreActionStore :
+				MTLStoreActionDontCare
 		);
 
 		/* Clear? */
@@ -811,7 +815,9 @@ static void METAL_INTERNAL_UpdateRenderPass(MetalRenderer *renderer)
 		{
 			mtlSetAttachmentLoadAction(
 				depthAttachment,
-				MTLLoadActionLoad
+				(renderer->preserveDepthStencil) ?
+					MTLLoadActionLoad :
+					MTLLoadActionDontCare
 			);
 		}
 	}
@@ -826,7 +832,9 @@ static void METAL_INTERNAL_UpdateRenderPass(MetalRenderer *renderer)
 		);
 		mtlSetAttachmentStoreAction(
 			stencilAttachment,
-			MTLStoreActionStore
+			(renderer->preserveDepthStencil) ?
+				MTLStoreActionStore :
+				MTLStoreActionDontCare
 		);
 
 		/* Clear? */
@@ -845,7 +853,9 @@ static void METAL_INTERNAL_UpdateRenderPass(MetalRenderer *renderer)
 		{
 			mtlSetAttachmentLoadAction(
 				stencilAttachment,
-				MTLLoadActionLoad
+				(renderer->preserveDepthStencil) ?
+					MTLLoadActionLoad :
+					MTLLoadActionDontCare
 			);
 		}
 	}
@@ -2024,7 +2034,8 @@ static void METAL_SetRenderTargets(
 	FNA3D_RenderTargetBinding *renderTargets,
 	int32_t numRenderTargets,
 	FNA3D_Renderbuffer *depthStencilBuffer,
-	FNA3D_DepthFormat depthFormat
+	FNA3D_DepthFormat depthFormat,
+	uint8_t preserveDepthStencilContents
 );
 static void METAL_SwapBuffers(
 	FNA3D_Renderer *driverData,
@@ -2048,7 +2059,8 @@ static void METAL_SwapBuffers(
 		NULL,
 		0,
 		NULL,
-		FNA3D_DEPTHFORMAT_NONE
+		FNA3D_DEPTHFORMAT_NONE,
+		0
 	);
 	METAL_INTERNAL_EndPass(renderer);
 
@@ -2652,7 +2664,8 @@ static void METAL_SetRenderTargets(
 	FNA3D_RenderTargetBinding *renderTargets,
 	int32_t numRenderTargets,
 	FNA3D_Renderbuffer *depthStencilBuffer,
-	FNA3D_DepthFormat depthFormat
+	FNA3D_DepthFormat depthFormat,
+	uint8_t preserveDepthStencilContents
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
 	MetalBackbuffer *bb;
@@ -2693,6 +2706,7 @@ static void METAL_SetRenderTargets(
 		];
 		renderer->currentDepthStencilBuffer = bb->depthStencilBuffer;
 		renderer->currentDepthFormat = bb->depthFormat;
+		renderer->preserveDepthStencil = bb->preserveDepthStencil;
 		renderer->currentSampleCount = bb->multiSampleCount;
 		renderer->currentMSAttachments[0] = bb->multiSampleColorBuffer;
 		renderer->currentAttachmentSlices[0] = 0;
@@ -2740,6 +2754,7 @@ static void METAL_SetRenderTargets(
 			FNA3D_DEPTHFORMAT_NONE :
 			depthFormat
 	);
+	renderer->preserveDepthStencil = preserveDepthStencilContents;
 }
 
 static void METAL_ResolveTarget(
@@ -2777,32 +2792,31 @@ static void METAL_INTERNAL_CreateFramebuffer(
 	int32_t newWidth, newHeight;
 	MTLTextureDescriptor *colorBufferDesc;
 	MTLTextureDescriptor *depthStencilBufferDesc;
-
-	#define BB renderer->backbuffer
+	MetalBackbuffer *bb = renderer->backbuffer;
 
 	/* Update the backbuffer size */
 	newWidth = presentationParameters->backBufferWidth;
 	newHeight = presentationParameters->backBufferHeight;
-	if (BB->width != newWidth || BB->height != newHeight)
+	if (bb->width != newWidth || bb->height != newHeight)
 	{
 		renderer->backbufferSizeChanged = 1;
 	}
-	BB->width = newWidth;
-	BB->height = newHeight;
+	bb->width = newWidth;
+	bb->height = newHeight;
 
 	/* Update other presentation parameters */
-	BB->surfaceFormat = presentationParameters->backBufferFormat;
-	BB->depthFormat = presentationParameters->depthStencilFormat;
-	BB->multiSampleCount = METAL_INTERNAL_GetCompatibleSampleCount(
+	bb->surfaceFormat = presentationParameters->backBufferFormat;
+	bb->depthFormat = presentationParameters->depthStencilFormat;
+	bb->multiSampleCount = METAL_INTERNAL_GetCompatibleSampleCount(
 		renderer,
 		presentationParameters->multiSampleCount
 	);
 
 	/* Update color buffer to the new resolution */
 	colorBufferDesc = mtlMakeTexture2DDescriptor(
-		XNAToMTL_TextureFormat[BB->surfaceFormat],
-		BB->width,
-		BB->height,
+		XNAToMTL_TextureFormat[bb->surfaceFormat],
+		bb->width,
+		bb->height,
 		0
 	);
 	mtlSetStorageMode(colorBufferDesc, MTLStorageModePrivate);
@@ -2810,30 +2824,30 @@ static void METAL_INTERNAL_CreateFramebuffer(
 		colorBufferDesc,
 		MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead
 	);
-	BB->colorBuffer = mtlNewTexture(renderer->device, colorBufferDesc);
-	if (BB->multiSampleCount > 0)
+	bb->colorBuffer = mtlNewTexture(renderer->device, colorBufferDesc);
+	if (bb->multiSampleCount > 0)
 	{
 		mtlSetTextureType(colorBufferDesc, MTLTextureType2DMultisample);
-		mtlSetTextureSampleCount(colorBufferDesc, BB->multiSampleCount);
+		mtlSetTextureSampleCount(colorBufferDesc, bb->multiSampleCount);
 		mtlSetTextureUsage(colorBufferDesc, MTLTextureUsageRenderTarget);
-		BB->multiSampleColorBuffer = mtlNewTexture(
+		bb->multiSampleColorBuffer = mtlNewTexture(
 			renderer->device,
 			colorBufferDesc
 		);
 	}
 
 	/* Update the depth/stencil buffer, if applicable */
-	if (BB->depthFormat != FNA3D_DEPTHFORMAT_NONE)
+	if (bb->depthFormat != FNA3D_DEPTHFORMAT_NONE)
 	{
 		depthStencilBufferDesc = mtlMakeTexture2DDescriptor(
-			XNAToMTL_DepthFormat(renderer, BB->depthFormat),
-			BB->width,
-			BB->height,
+			XNAToMTL_DepthFormat(renderer, bb->depthFormat),
+			bb->width,
+			bb->height,
 			0
 		);
 		mtlSetStorageMode(depthStencilBufferDesc, MTLStorageModePrivate);
 		mtlSetTextureUsage(depthStencilBufferDesc, MTLTextureUsageRenderTarget);
-		if (BB->multiSampleCount > 0)
+		if (bb->multiSampleCount > 0)
 		{
 			mtlSetTextureType(
 				depthStencilBufferDesc,
@@ -2841,16 +2855,18 @@ static void METAL_INTERNAL_CreateFramebuffer(
 			);
 			mtlSetTextureSampleCount(
 				depthStencilBufferDesc,
-				BB->multiSampleCount
+				bb->multiSampleCount
 			);
 		}
-		BB->depthStencilBuffer = mtlNewTexture(
+		bb->depthStencilBuffer = mtlNewTexture(
 			renderer->device,
 			depthStencilBufferDesc
 		);
+		bb->preserveDepthStencil = (
+			presentationParameters->renderTargetUsage !=
+				FNA3D_RENDERTARGETUSAGE_DISCARDCONTENTS
+		);
 	}
-
-	#undef BB
 
 	/* This is the default render target */
 	METAL_SetRenderTargets(
@@ -2858,7 +2874,8 @@ static void METAL_INTERNAL_CreateFramebuffer(
 		NULL,
 		0,
 		NULL,
-		FNA3D_DEPTHFORMAT_NONE
+		FNA3D_DEPTHFORMAT_NONE,
+		0
 	);
 }
 
