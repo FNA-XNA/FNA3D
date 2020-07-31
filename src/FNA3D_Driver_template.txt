@@ -256,11 +256,7 @@ static void TEMPLATE_DestroyDevice(FNA3D_Device *device)
 	SDL_free(device);
 }
 
-/* Begin/End Frame */
-
-static void TEMPLATE_BeginFrame(FNA3D_Renderer *driverData)
-{
-}
+/* Presentation */
 
 static void TEMPLATE_SwapBuffers(
 	FNA3D_Renderer *driverData,
@@ -537,7 +533,6 @@ static void TEMPLATE_AddDisposeTexture(
 static void TEMPLATE_SetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -551,7 +546,6 @@ static void TEMPLATE_SetTextureData2D(
 static void TEMPLATE_SetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t z,
@@ -567,7 +561,6 @@ static void TEMPLATE_SetTextureData3D(
 static void TEMPLATE_SetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -596,7 +589,6 @@ static void TEMPLATE_SetTextureDataYUV(
 static void TEMPLATE_GetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
@@ -610,7 +602,6 @@ static void TEMPLATE_GetTextureData2D(
 static void TEMPLATE_GetTextureData3D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t z,
@@ -626,7 +617,6 @@ static void TEMPLATE_GetTextureData3D(
 static void TEMPLATE_GetTextureDataCube(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
-	FNA3D_SurfaceFormat format,
 	int32_t x,
 	int32_t y,
 	int32_t w,
