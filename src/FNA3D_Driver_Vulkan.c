@@ -1479,7 +1479,7 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	SwapChainSupportDetails swapChainSupportDetails;
 	VkQueueFamilyProperties *queueProps;
 	VkBool32 supportsPresent;
-	uint8_t foundSuitableDevice = 0;
+	uint8_t querySuccess, foundSuitableDevice = 0;
 	VkPhysicalDeviceProperties deviceProperties;
 
 	queueFamilyIndices->graphicsFamily = UINT32_MAX;
@@ -1506,22 +1506,18 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	);
 
 	/* FIXME: Need better structure for checking vs storing support details */
-	if (!VULKAN_INTERNAL_QuerySwapChainSupport(
+	querySuccess = VULKAN_INTERNAL_QuerySwapChainSupport(
 		renderer,
 		physicalDevice,
 		surface,
 		&swapChainSupportDetails
-	)) {
-		SDL_free(swapChainSupportDetails.formats);
-		SDL_free(swapChainSupportDetails.presentModes);
-		return 0;
-	}
-
-	if (	swapChainSupportDetails.formatsLength == 0 ||
+	);
+	SDL_free(swapChainSupportDetails.formats);
+	SDL_free(swapChainSupportDetails.presentModes);
+	if (	querySuccess == 0 ||
+		swapChainSupportDetails.formatsLength == 0 ||
 		swapChainSupportDetails.presentModesLength == 0	)
 	{
-		SDL_free(swapChainSupportDetails.formats);
-		SDL_free(swapChainSupportDetails.presentModes);
 		return 0;
 	}
 
