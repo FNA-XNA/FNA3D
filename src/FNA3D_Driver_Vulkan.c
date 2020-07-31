@@ -4246,7 +4246,7 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 			renderer->fauxBackbufferMultiSampleColor
 		);
 		/* FIXME: Swapchain format may not be an FNA3D_SurfaceFormat! */
-		renderer->fauxBackbufferMultiSampleColor = FNA3D_SURFACEFORMAT_COLOR;
+		renderer->fauxBackbufferMultiSampleColor->colorFormat = FNA3D_SURFACEFORMAT_COLOR;
 
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
