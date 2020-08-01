@@ -459,7 +459,7 @@ typedef struct FNA3D_RenderTargetBinding
 
 #define FNA3D_ABI_VERSION	 0
 #define FNA3D_MAJOR_VERSION	20
-#define FNA3D_MINOR_VERSION	 7
+#define FNA3D_MINOR_VERSION	 8
 #define FNA3D_PATCH_VERSION	 0
 
 #define FNA3D_COMPILED_VERSION ( \
