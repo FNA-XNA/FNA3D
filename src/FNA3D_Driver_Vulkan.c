@@ -354,6 +354,34 @@ typedef enum VulkanCommandType
 	CMDTYPE_END_RENDER_PASS
 } VulkanCommandType;
 
+static const char *cmdNames[] =
+{
+	"CMDTYPE_BIND_DESCRIPTOR_SETS",
+	"CMDTYPE_BIND_INDEX_BUFFER",
+	"CMDTYPE_BIND_PIPELINE",
+	"CMDTYPE_BIND_VERTEX_BUFFERS",
+	"CMDTYPE_CLEAR_ATTACHMENTS",
+	"CMDTYPE_CLEAR_COLOR_IMAGE",
+	"CMDTYPE_CLEAR_DEPTH_STENCIL_IMAGE",
+	"CMDTYPE_DRAW",
+	"CMDTYPE_DRAW_INDEXED",
+	"CMDTYPE_SET_BLEND_CONSTANTS",
+	"CMDTYPE_SET_DEPTH_BIAS",
+	"CMDTYPE_BLIT_IMAGE",
+	"CMDTYPE_COPY_BUFFER_TO_IMAGE",
+	"CMDTYPE_COPY_IMAGE_TO_BUFFER",
+	"CMDTYPE_PIPELINE_BARRIER",
+	"CMDTYPE_SET_SCISSOR",
+	"CMDTYPE_SET_VIEWPORT",
+	"CMDTYPE_SET_STENCIL_REFERENCE",
+	"CMDTYPE_INSERT_DEBUG_UTILS_LABEL",
+	"CMDTYPE_RESET_QUERY_POOL",
+	"CMDTYPE_BEGIN_QUERY",
+	"CMDTYPE_END_QUERY",
+	"CMDTYPE_BEGIN_RENDER_PASS",
+	"CMDTYPE_END_RENDER_PASS"
+};
+
 typedef struct VulkanCommand
 {
 	VulkanCommandType type;
@@ -752,6 +780,7 @@ typedef struct VulkanRenderer
 	uint32_t numActiveCommands;
 	VulkanCommand *commands;
 	SDL_mutex *commandLock;
+	SDL_mutex *passLock;
 
 	/* Queries */
 	VkQueryPool queryPool;
@@ -1296,6 +1325,45 @@ static void VULKAN_GetTextureData2D(
 static void VULKAN_INTERNAL_ResetBuffers(VulkanRenderer *renderer);
 
 static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer);
+
+static void VULKAN_INTERNAL_MaybeEndRenderPass(VulkanRenderer *renderer);
+
+//static int refcountCmd = 0;
+//static int refcountPass = 0;
+//
+//void UGH_LockMutex(VulkanRenderer *r, SDL_mutex *m)
+//{
+//    if (m == r->commandLock)
+//    {
+//        FNA3D_LogInfo("refcountCmd: %d -> %d", refcountCmd, refcountCmd + 1);
+//        refcountCmd += 1;
+//    }
+//    else
+//    {
+//        FNA3D_LogInfo("refcountPass: %d -> %d", refcountPass, refcountPass + 1);
+//        refcountPass += 1;
+//    }
+//
+//    SDL_LockMutex(m);
+//}
+//
+//void UGH_UnlockMutex(VulkanRenderer *r, SDL_mutex *m)
+//{
+//    if (m == r->commandLock)
+//    {
+//        FNA3D_LogInfo("refcountCmd: %d -> %d", refcountCmd, refcountCmd - 1);
+//        refcountCmd -= 1;
+//    }
+//    else
+//    {
+//        FNA3D_LogInfo("refcountPass: %d -> %d", refcountPass, refcountPass - 1);
+//        refcountPass -= 1;
+//    }
+//
+//    SDL_UnlockMutex(m);
+//}
+//#define SDL_LockMutex(m) UGH_LockMutex(renderer, m)
+//#define SDL_UnlockMutex(m) UGH_UnlockMutex(renderer, m)
 
 /* Vulkan: Internal Implementation */
 
@@ -2122,6 +2190,7 @@ static void VULKAN_INTERNAL_EncodeCommand(
 	}
 
 	/* Store the calling thread */
+	/* FIXME: This never gets used anywhere... */
 	cmd.threadId = SDL_GetThreadID(NULL);
 
 	/* Add the command to the array */
@@ -2131,6 +2200,90 @@ static void VULKAN_INTERNAL_EncodeCommand(
 	SDL_UnlockMutex(renderer->commandLock);
 }
 
+//static void VULKAN_INTERNAL_MoveCmdIntoRenderPass(
+//	VulkanRenderer *renderer,
+//	uint32_t origIndex
+//) {
+//	/* Whoops, we ended up with a render pass-only command
+//	 * outside of a pass! This can only happen when another
+//	 * thread calls vkCmdEndRenderPass before the current 
+//	 * thread is actually finished with the pass!
+//	 *
+//	 * Therefore, we need to scoot the command backwards until
+//	 * it is before the most recent EndRenderPass command.
+//	 */
+//	VulkanCommand *cmd;
+//	VulkanCommand temp;
+//	uint32_t i, targetIndex;
+//
+//	FNA3D_LogInfo("Need to move command (index=%d, type=%d) backward", origIndex, renderer->commands[origIndex].type);
+//
+//	/* Figure out where we need to put the command. */
+//	for (i = origIndex; i >= 0; i -= 1)
+//	{
+//		cmd = &renderer->commands[i];
+//		if (cmd->type == CMDTYPE_END_RENDER_PASS)
+//		{
+//			targetIndex = i;
+//			break;
+//		}
+//	}
+//	if (i < 0) FNA3D_LogError("i < 0. How did this happen???"); /* FIXME: Remove this! */
+//
+//	FNA3D_LogInfo("TargetIndex = %d", targetIndex);
+//
+//	/* Shift all commands between i and targetIndex one space to the right,
+//	 * then replace the targetIndex slot with the command.
+//	 */
+//	temp = renderer->commands[origIndex];
+//	for (i = origIndex - 1; i >= targetIndex; i -= 1)
+//	{
+//		renderer->commands[i + 1] = renderer->commands[i];
+//	}
+//	renderer->commands[targetIndex] = temp;
+//}
+//
+//static void VULKAN_INTERNAL_MoveCmdOutOfRenderPass(
+//	VulkanRenderer *renderer,
+//	uint32_t origIndex
+//) {
+//	/* Yikes, we ended up with a render pass-incompatible command
+//	 * inside of a pass! This can only happen when another thread
+//	 * thread encodes an incompatible command before the current 
+//	 * thread has encoded a vkEndRenderPass command.
+//	 *
+//	 * Therefore, we need to scoot the command forwards until
+//	 * it is beyond the next EndRenderPass command.
+//	 */
+//	VulkanCommand *cmd;
+//	VulkanCommand temp;
+//	uint32_t i, targetIndex;
+//
+//	FNA3D_LogInfo("Need to move command (index=%d) forward", origIndex);
+//
+//	/* Figure out where we need to put the command. */
+//	for (i = origIndex; i < renderer->numActiveCommands; i += 1)
+//	{
+//		cmd = &renderer->commands[i];
+//		if (cmd->type == CMDTYPE_END_RENDER_PASS)
+//		{
+//			targetIndex = i;
+//			break;
+//		}
+//	}
+//	if (i >= renderer->numActiveCommands) FNA3D_LogError("i >= numCommands. How did this happen???"); /* FIXME: Remove this! */
+//
+//	/* Shift all commands between i and targetIndex one space to the left,
+//	 * then replace the targetIndex slot with the command.
+//	 */
+//	temp = renderer->commands[origIndex];
+//	for (i = origIndex + 1; i <= targetIndex; i += 1)
+//	{
+//		renderer->commands[i - 1] = renderer->commands[i];
+//	}
+//	renderer->commands[targetIndex] = temp;
+//}
+
 static void VULKAN_INTERNAL_RecordCommands(VulkanRenderer *renderer)
 {
 	VkCommandBufferBeginInfo beginInfo =
@@ -2139,7 +2292,20 @@ static void VULKAN_INTERNAL_RecordCommands(VulkanRenderer *renderer)
 	};
 	uint32_t i;
 	VulkanCommand *cmd;
+	//uint8_t insideRenderPass;
 	VkResult result;
+
+	///* Log the commands */
+	//for (i = 0; i < renderer->numActiveCommands; i += 1)
+	//{
+	//	FNA3D_LogInfo(
+	//		"(type: %s, index: %d, thread: %d)",
+	//		cmdNames[renderer->commands[i].type],
+	//		i,
+	//		renderer->commands[i].threadId
+	//	);
+	//}
+	//FNA3D_LogInfo("===");
 
 	/* renderer->commandLock must be LOCKED at this point! */
 
@@ -2154,7 +2320,55 @@ static void VULKAN_INTERNAL_RecordCommands(VulkanRenderer *renderer)
 		LogVulkanResult("vkBeginCommandBuffer", result);
 	}
 
-	/* TODO: Run ordering pass */
+	///* Fix up the call stream for multithreaded graphics */
+	//insideRenderPass = 0;
+	//for (i = 0; i < renderer->numActiveCommands; i += 1)
+	//{
+	//	cmd = &renderer->commands[i];
+	//	switch (cmd->type)
+	//	{
+	//		/* Must be called from OUTSIDE a render pass! */
+	//		case CMDTYPE_COPY_BUFFER_TO_IMAGE:
+	//		case CMDTYPE_COPY_IMAGE_TO_BUFFER:
+	//		case CMDTYPE_CLEAR_COLOR_IMAGE:
+	//		case CMDTYPE_CLEAR_DEPTH_STENCIL_IMAGE:
+	//		case CMDTYPE_RESET_QUERY_POOL:
+	//		case CMDTYPE_BLIT_IMAGE:
+	//			if (cmd->type == CMDTYPE_BEGIN_RENDER_PASS)
+	//			{
+	//				insideRenderPass = 1;
+	//			}
+	//			else if (insideRenderPass)
+	//			{
+	//				VULKAN_INTERNAL_MoveCmdOutOfRenderPass(
+	//					renderer,
+	//					i
+	//				);
+	//			}
+	//			break;
+
+	//		/* Must be called from INSIDE a render pass! */
+	//		case CMDTYPE_CLEAR_ATTACHMENTS:
+	//		case CMDTYPE_DRAW:
+	//		case CMDTYPE_DRAW_INDEXED:
+	//			if (cmd->type == CMDTYPE_END_RENDER_PASS)
+	//			{
+	//				insideRenderPass = 0;
+	//			}
+	//			else if (!insideRenderPass)
+	//			{
+	//				VULKAN_INTERNAL_MoveCmdIntoRenderPass(
+	//					renderer,
+	//					i
+	//				);
+	//			}
+	//			break;
+
+	//		/* The rest don't care. */
+	//		default:
+	//			break;
+	//	}
+	//}
 
 	/* Record the commands, in order! */
 	for (i = 0; i < renderer->numActiveCommands; i += 1)
@@ -2442,7 +2656,8 @@ static void VULKAN_INTERNAL_Flush(VulkanRenderer *renderer)
 		VK_STRUCTURE_TYPE_SUBMIT_INFO
 	};
 
-	/* Keep this locked until the end of the function! */
+	/* Keep these locked until the end of the function! */
+	SDL_LockMutex(renderer->passLock);
 	SDL_LockMutex(renderer->commandLock);
 
 	/* TODO: Batch descriptor set updates */
@@ -2482,8 +2697,9 @@ static void VULKAN_INTERNAL_Flush(VulkanRenderer *renderer)
 	/* Wait for completion */
 	VULKAN_INTERNAL_WaitAndReset(renderer);
 
-	/* We're done operating on commands for now! */
+	/* It should be safe to unlock now */
 	SDL_UnlockMutex(renderer->commandLock);
+	SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_INTERNAL_FlushAndPresent(
@@ -2512,6 +2728,7 @@ static void VULKAN_INTERNAL_FlushAndPresent(
 	} presentInfoGGP;
 
 	/* Keep this locked until the end of the function! */
+	SDL_LockMutex(renderer->passLock);
 	SDL_LockMutex(renderer->commandLock);
 
 	/* TODO: Batch descriptor set updates */
@@ -2579,6 +2796,8 @@ static void VULKAN_INTERNAL_FlushAndPresent(
 	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
 	{
 		VULKAN_INTERNAL_RecreateSwapchain(renderer);
+		SDL_UnlockMutex(renderer->commandLock);
+		SDL_UnlockMutex(renderer->passLock);
 		return;
 	}
 	else if (result != VK_SUCCESS)
@@ -2590,8 +2809,9 @@ static void VULKAN_INTERNAL_FlushAndPresent(
 	/* Wait for frame completion */
 	VULKAN_INTERNAL_WaitAndReset(renderer);
 
-	/* We're done operating on commands for now! */
+	/* It should be safe to unlock now */
 	SDL_UnlockMutex(renderer->commandLock);
+	SDL_UnlockMutex(renderer->passLock);
 }
 
 /* Vulkan: Memory Barriers */
@@ -2610,10 +2830,6 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 	};
 	VulkanResourceAccessType prevAccess, nextAccess;
 	const VulkanResourceAccessInfo *prevAccessInfo, *nextAccessInfo;
-	VulkanCommand endPassCmd =
-	{
-		CMDTYPE_END_RENDER_PASS
-	};
 	VulkanCommand pipelineBarrierCmd =
 	{
 		CMDTYPE_PIPELINE_BARRIER
@@ -2661,15 +2877,8 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 		dstStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	}
 
-	if (renderer->renderPassInProgress)
-	{
-		VULKAN_INTERNAL_EncodeCommand(
-			renderer,
-			endPassCmd
-		);
-		renderer->renderPassInProgress = 0;
-		renderer->needNewRenderPass = 1;
-	}
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
+	renderer->needNewRenderPass = 1;
 
 	pipelineBarrierCmd.pipelineBarrier.srcStageMask = srcStages;
 	pipelineBarrierCmd.pipelineBarrier.dstStageMask = dstStages;
@@ -2701,10 +2910,6 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	};
 	VulkanResourceAccessType prevAccess;
 	const VulkanResourceAccessInfo *pPrevAccessInfo, *pNextAccessInfo;
-	VulkanCommand endPassCmd =
-	{
-		CMDTYPE_END_RENDER_PASS
-	};
 	VulkanCommand pipelineBarrierCmd =
 	{
 		CMDTYPE_PIPELINE_BARRIER
@@ -2763,15 +2968,8 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 		dstStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	}
 
-	if (renderer->renderPassInProgress)
-	{
-		VULKAN_INTERNAL_EncodeCommand(
-			renderer,
-			endPassCmd
-		);
-		renderer->renderPassInProgress = 0;
-		renderer->needNewRenderPass = 1;
-	}
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
+	renderer->needNewRenderPass = 1;
 
 	pipelineBarrierCmd.pipelineBarrier.srcStageMask = srcStages;
 	pipelineBarrierCmd.pipelineBarrier.dstStageMask = dstStages;
@@ -3036,10 +3234,6 @@ static void VULKAN_INTERNAL_DestroySwapchain(VulkanRenderer *renderer)
 
 static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer)
 {
-	VulkanCommand endPassCmd =
-	{
-		CMDTYPE_END_RENDER_PASS
-	};
 	VkSubmitInfo submitInfo =
 	{
 		VK_STRUCTURE_TYPE_SUBMIT_INFO
@@ -3048,14 +3242,7 @@ static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer)
 	SwapChainSupportDetails swapChainSupportDetails;
 	VkExtent2D extent;
 
-	if (renderer->renderPassInProgress)
-	{
-		VULKAN_INTERNAL_EncodeCommand(
-			renderer,
-			endPassCmd
-		);
-		renderer->renderPassInProgress = 0;
-	}
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
 
 	/* FIXME: Is this right? */
 	VULKAN_INTERNAL_Flush(renderer);
@@ -5196,13 +5383,32 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 	return framebuffer;
 }
 
-static void VULKAN_INTERNAL_BeginRenderPass(
+static void VULKAN_INTERNAL_MaybeEndRenderPass(
 	VulkanRenderer *renderer
 ) {
 	VulkanCommand endPassCmd =
 	{
 		CMDTYPE_END_RENDER_PASS
 	};
+
+	SDL_LockMutex(renderer->passLock);
+	if (renderer->renderPassInProgress)
+	{
+		VULKAN_INTERNAL_EncodeCommand(
+			renderer,
+			endPassCmd
+		);
+		renderer->renderPassInProgress = 0;
+
+		/* This was locked in BeginRenderPass! */
+		SDL_UnlockMutex(renderer->passLock);
+	}
+	SDL_UnlockMutex(renderer->passLock);
+}
+
+static void VULKAN_INTERNAL_BeginRenderPass(
+	VulkanRenderer *renderer
+) {
 	VkRenderPassBeginInfo renderPassBeginInfo =
 	{
 		VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO
@@ -5229,14 +5435,9 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 		return;
 	}
 
-	if (renderer->renderPassInProgress)
-	{
-		VULKAN_INTERNAL_EncodeCommand(
-			renderer,
-			endPassCmd
-		);
-		renderer->renderPassInProgress = 0;
-	}
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
+
+	SDL_LockMutex(renderer->passLock);
 
 	renderer->renderPass = VULKAN_INTERNAL_FetchRenderPass(renderer);
 	framebuffer = VULKAN_INTERNAL_FetchFramebuffer(
@@ -5302,6 +5503,8 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 		renderer,
 		beginPassCmd
 	);
+	/* Keep this locked until EndRenderPass! */
+	SDL_LockMutex(renderer->passLock);
 
 	renderer->renderPassInProgress = 1;
 
@@ -5355,6 +5558,8 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	}
 
 	renderer->needNewRenderPass = 0;
+
+	SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_INTERNAL_RenderPassClear(
@@ -6542,10 +6747,6 @@ static void VULKAN_SwapBuffers(
 	VkImageBlit blit;
 	FNA3D_Rect srcRect;
 	FNA3D_Rect dstRect;
-	VulkanCommand endPassCmd =
-	{
-		CMDTYPE_END_RENDER_PASS
-	};
 	VulkanCommand blitCmd =
 	{
 		CMDTYPE_BLIT_IMAGE
@@ -6588,14 +6789,7 @@ static void VULKAN_SwapBuffers(
 	renderer->imagesInFlight[swapChainImageIndex] = renderer->inFlightFence;
 
 	/* Must end render pass before blitting */
-	if (renderer->renderPassInProgress)
-	{
-		VULKAN_INTERNAL_EncodeCommand(
-			renderer,
-			endPassCmd
-		);
-		renderer->renderPassInProgress = 0;
-	}
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
 
 	if (sourceRectangle != NULL)
 	{
@@ -7392,10 +7586,6 @@ static void VULKAN_ResolveTarget(
 	int32_t level;
 	VulkanResourceAccessType origAccessType;
 	VkImageBlit blit;
-	VulkanCommand endPassCmd =
-	{
-		CMDTYPE_END_RENDER_PASS
-	};
 	VulkanCommand blitCmd =
 	{
 		CMDTYPE_BLIT_IMAGE
@@ -7406,14 +7596,7 @@ static void VULKAN_ResolveTarget(
 	/* If the target has mipmaps, regenerate them now */
 	if (target->levelCount > 1)
 	{
-		if (renderer->renderPassInProgress)
-		{
-			VULKAN_INTERNAL_EncodeCommand(
-				renderer,
-				endPassCmd
-			);
-			renderer->renderPassInProgress = 0;
-		}
+		VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
 
 		origAccessType = vulkanTexture->resourceAccessType;
 
@@ -8751,10 +8934,6 @@ static void VULKAN_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanQuery *vulkanQuery = (VulkanQuery*) query;
-	VulkanCommand endPassCmd =
-	{
-		CMDTYPE_END_RENDER_PASS
-	};
 	VulkanCommand resetQueryPoolCmd =
 	{
 		CMDTYPE_RESET_QUERY_POOL
@@ -8765,14 +8944,7 @@ static void VULKAN_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 	};
 
 	/* Need to do this between passes */
-	if (renderer->renderPassInProgress)
-	{
-		VULKAN_INTERNAL_EncodeCommand(
-			renderer,
-			endPassCmd
-		);
-		renderer->renderPassInProgress = 0;
-	}
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
 
 	resetQueryPoolCmd.resetQueryPool.firstQuery = vulkanQuery->index;
 	resetQueryPoolCmd.resetQueryPool.queryPool = renderer->queryPool;
@@ -9390,6 +9562,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		sizeof(VulkanCommand) * renderer->commandCapacity
 	);
 	renderer->commandLock = SDL_CreateMutex();
+	renderer->passLock = SDL_CreateMutex();
 
 	/*
 	 * Create the initial faux-backbuffer
