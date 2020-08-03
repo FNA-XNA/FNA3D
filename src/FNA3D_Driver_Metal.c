@@ -4222,13 +4222,13 @@ static uint8_t METAL_PrepareWindowAttributes(uint32_t *flags)
 	return 1;
 }
 
-void METAL_GetDrawableSize(void* window, int32_t *x, int32_t *y)
+void METAL_GetDrawableSize(void* window, int32_t *w, int32_t *h)
 {
 	SDL_MetalView tempView = SDL_Metal_CreateView((SDL_Window*) window);
 	CAMetalLayer *layer = mtlGetLayer(tempView);
 	CGSize size = mtlGetDrawableSize(layer);
-	*x = size.width;
-	*y = size.height;
+	*w = size.width;
+	*h = size.height;
 	SDL_Metal_DestroyView(tempView);
 }
 

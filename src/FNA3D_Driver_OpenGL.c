@@ -5625,7 +5625,7 @@ static uint8_t OPENGL_PrepareWindowAttributes(uint32_t *flags)
 	return 1;
 }
 
-void OPENGL_GetDrawableSize(void* window, int32_t *x, int32_t *y)
+void OPENGL_GetDrawableSize(void* window, int32_t *w, int32_t *h)
 {
 	/* When using OpenGL, iOS and tvOS require an active GL context to get
 	 * the drawable size of the screen.
@@ -5634,7 +5634,7 @@ void OPENGL_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 	SDL_GLContext tempContext = SDL_GL_CreateContext(window);
 #endif
 
-	SDL_GL_GetDrawableSize((SDL_Window*) window, x, y);
+	SDL_GL_GetDrawableSize((SDL_Window*) window, w, h);
 
 #if defined(__IPHONEOS__) || defined(__TVOS__)
 	SDL_GL_DeleteContext(tempContext);

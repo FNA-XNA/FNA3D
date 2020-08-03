@@ -501,10 +501,10 @@ FNA3DAPI uint32_t FNA3D_PrepareWindowAttributes(void);
 /* After your window is created, call this to check for high-DPI support.
  *
  * window:	The OS window handle, typically an SDL_Window*.
- * x:		Filled with the width of the window's drawable canvas.
- * y:		Filled with the height of the window's drawable canvas.
+ * w:		Filled with the width of the window's drawable canvas.
+ * h:		Filled with the height of the window's drawable canvas.
  */
-FNA3DAPI void FNA3D_GetDrawableSize(void* window, int32_t *x, int32_t *y);
+FNA3DAPI void FNA3D_GetDrawableSize(void* window, int32_t *w, int32_t *h);
 
 /* Creates a rendering context for use on the calling thread.
  *

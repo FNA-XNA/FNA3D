@@ -8452,9 +8452,9 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 	return 1;
 }
 
-static void VULKAN_GetDrawableSize(void* window, int32_t *x, int32_t *y)
+static void VULKAN_GetDrawableSize(void* window, int32_t *w, int32_t *h)
 {
-	SDL_Vulkan_GetDrawableSize((SDL_Window*) window, x, y);
+	SDL_Vulkan_GetDrawableSize((SDL_Window*) window, w, h);
 }
 
 static FNA3D_Device* VULKAN_CreateDevice(

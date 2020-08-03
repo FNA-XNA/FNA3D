@@ -167,7 +167,7 @@ uint32_t FNA3D_PrepareWindowAttributes(void)
 	return result;
 }
 
-FNA3DAPI void FNA3D_GetDrawableSize(void* window, int32_t *x, int32_t *y)
+FNA3DAPI void FNA3D_GetDrawableSize(void* window, int32_t *w, int32_t *h)
 {
 	if (selectedDriver < 0)
 	{
@@ -175,7 +175,7 @@ FNA3DAPI void FNA3D_GetDrawableSize(void* window, int32_t *x, int32_t *y)
 		return;
 	}
 
-	drivers[selectedDriver]->GetDrawableSize(window, x, y);
+	drivers[selectedDriver]->GetDrawableSize(window, w, h);
 }
 
 /* Init/Quit */

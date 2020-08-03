@@ -950,7 +950,7 @@ static void D3D11_GetTextureData2D(
 	int32_t dataLength
 );
 
-static void D3D11_GetDrawableSize(void *window, int32_t *x, int32_t *y);
+static void D3D11_GetDrawableSize(void *window, int32_t *w, int32_t *h);
 
 static void* D3D11_PLATFORM_LoadD3D11();
 static void D3D11_PLATFORM_UnloadD3D11(void* module);
@@ -4260,9 +4260,9 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 	return 1;
 }
 
-static void D3D11_GetDrawableSize(void* window, int32_t *x, int32_t *y)
+static void D3D11_GetDrawableSize(void* window, int32_t *w, int32_t *h)
 {
-	SDL_GetWindowSize((SDL_Window*) window, x, y);
+	SDL_GetWindowSize((SDL_Window*) window, w, h);
 }
 
 static void D3D11_INTERNAL_InitializeFauxBackbuffer(
