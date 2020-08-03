@@ -878,7 +878,7 @@ static uint8_t TEMPLATE_PrepareWindowAttributes(uint32_t *flags)
 	return 0; /* Set this to 1 when the driver is usable! */
 }
 
-static void TEMPLATE_GetDrawableSize(void* window, int32_t *x, int32_t *y)
+static void TEMPLATE_GetDrawableSize(void* window, int32_t *w, int32_t *h)
 {
 }
 
