@@ -2513,7 +2513,6 @@ static void VULKAN_INTERNAL_FlushAndPresent(
 		uint64_t frameToken;
 	} presentInfoGGP;
 
-	/* Keep this locked until the end of the function! */
 	SDL_LockMutex(renderer->passLock);
 	SDL_LockMutex(renderer->commandLock);
 
@@ -5291,7 +5290,10 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 		renderer,
 		beginPassCmd
 	);
-	/* Keep this locked until EndRenderPass! */
+
+	/* This is a long-term lock that lasts the whole render pass.
+	 * It gets unlocked inside MaybeEndRenderPass!
+	 */
 	SDL_LockMutex(renderer->passLock);
 
 	renderer->renderPassInProgress = 1;
