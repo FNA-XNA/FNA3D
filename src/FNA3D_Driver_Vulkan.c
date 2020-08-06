@@ -797,6 +797,9 @@ typedef struct VulkanRenderer
 
 	uint32_t numVertexBindings;
 	FNA3D_VertexBufferBinding *vertexBindings;
+	VkBuffer buffers[MAX_BOUND_VERTEX_BUFFERS];
+	VkDeviceSize offsets[MAX_BOUND_VERTEX_BUFFERS];
+	uint32_t bufferCount;
 
 	/* Should be equal to swap chain count */
 	VkBuffer ldVertUniformBuffer;
@@ -6801,6 +6804,10 @@ static void VULKAN_DrawInstancedPrimitives(
 	VulkanSubBuffer subbuf = indexBuffer->subBuffers[
 		indexBuffer->currentSubBufferIndex
 	];
+	VulkanCommand bindBuffersCmd =
+	{
+		CMDTYPE_BIND_VERTEX_BUFFERS
+	};
 	VulkanCommand bindIndexCmd =
 	{
 		CMDTYPE_BIND_INDEX_BUFFER
@@ -6823,6 +6830,25 @@ static void VULKAN_DrawInstancedPrimitives(
 	VULKAN_INTERNAL_BindPipeline(renderer);
 	VULKAN_INTERNAL_BindResources(renderer);
 
+	if (renderer->bufferCount > 0)
+	{
+		bindBuffersCmd.bindVertexBuffers.bindingCount =
+			renderer->bufferCount;
+		SDL_memcpy(
+			bindBuffersCmd.bindVertexBuffers.buffers,
+			renderer->buffers,
+			sizeof(renderer->buffers)
+		);
+		SDL_memcpy(
+			bindBuffersCmd.bindVertexBuffers.offsets,
+			renderer->offsets,
+			sizeof(renderer->offsets)
+		);
+		VULKAN_INTERNAL_EncodeCommand(
+			renderer,
+			bindBuffersCmd
+		);
+	}
 	bindIndexCmd.bindIndexBuffer.buffer = subbuf.physicalBuffer->buffer;
 	bindIndexCmd.bindIndexBuffer.offset = subbuf.offset;
 	bindIndexCmd.bindIndexBuffer.indexType =
@@ -6877,6 +6903,10 @@ static void VULKAN_DrawPrimitives(
 	int32_t primitiveCount
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanCommand bindBuffersCmd =
+	{
+		CMDTYPE_BIND_VERTEX_BUFFERS
+	};
 	VulkanCommand drawCmd =
 	{
 		CMDTYPE_DRAW
@@ -6891,6 +6921,25 @@ static void VULKAN_DrawPrimitives(
 	VULKAN_INTERNAL_BindPipeline(renderer);
 	VULKAN_INTERNAL_BindResources(renderer);
 
+	if (renderer->bufferCount > 0)
+	{
+		bindBuffersCmd.bindVertexBuffers.bindingCount =
+			renderer->bufferCount;
+		SDL_memcpy(
+			bindBuffersCmd.bindVertexBuffers.buffers,
+			renderer->buffers,
+			sizeof(renderer->buffers)
+		);
+		SDL_memcpy(
+			bindBuffersCmd.bindVertexBuffers.offsets,
+			renderer->offsets,
+			sizeof(renderer->offsets)
+		);
+		VULKAN_INTERNAL_EncodeCommand(
+			renderer,
+			bindBuffersCmd
+		);
+	}
 	drawCmd.draw.vertexCount = PrimitiveVerts(
 		primitiveType,
 		primitiveCount
@@ -7205,16 +7254,9 @@ static void VULKAN_ApplyVertexBufferBindings(
 	VulkanBuffer *vertexBuffer;
 	VulkanSubBuffer subbuf;
 	VkDeviceSize offset;
-	VkBuffer buffers[MAX_BOUND_VERTEX_BUFFERS];
-	VkDeviceSize offsets[MAX_BOUND_VERTEX_BUFFERS];
 	int32_t i;
-	uint32_t bufferCount;
 	MOJOSHADER_vkShader *vertexShader, *blah;
 	uint64_t hash;
-	VulkanCommand bindBuffersCmd =
-	{
-		CMDTYPE_BIND_VERTEX_BUFFERS
-	};
 
 	/* Check VertexBufferBindings */
 	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
@@ -7232,8 +7274,7 @@ static void VULKAN_ApplyVertexBufferBindings(
 		renderer->needNewPipeline = 1;
 	}
 
-	bufferCount = 0;
-
+	renderer->bufferCount = 0;
 	for (i = 0; i < numBindings; i += 1)
 	{
 		vertexBuffer = (VulkanBuffer*) bindings[i].vertexBuffer;
@@ -7259,28 +7300,9 @@ static void VULKAN_ApplyVertexBufferBindings(
 			renderer->ldVertexBufferOffsets[i] = offset;
 		}
 
-		buffers[bufferCount] = subbuf.physicalBuffer->buffer;
-		offsets[bufferCount] = offset;
-		bufferCount++;
-	}
-
-	if (bufferCount > 0)
-	{
-		bindBuffersCmd.bindVertexBuffers.bindingCount = bufferCount;
-		SDL_memcpy(
-			bindBuffersCmd.bindVertexBuffers.buffers,
-			buffers,
-			sizeof(buffers)
-		);
-		SDL_memcpy(
-			bindBuffersCmd.bindVertexBuffers.offsets,
-			offsets,
-			sizeof(offsets)
-		);
-		VULKAN_INTERNAL_EncodeCommand(
-			renderer,
-			bindBuffersCmd
-		);
+		renderer->buffers[renderer->bufferCount] = subbuf.physicalBuffer->buffer;
+		renderer->offsets[renderer->bufferCount] = offset;
+		renderer->bufferCount++;
 	}
 }
 
