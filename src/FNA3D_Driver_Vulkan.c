@@ -357,7 +357,6 @@ typedef enum VulkanCommandType
 typedef struct VulkanCommand
 {
 	VulkanCommandType type;
-	int32_t threadId;
 	FNA3DNAMELESS union
 	{
 		struct
@@ -2127,10 +2126,6 @@ static void VULKAN_INTERNAL_EncodeCommand(
 		);
 	}
 
-	/* Store the calling thread */
-	/* FIXME: This never gets used anywhere... */
-	cmd.threadId = SDL_GetThreadID(NULL);
-
 	/* Add the command to the array */
 	renderer->commands[renderer->numActiveCommands] = cmd;
 	renderer->numActiveCommands += 1;
@@ -2584,6 +2579,9 @@ static void VULKAN_INTERNAL_FlushAndPresent(
 		&presentInfo
 	);
 
+	/* Wait for frame completion */
+	VULKAN_INTERNAL_WaitAndReset(renderer);
+
 	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
 	{
 		VULKAN_INTERNAL_RecreateSwapchain(renderer);
@@ -2596,9 +2594,6 @@ static void VULKAN_INTERNAL_FlushAndPresent(
 		LogVulkanResult("vkQueuePresentKHR", result);
 		FNA3D_LogError("failed to present image");
 	}
-
-	/* Wait for frame completion */
-	VULKAN_INTERNAL_WaitAndReset(renderer);
 
 	/* It should be safe to unlock now */
 	SDL_UnlockMutex(renderer->commandLock);
@@ -3034,8 +3029,6 @@ static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer)
 	VkExtent2D extent;
 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
-
-	/* FIXME: Is this right? */
 	VULKAN_INTERNAL_Flush(renderer);
 
 	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
