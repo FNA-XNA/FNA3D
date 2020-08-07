@@ -324,7 +324,7 @@ static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] =
 	}
 };
 
-/* Internal Structures */
+/* Command Encoding */
 
 typedef enum VulkanCommandType
 {
@@ -516,6 +516,8 @@ typedef struct VulkanCommand
 		} endRenderPass;
 	};
 } VulkanCommand;
+
+/* Internal Structures */
 
 typedef struct QueueFamilyIndices
 {
@@ -1236,7 +1238,7 @@ static VkFormat XNAToVK_VertexAttribType[] =
 
 /* Error Handling */
 
-static const char* VkErrorMessages(VkResult code)
+static inline const char* VkErrorMessages(VkResult code)
 {
 	#define ERR_TO_STR(e) \
 		case e: return #e;
@@ -1295,8 +1297,6 @@ static void VULKAN_GetTextureData2D(
 	void* data,
 	int32_t dataLength
 );
-
-static void VULKAN_INTERNAL_ResetBuffers(VulkanRenderer *renderer);
 
 static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer);
 
@@ -2406,6 +2406,7 @@ static void VULKAN_INTERNAL_RecordCommands(VulkanRenderer *renderer)
 
 static void VULKAN_INTERNAL_WaitAndReset(VulkanRenderer *renderer)
 {
+	uint32_t i;
 	VkResult result = renderer->vkWaitForFences(
 		renderer->logicalDevice,
 		1,
@@ -2421,7 +2422,16 @@ static void VULKAN_INTERNAL_WaitAndReset(VulkanRenderer *renderer)
 	}
 
 	/* Reset buffer and subbuffer binding info */
-	VULKAN_INTERNAL_ResetBuffers(renderer);
+	for (i = 0; i < renderer->numBuffersInUse; i += 1)
+	{
+		if (renderer->buffersInUse[i] != NULL)
+		{
+			renderer->buffersInUse[i]->bound = 0;
+			renderer->buffersInUse[i]->currentSubBufferIndex = 0;
+			renderer->buffersInUse[i] = NULL;
+		}
+	}
+	renderer->numBuffersInUse = 0;
 
 	/* Reset the command buffer */
 	result = renderer->vkResetCommandBuffer(
@@ -3019,10 +3029,6 @@ static void VULKAN_INTERNAL_DestroySwapchain(VulkanRenderer *renderer)
 
 static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer)
 {
-	VkSubmitInfo submitInfo =
-	{
-		VK_STRUCTURE_TYPE_SUBMIT_INFO
-	};
 	CreateSwapchainResult createSwapchainResult;
 	SwapChainSupportDetails swapChainSupportDetails;
 	VkExtent2D extent;
@@ -3062,21 +3068,6 @@ static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer)
 }
 
 /* Vulkan: Buffer Objects */
-
-static void VULKAN_INTERNAL_ResetBuffers(VulkanRenderer *renderer)
-{
-	uint32_t i;
-	for (i = 0; i < renderer->numBuffersInUse; i += 1)
-	{
-		if (renderer->buffersInUse[i] != NULL)
-		{
-			renderer->buffersInUse[i]->bound = 0;
-			renderer->buffersInUse[i]->currentSubBufferIndex = 0;
-			renderer->buffersInUse[i] = NULL;
-		}
-	}
-	renderer->numBuffersInUse = 0;
-}
 
 static void VULKAN_INTERNAL_RemoveBuffer(
 	FNA3D_Renderer *driverData,
@@ -5210,10 +5201,6 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	VulkanCommand setBlendConstantsCmd =
 	{
 		CMDTYPE_SET_BLEND_CONSTANTS
-	};
-	VulkanCommand setDepthBiasCmd =
-	{
-		CMDTYPE_SET_DEPTH_BIAS
 	};
 	uint32_t i;
 
