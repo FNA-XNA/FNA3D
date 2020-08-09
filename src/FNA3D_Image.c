@@ -29,6 +29,7 @@
 #include <SDL.h>
 
 #pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 #pragma GCC diagnostic ignored "-Wunused-function"
 #ifndef __clang__
 #pragma GCC diagnostic ignored "-Wmisleading-indentation"
