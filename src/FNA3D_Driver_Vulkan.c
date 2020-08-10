@@ -394,7 +394,6 @@ typedef struct DescriptorSetDataIndices
 
 typedef enum VulkanCommandType
 {
-	CMDTYPE_BIND_DESCRIPTOR_SETS,
 	CMDTYPE_BIND_INDEX_BUFFER,
 	CMDTYPE_BIND_PIPELINE,
 	CMDTYPE_BIND_VERTEX_BUFFERS,
@@ -425,14 +424,6 @@ typedef struct VulkanCommand
 	VulkanCommandType type;
 	FNA3DNAMELESS union
 	{
-		struct
-		{
-			VkPipelineLayout layout;
-			VkDescriptorSet descriptorSets[4];
-			uint32_t dynamicOffsetCount;
-			uint32_t dynamicOffsets[4];
-		} bindDescriptorSets;
-
 		struct
 		{
 			VkBuffer buffer;
@@ -477,7 +468,9 @@ typedef struct VulkanCommand
 		{
 			uint32_t vertexCount;
 			uint32_t firstVertex;
+			VkPipelineLayout pipelineLayout;
 			DescriptorSetDataIndices descriptorSetDataIndices;
+			uint32_t dynamicOffsets[2];
 		} draw;
 
 		struct
@@ -486,7 +479,9 @@ typedef struct VulkanCommand
 			uint32_t instanceCount;
 			uint32_t firstIndex;
 			int32_t vertexOffset;
+			VkPipelineLayout pipelineLayout;
 			DescriptorSetDataIndices descriptorSetDataIndices;
+			uint32_t dynamicOffsets[2];
 		} drawIndexed;
 
 		struct
@@ -1131,6 +1126,12 @@ typedef struct VulkanRenderer
 	FragSamplerDescriptorSetDataHashMap   *fragSamplerDescriptorSetDataHashMap;
 	VertexUniformDescriptorSetDataHashMap *vertexUniformDescriptorSetDataHashMap;
 	FragUniformDescriptorSetDataHashMap   *fragUniformDescriptorSetDataHashMap;
+
+	/* draw calls have data indices, so we map those to the actual descriptor set */
+	uint32_t *vertexSamplerDataIndexToDescriptorSetIndexMap[MAX_VERTEXTEXTURE_SAMPLERS];
+	uint32_t *fragSamplerDataIndexToDescriptorSetIndexMap[MAX_TEXTURE_SAMPLERS];
+	uint32_t *vertexUniformBufferDataIndexToDescriptorSetIndexMap;
+	uint32_t *fragUniformBufferDataIndexToDescriptorSetIndexMap;
 
 	PipelineLayoutHash currentPipelineLayoutHash;
 
@@ -2399,8 +2400,71 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 
 /* Vulkan: Descriptor Set Logic */
 
-static DescriptorSetDataIndices VULKAN_INTERNAL_FetchDescriptorSetDataIndices(
-	VulkanRenderer *renderer
+static uint8_t VULKAN_INTERNAL_CreateDescriptorPoolAndSets(
+	VulkanRenderer *renderer,
+	uint32_t descriptorSetCount,
+	VkDescriptorType descriptorType,
+	VkDescriptorSetLayout descriptorSetLayout,
+	VkDescriptorPool descriptorPool,
+	VkDescriptorSet *descriptorSetArray
+) {
+	VkResult vulkanResult;
+
+	VkDescriptorPoolSize descriptorPoolSize;
+	VkDescriptorPoolCreateInfo descriptorPoolInfo =
+	{
+		VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO
+	};
+	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo =
+	{
+		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
+	};
+
+	descriptorPoolSize.type = descriptorType;
+	descriptorPoolSize.descriptorCount = descriptorSetCount;
+
+	descriptorPoolInfo.poolSizeCount = 1;
+	descriptorPoolInfo.pPoolSizes = &descriptorPoolSize;
+	descriptorPoolInfo.maxSets = descriptorSetCount;
+
+	vulkanResult = renderer->vkCreateDescriptorPool(
+		renderer->logicalDevice,
+		&descriptorPoolInfo,
+		NULL,
+		&descriptorPool
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateDescriptorPool", vulkanResult);
+		return 0;
+	}
+
+	descriptorSetArray = SDL_realloc(descriptorSetArray, descriptorSetCount);
+
+	descriptorSetAllocateInfo.descriptorPool = descriptorPool;
+	descriptorSetAllocateInfo.descriptorSetCount = descriptorSetCount;
+	descriptorSetAllocateInfo.pSetLayouts = &descriptorSetLayout;
+
+	vulkanResult = renderer->vkAllocateDescriptorSets(
+		renderer->logicalDevice,
+		&descriptorSetAllocateInfo,
+		descriptorSetArray
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkAllocateDescriptorSets", vulkanResult);
+		return 0;
+	}
+
+	return 1;
+}
+
+static void VULKAN_INTERNAL_FetchDescriptorSetDataIndicesAndOffsets(
+	VulkanRenderer *renderer,
+	DescriptorSetDataIndices *descriptorSetDataIndices,
+	uint32_t *dynamicOffsets
 ) {
 	VkBuffer vUniform, fUniform;
 	VulkanSubBuffer *vSubbuf, *fSubbuf;
@@ -2410,8 +2474,6 @@ static DescriptorSetDataIndices VULKAN_INTERNAL_FetchDescriptorSetDataIndices(
 	FragSamplerDescriptorSetData   fragSamplerDescriptorSetData;
 	VertexUniformDescriptorSetData vertexUniformDescriptorSetData;
 	FragUniformDescriptorSetData   fragUniformDescriptorSetData;
-
-	DescriptorSetDataIndices descriptorSetDataIndices;
 
 	uint32_t i;
 
@@ -2476,6 +2538,7 @@ static DescriptorSetDataIndices VULKAN_INTERNAL_FetchDescriptorSetDataIndices(
 		&fSize
 	);
 
+	/* if a uniform buffer is null we bind dummy data */
 	if (vUniform == NULL_BUFFER)
 	{
 		vSubbuf = &renderer->dummyVertUniformBuffer->subBuffers[
@@ -2513,12 +2576,13 @@ static DescriptorSetDataIndices VULKAN_INTERNAL_FetchDescriptorSetDataIndices(
 	stbds_hmput(renderer->vertexUniformDescriptorSetDataHashMap, vertexUniformDescriptorSetData, vertexUniformDescriptorSetData);
 	stbds_hmput(renderer->fragUniformDescriptorSetDataHashMap, fragUniformDescriptorSetData, fragUniformDescriptorSetData);
 
-	descriptorSetDataIndices.vertexSamplerDescriptorSetDataIndex = stbds_hmgeti(renderer->vertexSamplerDescriptorSetDataHashMap, vertexSamplerDescriptorSetData);
-	descriptorSetDataIndices.fragSamplerDescriptorSetDataIndex = stbds_hmgeti(renderer->fragSamplerDescriptorSetDataHashMap, fragSamplerDescriptorSetData);
-	descriptorSetDataIndices.vertexUniformDescriptorSetDataIndex = stbds_hmgeti(renderer->vertexUniformDescriptorSetDataHashMap, vertexUniformDescriptorSetData);
-	descriptorSetDataIndices.fragUniformDescriptorSetDataIndex = stbds_hmgeti(renderer->fragUniformDescriptorSetDataHashMap, fragUniformDescriptorSetData);
+	descriptorSetDataIndices->vertexSamplerDescriptorSetDataIndex = stbds_hmgeti(renderer->vertexSamplerDescriptorSetDataHashMap, vertexSamplerDescriptorSetData);
+	descriptorSetDataIndices->fragSamplerDescriptorSetDataIndex = stbds_hmgeti(renderer->fragSamplerDescriptorSetDataHashMap, fragSamplerDescriptorSetData);
+	descriptorSetDataIndices->vertexUniformDescriptorSetDataIndex = stbds_hmgeti(renderer->vertexUniformDescriptorSetDataHashMap, vertexUniformDescriptorSetData);
+	descriptorSetDataIndices->fragUniformDescriptorSetDataIndex = stbds_hmgeti(renderer->fragUniformDescriptorSetDataHashMap, fragUniformDescriptorSetData);
 
-	return descriptorSetDataIndices;
+	dynamicOffsets[0] = vOff;
+	dynamicOffsets[1] = fOff;
 }
 
 static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
@@ -2536,7 +2600,134 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 	uint32_t uniformBufferDescriptorSetCount = vertexUniformDescriptorSetCount + fragUniformDescriptorSetCount;
 	uint32_t writeDescriptorSetCount = samplerDescriptorSetCount + uniformBufferDescriptorSetCount;
 
-	/* TODO: re-generate descriptor set pools and arrays if the counts are exceeded */
+	uint32_t vertexSamplerCounts[MAX_VERTEXTEXTURE_SAMPLERS];
+	uint32_t fragSamplerCounts[MAX_TEXTURE_SAMPLERS];
+
+	SDL_zerop(renderer->vertexSamplerDataIndexToDescriptorSetIndexMap);
+	SDL_zerop(renderer->fragSamplerDataIndexToDescriptorSetIndexMap);
+	SDL_zerop(renderer->vertexUniformBufferDataIndexToDescriptorSetIndexMap);
+	SDL_zerop(renderer->fragUniformBufferDataIndexToDescriptorSetIndexMap);
+
+	/* generate number of sampler counts */
+	for (i = 0; i < vertexSamplerDescriptorSetCount; i++)
+	{
+		vertexSamplerCounts[renderer->vertexSamplerDescriptorSetDataHashMap[i].value.samplerCount] += 1;
+	}
+
+	for (i = 0; i < fragSamplerDescriptorSetCount; i++)
+	{
+		fragSamplerCounts[renderer->fragSamplerDescriptorSetDataHashMap[i].value.samplerCount] += 1;
+	}
+
+	/*  TODO: error checks on CreateDescriptorPoolAndSets returns */
+
+	/* if any of the descriptor pools are too small, regenerate them */
+	for (i = 0; i < MAX_VERTEXTEXTURE_SAMPLERS; i += 1)
+	{
+		if (renderer->vertexSamplerDescriptorPoolSizes[i] < vertexSamplerCounts[i])
+		{
+			/* TODO: do we have to reset the descriptor sets first? */
+			renderer->vkDestroyDescriptorPool(
+				renderer->logicalDevice,
+				renderer->vertexSamplerDescriptorPools[i],
+				NULL
+			);
+
+			VULKAN_INTERNAL_CreateDescriptorPoolAndSets(
+				renderer,
+				vertexSamplerCounts[i] * 2, /* give some wiggle room */
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				renderer->vertSamplerDescriptorSetLayouts[i],
+				renderer->vertexSamplerDescriptorPools[i],
+				renderer->vertexSamplerDescriptorSets[i]
+			);
+
+			renderer->vertexSamplerDescriptorPoolSizes[i] = vertexSamplerCounts[i] * 2;
+
+			renderer->vertexSamplerDataIndexToDescriptorSetIndexMap[i] = SDL_realloc(
+				renderer->vertexSamplerDataIndexToDescriptorSetIndexMap[i],
+				vertexSamplerCounts[i] * 2
+			);
+		}
+	}
+
+	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
+	{
+		if (renderer->fragSamplerDescriptorPoolSizes[i] < fragSamplerCounts[i])
+		{
+			renderer->vkDestroyDescriptorPool(
+				renderer->logicalDevice,
+				renderer->fragSamplerDescriptorPools[i],
+				NULL
+			);
+
+			VULKAN_INTERNAL_CreateDescriptorPoolAndSets(
+				renderer,
+				fragSamplerCounts[i] * 2,
+				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+				renderer->fragSamplerDescriptorSetLayouts[i],
+				renderer->fragSamplerDescriptorPools[i],
+				renderer->fragSamplerDescriptorSets[i]
+			);
+
+			renderer->fragSamplerDescriptorPoolSizes[i] = fragSamplerCounts[i] * 2;
+
+			renderer->fragSamplerDataIndexToDescriptorSetIndexMap[i] = SDL_realloc(
+				renderer->fragSamplerDataIndexToDescriptorSetIndexMap[i],
+				fragSamplerCounts[i] * 2
+			);
+		}
+	}
+
+	if (renderer->vertexUniformBufferDescriptorPoolSize < vertexUniformDescriptorSetCount)
+	{
+		renderer->vkDestroyDescriptorPool(
+			renderer->logicalDevice,
+			renderer->vertexUniformBufferDescriptorPool,
+			NULL
+		);
+
+		VULKAN_INTERNAL_CreateDescriptorPoolAndSets(
+			renderer,
+			vertexUniformDescriptorSetCount * 2,
+			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+			renderer->vertUniformBufferDescriptorSetLayout,
+			renderer->vertexUniformBufferDescriptorPool,
+			renderer->vertexUniformBufferDescriptorSets
+		);
+
+		renderer->vertexUniformBufferDescriptorPoolSize = vertexUniformDescriptorSetCount * 2;
+
+		renderer->vertexUniformBufferDataIndexToDescriptorSetIndexMap = SDL_realloc(
+			renderer->vertexUniformBufferDataIndexToDescriptorSetIndexMap,
+			vertexUniformDescriptorSetCount * 2
+		);
+	}
+
+	if (renderer->fragUniformBufferDescriptorPoolSize < fragUniformDescriptorSetCount)
+	{
+		renderer->vkDestroyDescriptorPool(
+			renderer->logicalDevice,
+			renderer->fragUniformBufferDescriptorPool,
+			NULL
+		);
+
+		VULKAN_INTERNAL_CreateDescriptorPoolAndSets(
+			renderer,
+			fragUniformDescriptorSetCount *2,
+			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+			renderer->fragUniformBufferDescriptorSetLayout,
+			renderer->fragUniformBufferDescriptorPool,
+			renderer->fragUniformBufferDescriptorSets
+		);
+
+		renderer->fragUniformBufferDescriptorPoolSize = fragUniformDescriptorSetCount * 2;
+
+		renderer->fragUniformBufferDataIndexToDescriptorSetIndexMap = SDL_realloc(
+			renderer->fragUniformBufferDataIndexToDescriptorSetIndexMap,
+			fragUniformDescriptorSetCount * 2
+		);
+	}
 
 	uint32_t samplerCountToNextVertexSamplerDescriptorSetIndex[MAX_VERTEXTEXTURE_SAMPLERS];
 	uint32_t samplerCountToNextFragSamplerDescriptorSetIndex[MAX_TEXTURE_SAMPLERS];
@@ -2576,6 +2767,8 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 			writeDescriptorSets[writeDescriptorSetIndex].pImageInfo = &vertexSamplerImageInfo;
 			writeDescriptorSets[writeDescriptorSetIndex].pTexelBufferView = NULL;
 
+			renderer->vertexSamplerDataIndexToDescriptorSetIndexMap[currentSamplerCount][i] = samplerCountToNextVertexSamplerDescriptorSetIndex[currentSamplerCount];
+
 			writeDescriptorSetIndex += 1;
 			samplerCountToNextVertexSamplerDescriptorSetIndex[currentSamplerCount] += 1;
 		}
@@ -2602,6 +2795,8 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 			writeDescriptorSets[writeDescriptorSetIndex].pImageInfo = &fragSamplerImageInfo;
 			writeDescriptorSets[writeDescriptorSetIndex].pTexelBufferView = NULL;
 
+			renderer->fragSamplerDataIndexToDescriptorSetIndexMap[currentSamplerCount][i] = samplerCountToNextFragSamplerDescriptorSetIndex[currentSamplerCount];
+
 			writeDescriptorSetIndex += 1;
 			samplerCountToNextFragSamplerDescriptorSetIndex[currentSamplerCount] += 1;
 		}
@@ -2622,6 +2817,8 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 		writeDescriptorSets[writeDescriptorSetIndex].pImageInfo = NULL;
 		writeDescriptorSets[writeDescriptorSetIndex].pTexelBufferView = NULL;
 
+		renderer->vertexUniformBufferDataIndexToDescriptorSetIndexMap[i] = nextVertexUniformDescriptorSetIndex;
+	
 		writeDescriptorSetIndex += 1;
 		nextVertexUniformDescriptorSetIndex += 1;
 	}
@@ -2641,6 +2838,8 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 		writeDescriptorSets[writeDescriptorSetIndex].pImageInfo = NULL;
 		writeDescriptorSets[writeDescriptorSetIndex].pTexelBufferView = NULL;
 
+		renderer->fragUniformBufferDataIndexToDescriptorSetIndexMap[i] = nextFragUniformDescriptorSetIndex;
+
 		writeDescriptorSetIndex += 1;
 		nextFragUniformDescriptorSetIndex += 1;
 	}
@@ -2654,6 +2853,54 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 	);
 
 	SDL_stack_free(writeDescriptorSets);
+}
+
+/* must take an array of descriptor sets of size 4 */
+static void VULKAN_INTERNAL_FetchDescriptorSetsByDataIndices(
+	VulkanRenderer *renderer,
+	DescriptorSetDataIndices *dataIndices,
+	VkDescriptorSet *descriptorSets
+) {
+	uint32_t vertexSamplerDescriptorSetIndex;
+	uint32_t vertexSamplerCount;
+
+	uint32_t fragSamplerDescriptorSetIndex;
+	uint32_t fragSamplerCount;
+
+	uint32_t vertexUniformBufferDescriptorSetIndex;
+	uint32_t fragUniformBufferDescriptorSetIndex;
+
+	vertexSamplerCount = renderer->vertexSamplerDescriptorSetDataHashMap[
+		dataIndices->vertexSamplerDescriptorSetDataIndex
+	].value.samplerCount;
+
+	vertexSamplerDescriptorSetIndex = renderer->vertexSamplerDataIndexToDescriptorSetIndexMap[vertexSamplerCount][
+		dataIndices->vertexSamplerDescriptorSetDataIndex
+	];
+
+	descriptorSets[0] = renderer->vertexSamplerDescriptorSets[vertexSamplerCount][vertexSamplerDescriptorSetIndex];
+
+	fragSamplerCount = renderer->fragSamplerDescriptorSetDataHashMap[
+		dataIndices->fragSamplerDescriptorSetDataIndex
+	].value.samplerCount;
+
+	fragSamplerDescriptorSetIndex = renderer->fragSamplerDataIndexToDescriptorSetIndexMap[fragSamplerCount][
+		dataIndices->fragSamplerDescriptorSetDataIndex
+	];
+
+	descriptorSets[1] = renderer->fragSamplerDescriptorSets[fragSamplerCount][fragSamplerDescriptorSetIndex];
+
+	vertexUniformBufferDescriptorSetIndex = renderer->vertexUniformBufferDataIndexToDescriptorSetIndexMap[
+		dataIndices->vertexUniformDescriptorSetDataIndex
+	];
+
+	descriptorSets[2] = renderer->vertexUniformBufferDescriptorSets[vertexUniformBufferDescriptorSetIndex];
+
+	fragUniformBufferDescriptorSetIndex = renderer->fragUniformBufferDataIndexToDescriptorSetIndexMap[
+		dataIndices->fragUniformDescriptorSetDataIndex
+	];
+
+	descriptorSets[3] = renderer->fragUniformBufferDescriptorSets[fragUniformBufferDescriptorSetIndex];
 }
 
 /* Vulkan: Command Buffers */
@@ -2690,6 +2937,7 @@ static void VULKAN_INTERNAL_RecordCommands(VulkanRenderer *renderer)
 	uint32_t i;
 	VulkanCommand *cmd;
 	VkResult result;
+	VkDescriptorSet descriptorSets[4];
 
 	/* renderer->commandLock must be LOCKED at this point! */
 
@@ -2710,19 +2958,6 @@ static void VULKAN_INTERNAL_RecordCommands(VulkanRenderer *renderer)
 		cmd = &renderer->commands[i];
 		switch (cmd->type)
 		{
-			case CMDTYPE_BIND_DESCRIPTOR_SETS:
-				renderer->vkCmdBindDescriptorSets(
-					renderer->commandBuffer,
-					VK_PIPELINE_BIND_POINT_GRAPHICS,
-					cmd->bindDescriptorSets.layout,
-					0,
-					4, /* FIXME: When we batch them, this will need to change. */
-					cmd->bindDescriptorSets.descriptorSets,
-					cmd->bindDescriptorSets.dynamicOffsetCount,
-					cmd->bindDescriptorSets.dynamicOffsets
-				);
-				break;
-
 			case CMDTYPE_BIND_INDEX_BUFFER:
 				renderer->vkCmdBindIndexBuffer(
 					renderer->commandBuffer,
@@ -2783,6 +3018,24 @@ static void VULKAN_INTERNAL_RecordCommands(VulkanRenderer *renderer)
 				break;
 
 			case CMDTYPE_DRAW:
+				/* grab the actual descriptor set objects */
+				VULKAN_INTERNAL_FetchDescriptorSetsByDataIndices(
+					renderer,
+					&cmd->draw.descriptorSetDataIndices,
+					descriptorSets
+				);
+
+				renderer->vkCmdBindDescriptorSets(
+					renderer->commandBuffer,
+					VK_PIPELINE_BIND_POINT_GRAPHICS,
+					cmd->draw.pipelineLayout,
+					0,
+					4,
+					descriptorSets,
+					2, /* always have 2 dynamic offsets for UBOs */
+					cmd->draw.dynamicOffsets
+				);
+
 				renderer->vkCmdDraw(
 					renderer->commandBuffer,
 					cmd->draw.vertexCount,
@@ -2793,6 +3046,24 @@ static void VULKAN_INTERNAL_RecordCommands(VulkanRenderer *renderer)
 				break;
 
 			case CMDTYPE_DRAW_INDEXED:
+				/* grab the actual descriptor set objects */
+				VULKAN_INTERNAL_FetchDescriptorSetsByDataIndices(
+					renderer,
+					&cmd->drawIndexed.descriptorSetDataIndices,
+					descriptorSets
+				);
+
+				renderer->vkCmdBindDescriptorSets(
+					renderer->commandBuffer,
+					VK_PIPELINE_BIND_POINT_GRAPHICS,
+					cmd->drawIndexed.pipelineLayout,
+					0,
+					4,
+					descriptorSets,
+					2, /* always have 2 dynamic offsets for the UBOs */
+					cmd->drawIndexed.dynamicOffsets
+				);
+
 				renderer->vkCmdDrawIndexed(
 					renderer->commandBuffer,
 					cmd->drawIndexed.indexCount,
@@ -6810,7 +7081,13 @@ static void VULKAN_DrawInstancedPrimitives(
 	drawIndexedCmd.drawIndexed.instanceCount = instanceCount;
 	drawIndexedCmd.drawIndexed.firstIndex = startIndex;
 	drawIndexedCmd.drawIndexed.vertexOffset = baseVertex;
-	drawIndexedCmd.drawIndexed.descriptorSetDataIndices = VULKAN_INTERNAL_FetchDescriptorSetDataIndices(renderer);
+	drawIndexedCmd.drawIndexed.pipelineLayout = renderer->currentPipelineLayout;
+
+	VULKAN_INTERNAL_FetchDescriptorSetDataIndicesAndOffsets(
+		renderer,
+		&drawIndexedCmd.drawIndexed.descriptorSetDataIndices,
+		drawIndexedCmd.drawIndexed.dynamicOffsets
+	);
 
 	VULKAN_INTERNAL_EncodeCommand(
 		renderer,
@@ -6891,7 +7168,13 @@ static void VULKAN_DrawPrimitives(
 		primitiveCount
 	);
 	drawCmd.draw.firstVertex = vertexStart;
-	drawCmd.draw.descriptorSetDataIndices = VULKAN_INTERNAL_FetchDescriptorSetDataIndices(renderer);
+	drawCmd.draw.pipelineLayout = renderer->currentPipelineLayout;
+
+	VULKAN_INTERNAL_FetchDescriptorSetDataIndicesAndOffsets(
+		renderer,
+		&drawCmd.draw.descriptorSetDataIndices,
+		drawCmd.draw.dynamicOffsets
+	);
 
 	VULKAN_INTERNAL_EncodeCommand(
 		renderer,
@@ -9633,6 +9916,10 @@ static FNA3D_Device* VULKAN_CreateDevice(
 			LogVulkanResult("vkAllocateDescriptorsets", vulkanResult);
 			return NULL;
 		}
+
+		renderer->vertexSamplerDataIndexToDescriptorSetIndexMap[i] = SDL_malloc(
+			sizeof(uint32_t) * STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE
+		);
 	}
 
 	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
@@ -9675,6 +9962,10 @@ static FNA3D_Device* VULKAN_CreateDevice(
 			LogVulkanResult("vkAllocateDescriptorSets", vulkanResult);
 			return NULL;
 		}
+
+		renderer->fragSamplerDataIndexToDescriptorSetIndexMap[i] = SDL_malloc(
+			sizeof(uint32_t) * STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE
+		);
 	}
 
 	uniformBufferPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
@@ -9716,6 +10007,10 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		return NULL;
 	}
 
+	renderer->vertexUniformBufferDataIndexToDescriptorSetIndexMap = SDL_malloc(
+		sizeof(uint32_t) * STARTING_UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE
+	);
+
 	vulkanResult = renderer->vkCreateDescriptorPool(
 		renderer->logicalDevice,
 		&uniformBufferPoolInfo,
@@ -9747,6 +10042,10 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		LogVulkanResult("vkAllocateDescriptorsSets", vulkanResult);
 		return NULL;
 	}
+
+	renderer->fragUniformBufferDataIndexToDescriptorSetIndexMap = SDL_malloc(
+		sizeof(uint32_t) * STARTING_UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE
+	);
 
 	/*
 	 * Init various renderer properties
