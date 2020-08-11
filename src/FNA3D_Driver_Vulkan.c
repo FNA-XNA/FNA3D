@@ -1102,7 +1102,7 @@ typedef struct VulkanRenderer
 	uint8_t textureNeedsUpdate[TEXTURE_COUNT];
 	uint8_t samplerNeedsUpdate[TEXTURE_COUNT];
 
-	VkDescriptorSetLayout vertSamplerDescriptorSetLayouts[MAX_VERTEXTEXTURE_SAMPLERS];
+	VkDescriptorSetLayout vertexSamplerDescriptorSetLayouts[MAX_VERTEXTEXTURE_SAMPLERS];
 	VkDescriptorSetLayout fragSamplerDescriptorSetLayouts[MAX_TEXTURE_SAMPLERS];
 	VkDescriptorSetLayout vertUniformBufferDescriptorSetLayout;
 	VkDescriptorSetLayout fragUniformBufferDescriptorSetLayout;
@@ -2409,6 +2409,7 @@ static uint8_t VULKAN_INTERNAL_CreateDescriptorPoolAndSets(
 	VkDescriptorSet *descriptorSetArray
 ) {
 	VkResult vulkanResult;
+	uint32_t i;
 
 	VkDescriptorPoolSize descriptorPoolSize;
 	VkDescriptorPoolCreateInfo descriptorPoolInfo =
@@ -2419,6 +2420,12 @@ static uint8_t VULKAN_INTERNAL_CreateDescriptorPoolAndSets(
 	{
 		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
 	};
+	VkDescriptorSetLayout *descriptorSetLayouts = SDL_stack_alloc(VkDescriptorSetLayout, descriptorSetCount);
+
+	for (i = 0; i < descriptorSetCount; i += 1)
+	{
+		descriptorSetLayouts[i] = descriptorSetLayout;
+	}
 
 	descriptorPoolSize.type = descriptorType;
 	descriptorPoolSize.descriptorCount = descriptorSetCount;
@@ -2437,6 +2444,7 @@ static uint8_t VULKAN_INTERNAL_CreateDescriptorPoolAndSets(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		LogVulkanResult("vkCreateDescriptorPool", vulkanResult);
+		SDL_stack_free(descriptorSetLayouts);
 		return 0;
 	}
 
@@ -2444,7 +2452,7 @@ static uint8_t VULKAN_INTERNAL_CreateDescriptorPoolAndSets(
 
 	descriptorSetAllocateInfo.descriptorPool = descriptorPool;
 	descriptorSetAllocateInfo.descriptorSetCount = descriptorSetCount;
-	descriptorSetAllocateInfo.pSetLayouts = &descriptorSetLayout;
+	descriptorSetAllocateInfo.pSetLayouts = descriptorSetLayouts;
 
 	vulkanResult = renderer->vkAllocateDescriptorSets(
 		renderer->logicalDevice,
@@ -2455,9 +2463,11 @@ static uint8_t VULKAN_INTERNAL_CreateDescriptorPoolAndSets(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		LogVulkanResult("vkAllocateDescriptorSets", vulkanResult);
+		SDL_stack_free(descriptorSetLayouts);
 		return 0;
 	}
 
+	SDL_stack_free(descriptorSetLayouts);
 	return 1;
 }
 
@@ -2637,7 +2647,7 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 				renderer,
 				vertexSamplerCounts[i] * 2, /* give some wiggle room */
 				VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-				renderer->vertSamplerDescriptorSetLayouts[i],
+				renderer->vertexSamplerDescriptorSetLayouts[i],
 				renderer->vertexSamplerDescriptorPools[i],
 				renderer->vertexSamplerDescriptorSets[i]
 			);
@@ -4760,7 +4770,7 @@ static VkPipelineLayout VULKAN_INTERNAL_FetchPipelineLayout(
 		return layout;
 	}
 
-	setLayouts[0] = renderer->vertSamplerDescriptorSetLayouts[
+	setLayouts[0] = renderer->vertexSamplerDescriptorSetLayouts[
 		hash.vertSamplerCount
 	];
 	setLayouts[1] = renderer->fragSamplerDescriptorSetLayouts[
@@ -6629,7 +6639,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	{
 		renderer->vkDestroyDescriptorSetLayout(
 			renderer->logicalDevice,
-			renderer->vertSamplerDescriptorSetLayouts[i],
+			renderer->vertexSamplerDescriptorSetLayouts[i],
 			NULL
 		);
 	}
@@ -9304,26 +9314,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	VkDescriptorSetLayoutBinding layoutBinding;
 	VkDescriptorSetLayoutCreateInfo layoutCreateInfo;
 
-	/* Variables: Create descriptor pools */
-	VkDescriptorPoolSize uniformBufferPoolSize;
-	VkDescriptorPoolSize samplerPoolSize;
-	VkDescriptorPoolCreateInfo uniformBufferPoolInfo =
-	{
-		VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO
-	};
-	VkDescriptorPoolCreateInfo samplerPoolInfo =
-	{
-		VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO
-	};
-	VkDescriptorSetAllocateInfo samplerDescriptorSetAllocateInfo =
-	{
-		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
-	};
-	VkDescriptorSetAllocateInfo uniformBufferDescriptorSetAllocateInfo =
-	{
-		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
-	};
-
 	/* Variables: Check for DXT1/S3TC Support */
 	VkFormatProperties formatPropsBC1, formatPropsBC2, formatPropsBC3;
 
@@ -9748,7 +9738,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer->logicalDevice,
 		&layoutCreateInfo,
 		NULL,
-		&renderer->vertSamplerDescriptorSetLayouts[0]
+		&renderer->vertexSamplerDescriptorSetLayouts[0]
 	);
 
 	/* Define all possible vert sampler layouts */
@@ -9777,7 +9767,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 			renderer->logicalDevice,
 			&layoutCreateInfo,
 			NULL,
-			&renderer->vertSamplerDescriptorSetLayouts[i]
+			&renderer->vertexSamplerDescriptorSetLayouts[i]
 		);
 
 		SDL_stack_free(layoutBindings);
@@ -9878,45 +9868,23 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	for (i = 0; i < MAX_VERTEXTEXTURE_SAMPLERS; i += 1)
 	{
-		samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		samplerPoolSize.descriptorCount = STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE;
-
-		samplerPoolInfo.poolSizeCount = 1;
-		samplerPoolInfo.pPoolSizes = &samplerPoolSize;
-		samplerPoolInfo.maxSets = STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE;
-
-		vulkanResult = renderer->vkCreateDescriptorPool(
-			renderer->logicalDevice,
-			&samplerPoolInfo,
-			NULL,
-			&renderer->vertexSamplerDescriptorPools[i]
+		renderer->vertexSamplerDescriptorPools[i] = SDL_malloc(
+			sizeof(VkDescriptorPool) * STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE
 		);
 
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResult("vkCreateDescriptorPool", vulkanResult);
-			return NULL;
-		}
+		renderer->vertexSamplerDescriptorSets[i] = SDL_malloc(
+			sizeof(VkDescriptorSet) * STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE
+		);
 
-		renderer->vertexSamplerDescriptorPoolSizes[i] = STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE;
-		renderer->vertexSamplerDescriptorSets[i] = SDL_malloc(sizeof(VkDescriptorSet) * STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE);
-
-		samplerDescriptorSetAllocateInfo.descriptorPool = renderer->vertexSamplerDescriptorPools[i];
-		samplerDescriptorSetAllocateInfo.descriptorSetCount = STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE;
-		samplerDescriptorSetAllocateInfo.pSetLayouts = &renderer->vertSamplerDescriptorSetLayouts[i];
-
-		vulkanResult = renderer->vkAllocateDescriptorSets(
-			renderer->logicalDevice,
-			&samplerDescriptorSetAllocateInfo,
+		VULKAN_INTERNAL_CreateDescriptorPoolAndSets(
+			renderer,
+			STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE,
+			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			renderer->vertexSamplerDescriptorSetLayouts[i],
+			renderer->vertexSamplerDescriptorPools[i],
 			renderer->vertexSamplerDescriptorSets[i]
 		);
-
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResult("vkAllocateDescriptorsets", vulkanResult);
-			return NULL;
-		}
-
+	
 		renderer->vertexSamplerDataIndexToDescriptorSetIndexMap[i] = SDL_malloc(
 			sizeof(uint32_t) * STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE
 		);
@@ -9924,124 +9892,57 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
 	{
-		samplerPoolSize.type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		samplerPoolSize.descriptorCount = STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE;
-
-		samplerPoolInfo.poolSizeCount = 1;
-		samplerPoolInfo.pPoolSizes = &samplerPoolSize;
-		samplerPoolInfo.maxSets = STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE;
-
-		vulkanResult = renderer->vkCreateDescriptorPool(
-			renderer->logicalDevice,
-			&samplerPoolInfo,
-			NULL,
-			&renderer->fragSamplerDescriptorPools[i]
+		renderer->fragSamplerDescriptorPools[i] = SDL_malloc(
+			sizeof(VkDescriptorPool) * STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE
 		);
 
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResult("vkCreateDescriptorPool", vulkanResult);
-			return NULL;
-		}
+		renderer->fragSamplerDescriptorSets[i] = SDL_malloc(
+			sizeof(VkDescriptorSet) * STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE
+		);
 
-		renderer->fragSamplerDescriptorPoolSizes[i] = STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE;
-		renderer->fragSamplerDescriptorSets[i] = SDL_malloc(sizeof(VkDescriptorSet) * STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE);
-
-		samplerDescriptorSetAllocateInfo.descriptorPool = renderer->fragSamplerDescriptorPools[i];
-		samplerDescriptorSetAllocateInfo.descriptorSetCount = STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE;
-		samplerDescriptorSetAllocateInfo.pSetLayouts = &renderer->fragSamplerDescriptorSetLayouts[i];
-
-		vulkanResult = renderer->vkAllocateDescriptorSets(
-			renderer->logicalDevice,
-			&samplerDescriptorSetAllocateInfo,
+		VULKAN_INTERNAL_CreateDescriptorPoolAndSets(
+			renderer,
+			STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE,
+			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
+			renderer->fragSamplerDescriptorSetLayouts[i],
+			renderer->fragSamplerDescriptorPools[i],
 			renderer->fragSamplerDescriptorSets[i]
 		);
-
-		if (vulkanResult != VK_SUCCESS)
-		{
-			LogVulkanResult("vkAllocateDescriptorSets", vulkanResult);
-			return NULL;
-		}
-
+	
 		renderer->fragSamplerDataIndexToDescriptorSetIndexMap[i] = SDL_malloc(
 			sizeof(uint32_t) * STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE
 		);
 	}
 
-	uniformBufferPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-	uniformBufferPoolSize.descriptorCount = STARTING_UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE;
-
-	uniformBufferPoolInfo.poolSizeCount = 1;
-	uniformBufferPoolInfo.pPoolSizes = &uniformBufferPoolSize;
-	uniformBufferPoolInfo.maxSets = STARTING_UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE;
-
-	vulkanResult = renderer->vkCreateDescriptorPool(
-		renderer->logicalDevice,
-		&uniformBufferPoolInfo,
-		NULL,
-		&renderer->vertexUniformBufferDescriptorPool
+	renderer->vertexUniformBufferDescriptorSets = SDL_malloc(
+		sizeof(VkDescriptorSet) * STARTING_UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE
 	);
 
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkCreateDescriptorPool", vulkanResult);
-		return NULL;
-	}
-
-	renderer->vertexUniformBufferDescriptorPoolSize = STARTING_UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE;
-	renderer->vertexUniformBufferDescriptorSets[i] = SDL_malloc(sizeof(VkDescriptorSet) * STARTING_UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE);
-
-	uniformBufferDescriptorSetAllocateInfo.descriptorPool = renderer->vertexUniformBufferDescriptorPool;
-	uniformBufferDescriptorSetAllocateInfo.descriptorSetCount = STARTING_UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE;
-	uniformBufferDescriptorSetAllocateInfo.pSetLayouts = &renderer->vertUniformBufferDescriptorSetLayout;
-
-	vulkanResult = renderer->vkAllocateDescriptorSets(
-		renderer->logicalDevice,
-		&uniformBufferDescriptorSetAllocateInfo,
+	VULKAN_INTERNAL_CreateDescriptorPoolAndSets(
+		renderer,
+		STARTING_UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE,
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+		renderer->vertUniformBufferDescriptorSetLayout,
+		renderer->vertexUniformBufferDescriptorPool,
 		renderer->vertexUniformBufferDescriptorSets
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkAllocateDescriptorSets", vulkanResult);
-		return NULL;
-	}
 
 	renderer->vertexUniformBufferDataIndexToDescriptorSetIndexMap = SDL_malloc(
 		sizeof(uint32_t) * STARTING_UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE
 	);
 
-	vulkanResult = renderer->vkCreateDescriptorPool(
-		renderer->logicalDevice,
-		&uniformBufferPoolInfo,
-		NULL,
-		&renderer->fragUniformBufferDescriptorPool
+	renderer->fragUniformBufferDescriptorSets[i] = SDL_malloc(
+		sizeof(VkDescriptorSet) * STARTING_UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE
 	);
 
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkCreateDescriptorPool", vulkanResult);
-		return NULL;
-	}
-
-	renderer->fragUniformBufferDescriptorPoolSize = STARTING_UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE;
-	renderer->fragUniformBufferDescriptorSets[i] = SDL_malloc(sizeof(VkDescriptorSet) * STARTING_UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE);
-
-	uniformBufferDescriptorSetAllocateInfo.descriptorPool = renderer->fragUniformBufferDescriptorPool;
-	uniformBufferDescriptorSetAllocateInfo.descriptorSetCount = STARTING_UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE;
-	uniformBufferDescriptorSetAllocateInfo.pSetLayouts = &renderer->fragUniformBufferDescriptorSetLayout;
-
-	vulkanResult = renderer->vkAllocateDescriptorSets(
-		renderer->logicalDevice,
-		&uniformBufferDescriptorSetAllocateInfo,
+	VULKAN_INTERNAL_CreateDescriptorPoolAndSets(
+		renderer,
+		STARTING_UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE,
+		VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+		renderer->fragUniformBufferDescriptorSetLayout,
+		renderer->fragUniformBufferDescriptorPool,
 		renderer->fragUniformBufferDescriptorSets
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResult("vkAllocateDescriptorsSets", vulkanResult);
-		return NULL;
-	}
 
 	renderer->fragUniformBufferDataIndexToDescriptorSetIndexMap = SDL_malloc(
 		sizeof(uint32_t) * STARTING_UNIFORM_BUFFER_DESCRIPTOR_POOL_SIZE
