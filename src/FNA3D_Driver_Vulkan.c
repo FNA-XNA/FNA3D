@@ -3047,6 +3047,8 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 		writeDescriptorSets[writeDescriptorSetIndex].pBufferInfo = &renderer->fragUniformDescriptorSetDataHashMap[i].descriptorSetData.descriptorBufferInfo;
 		writeDescriptorSets[writeDescriptorSetIndex].pImageInfo = NULL;
 		writeDescriptorSets[writeDescriptorSetIndex].pTexelBufferView = NULL;
+
+		writeDescriptorSetIndex += 1;
 	}
 
 	renderer->vkUpdateDescriptorSets(
