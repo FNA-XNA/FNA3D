@@ -2577,54 +2577,57 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 	vertexSamplerCount = renderer->currentPipelineLayoutHash.vertSamplerCount;
 	fragSamplerCount = renderer->currentPipelineLayoutHash.fragSamplerCount;
 
-	/* if the shader takes no samplers we bind dummy data */
 	if (vertexSamplerCount == 0)
 	{
+		/* in case we have 0 samplers, bind dummy data */
+		vertexSamplerDescriptorSetData.descriptorImageInfo[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		vertexSamplerDescriptorSetData.descriptorImageInfo[0].imageView = renderer->dummyVertTexture->view;
+		vertexSamplerDescriptorSetData.descriptorImageInfo[0].sampler = renderer->dummyVertSamplerState;
+
 		vertexSamplerCount = 1;
+	}
+	else
+	{
+		for (i = 0; i < vertexSamplerCount; i += 1)
+		{
+			if (renderer->textures[MAX_TEXTURE_SAMPLERS + i] != &NullTexture)
+			{
+				vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->textures[MAX_TEXTURE_SAMPLERS + i]->view;
+			}
+			else
+			{
+				vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyVertTexture->view;
+			}
+
+			vertexSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->samplers[MAX_TEXTURE_SAMPLERS + i];
+			vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		}
 	}
 
 	if (fragSamplerCount == 0)
 	{
+		fragSamplerDescriptorSetData.descriptorImageInfo[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		fragSamplerDescriptorSetData.descriptorImageInfo[0].imageView = renderer->dummyFragTexture->view;
+		fragSamplerDescriptorSetData.descriptorImageInfo[0].sampler = renderer->dummyFragSamplerState;
+
 		fragSamplerCount = 1;
 	}
-
-	/* in case we have 0 samplers, bind dummy data */
-	vertexSamplerDescriptorSetData.descriptorImageInfo[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	vertexSamplerDescriptorSetData.descriptorImageInfo[0].imageView = renderer->dummyVertTexture->view;
-	vertexSamplerDescriptorSetData.descriptorImageInfo[0].sampler = renderer->dummyVertSamplerState;
-
-	fragSamplerDescriptorSetData.descriptorImageInfo[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	fragSamplerDescriptorSetData.descriptorImageInfo[0].imageView = renderer->dummyFragTexture->view;
-	fragSamplerDescriptorSetData.descriptorImageInfo[0].sampler = renderer->dummyFragSamplerState;
-
-	for (i = 0; i < vertexSamplerCount; i += 1)
+	else
 	{
-		if (renderer->textures[MAX_TEXTURE_SAMPLERS + i] != &NullTexture)
+		for (i = 0; i < fragSamplerCount; i += 1)
 		{
-			vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->textures[MAX_TEXTURE_SAMPLERS + i]->view;
-		}
-		else
-		{
-			vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyVertTexture->view;
-		}
+			if (renderer->textures[i] != &NullTexture)
+			{
+				fragSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->textures[i]->view;
+			}
+			else
+			{
+				fragSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyFragTexture->view;
+			}
 
-		vertexSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->samplers[MAX_TEXTURE_SAMPLERS + i];
-		vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	}
-
-	for (i = 0; i < fragSamplerCount; i += 1)
-	{
-		if (renderer->textures[i] != &NullTexture)
-		{
-			fragSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->textures[i]->view;
+			fragSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->samplers[i];
+			fragSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 		}
-		else
-		{
-			fragSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyFragTexture->view;
-		}
-
-		fragSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->samplers[i];
-		fragSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	}
 
 	MOJOSHADER_vkGetUniformBuffers(
@@ -2694,7 +2697,7 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 		renderer->vertexUniformDescriptorSetDataCapacity *= 2;
 
 		renderer->vertexUniformDescriptorSetDatas = SDL_realloc(
-			renderer->vertexSamplerDescriptorSetDatas,
+			renderer->vertexUniformDescriptorSetDatas,
 			sizeof(VertexUniformDescriptorSetData) * renderer->vertexUniformDescriptorSetDataCapacity
 		);
 	}
@@ -2704,7 +2707,7 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 		renderer->fragUniformDescriptorSetDataCapacity *= 2;
 
 		renderer->fragUniformDescriptorSetDatas = SDL_realloc(
-			renderer->fragSamplerDescriptorSetDatas,
+			renderer->fragUniformDescriptorSetDatas,
 			sizeof(FragUniformDescriptorSetData) * renderer->fragUniformDescriptorSetDataCapacity
 		);
 	}
@@ -2759,11 +2762,6 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 	uint32_t i, j, k;
 	size_t hash;
 
-	uint32_t samplerCountToNextVertexSamplerDescriptorSetIndex[MAX_VERTEXTEXTURE_SAMPLERS] = { 0 };
-	uint32_t samplerCountToNextFragSamplerDescriptorSetIndex[MAX_TEXTURE_SAMPLERS] = { 0 };
-	uint32_t nextVertexUniformDescriptorSetIndex = 0;
-	uint32_t nextFragUniformDescriptorSetIndex = 0;
-
 	uint32_t vertexSamplerDescriptorSetCounts[MAX_VERTEXTEXTURE_SAMPLERS] = { 0 };
 	uint32_t fragSamplerDescriptorSetCounts[MAX_TEXTURE_SAMPLERS] = { 0 } ;
 	uint32_t vertexUniformDescriptorSetCount = 0;
@@ -2781,6 +2779,7 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 	uint32_t writeDescriptorSetCount = 0;
 
 	/* iterate over all the descriptor set datas and hash to filter out duplicates */
+	/* the descriptor sets get filled in after we ensure enough are allocated */
 
 	for (i = 0; i < MAX_VERTEXTEXTURE_SAMPLERS; i += 1)
 	{
@@ -2790,9 +2789,7 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 
 			if (hmgeti(renderer->vertexSamplerDescriptorSetDataHashMap[i], hash) == -1)
 			{
-				nextDescriptorSet = renderer->vertexSamplerDescriptorSets[i][samplerCountToNextVertexSamplerDescriptorSetIndex[i]];
-
-				vertexSamplerDescriptorSetStructure = (VertexSamplerDescriptorSetDataHashMap) { hash, nextDescriptorSet, renderer->vertexSamplerDescriptorSetDatas[i][j] };
+				vertexSamplerDescriptorSetStructure = (VertexSamplerDescriptorSetDataHashMap) { hash, NULL_DESC_SET, renderer->vertexSamplerDescriptorSetDatas[i][j] };
 				hmputs(renderer->vertexSamplerDescriptorSetDataHashMap[i], vertexSamplerDescriptorSetStructure);
 
 				vertexSamplerDescriptorSetCounts[i] += 1;
@@ -2809,9 +2806,7 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 
 			if (hmgeti(renderer->fragSamplerDescriptorSetDataHashMap[i], hash) == -1)
 			{
-				nextDescriptorSet = renderer->fragSamplerDescriptorSets[i][samplerCountToNextFragSamplerDescriptorSetIndex[j]];
-
-				fragSamplerDescriptorSetStructure = (FragSamplerDescriptorSetDataHashMap) { hash, nextDescriptorSet, renderer->fragSamplerDescriptorSetDatas[i][j] };
+				fragSamplerDescriptorSetStructure = (FragSamplerDescriptorSetDataHashMap) { hash, NULL_DESC_SET, renderer->fragSamplerDescriptorSetDatas[i][j] };
 				hmputs(renderer->fragSamplerDescriptorSetDataHashMap[i], fragSamplerDescriptorSetStructure);
 
 				fragSamplerDescriptorSetCounts[i] += 1;
@@ -2826,9 +2821,7 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 
 		if (hmgeti(renderer->vertexUniformDescriptorSetDataHashMap, hash) == -1)
 		{
-			nextDescriptorSet = renderer->vertexUniformBufferDescriptorSets[nextVertexUniformDescriptorSetIndex];
-
-			vertexUniformDescriptorSetStructure = (VertexUniformDescriptorSetDataHashMap) { hash, nextDescriptorSet, renderer->vertexUniformDescriptorSetDatas[i] };
+			vertexUniformDescriptorSetStructure = (VertexUniformDescriptorSetDataHashMap) { hash, NULL_DESC_SET, renderer->vertexUniformDescriptorSetDatas[i] };
 			hmputs(renderer->vertexUniformDescriptorSetDataHashMap, vertexUniformDescriptorSetStructure);
 
 			vertexUniformDescriptorSetCount += 1;
@@ -2842,9 +2835,7 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 
 		if (hmgeti(renderer->fragUniformDescriptorSetDataHashMap, hash) == -1)
 		{
-			nextDescriptorSet = renderer->fragUniformBufferDescriptorSets[nextFragUniformDescriptorSetIndex];
-
-			fragUniformDescriptorSetStructure = (FragUniformDescriptorSetDataHashMap) { hash, nextDescriptorSet, renderer->fragUniformDescriptorSetDatas[i] };
+			fragUniformDescriptorSetStructure = (FragUniformDescriptorSetDataHashMap) { hash, NULL_DESC_SET, renderer->fragUniformDescriptorSetDatas[i] };
 			hmputs(renderer->fragUniformDescriptorSetDataHashMap, fragUniformDescriptorSetStructure);
 
 			fragUniformDescriptorSetCount += 1;
@@ -2852,11 +2843,8 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 		}
 	}
 
-	writeDescriptorSets = SDL_stack_alloc(VkWriteDescriptorSet, writeDescriptorSetCount);
-
-	/*  TODO: error checks on CreateDescriptorPoolAndSets returns */
-
 	/* if any of the descriptor pools are too small, regenerate them */
+
 	for (i = 0; i < MAX_VERTEXTEXTURE_SAMPLERS; i += 1)
 	{
 		if (renderer->vertexSamplerDescriptorPoolSizes[i] < vertexSamplerDescriptorSetCounts[i])
@@ -2946,6 +2934,38 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 
 		renderer->fragUniformBufferDescriptorPoolSize = fragUniformDescriptorSetCount * 2;
 	}
+
+	/* assign actual descriptor sets */
+
+	for (i = 0; i < MAX_VERTEXTEXTURE_SAMPLERS; i++)
+	{
+		for (j = 0; j < hmlenu(renderer->vertexSamplerDescriptorSetDataHashMap[i]); j += 1)
+		{
+			renderer->vertexSamplerDescriptorSetDataHashMap[i][j].descriptorSet = renderer->vertexSamplerDescriptorSets[i][j];
+		}
+	}
+
+	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i++)
+	{
+		for (j = 0; j < hmlenu(renderer->fragSamplerDescriptorSetDataHashMap[i]); j += 1)
+		{
+			renderer->fragSamplerDescriptorSetDataHashMap[i][j].descriptorSet = renderer->fragSamplerDescriptorSets[i][j];
+		}
+	}
+
+	for (i = 0; i < hmlenu(renderer->vertexUniformDescriptorSetDataHashMap); i += 1)
+	{
+		renderer->vertexUniformDescriptorSetDataHashMap[i].descriptorSet = renderer->vertexUniformBufferDescriptorSets[i];
+	}
+
+	for (i = 0; i < hmlenu(renderer->fragUniformDescriptorSetDataHashMap); i += 1)
+	{
+		renderer->fragUniformDescriptorSetDataHashMap[i].descriptorSet = renderer->fragUniformBufferDescriptorSets[i];
+	}
+
+	/* generate the VkWriteDescriptorSets */
+
+	writeDescriptorSets = SDL_stack_alloc(VkWriteDescriptorSet, writeDescriptorSetCount);
 
 	for (i = 0; i < MAX_VERTEXTEXTURE_SAMPLERS; i++)
 	{
