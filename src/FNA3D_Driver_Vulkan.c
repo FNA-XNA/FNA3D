@@ -2793,7 +2793,7 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 				hmputs(renderer->vertexSamplerDescriptorSetDataHashMap[i], vertexSamplerDescriptorSetStructure);
 
 				vertexSamplerDescriptorSetCounts[i] += 1;
-				writeDescriptorSetCount += 1;
+				writeDescriptorSetCount += i; /* need one WriteDescriptorSet per sampler */
 			}
 		}
 	}
@@ -2810,7 +2810,7 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 				hmputs(renderer->fragSamplerDescriptorSetDataHashMap[i], fragSamplerDescriptorSetStructure);
 
 				fragSamplerDescriptorSetCounts[i] += 1;
-				writeDescriptorSetCount += 1;
+				writeDescriptorSetCount += i; /* need one WriteDescriptorSet per sampler */
 			}
 		}
 	}
