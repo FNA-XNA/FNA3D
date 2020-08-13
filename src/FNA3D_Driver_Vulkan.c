@@ -345,40 +345,40 @@ typedef struct FragUniformDescriptorSetData
 
 typedef struct VertexSamplerDescriptorSetDataHashMap
 {
-	size_t key;
+	uint64_t key;
 	VkDescriptorSet descriptorSet;
 	VertexSamplerDescriptorSetData descriptorSetData;
 } VertexSamplerDescriptorSetDataHashMap;
 
 typedef struct FragSamplerDescriptorSetDataHashMap
 {
-	size_t key;
+	uint64_t key;
 	VkDescriptorSet descriptorSet;
 	FragSamplerDescriptorSetData descriptorSetData;
 } FragSamplerDescriptorSetDataHashMap;
 
 typedef struct VertexUniformDescriptorSetDataHashMap
 {
-	size_t key;
+	uint64_t key;
 	VkDescriptorSet descriptorSet;
 	VertexUniformDescriptorSetData descriptorSetData;
 } VertexUniformDescriptorSetDataHashMap;
 
 typedef struct FragUniformDescriptorSetDataHashMap
 {
-	size_t key;
+	uint64_t key;
 	VkDescriptorSet descriptorSet;
 	FragUniformDescriptorSetData descriptorSetData;
 } FragUniformDescriptorSetDataHashMap;
 
 typedef struct DescriptorSetDataHashes
 {
-	size_t   vertexSamplerDescriptorDataHash;
+	uint64_t vertexSamplerDescriptorDataHash;
 	uint32_t vertexSamplerCount;
-	size_t   fragSamplerDescriptorDataHash;
+	uint64_t fragSamplerDescriptorDataHash;
 	uint32_t fragSamplerCount;
-	size_t   vertexUniformDescriptorDataHash;
-	size_t   fragUniformDescriptorDataHash;
+	uint64_t vertexUniformDescriptorDataHash;
+	uint64_t fragUniformDescriptorDataHash;
 } DescriptorSetDataHashes;
 
 /* Command Encoding */
@@ -2400,77 +2400,77 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 
 /* Vulkan: Descriptor Set Logic */
 
-static size_t VULKAN_INTERNAL_HashVertexSamplerDescriptorSetData(
+static uint64_t VULKAN_INTERNAL_HashVertexSamplerDescriptorSetData(
 	VertexSamplerDescriptorSetData *descriptorSetData,
 	uint32_t samplerCount
 ) {
 	uint32_t i;
 	uint64_t next;
-	size_t hash = 0;
+	uint64_t hash = 0;
 
 	for (i = 0; i < samplerCount; i++)
 	{
-		next = (uint64_t) (size_t) descriptorSetData->descriptorImageInfo[i].imageView;
+		next = (uint64_t) descriptorSetData->descriptorImageInfo[i].imageView;
 		hash ^= hash + 0x9e3779b9 + (next << 6) + (next >> 2);
 
-		next = (uint64_t) (size_t) descriptorSetData->descriptorImageInfo[i].sampler;
+		next = (uint64_t) descriptorSetData->descriptorImageInfo[i].sampler;
 		hash ^= hash + 0x9e3779b9 + (next << 6) + (next >> 2);
 	}
 
 	return hash;
 }
 
-static size_t VULKAN_INTERNAL_HashFragSamplerDescriptorSetData(
+static uint64_t VULKAN_INTERNAL_HashFragSamplerDescriptorSetData(
 	FragSamplerDescriptorSetData *descriptorSetData,
 	uint32_t samplerCount
 ) {
 	uint32_t i;
 	uint64_t next;
-	size_t hash = 0;
+	uint64_t hash = 0;
 
 	for (i = 0; i < samplerCount; i++)
 	{
-		next = (uint64_t) (size_t) descriptorSetData->descriptorImageInfo[i].imageView;
+		next = (uint64_t) descriptorSetData->descriptorImageInfo[i].imageView;
 		hash ^= hash + 0x9e3779b9 + (next << 6) + (next >> 2);
 
-		next = (uint64_t) (size_t) descriptorSetData->descriptorImageInfo[i].sampler;
+		next = (uint64_t) descriptorSetData->descriptorImageInfo[i].sampler;
 		hash ^= hash + 0x9e3779b9 + (next << 6) + (next >> 2);
 	}
 
 	return hash;
 }
 
-static size_t VULKAN_INTERNAL_HashVertexUniformDescriptorSetData(
+static uint64_t VULKAN_INTERNAL_HashVertexUniformDescriptorSetData(
 	VertexUniformDescriptorSetData *descriptorSetData
 ) {
 	uint64_t next;
-	size_t hash = 0;
+	uint64_t hash = 0;
 
-	next = (uint64_t) (size_t) descriptorSetData->descriptorBufferInfo.buffer;
+	next = (uint64_t) descriptorSetData->descriptorBufferInfo.buffer;
 	hash ^= hash + 0x9e3779b9 + (next << 6) + (next >> 2);
 
-	next = (uint64_t) (size_t) descriptorSetData->descriptorBufferInfo.offset;
+	next = (uint64_t) descriptorSetData->descriptorBufferInfo.offset;
 	hash ^= hash + 0x9e3779b9 + (next << 6) + (next >> 2);
 
-	next = (uint64_t) (size_t) descriptorSetData->descriptorBufferInfo.range;
+	next = (uint64_t) descriptorSetData->descriptorBufferInfo.range;
 	hash ^= hash + 0x9e3779b9 + (next << 6) + (next >> 2);
 
 	return hash;
 }
 
-static size_t VULKAN_INTERNAL_HashFragUniformDescriptorSetData(
+static uint64_t VULKAN_INTERNAL_HashFragUniformDescriptorSetData(
 	FragUniformDescriptorSetData *descriptorSetData
 ) {
 	uint64_t next;
-	size_t hash = 0;
+	uint64_t hash = 0;
 
-	next = (uint64_t) (size_t) descriptorSetData->descriptorBufferInfo.buffer;
+	next = (uint64_t) descriptorSetData->descriptorBufferInfo.buffer;
 	hash ^= hash + 0x9e3779b9 + (next << 6) + (next >> 2);
 
-	next = (uint64_t) (size_t) descriptorSetData->descriptorBufferInfo.offset;
+	next = (uint64_t) descriptorSetData->descriptorBufferInfo.offset;
 	hash ^= hash + 0x9e3779b9 + (next << 6) + (next >> 2);
 
-	next = (uint64_t) (size_t) descriptorSetData->descriptorBufferInfo.range;
+	next = (uint64_t) descriptorSetData->descriptorBufferInfo.range;
 	hash ^= hash + 0x9e3779b9 + (next << 6) + (next >> 2);
 
 	return hash;
@@ -2760,7 +2760,7 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 {
 	uint32_t i, j, k;
-	size_t hash;
+	uint64_t hash;
 
 	uint32_t vertexSamplerDescriptorSetCounts[MAX_VERTEXTEXTURE_SAMPLERS] = { 0 };
 	uint32_t fragSamplerDescriptorSetCounts[MAX_TEXTURE_SAMPLERS] = { 0 } ;
@@ -2789,7 +2789,9 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 
 			if (hmgeti(renderer->vertexSamplerDescriptorSetDataHashMap[i], hash) < 0)
 			{
-				vertexSamplerDescriptorSetStructure = (VertexSamplerDescriptorSetDataHashMap) { hash, NULL_DESC_SET, renderer->vertexSamplerDescriptorSetDatas[i][j] };
+				vertexSamplerDescriptorSetStructure.key = hash;
+				vertexSamplerDescriptorSetStructure.descriptorSet = NULL_DESC_SET;
+				vertexSamplerDescriptorSetStructure.descriptorSetData = renderer->vertexSamplerDescriptorSetDatas[i][j];
 				hmputs(renderer->vertexSamplerDescriptorSetDataHashMap[i], vertexSamplerDescriptorSetStructure);
 
 				vertexSamplerDescriptorSetCounts[i] += 1;
@@ -2806,7 +2808,9 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 
 			if (hmgeti(renderer->fragSamplerDescriptorSetDataHashMap[i], hash) < 0)
 			{
-				fragSamplerDescriptorSetStructure = (FragSamplerDescriptorSetDataHashMap) { hash, NULL_DESC_SET, renderer->fragSamplerDescriptorSetDatas[i][j] };
+				fragSamplerDescriptorSetStructure.key = hash;
+				fragSamplerDescriptorSetStructure.descriptorSet = NULL_DESC_SET;
+				fragSamplerDescriptorSetStructure.descriptorSetData = renderer->fragSamplerDescriptorSetDatas[i][j];
 				hmputs(renderer->fragSamplerDescriptorSetDataHashMap[i], fragSamplerDescriptorSetStructure);
 
 				fragSamplerDescriptorSetCounts[i] += 1;
@@ -2821,7 +2825,9 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 
 		if (hmgeti(renderer->vertexUniformDescriptorSetDataHashMap, hash) < 0)
 		{
-			vertexUniformDescriptorSetStructure = (VertexUniformDescriptorSetDataHashMap) { hash, NULL_DESC_SET, renderer->vertexUniformDescriptorSetDatas[i] };
+			vertexUniformDescriptorSetStructure.key = hash;
+			vertexUniformDescriptorSetStructure.descriptorSet = NULL_DESC_SET;
+			vertexUniformDescriptorSetStructure.descriptorSetData = renderer->vertexUniformDescriptorSetDatas[i];
 			hmputs(renderer->vertexUniformDescriptorSetDataHashMap, vertexUniformDescriptorSetStructure);
 
 			vertexUniformDescriptorSetCount += 1;
@@ -2835,7 +2841,9 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 
 		if (hmgeti(renderer->fragUniformDescriptorSetDataHashMap, hash) < 0)
 		{
-			fragUniformDescriptorSetStructure = (FragUniformDescriptorSetDataHashMap) { hash, NULL_DESC_SET, renderer->fragUniformDescriptorSetDatas[i] };
+			fragUniformDescriptorSetStructure.key = hash;
+			fragUniformDescriptorSetStructure.descriptorSet = NULL_DESC_SET;
+			fragUniformDescriptorSetStructure.descriptorSetData = renderer->fragUniformDescriptorSetDatas[i];
 			hmputs(renderer->fragUniformDescriptorSetDataHashMap, fragUniformDescriptorSetStructure);
 
 			fragUniformDescriptorSetCount += 1;
@@ -3601,7 +3609,7 @@ static void VULKAN_INTERNAL_FlushAndPresent(
 		);
 		presentInfoGGP.sType = VK_STRUCTURE_TYPE_PRESENT_FRAME_TOKEN_GGP;
 		presentInfoGGP.pNext = NULL;
-		presentInfoGGP.frameToken = (uint64_t) (size_t) token;
+		presentInfoGGP.frameToken = (uint64_t) token;
 		presentInfo.pNext = &presentInfoGGP;
 	}
 	else
@@ -5205,8 +5213,8 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 	hash.primitiveType = renderer->currentPrimitiveType;
 	hash.sampleMask = renderer->multiSampleMask[0];
 	MOJOSHADER_vkGetBoundShaders(&vertShader, &fragShader);
-	hash.vertShader = vertShader;
-	hash.fragShader = fragShader;
+	hash.vertShader = (uint64_t) vertShader;
+	hash.fragShader = (uint64_t) fragShader;
 	hash.renderPass = renderer->renderPass;
 
 	renderer->currentPipelineLayout = VULKAN_INTERNAL_FetchPipelineLayout(
