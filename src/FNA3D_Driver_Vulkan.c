@@ -10182,9 +10182,9 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 		renderer->fragSamplerDescriptorPoolSizes[i] = STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE;
 
-		renderer->vertexSamplerDescriptorSetDataCount[i] = 0;
-		renderer->vertexSamplerDescriptorSetDataCapacity[i] = STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE;
-		renderer->vertexSamplerDescriptorSetDatas[i] = SDL_malloc(sizeof(FragSamplerDescriptorSetData) * STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE);
+               renderer->fragSamplerDescriptorSetDataCount[i] = 0;
+               renderer->fragSamplerDescriptorSetDataCapacity[i] = STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE;
+               renderer->fragSamplerDescriptorSetDatas[i] = SDL_malloc(sizeof(FragSamplerDescriptorSetData) * STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE);
 	}
 
 	renderer->vertexUniformBufferDescriptorSets = SDL_malloc(
