@@ -2811,7 +2811,7 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 
 static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 {
-	uint32_t i, j, k;
+	uint32_t i, j;
 	uint64_t hash;
 
 	uint32_t vertexSamplerDescriptorSetCounts[MAX_VERTEXTEXTURE_SAMPLERS] = { 0 };
@@ -2847,7 +2847,7 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 				hmputs(renderer->vertexSamplerDescriptorSetDataHashMap[i], vertexSamplerDescriptorSetStructure);
 
 				vertexSamplerDescriptorSetCounts[i] += 1;
-				writeDescriptorSetCount += i; /* need one WriteDescriptorSet per sampler */
+				writeDescriptorSetCount += 1;
 			}
 		}
 	}
@@ -2866,7 +2866,7 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 				hmputs(renderer->fragSamplerDescriptorSetDataHashMap[i], fragSamplerDescriptorSetStructure);
 
 				fragSamplerDescriptorSetCounts[i] += 1;
-				writeDescriptorSetCount += i; /* need one WriteDescriptorSet per sampler */
+				writeDescriptorSetCount += 1;
 			}
 		}
 	}
@@ -3033,21 +3033,18 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 		{
 			nextDescriptorSet = renderer->vertexSamplerDescriptorSetDataHashMap[i][j].descriptorSet;
 
-			for (k = 0; k < i; k += 1)
-			{
-				writeDescriptorSets[writeDescriptorSetIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				writeDescriptorSets[writeDescriptorSetIndex].pNext = NULL;
-				writeDescriptorSets[writeDescriptorSetIndex].dstSet = nextDescriptorSet;
-				writeDescriptorSets[writeDescriptorSetIndex].dstBinding = k;
-				writeDescriptorSets[writeDescriptorSetIndex].dstArrayElement = 0;
-				writeDescriptorSets[writeDescriptorSetIndex].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-				writeDescriptorSets[writeDescriptorSetIndex].descriptorCount = 1;
-				writeDescriptorSets[writeDescriptorSetIndex].pBufferInfo = NULL;
-				writeDescriptorSets[writeDescriptorSetIndex].pImageInfo = &renderer->vertexSamplerDescriptorSetDataHashMap[i][j].descriptorSetData.descriptorImageInfo[k];
-				writeDescriptorSets[writeDescriptorSetIndex].pTexelBufferView = NULL;
+			writeDescriptorSets[writeDescriptorSetIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			writeDescriptorSets[writeDescriptorSetIndex].pNext = NULL;
+			writeDescriptorSets[writeDescriptorSetIndex].dstSet = nextDescriptorSet;
+			writeDescriptorSets[writeDescriptorSetIndex].dstBinding = 0;
+			writeDescriptorSets[writeDescriptorSetIndex].dstArrayElement = 0;
+			writeDescriptorSets[writeDescriptorSetIndex].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			writeDescriptorSets[writeDescriptorSetIndex].descriptorCount = i;
+			writeDescriptorSets[writeDescriptorSetIndex].pBufferInfo = NULL;
+			writeDescriptorSets[writeDescriptorSetIndex].pImageInfo = renderer->vertexSamplerDescriptorSetDataHashMap[i][j].descriptorSetData.descriptorImageInfo;
+			writeDescriptorSets[writeDescriptorSetIndex].pTexelBufferView = NULL;
 
-				writeDescriptorSetIndex += 1;
-			}
+			writeDescriptorSetIndex += 1;
 		}
 	}
 
@@ -3057,21 +3054,18 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 		{
 			nextDescriptorSet = renderer->fragSamplerDescriptorSetDataHashMap[i][j].descriptorSet;
 
-			for (k = 0; k < i; k += 1)
-			{
-				writeDescriptorSets[writeDescriptorSetIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				writeDescriptorSets[writeDescriptorSetIndex].pNext = NULL;
-				writeDescriptorSets[writeDescriptorSetIndex].dstSet = nextDescriptorSet;
-				writeDescriptorSets[writeDescriptorSetIndex].dstBinding = k;
-				writeDescriptorSets[writeDescriptorSetIndex].dstArrayElement = 0;
-				writeDescriptorSets[writeDescriptorSetIndex].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-				writeDescriptorSets[writeDescriptorSetIndex].descriptorCount = 1;
-				writeDescriptorSets[writeDescriptorSetIndex].pBufferInfo = NULL;
-				writeDescriptorSets[writeDescriptorSetIndex].pImageInfo = &renderer->fragSamplerDescriptorSetDataHashMap[i][j].descriptorSetData.descriptorImageInfo[k];
-				writeDescriptorSets[writeDescriptorSetIndex].pTexelBufferView = NULL;
+			writeDescriptorSets[writeDescriptorSetIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			writeDescriptorSets[writeDescriptorSetIndex].pNext = NULL;
+			writeDescriptorSets[writeDescriptorSetIndex].dstSet = nextDescriptorSet;
+			writeDescriptorSets[writeDescriptorSetIndex].dstBinding = 0;
+			writeDescriptorSets[writeDescriptorSetIndex].dstArrayElement = 0;
+			writeDescriptorSets[writeDescriptorSetIndex].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			writeDescriptorSets[writeDescriptorSetIndex].descriptorCount = i;
+			writeDescriptorSets[writeDescriptorSetIndex].pBufferInfo = NULL;
+			writeDescriptorSets[writeDescriptorSetIndex].pImageInfo = renderer->fragSamplerDescriptorSetDataHashMap[i][j].descriptorSetData.descriptorImageInfo;
+			writeDescriptorSets[writeDescriptorSetIndex].pTexelBufferView = NULL;
 
-				writeDescriptorSetIndex += 1;
-			}
+			writeDescriptorSetIndex += 1;
 		}
 	}
 
