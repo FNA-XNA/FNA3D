@@ -2415,6 +2415,9 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 
 /* Vulkan: Descriptor Set Logic */
 
+/* The hashing logic was taken from DXVK:
+ * https://github.com/doitsujin/dxvk/blob/master/src/dxvk/dxvk_hash.h
+ */
 static uint64_t VULKAN_INTERNAL_HashVertexSamplerDescriptorSetData(
 	VertexSamplerDescriptorSetData *descriptorSetData,
 	uint32_t samplerCount
