@@ -85,7 +85,7 @@
 #define STBIW_ONLY_PNG
 #define STBIW_ONLY_JPEG
 
-/* FIXME: Submit this to upstream! */
+#if !SDL_VERSION_ATLEAST(2, 0, 13)
 static void *
 SDL_SIMDRealloc(void *mem, const size_t len)
 {
@@ -137,6 +137,7 @@ SDL_SIMDRealloc(void *mem, const size_t len)
     *(((void **) retval) - 1) = ptr;
     return retval;
 }
+#endif
 
 #define STBI_NO_STDIO
 #define STB_IMAGE_STATIC
