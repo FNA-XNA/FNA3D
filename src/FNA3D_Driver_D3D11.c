@@ -478,7 +478,7 @@ static const char* FAUX_BLIT_VERTEX_SHADER =
 	"	position.zw = float2(0.0f, 1.0f);"
 	"}";
 
-const char* FAUX_BLIT_PIXEL_SHADER =
+static const char* FAUX_BLIT_PIXEL_SHADER =
 	"Texture2D Texture : register(t0);"
 	"sampler TextureSampler : register(s0);"
 	"float4 main("
@@ -490,7 +490,7 @@ const char* FAUX_BLIT_PIXEL_SHADER =
 
 /* Helper Functions */
 
-static inline uint32_t CalcSubresource(
+static inline uint32_t D3D11_INTERNAL_CalcSubresource(
 	uint32_t mipLevel,
 	uint32_t arraySlice,
 	uint32_t numLevels
@@ -498,17 +498,16 @@ static inline uint32_t CalcSubresource(
 	return mipLevel + (arraySlice * numLevels);
 }
 
-static inline uint8_t BlendEquals(FNA3D_Color *a, FNA3D_Color *b)
-{
-	return (	a->r == b->r &&
-			a->g == b->g &&
-			a->b == b->b &&
-			a->a == b->a	);
+static uint8_t D3D11_INTERNAL_BlendEquals(
+	FNA3D_Color *a,
+	FNA3D_Color *b
+) {
+	return SDL_memcmp(a, b, sizeof(FNA3D_Color)) == 0;
 }
 
 /* Pipeline State Object Caching */
 
-static ID3D11BlendState* FetchBlendState(
+static ID3D11BlendState* D3D11_INTERNAL_FetchBlendState(
 	D3D11Renderer *renderer,
 	FNA3D_BlendState *state
 ) {
@@ -590,7 +589,7 @@ static ID3D11BlendState* FetchBlendState(
 	return result;
 }
 
-static ID3D11DepthStencilState* FetchDepthStencilState(
+static ID3D11DepthStencilState* D3D11_INTERNAL_FetchDepthStencilState(
 	D3D11Renderer *renderer,
 	FNA3D_DepthStencilState *state
 ) {
@@ -669,7 +668,7 @@ static ID3D11DepthStencilState* FetchDepthStencilState(
 	return result;
 }
 
-static ID3D11RasterizerState* FetchRasterizerState(
+static ID3D11RasterizerState* D3D11_INTERNAL_FetchRasterizerState(
 	D3D11Renderer *renderer,
 	FNA3D_RasterizerState *state
 ) {
@@ -717,7 +716,7 @@ static ID3D11RasterizerState* FetchRasterizerState(
 	return result;
 }
 
-static ID3D11SamplerState* FetchSamplerState(
+static ID3D11SamplerState* D3D11_INTERNAL_FetchSamplerState(
 	D3D11Renderer *renderer,
 	FNA3D_SamplerState *state
 ) {
@@ -763,7 +762,7 @@ static ID3D11SamplerState* FetchSamplerState(
 	return result;
 }
 
-static ID3D11InputLayout* FetchBindingsInputLayout(
+static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 	D3D11Renderer *renderer,
 	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings,
@@ -1687,7 +1686,7 @@ static void D3D11_SetBlendFactor(
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	float factor[4];
-	if (!BlendEquals(&renderer->blendFactor, blendFactor))
+	if (!D3D11_INTERNAL_BlendEquals(&renderer->blendFactor, blendFactor))
 	{
 		factor[0] = blendFactor->r / 255.0f;
 		factor[1] = blendFactor->g / 255.0f;
@@ -1762,11 +1761,11 @@ static void D3D11_SetBlendState(
 	FNA3D_BlendState *blendState
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	ID3D11BlendState *bs = FetchBlendState(renderer, blendState);
+	ID3D11BlendState *bs = D3D11_INTERNAL_FetchBlendState(renderer, blendState);
 	float factor[4];
 
 	if (	renderer->blendState != bs ||
-		!BlendEquals(&renderer->blendFactor, &blendState->blendFactor) ||
+		!D3D11_INTERNAL_BlendEquals(&renderer->blendFactor, &blendState->blendFactor) ||
 		renderer->multiSampleMask != blendState->multiSampleMask	)
 	{
 		renderer->blendState = bs;
@@ -1792,7 +1791,10 @@ static void D3D11_SetDepthStencilState(
 	FNA3D_DepthStencilState *depthStencilState
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	ID3D11DepthStencilState *ds = FetchDepthStencilState(renderer, depthStencilState);
+	ID3D11DepthStencilState *ds = D3D11_INTERNAL_FetchDepthStencilState(
+		renderer,
+		depthStencilState
+	);
 
 	if (	renderer->depthStencilState != ds ||
 		renderer->stencilRef != depthStencilState->referenceStencil	)
@@ -1814,7 +1816,10 @@ static void D3D11_ApplyRasterizerState(
 	FNA3D_RasterizerState *rasterizerState
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	ID3D11RasterizerState *rs = FetchRasterizerState(renderer, rasterizerState);
+	ID3D11RasterizerState *rs = D3D11_INTERNAL_FetchRasterizerState(
+		renderer,
+		rasterizerState
+	);
 
 	if (renderer->rasterizerState != rs)
 	{
@@ -1907,7 +1912,7 @@ static void D3D11_VerifySampler(
 	}
 
 	/* Update the sampler state, if needed */
-	d3dSamplerState = FetchSamplerState(
+	d3dSamplerState = D3D11_INTERNAL_FetchSamplerState(
 		renderer,
 		sampler
 	);
@@ -1970,7 +1975,7 @@ static void D3D11_ApplyVertexBufferBindings(
 	}
 
 	/* Translate the bindings array into an input layout */
-	inputLayout = FetchBindingsInputLayout(
+	inputLayout = D3D11_INTERNAL_FetchBindingsInputLayout(
 		renderer,
 		bindings,
 		numBindings,
@@ -2164,7 +2169,7 @@ static void D3D11_ResolveTarget(
 		ID3D11DeviceContext_ResolveSubresource(
 			renderer->context,
 			(ID3D11Resource*) tex->handle,
-			CalcSubresource(0, slice, tex->levelCount),
+			D3D11_INTERNAL_CalcSubresource(0, slice, tex->levelCount),
 			(ID3D11Resource*) rb->handle,
 			0,
 			XNAToD3D_TextureFormat[tex->format]
@@ -2896,7 +2901,7 @@ static void D3D11_SetTextureData2D(
 	ID3D11DeviceContext_UpdateSubresource(
 		renderer->context,
 		d3dTexture->handle,
-		CalcSubresource(level, 0, d3dTexture->levelCount),
+		D3D11_INTERNAL_CalcSubresource(level, 0, d3dTexture->levelCount),
 		&dstBox,
 		data,
 		BytesPerRow(w, d3dTexture->format),
@@ -2942,7 +2947,7 @@ static void D3D11_SetTextureData3D(
 	ID3D11DeviceContext_UpdateSubresource(
 		renderer->context,
 		d3dTexture->handle,
-		CalcSubresource(level, 0, d3dTexture->levelCount),
+		D3D11_INTERNAL_CalcSubresource(level, 0, d3dTexture->levelCount),
 		&dstBox,
 		data,
 		BytesPerRow(w, d3dTexture->format),
@@ -2987,7 +2992,7 @@ static void D3D11_SetTextureDataCube(
 	ID3D11DeviceContext_UpdateSubresource(
 		renderer->context,
 		d3dTexture->handle,
-		CalcSubresource(
+		D3D11_INTERNAL_CalcSubresource(
 			level,
 			cubeMapFace,
 			d3dTexture->levelCount
@@ -3070,7 +3075,11 @@ static void D3D11_GetTextureData2D(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *tex = (D3D11Texture*) texture;
 	D3D11_TEXTURE2D_DESC stagingDesc;
-	uint32_t subresourceIndex = CalcSubresource(level, 0, tex->levelCount);
+	uint32_t subresourceIndex = D3D11_INTERNAL_CalcSubresource(
+		level,
+		0,
+		tex->levelCount
+	);
 	int32_t texW = tex->twod.width >> level;
 	int32_t texH = tex->twod.height >> level;
 	D3D11_BOX srcBox = {0, 0, 0, texW, texH, 1};
@@ -3190,12 +3199,12 @@ static void D3D11_GetTextureDataCube(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *tex = (D3D11Texture*) texture;
 	D3D11_TEXTURE2D_DESC stagingDesc;
-	uint32_t srcSubresourceIndex = CalcSubresource(
+	uint32_t srcSubresourceIndex = D3D11_INTERNAL_CalcSubresource(
 		level,
 		cubeMapFace,
 		tex->levelCount
 	);
-	uint32_t dstSubresourceIndex = CalcSubresource(
+	uint32_t dstSubresourceIndex = D3D11_INTERNAL_CalcSubresource(
 		level,
 		0,
 		tex->levelCount
