@@ -1136,15 +1136,35 @@ static void D3D11_INTERNAL_UpdateBackbufferVertexBuffer(
 	SDL_UnlockMutex(renderer->ctxLock);
 }
 
-static void D3D11_INTERNAL_BlitFramebuffer(D3D11Renderer *renderer, int32_t w, int32_t h)
-{
+static void D3D11_INTERNAL_BlitFramebuffer(
+	D3D11Renderer *renderer,
+	int32_t swapchainWidth,
+	int32_t swapchainHeight
+) {
 	const uint32_t vertexStride = 16;
 	const uint32_t offsets[] = { 0 };
 	float blendFactor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	ID3D11VertexShader *oldVertexShader;
 	ID3D11PixelShader *oldPixelShader;
 	uint32_t whatever;
-	D3D11_VIEWPORT vp = { 0, 0, (float) w, (float) h, 0, 1 };
+	D3D11_VIEWPORT origViewport =
+	{
+		(float) renderer->viewport.x,
+		(float) renderer->viewport.y,
+		(float) renderer->viewport.w,
+		(float) renderer->viewport.h,
+		renderer->viewport.minDepth,
+		renderer->viewport.maxDepth
+	};
+	D3D11_VIEWPORT tempViewport =
+	{
+		0,
+		0,
+		(float) swapchainWidth,
+		(float) swapchainHeight,
+		0,
+		1
+	};
 
 	SDL_LockMutex(renderer->ctxLock);
 
@@ -1190,7 +1210,7 @@ static void D3D11_INTERNAL_BlitFramebuffer(D3D11Renderer *renderer, int32_t w, i
 	ID3D11DeviceContext_RSSetViewports(
 		renderer->context,
 		1,
-		&vp
+		&tempViewport
 	);
 	ID3D11DeviceContext_OMSetBlendState(
 		renderer->context,
@@ -1252,7 +1272,11 @@ static void D3D11_INTERNAL_BlitFramebuffer(D3D11Renderer *renderer, int32_t w, i
 	blendFactor[1] = renderer->blendFactor.g / 255.0f;
 	blendFactor[2] = renderer->blendFactor.b / 255.0f;
 	blendFactor[3] = renderer->blendFactor.a / 255.0f;
-	renderer->viewport.minDepth = -1; /* Force an update */
+	ID3D11DeviceContext_RSSetViewports(
+		renderer->context,
+		1,
+		&origViewport
+	);
 	ID3D11DeviceContext_OMSetBlendState(
 		renderer->context,
 		renderer->blendState,
