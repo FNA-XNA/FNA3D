@@ -1118,8 +1118,6 @@ typedef struct VulkanRenderer
 	VertexUniformDescriptorSetData *vertexUniformDescriptorSetDatas;
 	FragUniformDescriptorSetData   *fragUniformDescriptorSetDatas;
 
-	VertexSamplerDescriptorSetData currentVertexSamplerDescriptorSetData;
-	FragSamplerDescriptorSetData   currentFragSamplerDescriptorSetData;
 	VertexUniformDescriptorSetData currentVertexUniformDescriptorSetData;
 	FragUniformDescriptorSetData   currentFragUniformDescriptorSetData;
 
@@ -2640,7 +2638,6 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 
 		renderer->vertexSamplerDescriptorSetDataCount[vertexSamplerCount] += 1;
 
-		renderer->currentVertexSamplerDescriptorSetData = vertexSamplerDescriptorSetData;
 		renderer->currentVertexSamplerDescriptorSetDataHash =
 			VULKAN_INTERNAL_HashVertexSamplerDescriptorSetData(
 				&vertexSamplerDescriptorSetData,
@@ -2692,7 +2689,6 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 
 		renderer->fragSamplerDescriptorSetDataCount[fragSamplerCount] += 1;
 
-		renderer->currentFragSamplerDescriptorSetData = fragSamplerDescriptorSetData;
 		renderer->currentFragSamplerDescriptorSetDataHash =
 			VULKAN_INTERNAL_HashFragSamplerDescriptorSetData(
 				&fragSamplerDescriptorSetData,
@@ -9236,6 +9232,9 @@ static void VULKAN_ApplyEffect(
 	renderer->currentEffect = effectData;
 	renderer->currentTechnique = technique;
 	renderer->currentPass = pass;
+
+	renderer->vertexSamplerDescriptorSetDataNeedsUpdate = 1;
+	renderer->fragSamplerDescriptorSetDataNeedsUpdate = 1;
 }
 
 static void VULKAN_BeginPassRestore(
