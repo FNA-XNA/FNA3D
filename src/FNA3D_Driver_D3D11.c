@@ -1087,10 +1087,10 @@ static void D3D11_INTERNAL_UpdateBackbufferVertexBuffer(
 	sy1 = (srcRect->y + srcRect->h) / (float) sourceHeight;
 
 	/* Scale the position coordinates to (-1, 1) */
-	dx = -1 + (dstRect->x / (float) drawableWidth);
-	dy = -1 + (dstRect->y / (float) drawableHeight);
-	dw = (dstRect->w / (float) drawableWidth) * 2;
-	dh = (dstRect->h / (float) drawableHeight) * 2;
+	dx = (dstRect->x / (float) drawableWidth) * 2.0f - 1.0f;
+	dy = (dstRect->y / (float) drawableHeight) * 2.0f - 1.0f;
+	dw = (dstRect->w / (float) drawableWidth) * 2.0f - 1.0f;
+	dh = (dstRect->h / (float) drawableHeight) * 2.0f - 1.0f;
 
 	/* Stuff the data into an array */
 	data[0] = dx;
