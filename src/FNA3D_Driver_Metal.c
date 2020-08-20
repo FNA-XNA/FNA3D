@@ -2140,8 +2140,8 @@ static void METAL_SwapBuffers(
 			renderer,
 			&srcRect,
 			&dstRect,
-			drawableWidth,
-			drawableHeight
+			(int32_t) drawableSize.width,
+			(int32_t) drawableSize.height
 		);
 	}
 
@@ -2154,11 +2154,7 @@ static void METAL_SwapBuffers(
 		METAL_INTERNAL_BlitFramebuffer(
 			renderer,
 			renderer->currentAttachments[0],
-			srcRect,
-			mtlGetTextureFromDrawable(drawable),
-			dstRect,
-			(int32_t) drawableSize.width,
-			(int32_t) drawableSize.height
+			mtlGetTextureFromDrawable(drawable)
 		);
 	}
 
