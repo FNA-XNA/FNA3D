@@ -1070,7 +1070,7 @@ static void D3D11_INTERNAL_UpdateBackbufferVertexBuffer(
 	int32_t drawableHeight
 ) {
 	float sx0, sy0, sx1, sy1;
-	float dx, dy, dw, dh;
+	float dx0, dy0, dx1, dy1;
 	float data[16];
 	D3D11_MAPPED_SUBRESOURCE mappedBuffer;
 	HRESULT res;
@@ -1087,29 +1087,29 @@ static void D3D11_INTERNAL_UpdateBackbufferVertexBuffer(
 	sy1 = (srcRect->y + srcRect->h) / (float) sourceHeight;
 
 	/* Scale the position coordinates to (-1, 1) */
-	dx = (dstRect->x / (float) drawableWidth) * 2.0f - 1.0f;
-	dy = (dstRect->y / (float) drawableHeight) * 2.0f - 1.0f;
-	dw = (dstRect->w / (float) drawableWidth) * 2.0f - 1.0f;
-	dh = (dstRect->h / (float) drawableHeight) * 2.0f - 1.0f;
+	dx0 = (dstRect->x / (float) drawableWidth) * 2.0f - 1.0f;
+	dy0 = (dstRect->y / (float) drawableHeight) * 2.0f - 1.0f;
+	dx1 = ((dstRect->x + dstRect->w) / (float) drawableWidth) * 2.0f - 1.0f;
+	dy1 = ((dstRect->y + dstRect->h) / (float) drawableHeight) * 2.0f - 1.0f;
 
 	/* Stuff the data into an array */
-	data[0] = dx;
-	data[1] = dy;
+	data[0] = dx0;
+	data[1] = dy0;
 	data[2] = sx0;
 	data[3] = sy0;
 
-	data[4] = dx + dw;
-	data[5] = dy;
+	data[4] = dx1;
+	data[5] = dy0;
 	data[6] = sx1;
 	data[7] = sy0;
 
-	data[8] = dx + dw;
-	data[9] = dy + dh;
+	data[8] = dx1;
+	data[9] = dy1;
 	data[10] = sx1;
 	data[11] = sy1;
 
-	data[12] = dx;
-	data[13] = dy + dh;
+	data[12] = dx0;
+	data[13] = dy1;
 	data[14] = sx0;
 	data[15] = sy1;
 
