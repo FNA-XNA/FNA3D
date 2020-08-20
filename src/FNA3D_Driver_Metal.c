@@ -128,9 +128,9 @@ typedef struct MetalRenderer /* Cast from FNA3D_Renderer* */
 
 	/* The Faux-Backbuffer */
 	MetalBackbuffer *backbuffer;
-	MTLSamplerMinMagFilter backbufferScaleMode;
 	uint8_t backbufferSizeChanged;
-	FNA3D_Rect backbufferDestBounds;
+	FNA3D_Rect prevSrcRect;
+	FNA3D_Rect prevDstRect;
 	MTLBuffer *backbufferDrawBuffer;
 	MTLSamplerState *backbufferSamplerState;
 	MTLRenderPipelineState *backbufferPipeline;
@@ -1871,11 +1871,35 @@ static MTLVertexDescriptor* METAL_INTERNAL_FetchVertexBufferBindingsDescriptor(
 	return result;
 }
 
+/* Forward Declarations */
+
+static void METAL_INTERNAL_DestroyFramebuffer(MetalRenderer *renderer);
+
+static void METAL_SetRenderTargets(
+	FNA3D_Renderer *driverData,
+	FNA3D_RenderTargetBinding *renderTargets,
+	int32_t numRenderTargets,
+	FNA3D_Renderbuffer *depthStencilBuffer,
+	FNA3D_DepthFormat depthFormat,
+	uint8_t preserveDepthStencilContents
+);
+
+static void METAL_GetTextureData2D(
+	FNA3D_Renderer *driverData,
+	FNA3D_Texture *texture,
+	int32_t x,
+	int32_t y,
+	int32_t w,
+	int32_t h,
+	int32_t level,
+	void* data,
+	int32_t dataLength
+);
+
 /* Renderer Implementation */
 
 /* Quit */
 
-static void METAL_INTERNAL_DestroyFramebuffer(MetalRenderer *renderer);
 static void METAL_DestroyDevice(FNA3D_Device *device)
 {
 	MetalRenderer *renderer = (MetalRenderer*) device->driverData;
@@ -1951,59 +1975,73 @@ static void METAL_DestroyDevice(FNA3D_Device *device)
 
 /* Presentation */
 
-static void METAL_INTERNAL_BlitFramebuffer(
+static void METAL_INTERNAL_UpdateBackbufferVertexBuffer(
 	MetalRenderer *renderer,
-	MTLTexture *srcTex,
-	FNA3D_Rect srcRect,
-	MTLTexture *dstTex,
-	FNA3D_Rect dstRect,
+	FNA3D_Rect *srcRect,
+	FNA3D_Rect *dstRect,
 	int32_t drawableWidth,
 	int32_t drawableHeight
 ) {
-	float sx, sy, sw, sh;
+	float backbufferWidth = (float) renderer->backbuffer->width;
+	float backbufferHeight = (float) renderer->backbuffer->height;
+	float sx0, sy0, sx1, sy1;
+	float dx0, dy0, dx1, dy1;
+	float data[16];
+
+	/* Cache the new info */
+	renderer->backbufferSizeChanged = 0;
+	renderer->prevSrcRect = *srcRect;
+	renderer->prevDstRect = *dstRect;
+
+	/* Scale the texture coordinates to (0, 1) */
+	sx0 = srcRect->x / backbufferWidth;
+	sy0 = srcRect->y / backbufferHeight;
+	sx1 = (srcRect->x + srcRect->w) / backbufferWidth;
+	sy1 = (srcRect->y + srcRect->h) / backbufferHeight;
+
+	/* Scale the position coordinates to (-1, 1) */
+	dx0 = (dstRect->x / (float) drawableWidth) * 2.0f - 1.0f;
+	dy0 = (dstRect->y / (float) drawableHeight) * 2.0f - 1.0f;
+	dx1 = ((dstRect->x + dstRect->w) / (float) drawableWidth) * 2.0f - 1.0f;
+	dy1 = ((dstRect->y + dstRect->h) / (float) drawableHeight) * 2.0f - 1.0f;
+
+	/* Stuff the data into an array */
+	data[0] = dx0;
+	data[1] = dy0;
+	data[2] = sx0;
+	data[3] = sy0;
+
+	data[4] = dx1;
+	data[5] = dy0;
+	data[6] = sx1;
+	data[7] = sy0;
+
+	data[8] = dx1;
+	data[9] = dy1;
+	data[10] = sx1;
+	data[11] = sy1;
+
+	data[12] = dx0;
+	data[13] = dy1;
+	data[14] = sx0;
+	data[15] = sy1;
+
+	/* Copy the data into the buffer */
+	SDL_memcpy(
+		mtlGetBufferContents(renderer->backbufferDrawBuffer),
+		data,
+		sizeof(data)
+	);
+}
+
+static void METAL_INTERNAL_BlitFramebuffer(
+	MetalRenderer *renderer,
+	MTLTexture *srcTex,
+	MTLTexture *dstTex
+) {
 	MTLRenderPassDescriptor *pass;
 	MTLRenderCommandEncoder *rce;
 
-	if (	srcRect.w == 0 ||
-		srcRect.h == 0 ||
-		dstRect.w == 0 ||
-		dstRect.h == 0		)
-	{
-		/* Enjoy that bright red window! */
-		return;
-	}
-
-	/* Update cached vertex buffer if needed */
-	if (	renderer->backbufferSizeChanged ||
-		renderer->backbufferDestBounds.x != dstRect.x ||
-		renderer->backbufferDestBounds.y != dstRect.y ||
-		renderer->backbufferDestBounds.w != dstRect.w ||
-		renderer->backbufferDestBounds.h != dstRect.h	)
-	{
-		renderer->backbufferDestBounds = dstRect;
-		renderer->backbufferSizeChanged = 0;
-
-		/* Scale the coordinates to (-1, 1) */
-		sx = -1 + (dstRect.x / (float) drawableWidth);
-		sy = -1 + (dstRect.y / (float) drawableHeight);
-		sw = (dstRect.w / (float) drawableWidth) * 2;
-		sh = (dstRect.h / (float) drawableHeight) * 2;
-
-		float data[] =
-		{
-			sx, sy,			0, 0,
-			sx + sw, sy,		1, 0,
-			sx + sw, sy + sh,	1, 1,
-			sx, sy + sh,		0, 1
-		};
-		SDL_memcpy(
-			mtlGetBufferContents(renderer->backbufferDrawBuffer),
-			data,
-			sizeof(data)
-		);
-	}
-
-	/* Render the source texture to the destination texture */
 	pass = mtlMakeRenderPassDescriptor();
 	mtlSetAttachmentTexture(
 		mtlGetColorAttachment(pass, 0),
@@ -2029,14 +2067,6 @@ static void METAL_INTERNAL_BlitFramebuffer(
 	mtlEndEncoding(rce);
 }
 
-static void METAL_SetRenderTargets(
-	FNA3D_Renderer *driverData,
-	FNA3D_RenderTargetBinding *renderTargets,
-	int32_t numRenderTargets,
-	FNA3D_Renderbuffer *depthStencilBuffer,
-	FNA3D_DepthFormat depthFormat,
-	uint8_t preserveDepthStencilContents
-);
 static void METAL_SwapBuffers(
 	FNA3D_Renderer *driverData,
 	FNA3D_Rect *sourceRectangle,
@@ -2064,10 +2094,8 @@ static void METAL_SwapBuffers(
 	);
 	METAL_INTERNAL_EndPass(renderer);
 
-	/* Get the drawable size */
-	drawableSize = mtlGetDrawableSize(renderer->layer);
-
 	/* Determine the regions to present */
+	drawableSize = mtlGetDrawableSize(renderer->layer);
 	if (sourceRectangle != NULL)
 	{
 		srcRect.x = sourceRectangle->x;
@@ -2097,19 +2125,42 @@ static void METAL_SwapBuffers(
 		dstRect.h = (int32_t) drawableSize.height;
 	}
 
+	/* Update the cached vertex buffer, if needed */
+	if (	renderer->backbufferSizeChanged ||
+		renderer->prevSrcRect.x != srcRect.x ||
+		renderer->prevSrcRect.y != srcRect.y ||
+		renderer->prevSrcRect.w != srcRect.w ||
+		renderer->prevSrcRect.h != srcRect.h ||
+		renderer->prevDstRect.x != dstRect.x ||
+		renderer->prevDstRect.y != dstRect.y ||
+		renderer->prevDstRect.w != dstRect.w ||
+		renderer->prevDstRect.h != dstRect.h	)
+	{
+		METAL_INTERNAL_UpdateBackbufferVertexBuffer(
+			renderer,
+			&srcRect,
+			&dstRect,
+			drawableWidth,
+			drawableHeight
+		);
+	}
+
 	/* Get the next drawable */
 	drawable = mtlNextDrawable(renderer->layer);
 
 	/* "Blit" the backbuffer to the drawable */
-	METAL_INTERNAL_BlitFramebuffer(
-		renderer,
-		renderer->currentAttachments[0],
-		srcRect,
-		mtlGetTextureFromDrawable(drawable),
-		dstRect,
-		(int32_t) drawableSize.width,
-		(int32_t) drawableSize.height
-	);
+	if (srcRect.w != 0 && srcRect.h != 0 && dstRect.w != 0 && dstRect.h != 0)
+	{
+		METAL_INTERNAL_BlitFramebuffer(
+			renderer,
+			renderer->currentAttachments[0],
+			srcRect,
+			mtlGetTextureFromDrawable(drawable),
+			dstRect,
+			(int32_t) drawableSize.width,
+			(int32_t) drawableSize.height
+		);
+	}
 
 	/* Commit the command buffer for presentation */
 	mtlPresentDrawable(renderer->commandBuffer, drawable);
@@ -2947,17 +2998,6 @@ static void METAL_ResetBackbuffer(
 	);
 }
 
-static void METAL_GetTextureData2D(
-	FNA3D_Renderer *driverData,
-	FNA3D_Texture *texture,
-	int32_t x,
-	int32_t y,
-	int32_t w,
-	int32_t h,
-	int32_t level,
-	void* data,
-	int32_t dataLength
-);
 static void METAL_ReadBackbuffer(
 	FNA3D_Renderer *driverData,
 	int32_t x,
@@ -4232,8 +4272,10 @@ void METAL_GetDrawableSize(void* window, int32_t *w, int32_t *h)
 	SDL_Metal_DestroyView(tempView);
 }
 
-static void METAL_INTERNAL_InitializeFauxBackbuffer(MetalRenderer *renderer)
-{
+static void METAL_INTERNAL_InitializeFauxBackbuffer(
+	MetalRenderer *renderer,
+	uint8_t scaleNearest
+) {
 	uint16_t indices[6] =
 	{
 		0, 1, 3,
@@ -4246,6 +4288,11 @@ static void METAL_INTERNAL_InitializeFauxBackbuffer(MetalRenderer *renderer)
 	MTLFunction *vertexFunc, *fragFunc;
 	MTLSamplerDescriptor *samplerDesc;
 	MTLRenderPipelineDescriptor *pipelineDesc;
+	MTLSamplerMinMagFilter filter = (
+		scaleNearest ?
+			MTLSamplerMinMagFilterNearest :
+			MTLSamplerMinMagFilterLinear
+	);
 
 	/* Create a combined vertex / index buffer
 	 * for rendering the faux backbuffer.
@@ -4319,8 +4366,8 @@ static void METAL_INTERNAL_InitializeFauxBackbuffer(MetalRenderer *renderer)
 
 	/* Create sampler state */
 	samplerDesc = mtlNewSamplerDescriptor();
-	mtlSetSamplerMinFilter(samplerDesc, renderer->backbufferScaleMode);
-	mtlSetSamplerMagFilter(samplerDesc, renderer->backbufferScaleMode);
+	mtlSetSamplerMinFilter(samplerDesc, filter);
+	mtlSetSamplerMagFilter(samplerDesc, filter);
 	renderer->backbufferSamplerState = mtlNewSamplerState(
 		renderer->device,
 		samplerDesc
@@ -4389,11 +4436,6 @@ FNA3D_Device* METAL_CreateDevice(
 		"FNA3D Driver: Metal\nDevice Name: %s",
 		mtlGetDeviceName(renderer->device)
 	);
-
-	/* Some users might want pixely upscaling... */
-	renderer->backbufferScaleMode = SDL_GetHintBoolean(
-		"FNA3D_BACKBUFFER_SCALE_NEAREST", 0
-	) ? MTLSamplerMinMagFilterNearest : MTLSamplerMinMagFilterLinear;
 
 	/* Set device properties */
 	renderer->isMac = (strcmp(SDL_GetPlatform(), "Mac OS X") == 0);
@@ -4467,8 +4509,14 @@ FNA3D_Device* METAL_CreateDevice(
 		sizeof(MetalBackbuffer)
 	);
 	SDL_memset(renderer->backbuffer, '\0', sizeof(MetalBackbuffer));
-	METAL_INTERNAL_CreateFramebuffer(renderer, presentationParameters);
-	METAL_INTERNAL_InitializeFauxBackbuffer(renderer);
+	METAL_INTERNAL_CreateFramebuffer(
+		renderer,
+		presentationParameters
+	);
+	METAL_INTERNAL_InitializeFauxBackbuffer(
+		renderer,
+		SDL_GetHintBoolean("FNA3D_BACKBUFFER_SCALE_NEAREST", SDL_FALSE)
+	);
 	METAL_INTERNAL_SetPresentationInterval(
 		renderer,
 		presentationParameters->presentationInterval
