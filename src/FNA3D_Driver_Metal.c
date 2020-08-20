@@ -4253,8 +4253,11 @@ static uint8_t METAL_PrepareWindowAttributes(uint32_t *flags)
 	/* We're good to go, so initialize the Objective-C references. */
 	InitObjC();
 
-	/* Metal doesn't require any window flags. */
+#if SDL_VERSION_ATLEAST(2, 0, 13)
+	*flags = SDL_WINDOW_METAL;
+#else
 	SDL_SetHint(SDL_HINT_VIDEO_EXTERNAL_CONTEXT, "1");
+#endif
 	return 1;
 }
 
