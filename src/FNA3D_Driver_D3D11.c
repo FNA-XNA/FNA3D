@@ -208,7 +208,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	D3D11Backbuffer *backbuffer;
 	uint8_t backbufferSizeChanged;
 	FNA3D_Rect prevSrcRect;
-	FNA3D_Rect prevDestRect;
+	FNA3D_Rect prevDstRect;
 	ID3D11VertexShader *fauxBlitVS;
 	ID3D11PixelShader *fauxBlitPS;
 	ID3D11SamplerState *fauxBlitSampler;
@@ -1064,11 +1064,11 @@ static void D3D11_INTERNAL_UpdateBackbufferVertexBuffer(
 	D3D11Renderer *renderer,
 	FNA3D_Rect *srcRect,
 	FNA3D_Rect *dstRect,
-	int32_t sourceWidth,
-	int32_t sourceHeight,
 	int32_t drawableWidth,
 	int32_t drawableHeight
 ) {
+	float backbufferWidth = (float) renderer->backbuffer->width;
+	float backbufferHeight = (float) renderer->backbuffer->height;
 	float sx0, sy0, sx1, sy1;
 	float dx0, dy0, dx1, dy1;
 	float data[16];
@@ -1078,13 +1078,13 @@ static void D3D11_INTERNAL_UpdateBackbufferVertexBuffer(
 	/* Cache the new info */
 	renderer->backbufferSizeChanged = 0;
 	renderer->prevSrcRect = *srcRect;
-	renderer->prevDestRect = *dstRect;
+	renderer->prevDstRect = *dstRect;
 
 	/* Scale the texture coordinates to (0, 1) */
-	sx0 = srcRect->x / (float) sourceWidth;
-	sy0 = srcRect->y / (float) sourceHeight;
-	sx1 = (srcRect->x + srcRect->w) / (float) sourceWidth;
-	sy1 = (srcRect->y + srcRect->h) / (float) sourceHeight;
+	sx0 = srcRect->x / backbufferWidth;
+	sy0 = srcRect->y / backbufferHeight;
+	sx1 = (srcRect->x + srcRect->w) / backbufferWidth;
+	sy1 = (srcRect->y + srcRect->h) / backbufferHeight;
 
 	/* Scale the position coordinates to (-1, 1) */
 	dx0 = (dstRect->x / (float) drawableWidth) * 2.0f - 1.0f;
@@ -1407,17 +1407,15 @@ static void D3D11_SwapBuffers(
 		renderer->prevSrcRect.y != srcRect.y ||
 		renderer->prevSrcRect.w != srcRect.w ||
 		renderer->prevSrcRect.h != srcRect.h ||
-		renderer->prevDestRect.x != dstRect.x ||
-		renderer->prevDestRect.y != dstRect.y ||
-		renderer->prevDestRect.w != dstRect.w ||
-		renderer->prevDestRect.h != dstRect.h	)
+		renderer->prevDstRect.x != dstRect.x ||
+		renderer->prevDstRect.y != dstRect.y ||
+		renderer->prevDstRect.w != dstRect.w ||
+		renderer->prevDstRect.h != dstRect.h	)
 	{
 		D3D11_INTERNAL_UpdateBackbufferVertexBuffer(
 			renderer,
 			&srcRect,
 			&dstRect,
-			renderer->backbuffer->width,
-			renderer->backbuffer->height,
 			drawableWidth,
 			drawableHeight
 		);
@@ -1445,7 +1443,6 @@ static void D3D11_SwapBuffers(
 
 	/* Present! */
 	IDXGISwapChain_Present(renderer->swapchain, renderer->syncInterval, 0);
-
 }
 
 /* Drawing */
@@ -4634,7 +4631,10 @@ static FNA3D_Device* D3D11_CreateDevice(
 		sizeof(D3D11Backbuffer)
 	);
 	SDL_memset(renderer->backbuffer, '\0', sizeof(D3D11Backbuffer));
-	D3D11_INTERNAL_CreateFramebuffer(renderer, presentationParameters);
+	D3D11_INTERNAL_CreateFramebuffer(
+		renderer,
+		presentationParameters
+	);
 	D3D11_INTERNAL_InitializeFauxBackbuffer(
 		renderer,
 		SDL_GetHintBoolean("FNA3D_BACKBUFFER_SCALE_NEAREST", SDL_FALSE)
