@@ -54,7 +54,7 @@ PackedState GetPackedBlendState(FNA3D_BlendState blendState);
 PackedState GetPackedDepthStencilState(FNA3D_DepthStencilState dsState);
 PackedState GetPackedRasterizerState(FNA3D_RasterizerState rastState, float bias);
 PackedState GetPackedSamplerState(FNA3D_SamplerState samplerState);
-void* PackedStateArray_Fetch(PackedStateArray *arr, PackedState key);
+void* PackedStateArray_Fetch(PackedStateArray arr, PackedState key);
 void PackedStateArray_Insert(PackedStateArray *arr, PackedState key, void* value);
 
 /* Vertex Buffer Bindings */
@@ -82,8 +82,9 @@ typedef struct VertexBufferBindingsArray
 	int32_t capacity;
 } PackedVertexBufferBindingsArray;
 
+inline uint32_t GetPackedVertexElement(FNA3D_VertexElement element);
 void* PackedVertexBufferBindingsArray_Fetch(
-	PackedVertexBufferBindingsArray *arr,
+	PackedVertexBufferBindingsArray arr,
 	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings,
 	void* vertexShader,

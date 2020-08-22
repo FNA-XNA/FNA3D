@@ -518,7 +518,7 @@ static ID3D11BlendState* D3D11_INTERNAL_FetchBlendState(
 	/* Can we just reuse an existing state? */
 	packedState = GetPackedBlendState(*state);
 	result = (ID3D11BlendState*) PackedStateArray_Fetch(
-		&renderer->blendStateCache,
+		renderer->blendStateCache,
 		packedState
 	);
 	if (result != NULL)
@@ -607,7 +607,7 @@ static ID3D11DepthStencilState* D3D11_INTERNAL_FetchDepthStencilState(
 	/* Can we just reuse an existing state? */
 	packedState = GetPackedDepthStencilState(*state);
 	result = (ID3D11DepthStencilState*) PackedStateArray_Fetch(
-		&renderer->depthStencilStateCache,
+		renderer->depthStencilStateCache,
 		packedState
 	);
 	if (result != NULL)
@@ -697,7 +697,7 @@ static ID3D11RasterizerState* D3D11_INTERNAL_FetchRasterizerState(
 	/* Can we just reuse an existing state? */
 	packedState = GetPackedRasterizerState(*state, depthBias);
 	result = (ID3D11RasterizerState*) PackedStateArray_Fetch(
-		&renderer->rasterizerStateCache,
+		renderer->rasterizerStateCache,
 		packedState
 	);
 	if (result != NULL)
@@ -747,7 +747,7 @@ static ID3D11SamplerState* D3D11_INTERNAL_FetchSamplerState(
 	/* Can we just reuse an existing state? */
 	packedState = GetPackedSamplerState(*state);
 	result = (ID3D11SamplerState*) PackedStateArray_Fetch(
-		&renderer->samplerStateCache,
+		renderer->samplerStateCache,
 		packedState
 	);
 	if (result != NULL)
@@ -809,7 +809,7 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 
 	/* Can we just reuse an existing input layout? */
 	result = (ID3D11InputLayout*) PackedVertexBufferBindingsArray_Fetch(
-		&renderer->inputLayoutCache,
+		renderer->inputLayoutCache,
 		bindings,
 		numBindings,
 		vertexShader,

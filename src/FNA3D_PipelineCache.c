@@ -134,16 +134,16 @@ PackedState GetPackedSamplerState(FNA3D_SamplerState samplerState)
 
 #undef FLOAT_TO_UINT64
 
-void* PackedStateArray_Fetch(PackedStateArray *arr, PackedState key)
+void* PackedStateArray_Fetch(PackedStateArray arr, PackedState key)
 {
 	int32_t i;
 
-	for (i = 0; i < arr->count; i += 1)
+	for (i = 0; i < arr.count; i += 1)
 	{
-		if (	key.a == arr->elements[i].key.a &&
-			key.b == arr->elements[i].key.b		)
+		if (	key.a == arr.elements[i].key.a &&
+			key.b == arr.elements[i].key.b		)
 		{
-			return arr->elements[i].value;
+			return arr.elements[i].value;
 		}
 	}
 
@@ -166,7 +166,7 @@ void PackedStateArray_Insert(PackedStateArray *arr, PackedState key, void* value
 
 /* Vertex Buffer Bindings */
 
-static inline uint32_t GetPackedVertexElement(FNA3D_VertexElement element)
+inline uint32_t GetPackedVertexElement(FNA3D_VertexElement element)
 {
 	/* FIXME: Backport this to FNA! */
 
@@ -199,16 +199,18 @@ static uint32_t HashVertexDeclarations(
 	{
 		for (j = 0; j < bindings[i].vertexDeclaration.elementCount; j += 1)
 		{
-			hash *= HASH_FACTOR;
-			hash += GetPackedVertexElement(bindings[i].vertexDeclaration.elements[j]);
+			hash = hash * HASH_FACTOR + GetPackedVertexElement(
+				bindings[i].vertexDeclaration.elements[j]
+			);
 		}
+		hash = hash * HASH_FACTOR + bindings[i].vertexDeclaration.vertexStride;
 	}
 
 	return hash;
 }
 
 void* PackedVertexBufferBindingsArray_Fetch(
-	PackedVertexBufferBindingsArray *arr,
+	PackedVertexBufferBindingsArray arr,
 	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings,
 	void* vertexShader,
@@ -219,9 +221,9 @@ void* PackedVertexBufferBindingsArray_Fetch(
 	PackedVertexBufferBindings other;
 	uint32_t declHash = HashVertexDeclarations(bindings, numBindings);
 
-	for (i = 0; i < arr->count; i += 1)
+	for (i = 0; i < arr.count; i += 1)
 	{
-		other = arr->elements[i].key;
+		other = arr.elements[i].key;
 
 		if (	numBindings != other.numBindings ||
 			vertexShader != other.vertexShader ||
@@ -243,7 +245,7 @@ void* PackedVertexBufferBindingsArray_Fetch(
 		if (!mismatch)
 		{
 			*outIndex = i;
-			return arr->elements[i].value;
+			return arr.elements[i].value;
 		}
 	}
 

@@ -740,69 +740,6 @@ static inline void PipelineLayoutHashArray_Insert(
 	/* TODO HASHARRAY */
 }
 
-/* Vertex Declaration Hashing */
-
-/* The algorithm for these hashing functions
- * is taken from Josh Bloch's "Effective Java".
- * (https://stackoverflow.com/a/113600/12492383)
- *
- * FIXME: Is there a better way to hash this?
- * -caleb
- */
-
-#define HASH_FACTOR 39
-
-static uint64_t GetVertexElementHash(FNA3D_VertexElement element)
-{
-	/* FIXME: Backport this to FNA! -caleb */
-	return (
-		  (uint64_t) element.offset << 32
-		| (uint64_t) element.vertexElementFormat << 8
-		| (uint64_t) element.vertexElementUsage << 4
-		| (uint64_t) element.usageIndex
-	);
-}
-
-static uint64_t GetVertexDeclarationHash(
-	FNA3D_VertexDeclaration declaration,
-	void* vertexShader
-) {
-	uint64_t result = (uint64_t) (size_t) vertexShader;
-	int32_t i;
-	for (i = 0; i < declaration.elementCount; i += 1)
-	{
-		result = result * HASH_FACTOR + (
-			GetVertexElementHash(declaration.elements[i])
-		);
-	}
-	result = result * HASH_FACTOR + (
-		(uint64_t) declaration.vertexStride
-	);
-	return result;
-}
-
-static uint64_t GetVertexBufferBindingsHash(
-	FNA3D_VertexBufferBinding *bindings,
-	int32_t numBindings,
-	void* vertexShader
-) {
-	uint64_t result = (uint64_t) (size_t) vertexShader;
-	int32_t i;
-	for (i = 0; i < numBindings; i += 1)
-	{
-		result = result * HASH_FACTOR + (
-			(uint64_t) bindings[i].instanceFrequency
-		);
-		result = result * HASH_FACTOR + GetVertexDeclarationHash(
-			bindings[i].vertexDeclaration,
-			vertexShader
-		);
-	}
-	return result;
-}
-
-#undef HASH_FACTOR
-
 /* Used to delay destruction until command buffer completes */
 typedef struct BufferMemoryWrapper
 {
@@ -933,12 +870,13 @@ typedef struct VulkanRenderer
 	uint32_t swapChainImageCount;
 	VkExtent2D swapChainExtent;
 
+	PackedVertexBufferBindingsArray vertexBufferBindingsCache;
 	VkPipelineCache pipelineCache;
 
 	VkRenderPass renderPass;
 	VkPipeline currentPipeline;
 	VkPipelineLayout currentPipelineLayout;
-	uint64_t currentVertexBufferBindingHash;
+	int32_t currentVertexBufferBindingsIndex;
 
 	/* Command Buffers */
 	VkCommandPool commandPool;
@@ -4362,7 +4300,7 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 	hash.depthStencilState = GetPackedDepthStencilState(
 		renderer->depthStencilState
 	);
-	hash.vertexBufferBindingsHash = renderer->currentVertexBufferBindingHash;
+	hash.vertexBufferBindingsHash = renderer->currentVertexBufferBindingsIndex;
 	hash.primitiveType = renderer->currentPrimitiveType;
 	hash.sampleMask = renderer->multiSampleMask[0];
 	MOJOSHADER_vkGetBoundShaders(&vertShader, &fragShader);
@@ -7458,26 +7396,39 @@ static void VULKAN_ApplyVertexBufferBindings(
 	int32_t baseVertex
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	MOJOSHADER_vkShader *vertexShader, *blah;
+	int32_t i, bindingsIndex;
+	void* bindingsResult;
 	VulkanBuffer *vertexBuffer;
 	VulkanSubBuffer subbuf;
 	VkDeviceSize offset;
-	int32_t i;
-	MOJOSHADER_vkShader *vertexShader, *blah;
-	uint64_t hash;
 
 	/* Check VertexBufferBindings */
 	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
-	hash = GetVertexBufferBindingsHash(
+	bindingsResult = PackedVertexBufferBindingsArray_Fetch(
+		renderer->vertexBufferBindingsCache,
 		bindings,
 		numBindings,
-		vertexShader
+		vertexShader,
+		&bindingsIndex
 	);
+	if (bindingsResult == NULL)
+	{
+		PackedVertexBufferBindingsArray_Insert(
+			&renderer->vertexBufferBindingsCache,
+			bindings,
+			numBindings,
+			vertexShader,
+			(void*) 69420
+		);
+	}
+
 	renderer->vertexBindings = bindings;
 	renderer->numVertexBindings = numBindings;
 
-	if (hash != renderer->currentVertexBufferBindingHash)
+	if (bindingsIndex != renderer->currentVertexBufferBindingsIndex)
 	{
-		renderer->currentVertexBufferBindingHash = hash;
+		renderer->currentVertexBufferBindingsIndex = bindingsIndex;
 		renderer->needNewPipeline = 1;
 	}
 
