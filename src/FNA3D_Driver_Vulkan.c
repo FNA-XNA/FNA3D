@@ -563,6 +563,7 @@ static inline VkPipeline PipelineHashArray_Fetch(
 	PipelineHashArray *arr,
 	PipelineHash key
 ) {
+	/* TODO HASHARRAY */
 	return VK_NULL_HANDLE;
 }
 
@@ -571,6 +572,7 @@ static inline void PipelineHashArray_Insert(
 	PipelineHash key,
 	VkPipeline value
 ) {
+	/* TODO HASHARRAY */
 }
 
 typedef struct RenderPassHash
@@ -602,6 +604,7 @@ static inline VkRenderPass RenderPassHashArray_Fetch(
 	RenderPassHashArray *arr,
 	RenderPassHash key
 ) {
+	/* TODO HASHARRAY */
 	return VK_NULL_HANDLE;
 }
 
@@ -610,6 +613,7 @@ static inline void RenderPassHashArray_Insert(
 	RenderPassHash key,
 	VkRenderPass value
 ) {
+	/* TODO HASHARRAY */
 }
 
 typedef struct FramebufferHash
@@ -638,6 +642,7 @@ static inline VkFramebuffer FramebufferHashArray_Fetch(
 	FramebufferHashArray *arr,
 	FramebufferHash key
 ) {
+	/* TODO HASHARRAY */
 	return VK_NULL_HANDLE;
 }
 
@@ -646,6 +651,7 @@ static inline void FramebufferHashArray_Insert(
 	FramebufferHash key,
 	VkFramebuffer value
 ) {
+	/* TODO HASHARRAY */
 }
 
 typedef struct SamplerStateHashMap
@@ -665,6 +671,7 @@ static inline VkSampler SamplerStateHashArray_Fetch(
 	SamplerStateHashArray *arr,
 	PackedState key
 ) {
+	/* TODO HASHARRAY */
 	return VK_NULL_HANDLE;
 }
 
@@ -673,6 +680,7 @@ static inline void SamplerStateHashArray_Insert(
 	PackedState key,
 	VkSampler value
 ) {
+	/* TODO HASHARRAY */
 }
 
 /* FIXME: This can be packed better */
@@ -701,6 +709,7 @@ static inline VkPipelineLayout PipelineLayoutHashArray_Fetch(
 	PipelineLayoutHashArray *arr,
 	PipelineLayoutHash key
 ) {
+	/* TODO HASHARRAY */
 	return VK_NULL_HANDLE;
 }
 
@@ -709,6 +718,7 @@ static inline void PipelineLayoutHashArray_Insert(
 	PipelineLayoutHash key,
 	VkPipelineLayout value
 ) {
+	/* TODO HASHARRAY */
 }
 
 /* Vertex Declaration Hashing */
