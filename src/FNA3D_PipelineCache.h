@@ -97,6 +97,25 @@ void PackedVertexBufferBindingsArray_Insert(
 	void* value
 );
 
+/* Macros */
+
+#define EXPAND_ARRAY_IF_NEEDED(arr, initialValue, type)	\
+	if (arr->count == arr->capacity)		\
+	{						\
+		if (arr->capacity == 0)			\
+		{					\
+			arr->capacity = initialValue;	\
+		}					\
+		else					\
+		{					\
+			arr->capacity *= 2;		\
+		}					\
+		arr->elements = (type*) SDL_realloc(	\
+			arr->elements,			\
+			arr->capacity * sizeof(type)	\
+		);					\
+	}
+
 #endif /* FNA3D_PIPELINECACHE_H */
 
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */

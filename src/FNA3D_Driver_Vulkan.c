@@ -671,7 +671,17 @@ static inline VkSampler SamplerStateHashArray_Fetch(
 	SamplerStateHashArray *arr,
 	PackedState key
 ) {
-	/* TODO HASHARRAY */
+	int32_t i;
+
+	for (i = 0; i < arr->count; i += 1)
+	{
+		if (	key.a == arr->elements[i].key.a &&
+			key.b == arr->elements[i].key.b		)
+		{
+			return arr->elements[i].value;
+		}
+	}
+
 	return VK_NULL_HANDLE;
 }
 
@@ -680,7 +690,16 @@ static inline void SamplerStateHashArray_Insert(
 	PackedState key,
 	VkSampler value
 ) {
-	/* TODO HASHARRAY */
+	SamplerStateHashMap map =
+	{
+		{ key.a, key.b }, /* FIXME: Why can't VS2010 compile with just "key"? */
+		value
+	};
+
+	EXPAND_ARRAY_IF_NEEDED(arr, 4, SamplerStateHashMap)
+
+	arr->elements[arr->count] = map;
+	arr->count += 1;
 }
 
 /* FIXME: This can be packed better */

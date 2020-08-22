@@ -28,25 +28,6 @@
 
 #include <SDL.h>
 
-/* Macros */
-
-#define EXPAND_ARRAY_IF_NEEDED(arr, initialValue, type)	\
-	if (arr->count == arr->capacity)		\
-	{						\
-		if (arr->capacity == 0)			\
-		{					\
-			arr->capacity = initialValue;	\
-		}					\
-		else					\
-		{					\
-			arr->capacity *= 2;		\
-		}					\
-		arr->elements = (type*) SDL_realloc(	\
-			arr->elements,			\
-			arr->capacity * sizeof(type)	\
-		);					\
-	}
-
 /* Packed Pipeline States */
 
 PackedState GetPackedBlendState(FNA3D_BlendState blendState)
