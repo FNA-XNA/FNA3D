@@ -24,7 +24,6 @@
  *
  */
 
-#include "FNA3D.h"
 #include "FNA3D_PipelineCache.h"
 
 #include <SDL.h>

@@ -27,7 +27,6 @@
 #ifndef FNA3D_PIPELINECACHE_H
 #define FNA3D_PIPELINECACHE_H
 
-#include "FNA3D.h"
 #include "FNA3D_Driver.h"
 
 /* Packed Pipeline States */
