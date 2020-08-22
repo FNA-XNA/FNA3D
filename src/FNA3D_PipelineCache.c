@@ -29,38 +29,6 @@
 
 #include <SDL.h>
 
-/* STB_DS Implementation */
-
-#ifdef memcmp
-#undef memcmp
-#endif
-#define memcmp SDL_memcmp
-#ifdef memcpy
-#undef memcpy
-#endif
-#define memcpy SDL_memcpy
-#ifdef memmove
-#undef memmove
-#endif
-#define memmove SDL_memmove
-#ifdef memset
-#undef memset
-#endif
-#define memset SDL_memset
-#ifdef strcmp
-#undef strcmp
-#endif
-#define strcmp SDL_strcmp
-#ifdef strlen
-#undef strlen
-#endif
-#define strlen SDL_strlen
-#define STBDS_ASSERT(x) SDL_assert(x)
-#define STBDS_REALLOC(c,p,s) SDL_realloc(p,s)
-#define STBDS_FREE(c,p) SDL_free(p)
-#define STB_DS_IMPLEMENTATION
-#include "stb_ds.h"
-
 /* Macros */
 
 #define EXPAND_ARRAY_IF_NEEDED(arr, initialValue, type)	\
