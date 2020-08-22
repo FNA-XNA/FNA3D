@@ -711,6 +711,69 @@ static inline void PipelineLayoutHashArray_Insert(
 ) {
 }
 
+/* Vertex Declaration Hashing */
+
+/* The algorithm for these hashing functions
+ * is taken from Josh Bloch's "Effective Java".
+ * (https://stackoverflow.com/a/113600/12492383)
+ *
+ * FIXME: Is there a better way to hash this?
+ * -caleb
+ */
+
+#define HASH_FACTOR 39
+
+static uint64_t GetVertexElementHash(FNA3D_VertexElement element)
+{
+	/* FIXME: Backport this to FNA! -caleb */
+	return (
+		  (uint64_t) element.offset << 32
+		| (uint64_t) element.vertexElementFormat << 8
+		| (uint64_t) element.vertexElementUsage << 4
+		| (uint64_t) element.usageIndex
+	);
+}
+
+static uint64_t GetVertexDeclarationHash(
+	FNA3D_VertexDeclaration declaration,
+	void* vertexShader
+) {
+	uint64_t result = (uint64_t) (size_t) vertexShader;
+	int32_t i;
+	for (i = 0; i < declaration.elementCount; i += 1)
+	{
+		result = result * HASH_FACTOR + (
+			GetVertexElementHash(declaration.elements[i])
+		);
+	}
+	result = result * HASH_FACTOR + (
+		(uint64_t) declaration.vertexStride
+	);
+	return result;
+}
+
+static uint64_t GetVertexBufferBindingsHash(
+	FNA3D_VertexBufferBinding *bindings,
+	int32_t numBindings,
+	void* vertexShader
+) {
+	uint64_t result = (uint64_t) (size_t) vertexShader;
+	int32_t i;
+	for (i = 0; i < numBindings; i += 1)
+	{
+		result = result * HASH_FACTOR + (
+			(uint64_t) bindings[i].instanceFrequency
+		);
+		result = result * HASH_FACTOR + GetVertexDeclarationHash(
+			bindings[i].vertexDeclaration,
+			vertexShader
+		);
+	}
+	return result;
+}
+
+#undef HASH_FACTOR
+
 /* Used to delay destruction until command buffer completes */
 typedef struct BufferMemoryWrapper
 {
