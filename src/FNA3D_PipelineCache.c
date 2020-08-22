@@ -61,13 +61,30 @@
 #define STB_DS_IMPLEMENTATION
 #include "stb_ds.h"
 
-/* State Hashing */
+/* Macros */
 
-#define FLOAT_TO_UINT64(f) (uint64_t) *((uint32_t*) &f)
+#define EXPAND_ARRAY_IF_NEEDED(arr, initialValue, type)	\
+	if (arr->count == arr->capacity)		\
+	{						\
+		if (arr->capacity == 0)			\
+		{					\
+			arr->capacity = initialValue;	\
+		}					\
+		else					\
+		{					\
+			arr->capacity *= 2;		\
+		}					\
+		arr->elements = (type*) SDL_realloc(	\
+			arr->elements,			\
+			arr->capacity * sizeof(type)	\
+		);					\
+	}
 
-StateHash GetBlendStateHash(FNA3D_BlendState blendState)
+/* Packed Pipeline States */
+
+PackedState GetPackedBlendState(FNA3D_BlendState blendState)
 {
-	StateHash result;
+	PackedState result;
 	int32_t funcs = (
 		  blendState.alphaBlendFunction << 4
 		| blendState.colorBlendFunction << 0
@@ -99,9 +116,9 @@ StateHash GetBlendStateHash(FNA3D_BlendState blendState)
 	return result;
 }
 
-StateHash GetDepthStencilStateHash(FNA3D_DepthStencilState dsState)
+PackedState GetPackedDepthStencilState(FNA3D_DepthStencilState dsState)
 {
-	StateHash result;
+	PackedState result;
 	int32_t packedProperties = (
 		  dsState.depthBufferEnable << 30
 		| dsState.depthBufferWriteEnable << 29
@@ -128,9 +145,11 @@ StateHash GetDepthStencilStateHash(FNA3D_DepthStencilState dsState)
 	return result;
 }
 
-StateHash GetRasterizerStateHash(FNA3D_RasterizerState rastState, float bias)
+#define FLOAT_TO_UINT64(f) (uint64_t) *((uint32_t*) &f)
+
+PackedState GetPackedRasterizerState(FNA3D_RasterizerState rastState, float bias)
 {
-	StateHash result;
+	PackedState result;
 	int32_t packedProperties = (
 		  rastState.multiSampleAntiAlias << 4
 		| rastState.scissorTestEnable << 3
@@ -145,9 +164,9 @@ StateHash GetRasterizerStateHash(FNA3D_RasterizerState rastState, float bias)
 	return result;
 }
 
-StateHash GetSamplerStateHash(FNA3D_SamplerState samplerState)
+PackedState GetPackedSamplerState(FNA3D_SamplerState samplerState)
 {
-	StateHash result;
+	PackedState result;
 	int32_t packedProperties = (
 		  samplerState.filter << 6
 		| samplerState.addressU << 4
@@ -167,67 +186,148 @@ StateHash GetSamplerStateHash(FNA3D_SamplerState samplerState)
 
 #undef FLOAT_TO_UINT64
 
-/* Vertex Declaration Hashing */
-
-/* The algorithm for these hashing functions
- * is taken from Josh Bloch's "Effective Java".
- * (https://stackoverflow.com/a/113600/12492383)
- *
- * FIXME: Is there a better way to hash this?
- * -caleb
- */
-
-#define HASH_FACTOR 39
-
-static uint64_t GetVertexElementHash(FNA3D_VertexElement element)
+void* PackedStateArray_Fetch(PackedStateArray *arr, PackedState key)
 {
-	/* FIXME: Backport this to FNA! -caleb */
-	return (
-		  (uint64_t) element.offset << 32
-		| (uint64_t) element.vertexElementFormat << 8
-		| (uint64_t) element.vertexElementUsage << 4
-		| (uint64_t) element.usageIndex
-	);
-}
-
-uint64_t GetVertexDeclarationHash(
-	FNA3D_VertexDeclaration declaration,
-	void* vertexShader
-) {
-	uint64_t result = (uint64_t) (size_t) vertexShader;
 	int32_t i;
-	for (i = 0; i < declaration.elementCount; i += 1)
+
+	for (i = 0; i < arr->count; i += 1)
 	{
-		result = result * HASH_FACTOR + (
-			GetVertexElementHash(declaration.elements[i])
-		);
+		if (	key.a == arr->elements[i].key.a &&
+			key.b == arr->elements[i].key.b		)
+		{
+			return arr->elements[i].value;
+		}
 	}
-	result = result * HASH_FACTOR + (
-		(uint64_t) declaration.vertexStride
-	);
-	return result;
+
+	return NULL;
 }
 
-uint64_t GetVertexBufferBindingsHash(
+void PackedStateArray_Insert(PackedStateArray *arr, PackedState key, void* value)
+{
+	PackedStateMap map =
+	{
+		{ key.a, key.b }, /* FIXME: Why can't VS2010 compile with just "key"? */
+		value
+	};
+
+	EXPAND_ARRAY_IF_NEEDED(arr, 4, PackedStateMap)
+
+	arr->elements[arr->count] = map;
+	arr->count += 1;
+}
+
+/* Vertex Buffer Bindings */
+
+static inline uint32_t GetPackedVertexElement(FNA3D_VertexElement element)
+{
+	/* FIXME: Backport this to FNA! */
+
+	/* Technically element.offset is an int32, but geez,
+	 * if you're using more than 2^20 bytes, you've got
+	 * bigger problems to worry about.
+	 * -caleb
+	 */
+	return (
+		  element.offset << 12
+		| element.vertexElementFormat << 8
+		| element.vertexElementUsage << 4
+		| element.usageIndex
+	);
+}
+
+static uint32_t HashVertexDeclarations(
 	FNA3D_VertexBufferBinding *bindings,
-	int32_t numBindings,
-	void* vertexShader
+	int32_t numBindings
 ) {
-	uint64_t result = (uint64_t) (size_t) vertexShader;
-	int32_t i;
+	int32_t i, j;
+	uint32_t hash = 0;
+
+	/* The algorithm for this hashing function
+	 * is taken from Josh Bloch's "Effective Java".
+	 * (https://stackoverflow.com/a/113600/12492383)
+	 */
+	const uint32_t HASH_FACTOR = 39;
 	for (i = 0; i < numBindings; i += 1)
 	{
-		result = result * HASH_FACTOR + (
-			(uint64_t) bindings[i].instanceFrequency
-		);
-		result = result * HASH_FACTOR + GetVertexDeclarationHash(
-			bindings[i].vertexDeclaration,
-			vertexShader
-		);
+		for (j = 0; j < bindings[i].vertexDeclaration.elementCount; j += 1)
+		{
+			hash *= HASH_FACTOR;
+			hash += GetPackedVertexElement(bindings[i].vertexDeclaration.elements[j]);
+		}
 	}
-	return result;
+
+	return hash;
 }
 
-#undef HASH_FACTOR
+void* PackedVertexBufferBindingsArray_Fetch(
+	PackedVertexBufferBindingsArray *arr,
+	FNA3D_VertexBufferBinding *bindings,
+	int32_t numBindings,
+	void* vertexShader,
+	int32_t *outIndex
+) {
+	int32_t i, j;
+	uint8_t mismatch;
+	PackedVertexBufferBindings other;
+	uint32_t declHash = HashVertexDeclarations(bindings, numBindings);
+
+	for (i = 0; i < arr->count; i += 1)
+	{
+		other = arr->elements[i].key;
+
+		if (	numBindings != other.numBindings ||
+			vertexShader != other.vertexShader ||
+			declHash != other.vertexDeclarationHash	)
+		{
+			continue;
+		}
+
+		mismatch = 0;
+		for (j = 0; j < numBindings; j += 1)
+		{
+			if (	bindings[j].vertexBuffer != other.buffer[j] ||
+				bindings[j].instanceFrequency != other.instanceFrequency[j]	)
+			{
+				mismatch = 1;
+				break;
+			}
+		}
+		if (!mismatch)
+		{
+			*outIndex = i;
+			return arr->elements[i].value;
+		}
+	}
+
+	*outIndex = i;
+	return NULL;
+}
+
+void PackedVertexBufferBindingsArray_Insert(
+	PackedVertexBufferBindingsArray *arr,
+	FNA3D_VertexBufferBinding *bindings,
+	int32_t numBindings,
+	void* vertexShader,
+	void* value
+) {
+	PackedVertexBufferBindingsMap map = {0};
+	int32_t i;
+
+	EXPAND_ARRAY_IF_NEEDED(arr, 4, PackedVertexBufferBindingsMap)
+
+	/* Fill in the map */
+	map.key.numBindings = numBindings;
+	for (i = 0; i < numBindings; i += 1)
+	{
+		map.key.buffer[i] = bindings[i].vertexBuffer;
+		map.key.instanceFrequency[i] = bindings[i].instanceFrequency;
+	}
+	map.key.vertexShader = vertexShader;
+	map.key.vertexDeclarationHash = HashVertexDeclarations(bindings, numBindings);
+	map.value = value;
+
+	arr->elements[arr->count] = map;
+	arr->count += 1;
+}
 
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */

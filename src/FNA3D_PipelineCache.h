@@ -28,37 +28,74 @@
 #define FNA3D_PIPELINECACHE_H
 
 #include "FNA3D.h"
+#include "FNA3D_Driver.h"
 
-typedef struct StateHash
+/* Packed Pipeline States */
+
+typedef struct PackedState
 {
 	uint64_t a;
 	uint64_t b;
-} StateHash;
+} PackedState;
 
-typedef struct StateHashMap
+typedef struct PackedStateMap
 {
-	StateHash key;
+	PackedState key;
 	void* value;
-} StateHashMap;
+} PackedStateMap;
 
-typedef struct UInt64HashMap
+typedef struct PackedStateArray
 {
-	uint64_t key;
-	void* value;
-} UInt64HashMap;
+	PackedStateMap *elements;
+	int32_t count;
+	int32_t capacity;
+} PackedStateArray;
 
-StateHash GetBlendStateHash(FNA3D_BlendState blendState);
-StateHash GetDepthStencilStateHash(FNA3D_DepthStencilState dsState);
-StateHash GetRasterizerStateHash(FNA3D_RasterizerState rastState, float bias);
-StateHash GetSamplerStateHash(FNA3D_SamplerState samplerState);
-uint64_t GetVertexDeclarationHash(
-	FNA3D_VertexDeclaration declaration,
-	void* vertexShader
-);
-uint64_t GetVertexBufferBindingsHash(
+PackedState GetPackedBlendState(FNA3D_BlendState blendState);
+PackedState GetPackedDepthStencilState(FNA3D_DepthStencilState dsState);
+PackedState GetPackedRasterizerState(FNA3D_RasterizerState rastState, float bias);
+PackedState GetPackedSamplerState(FNA3D_SamplerState samplerState);
+void* PackedStateArray_Fetch(PackedStateArray *arr, PackedState key);
+void PackedStateArray_Insert(PackedStateArray *arr, PackedState key, void* value);
+
+/* Vertex Buffer Bindings */
+
+typedef struct PackedVertexBufferBindings
+{
+	uint8_t numBindings;
+	void* buffer[MAX_BOUND_VERTEX_BUFFERS];
+	int32_t instanceFrequency[MAX_BOUND_VERTEX_BUFFERS];
+	void* vertexShader;
+	uint32_t vertexDeclarationHash;
+} PackedVertexBufferBindings;
+
+typedef struct PackedVertexBufferBindingsMap
+{
+	PackedVertexBufferBindings key;
+	void* value;
+} PackedVertexBufferBindingsMap;
+
+/* FIXME: Can we make this common to both packed and vertex structs? */
+typedef struct VertexBufferBindingsArray
+{
+	PackedVertexBufferBindingsMap *elements;
+	int32_t count;
+	int32_t capacity;
+} PackedVertexBufferBindingsArray;
+
+void* PackedVertexBufferBindingsArray_Fetch(
+	PackedVertexBufferBindingsArray *arr,
 	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings,
-	void* vertexShader
+	void* vertexShader,
+	int32_t *outIndex
+);
+void PackedVertexBufferBindingsArray_Insert(
+	PackedVertexBufferBindingsArray *arr,
+	FNA3D_VertexBufferBinding *bindings,
+	int32_t numBindings,
+	void* vertexShader,
+	void* value
 );
 
 #endif /* FNA3D_PIPELINECACHE_H */

@@ -29,7 +29,6 @@
 #include "FNA3D_Driver.h"
 #include "FNA3D_PipelineCache.h"
 #include "FNA3D_Driver_D3D11.h"
-#include "stb_ds.h"
 
 #include <SDL.h>
 #include <SDL_syswm.h>
@@ -256,11 +255,11 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	FNA3D_IndexElementSize indexElementSize;
 
 	/* Resource Caches */
-	StateHashMap *blendStateCache;
-	StateHashMap *depthStencilStateCache;
-	StateHashMap *rasterizerStateCache;
-	StateHashMap *samplerStateCache;
-	UInt64HashMap *inputLayoutCache;
+	PackedStateArray blendStateCache;
+	PackedStateArray depthStencilStateCache;
+	PackedStateArray rasterizerStateCache;
+	PackedStateArray samplerStateCache;
+	PackedVertexBufferBindingsArray inputLayoutCache;
 
 	/* Render Targets */
 	int32_t numRenderTargets;
@@ -511,14 +510,17 @@ static ID3D11BlendState* D3D11_INTERNAL_FetchBlendState(
 	D3D11Renderer *renderer,
 	FNA3D_BlendState *state
 ) {
-	StateHash hash;
-	D3D11_BLEND_DESC desc;
+	PackedState packedState;
+	D3D11_BLEND_DESC desc = {0};
 	ID3D11BlendState *result;
 	HRESULT res;
 
 	/* Can we just reuse an existing state? */
-	hash = GetBlendStateHash(*state);
-	result = hmget(renderer->blendStateCache, hash);
+	packedState = GetPackedBlendState(*state);
+	result = (ID3D11BlendState*) PackedStateArray_Fetch(
+		&renderer->blendStateCache,
+		packedState
+	);
 	if (result != NULL)
 	{
 		/* The state is already cached! */
@@ -526,7 +528,6 @@ static ID3D11BlendState* D3D11_INTERNAL_FetchBlendState(
 	}
 
 	/* We need to make a new blend state... */
-	SDL_zero(desc);
 	desc.AlphaToCoverageEnable = 0;
 	desc.IndependentBlendEnable = 0;
 	desc.RenderTarget[0].BlendEnable = !(
@@ -583,7 +584,11 @@ static ID3D11BlendState* D3D11_INTERNAL_FetchBlendState(
 		&result
 	);
 	ERROR_CHECK_RETURN("Blend state creation failed", NULL)
-	hmput(renderer->blendStateCache, hash, result);
+	PackedStateArray_Insert(
+		&renderer->blendStateCache,
+		packedState,
+		result
+	);
 
 	/* Return the state! */
 	return result;
@@ -593,15 +598,18 @@ static ID3D11DepthStencilState* D3D11_INTERNAL_FetchDepthStencilState(
 	D3D11Renderer *renderer,
 	FNA3D_DepthStencilState *state
 ) {
-	StateHash hash;
+	PackedState packedState;
 	D3D11_DEPTH_STENCIL_DESC desc;
 	D3D11_DEPTH_STENCILOP_DESC front, back;
 	ID3D11DepthStencilState *result;
 	HRESULT res;
 
 	/* Can we just reuse an existing state? */
-	hash = GetDepthStencilStateHash(*state);
-	result = hmget(renderer->depthStencilStateCache, hash);
+	packedState = GetPackedDepthStencilState(*state);
+	result = (ID3D11DepthStencilState*) PackedStateArray_Fetch(
+		&renderer->depthStencilStateCache,
+		packedState
+	);
 	if (result != NULL)
 	{
 		/* The state is already cached! */
@@ -662,7 +670,11 @@ static ID3D11DepthStencilState* D3D11_INTERNAL_FetchDepthStencilState(
 		&result
 	);
 	ERROR_CHECK_RETURN("Depth-stencil state creation failed", NULL)
-	hmput(renderer->depthStencilStateCache, hash, result);
+	PackedStateArray_Insert(
+		&renderer->depthStencilStateCache,
+		packedState,
+		result
+	);
 
 	/* Return the state! */
 	return result;
@@ -672,7 +684,7 @@ static ID3D11RasterizerState* D3D11_INTERNAL_FetchRasterizerState(
 	D3D11Renderer *renderer,
 	FNA3D_RasterizerState *state
 ) {
-	StateHash hash;
+	PackedState packedState;
 	float depthBias;
 	D3D11_RASTERIZER_DESC desc;
 	ID3D11RasterizerState *result;
@@ -683,8 +695,11 @@ static ID3D11RasterizerState* D3D11_INTERNAL_FetchRasterizerState(
 	];
 
 	/* Can we just reuse an existing state? */
-	hash = GetRasterizerStateHash(*state, depthBias);
-	result = hmget(renderer->rasterizerStateCache, hash);
+	packedState = GetPackedRasterizerState(*state, depthBias);
+	result = (ID3D11RasterizerState*) PackedStateArray_Fetch(
+		&renderer->rasterizerStateCache,
+		packedState
+	);
 	if (result != NULL)
 	{
 		/* The state is already cached! */
@@ -710,7 +725,11 @@ static ID3D11RasterizerState* D3D11_INTERNAL_FetchRasterizerState(
 		&result
 	);
 	ERROR_CHECK_RETURN("Rasterizer state creation failed", NULL)
-	hmput(renderer->rasterizerStateCache, hash, result);
+	PackedStateArray_Insert(
+		&renderer->rasterizerStateCache,
+		packedState,
+		result
+	);
 
 	/* Return the state! */
 	return result;
@@ -720,14 +739,17 @@ static ID3D11SamplerState* D3D11_INTERNAL_FetchSamplerState(
 	D3D11Renderer *renderer,
 	FNA3D_SamplerState *state
 ) {
-	StateHash hash;
+	PackedState packedState;
 	D3D11_SAMPLER_DESC desc;
 	ID3D11SamplerState *result;
 	HRESULT res;
 
 	/* Can we just reuse an existing state? */
-	hash = GetSamplerStateHash(*state);
-	result = hmget(renderer->samplerStateCache, hash);
+	packedState = GetPackedSamplerState(*state);
+	result = (ID3D11SamplerState*) PackedStateArray_Fetch(
+		&renderer->samplerStateCache,
+		packedState
+	);
 	if (result != NULL)
 	{
 		/* The state is already cached! */
@@ -756,7 +778,11 @@ static ID3D11SamplerState* D3D11_INTERNAL_FetchSamplerState(
 		&result
 	);
 	ERROR_CHECK_RETURN("Sampler state creation failed", NULL)
-	hmput(renderer->samplerStateCache, hash, result);
+	PackedStateArray_Insert(
+		&renderer->samplerStateCache,
+		packedState,
+		result
+	);
 
 	/* Return the state! */
 	return result;
@@ -766,9 +792,9 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 	D3D11Renderer *renderer,
 	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings,
-	uint64_t *hash
+	int32_t *hash
 ) {
-	int32_t numElements, bufsize, i, j, k, usage, index, attribLoc, datalen;
+	int32_t numElements, bufsize, i, j, k, usage, index, attribLoc, bytecodeLength;
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 	FNA3D_VertexDeclaration vertexDeclaration;
 	FNA3D_VertexElement element;
@@ -782,12 +808,13 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 	MOJOSHADER_d3d11GetBoundShaders(&vertexShader, &blah);
 
 	/* Can we just reuse an existing input layout? */
-	*hash = GetVertexBufferBindingsHash(
+	result = (ID3D11InputLayout*) PackedVertexBufferBindingsArray_Fetch(
+		&renderer->inputLayoutCache,
 		bindings,
 		numBindings,
-		vertexShader
+		vertexShader,
+		hash
 	);
-	result = hmget(renderer->inputLayoutCache, *hash);
 	if (result != NULL)
 	{
 		/* This input layout has already been cached! */
@@ -899,18 +926,18 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 	}
 
 	MOJOSHADER_d3d11CompileVertexShader(
-		*hash,
+		(unsigned long long) *hash,
 		elements,
 		numElements,
 		&bytecode,
-		&datalen
+		&bytecodeLength
 	);
 	res = ID3D11Device_CreateInputLayout(
 		renderer->device,
 		elements,
 		numElements,
 		bytecode,
-		datalen,
+		bytecodeLength,
 		&result
 	);
 
@@ -921,7 +948,13 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 	ERROR_CHECK_RETURN("Could not compile input layout", NULL)
 
 	/* Return the new input layout! */
-	hmput(renderer->inputLayoutCache, *hash, result);
+	PackedVertexBufferBindingsArray_Insert(
+		&renderer->inputLayoutCache,
+		bindings,
+		numBindings,
+		vertexShader,
+		result
+	);
 	return result;
 }
 
@@ -999,39 +1032,49 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 	IDXGISwapChain_Release(renderer->swapchain);
 
 	/* Release blend states */
-	for (i = 0; i < hmlen(renderer->blendStateCache); i += 1)
+	for (i = 0; i < renderer->blendStateCache.count; i += 1)
 	{
-		ID3D11BlendState_Release((ID3D11BlendState*) renderer->blendStateCache[i].value);
+		ID3D11BlendState_Release(
+			(ID3D11BlendState*) renderer->blendStateCache.elements[i].value
+		);
 	}
-	hmfree(renderer->blendStateCache);
+	SDL_free(renderer->blendStateCache.elements);
 
 	/* Release depth stencil states */
-	for (i = 0; i < hmlen(renderer->depthStencilStateCache); i += 1)
+	for (i = 0; i < renderer->depthStencilStateCache.count; i += 1)
 	{
-		ID3D11DepthStencilState_Release((ID3D11DepthStencilState*) renderer->depthStencilStateCache[i].value);
+		ID3D11DepthStencilState_Release(
+			(ID3D11DepthStencilState*) renderer->depthStencilStateCache.elements[i].value
+		);
 	}
-	hmfree(renderer->depthStencilStateCache);
-
-	/* Release input layouts */
-	for (i = 0; i < hmlen(renderer->inputLayoutCache); i += 1)
-	{
-		ID3D11InputLayout_Release((ID3D11InputLayout*) renderer->inputLayoutCache[i].value);
-	}
-	hmfree(renderer->inputLayoutCache);
+	SDL_free(renderer->depthStencilStateCache.elements);
 
 	/* Release rasterizer states */
-	for (i = 0; i < hmlen(renderer->rasterizerStateCache); i += 1)
+	for (i = 0; i < renderer->rasterizerStateCache.count; i += 1)
 	{
-		ID3D11RasterizerState_Release((ID3D11RasterizerState*) renderer->rasterizerStateCache[i].value);
+		ID3D11RasterizerState_Release(
+			(ID3D11RasterizerState*) renderer->rasterizerStateCache.elements[i].value
+		);
 	}
-	hmfree(renderer->rasterizerStateCache);
+	SDL_free(renderer->rasterizerStateCache.elements);
 
 	/* Release sampler states */
-	for (i = 0; i < hmlen(renderer->samplerStateCache); i += 1)
+	for (i = 0; i < renderer->samplerStateCache.count; i += 1)
 	{
-		ID3D11SamplerState_Release((ID3D11SamplerState*) renderer->samplerStateCache[i].value);
+		ID3D11SamplerState_Release(
+			(ID3D11SamplerState*) renderer->samplerStateCache.elements[i].value
+		);
 	}
-	hmfree(renderer->samplerStateCache);
+	SDL_free(renderer->samplerStateCache.elements);
+
+	/* Release input layouts */
+	for (i = 0; i < renderer->inputLayoutCache.count; i += 1)
+	{
+		ID3D11InputLayout_Release(
+			(ID3D11InputLayout*) renderer->inputLayoutCache.elements[i].value
+		);
+	}
+	SDL_free(renderer->inputLayoutCache.elements);
 
 	/* Release the annotation, if applicable */
 	if (renderer->annotation != NULL)
@@ -1987,8 +2030,7 @@ static void D3D11_ApplyVertexBufferBindings(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *vertexBuffer;
 	ID3D11InputLayout *inputLayout;
-	uint64_t hash;
-	int32_t i, stride, offset;
+	int32_t i, stride, offset, hash;
 
 	if (!bindingsUpdated && !renderer->effectApplied)
 	{
@@ -2048,7 +2090,7 @@ static void D3D11_ApplyVertexBufferBindings(
 
 	SDL_UnlockMutex(renderer->ctxLock);
 
-	MOJOSHADER_d3d11ProgramReady(hash);
+	MOJOSHADER_d3d11ProgramReady((unsigned long long) hash);
 	renderer->effectApplied = 0;
 }
 
@@ -4646,12 +4688,6 @@ static FNA3D_Device* D3D11_CreateDevice(
 
 	/* A mutex, for ID3D11Context */
 	renderer->ctxLock = SDL_CreateMutex();
-
-	/* Initialize state object caches */
-	hmdefault(renderer->blendStateCache, NULL);
-	hmdefault(renderer->depthStencilStateCache, NULL);
-	hmdefault(renderer->rasterizerStateCache, NULL);
-	hmdefault(renderer->samplerStateCache, NULL);
 
 	/* Create and return the FNA3D_Device */
 	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));

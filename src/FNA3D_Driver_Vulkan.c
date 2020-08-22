@@ -24,7 +24,10 @@
  *
  */
 
-#if FNA3D_DRIVER_VULKAN
+/* FIXME: Temporarily disallowing compilation since
+ * the hashing overhaul makes this totally busted.
+ */
+#if 0 /* FNA3D_DRIVER_VULKAN */
 
 #define VK_NO_PROTOTYPES
 #include "vulkan/vulkan.h"
