@@ -567,7 +567,19 @@ static inline VkPipeline PipelineHashArray_Fetch(
 
 	for (i = 0; i < arr->count; i += 1)
 	{
-		if (key == arr->elements[i].key)
+		const PipelineHash *e = &arr->elements[i].key;
+		if (	key.blendState.a == e->blendState.a &&
+			key.blendState.b == e->blendState.b &&
+			key.rasterizerState.a == e->rasterizerState.a &&
+			key.rasterizerState.b == e->rasterizerState.b &&
+			key.depthStencilState.a == e->depthStencilState.a &&
+			key.depthStencilState.b == e->depthStencilState.b &&
+			key.vertexBufferBindingsHash == e->vertexBufferBindingsHash &&
+			key.primitiveType == e->primitiveType &&
+			key.sampleMask == e->sampleMask &&
+			key.vertShader == e->vertShader &&
+			key.fragShader == e->fragShader &&
+			key.renderPass == e->renderPass	)
 		{
 			return arr->elements[i].value;
 		}
@@ -624,7 +636,15 @@ static inline VkRenderPass RenderPassHashArray_Fetch(
 
 	for (i = 0; i < arr->count; i += 1)
 	{
-		if (key == arr->elements[i].key)
+		const RenderPassHash *e = &arr->elements[i].key;
+		if (	key.colorAttachmentFormatOne == e->colorAttachmentFormatOne &&
+			key.colorAttachmentFormatTwo == e->colorAttachmentFormatTwo &&
+			key.colorAttachmentFormatThree == e->colorAttachmentFormatThree &&
+			key.colorAttachmentFormatFour == e->colorAttachmentFormatFour &&
+			key.depthStencilAttachmentFormat == e->depthStencilAttachmentFormat &&
+			key.width == e->width &&
+			key.height == e->height &&
+			key.multiSampleCount == e->multiSampleCount	)
 		{
 			return arr->elements[i].value;
 		}
@@ -679,7 +699,12 @@ static inline VkFramebuffer FramebufferHashArray_Fetch(
 
 	for (i = 0; i < arr->count; i += 1)
 	{
-		if (key == arr->elements[i].key)
+		const FramebufferHash *e = &arr->elements[i].key;
+		if (	SDL_memcmp(key.colorAttachmentViews, e->colorAttachmentViews, sizeof(key.colorAttachmentViews)) == 0 &&
+			SDL_memcmp(key.colorAttachmentViews, e->colorAttachmentViews, sizeof(key.colorAttachmentViews)) == 0 &&
+			key.depthStencilAttachmentView == e->depthStencilAttachmentView &&
+			key.width == e->width &&
+			key.height == e->height	)
 		{
 			return arr->elements[i].value;
 		}
@@ -781,7 +806,11 @@ static inline VkPipelineLayout PipelineLayoutHashArray_Fetch(
 
 	for (i = 0; i < arr->count; i += 1)
 	{
-		if (key == arr->elements[i].key)
+		const PipelineLayoutHash *e = &arr->elements[i].key;
+		if (	key.vertUniformBufferCount == e->vertUniformBufferCount &&
+			key.vertSamplerCount == e->vertSamplerCount &&
+			key.fragUniformBufferCount == e->fragUniformBufferCount &&
+			key.fragSamplerCount == e->fragSamplerCount	)
 		{
 			return arr->elements[i].value;
 		}
