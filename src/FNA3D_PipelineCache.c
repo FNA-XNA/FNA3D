@@ -183,18 +183,18 @@ static inline uint32_t GetPackedVertexElement(FNA3D_VertexElement element)
 	);
 }
 
-static uint32_t HashVertexDeclarations(
+static uint32_t HashVertexBufferBindings(
 	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings
 ) {
 	int32_t i, j;
-	uint32_t hash = 0;
+	uint32_t hash = numBindings;
 
 	/* The algorithm for this hashing function
 	 * is taken from Josh Bloch's "Effective Java".
 	 * (https://stackoverflow.com/a/113600/12492383)
 	 */
-	const uint32_t HASH_FACTOR = 39;
+	const uint32_t HASH_FACTOR = 37;
 	for (i = 0; i < numBindings; i += 1)
 	{
 		for (j = 0; j < bindings[i].vertexDeclaration.elementCount; j += 1)
@@ -204,6 +204,7 @@ static uint32_t HashVertexDeclarations(
 			);
 		}
 		hash = hash * HASH_FACTOR + bindings[i].vertexDeclaration.vertexStride;
+		hash = hash * HASH_FACTOR + bindings[i].instanceFrequency;
 	}
 
 	return hash;
@@ -216,41 +217,23 @@ void* PackedVertexBufferBindingsArray_Fetch(
 	void* vertexShader,
 	int32_t *outIndex
 ) {
-	int32_t i, j;
-	uint8_t mismatch;
+	int32_t i;
 	PackedVertexBufferBindings other;
-	uint32_t declHash = HashVertexDeclarations(bindings, numBindings);
+	uint32_t hash = HashVertexBufferBindings(bindings, numBindings);
+	void* result = NULL;
 
 	for (i = 0; i < arr.count; i += 1)
 	{
 		other = arr.elements[i].key;
-
-		if (	numBindings != other.numBindings ||
-			vertexShader != other.vertexShader ||
-			declHash != other.vertexDeclarationHash	)
+		if (vertexShader == other.vertexShader && hash == other.hash)
 		{
-			continue;
-		}
-
-		mismatch = 0;
-		for (j = 0; j < numBindings; j += 1)
-		{
-			if (	bindings[j].vertexBuffer != other.buffer[j] ||
-				bindings[j].instanceFrequency != other.instanceFrequency[j]	)
-			{
-				mismatch = 1;
-				break;
-			}
-		}
-		if (!mismatch)
-		{
-			*outIndex = i;
-			return arr.elements[i].value;
+			result = arr.elements[i].value;
+			break;
 		}
 	}
 
 	*outIndex = i;
-	return NULL;
+	return result;
 }
 
 void PackedVertexBufferBindingsArray_Insert(
@@ -261,20 +244,11 @@ void PackedVertexBufferBindingsArray_Insert(
 	void* value
 ) {
 	PackedVertexBufferBindingsMap map;
-	int32_t i;
 
 	EXPAND_ARRAY_IF_NEEDED(arr, 4, PackedVertexBufferBindingsMap)
 
-	/* Fill in the map */
-	SDL_memset(&map, '\0', sizeof(map));
-	map.key.numBindings = numBindings;
-	for (i = 0; i < numBindings; i += 1)
-	{
-		map.key.buffer[i] = bindings[i].vertexBuffer;
-		map.key.instanceFrequency[i] = bindings[i].instanceFrequency;
-	}
 	map.key.vertexShader = vertexShader;
-	map.key.vertexDeclarationHash = HashVertexDeclarations(bindings, numBindings);
+	map.key.hash = HashVertexBufferBindings(bindings, numBindings);
 	map.value = value;
 
 	arr->elements[arr->count] = map;

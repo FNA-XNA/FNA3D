@@ -61,11 +61,8 @@ void PackedStateArray_Insert(PackedStateArray *arr, PackedState key, void* value
 
 typedef struct PackedVertexBufferBindings
 {
-	uint8_t numBindings;
-	void* buffer[MAX_BOUND_VERTEX_BUFFERS];
-	int32_t instanceFrequency[MAX_BOUND_VERTEX_BUFFERS];
 	void* vertexShader;
-	uint32_t vertexDeclarationHash;
+	uint32_t hash;
 } PackedVertexBufferBindings;
 
 typedef struct PackedVertexBufferBindingsMap
