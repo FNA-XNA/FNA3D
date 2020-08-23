@@ -82,7 +82,6 @@ typedef struct VertexBufferBindingsArray
 	int32_t capacity;
 } PackedVertexBufferBindingsArray;
 
-inline uint32_t GetPackedVertexElement(FNA3D_VertexElement element);
 void* PackedVertexBufferBindingsArray_Fetch(
 	PackedVertexBufferBindingsArray arr,
 	FNA3D_VertexBufferBinding *bindings,
