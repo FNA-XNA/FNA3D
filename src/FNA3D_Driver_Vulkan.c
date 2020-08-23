@@ -563,7 +563,28 @@ static inline VkPipeline PipelineHashArray_Fetch(
 	PipelineHashArray *arr,
 	PipelineHash key
 ) {
-	/* TODO HASHARRAY */
+	int32_t i;
+
+	for (i = 0; i < arr->count; i += 1)
+	{
+		const PipelineHash *e = &arr->elements[i].key;
+		if (	key.blendState.a == e->blendState.a &&
+			key.blendState.b == e->blendState.b &&
+			key.rasterizerState.a == e->rasterizerState.a &&
+			key.rasterizerState.b == e->rasterizerState.b &&
+			key.depthStencilState.a == e->depthStencilState.a &&
+			key.depthStencilState.b == e->depthStencilState.b &&
+			key.vertexBufferBindingsHash == e->vertexBufferBindingsHash &&
+			key.primitiveType == e->primitiveType &&
+			key.sampleMask == e->sampleMask &&
+			key.vertShader == e->vertShader &&
+			key.fragShader == e->fragShader &&
+			key.renderPass == e->renderPass	)
+		{
+			return arr->elements[i].value;
+		}
+	}
+
 	return VK_NULL_HANDLE;
 }
 
@@ -572,7 +593,14 @@ static inline void PipelineHashArray_Insert(
 	PipelineHash key,
 	VkPipeline value
 ) {
-	/* TODO HASHARRAY */
+	PipelineHashMap map;
+	map.key = key;
+	map.value = value;
+
+	EXPAND_ARRAY_IF_NEEDED(arr, 4, PipelineHashMap)
+
+	arr->elements[arr->count] = map;
+	arr->count += 1;
 }
 
 typedef struct RenderPassHash
@@ -604,7 +632,24 @@ static inline VkRenderPass RenderPassHashArray_Fetch(
 	RenderPassHashArray *arr,
 	RenderPassHash key
 ) {
-	/* TODO HASHARRAY */
+	int32_t i;
+
+	for (i = 0; i < arr->count; i += 1)
+	{
+		const RenderPassHash *e = &arr->elements[i].key;
+		if (	key.colorAttachmentFormatOne == e->colorAttachmentFormatOne &&
+			key.colorAttachmentFormatTwo == e->colorAttachmentFormatTwo &&
+			key.colorAttachmentFormatThree == e->colorAttachmentFormatThree &&
+			key.colorAttachmentFormatFour == e->colorAttachmentFormatFour &&
+			key.depthStencilAttachmentFormat == e->depthStencilAttachmentFormat &&
+			key.width == e->width &&
+			key.height == e->height &&
+			key.multiSampleCount == e->multiSampleCount	)
+		{
+			return arr->elements[i].value;
+		}
+	}
+
 	return VK_NULL_HANDLE;
 }
 
@@ -613,7 +658,15 @@ static inline void RenderPassHashArray_Insert(
 	RenderPassHash key,
 	VkRenderPass value
 ) {
-	/* TODO HASHARRAY */
+	RenderPassHashMap map;
+
+	map.key = key;
+	map.value = value;
+
+	EXPAND_ARRAY_IF_NEEDED(arr, 4, RenderPassHashMap)
+
+	arr->elements[arr->count] = map;
+	arr->count += 1;
 }
 
 typedef struct FramebufferHash
@@ -642,7 +695,21 @@ static inline VkFramebuffer FramebufferHashArray_Fetch(
 	FramebufferHashArray *arr,
 	FramebufferHash key
 ) {
-	/* TODO HASHARRAY */
+	int32_t i;
+
+	for (i = 0; i < arr->count; i += 1)
+	{
+		const FramebufferHash *e = &arr->elements[i].key;
+		if (	SDL_memcmp(key.colorAttachmentViews, e->colorAttachmentViews, sizeof(key.colorAttachmentViews)) == 0 &&
+			SDL_memcmp(key.colorAttachmentViews, e->colorAttachmentViews, sizeof(key.colorAttachmentViews)) == 0 &&
+			key.depthStencilAttachmentView == e->depthStencilAttachmentView &&
+			key.width == e->width &&
+			key.height == e->height	)
+		{
+			return arr->elements[i].value;
+		}
+	}
+
 	return VK_NULL_HANDLE;
 }
 
@@ -651,7 +718,14 @@ static inline void FramebufferHashArray_Insert(
 	FramebufferHash key,
 	VkFramebuffer value
 ) {
-	/* TODO HASHARRAY */
+	FramebufferHashMap map;
+	map.key = key;
+	map.value = value;
+
+	EXPAND_ARRAY_IF_NEEDED(arr, 4, FramebufferHashMap)
+
+	arr->elements[arr->count] = map;
+	arr->count += 1;
 }
 
 typedef struct SamplerStateHashMap
@@ -728,7 +802,20 @@ static inline VkPipelineLayout PipelineLayoutHashArray_Fetch(
 	PipelineLayoutHashArray *arr,
 	PipelineLayoutHash key
 ) {
-	/* TODO HASHARRAY */
+	int32_t i;
+
+	for (i = 0; i < arr->count; i += 1)
+	{
+		const PipelineLayoutHash *e = &arr->elements[i].key;
+		if (	key.vertUniformBufferCount == e->vertUniformBufferCount &&
+			key.vertSamplerCount == e->vertSamplerCount &&
+			key.fragUniformBufferCount == e->fragUniformBufferCount &&
+			key.fragSamplerCount == e->fragSamplerCount	)
+		{
+			return arr->elements[i].value;
+		}
+	}
+
 	return VK_NULL_HANDLE;
 }
 
@@ -737,7 +824,14 @@ static inline void PipelineLayoutHashArray_Insert(
 	PipelineLayoutHash key,
 	VkPipelineLayout value
 ) {
-	/* TODO HASHARRAY */
+	PipelineLayoutHashMap map;
+	map.key = key;
+	map.value = value;
+
+	EXPAND_ARRAY_IF_NEEDED(arr, 4, PipelineLayoutHashMap)
+
+	arr->elements[arr->count] = map;
+	arr->count += 1;
 }
 
 /* Used to delay destruction until command buffer completes */

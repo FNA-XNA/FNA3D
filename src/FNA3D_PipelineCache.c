@@ -166,7 +166,7 @@ void PackedStateArray_Insert(PackedStateArray *arr, PackedState key, void* value
 
 /* Vertex Buffer Bindings */
 
-inline uint32_t GetPackedVertexElement(FNA3D_VertexElement element)
+static inline uint32_t GetPackedVertexElement(FNA3D_VertexElement element)
 {
 	/* FIXME: Backport this to FNA! */
 
@@ -260,12 +260,13 @@ void PackedVertexBufferBindingsArray_Insert(
 	void* vertexShader,
 	void* value
 ) {
-	PackedVertexBufferBindingsMap map = {0};
+	PackedVertexBufferBindingsMap map;
 	int32_t i;
 
 	EXPAND_ARRAY_IF_NEEDED(arr, 4, PackedVertexBufferBindingsMap)
 
 	/* Fill in the map */
+	SDL_memset(&map, '\0', sizeof(map));
 	map.key.numBindings = numBindings;
 	for (i = 0; i < numBindings; i += 1)
 	{
