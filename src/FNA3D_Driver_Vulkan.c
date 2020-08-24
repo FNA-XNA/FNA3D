@@ -559,7 +559,7 @@ typedef struct PipelineHashArray
 	int32_t capacity;
 } PipelineHashArray;
 
-#define NUM_PIPELINE_HASH_BUCKETS 16
+#define NUM_PIPELINE_HASH_BUCKETS 32
 
 typedef struct PipelineHashTable
 {
@@ -568,13 +568,12 @@ typedef struct PipelineHashTable
 
 static inline uint64_t PipelineHashTable_GetHashCode(PipelineHash hash)
 {
-	uint64_t result = 1;
-
 	/* The algorithm for this hashing function
 	 * is taken from Josh Bloch's "Effective Java".
 	 * (https://stackoverflow.com/a/113600/12492383)
 	 */
 	const uint64_t HASH_FACTOR = 37;
+	uint64_t result = 1;
 	result = result * HASH_FACTOR + hash.blendState.a;
 	result = result * HASH_FACTOR + hash.blendState.b;
 	result = result * HASH_FACTOR + hash.rasterizerState.a;
@@ -584,6 +583,9 @@ static inline uint64_t PipelineHashTable_GetHashCode(PipelineHash hash)
 	result = result * HASH_FACTOR + hash.vertexBufferBindingsIndex;
 	result = result * HASH_FACTOR + hash.primitiveType;
 	result = result * HASH_FACTOR + hash.sampleMask;
+	result = result * HASH_FACTOR + (uint64_t) (size_t) hash.vertShader;
+	result = result * HASH_FACTOR + (uint64_t) (size_t) hash.fragShader;
+	result = result * HASH_FACTOR + (uint64_t) (size_t) hash.renderPass;
 	return result;
 }
 
@@ -629,7 +631,7 @@ static inline void PipelineHashTable_Insert(
 	map.key = key;
 	map.value = value;
 
-	EXPAND_ARRAY_IF_NEEDED(arr, 4, PipelineHashMap)
+	EXPAND_ARRAY_IF_NEEDED(arr, 2, PipelineHashMap)
 
 	arr->elements[arr->count] = map;
 	arr->count += 1;
