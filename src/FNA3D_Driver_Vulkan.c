@@ -31,7 +31,6 @@
 
 #include "FNA3D_Driver.h"
 #include "FNA3D_PipelineCache.h"
-#include "stb_ds.h"
 
 #include <SDL.h>
 #include <SDL_syswm.h>
@@ -67,8 +66,6 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
 
 #define NULL_BUFFER (VkBuffer) 0
 #define NULL_DESC_SET (VkDescriptorSet) 0
-#define NULL_FENCE (VkFence) 0
-#define NULL_FRAMEBUFFER (VkFramebuffer) 0
 #define NULL_IMAGE_VIEW (VkImageView) 0
 #define NULL_PIPELINE (VkPipeline) 0
 #define NULL_PIPELINE_LAYOUT (VkPipelineLayout) 0
@@ -537,14 +534,14 @@ typedef struct SwapChainSupportDetails
 /* FIXME: This could be packed better */
 typedef struct PipelineHash
 {
-	StateHash blendState;
-	StateHash rasterizerState;
-	StateHash depthStencilState;
-	uint64_t vertexBufferBindingsHash;
+	PackedState blendState;
+	PackedState rasterizerState;
+	PackedState depthStencilState;
+	uint32_t vertexBufferBindingsIndex;
 	FNA3D_PrimitiveType primitiveType;
 	VkSampleMask sampleMask;
-	uint64_t vertShader;
-	uint64_t fragShader;
+	MOJOSHADER_vkShader *vertShader;
+	MOJOSHADER_vkShader *fragShader;
 	/* Pipelines have to be compatible with a render pass */
 	VkRenderPass renderPass;
 } PipelineHash;
@@ -554,6 +551,91 @@ typedef struct PipelineHashMap
 	PipelineHash key;
 	VkPipeline value;
 } PipelineHashMap;
+
+typedef struct PipelineHashArray
+{
+	PipelineHashMap *elements;
+	int32_t count;
+	int32_t capacity;
+} PipelineHashArray;
+
+#define NUM_PIPELINE_HASH_BUCKETS 1031
+
+typedef struct PipelineHashTable
+{
+	PipelineHashArray buckets[NUM_PIPELINE_HASH_BUCKETS];
+} PipelineHashTable;
+
+static inline uint64_t PipelineHashTable_GetHashCode(PipelineHash hash)
+{
+	/* The algorithm for this hashing function
+	 * is taken from Josh Bloch's "Effective Java".
+	 * (https://stackoverflow.com/a/113600/12492383)
+	 */
+	const uint64_t HASH_FACTOR = 97;
+	uint64_t result = 1;
+	result = result * HASH_FACTOR + hash.blendState.a;
+	result = result * HASH_FACTOR + hash.blendState.b;
+	result = result * HASH_FACTOR + hash.rasterizerState.a;
+	result = result * HASH_FACTOR + hash.rasterizerState.b;
+	result = result * HASH_FACTOR + hash.depthStencilState.a;
+	result = result * HASH_FACTOR + hash.depthStencilState.b;
+	result = result * HASH_FACTOR + hash.vertexBufferBindingsIndex;
+	result = result * HASH_FACTOR + hash.primitiveType;
+	result = result * HASH_FACTOR + hash.sampleMask;
+	result = result * HASH_FACTOR + (uint64_t) (size_t) hash.vertShader;
+	result = result * HASH_FACTOR + (uint64_t) (size_t) hash.fragShader;
+	result = result * HASH_FACTOR + (uint64_t) (size_t) hash.renderPass;
+	return result;
+}
+
+static inline VkPipeline PipelineHashTable_Fetch(
+	PipelineHashTable *table,
+	PipelineHash key
+) {
+	int32_t i;
+	uint64_t hashcode = PipelineHashTable_GetHashCode(key);
+	PipelineHashArray *arr = &table->buckets[hashcode % NUM_PIPELINE_HASH_BUCKETS];
+
+	for (i = 0; i < arr->count; i += 1)
+	{
+		const PipelineHash *e = &arr->elements[i].key;
+		if (	key.blendState.a == e->blendState.a &&
+			key.blendState.b == e->blendState.b &&
+			key.rasterizerState.a == e->rasterizerState.a &&
+			key.rasterizerState.b == e->rasterizerState.b &&
+			key.depthStencilState.a == e->depthStencilState.a &&
+			key.depthStencilState.b == e->depthStencilState.b &&
+			key.vertexBufferBindingsIndex == e->vertexBufferBindingsIndex &&
+			key.primitiveType == e->primitiveType &&
+			key.sampleMask == e->sampleMask &&
+			key.vertShader == e->vertShader &&
+			key.fragShader == e->fragShader &&
+			key.renderPass == e->renderPass	)
+		{
+			return arr->elements[i].value;
+		}
+	}
+
+	return VK_NULL_HANDLE;
+}
+
+static inline void PipelineHashTable_Insert(
+	PipelineHashTable *table,
+	PipelineHash key,
+	VkPipeline value
+) {
+	uint64_t hashcode = PipelineHashTable_GetHashCode(key);
+	PipelineHashArray *arr = &table->buckets[hashcode % NUM_PIPELINE_HASH_BUCKETS];
+	PipelineHashMap map;
+	map.key = key;
+	map.value = value;
+
+	EXPAND_ARRAY_IF_NEEDED(arr, 2, PipelineHashMap)
+
+	arr->elements[arr->count] = map;
+	arr->count += 1;
+}
 
 typedef struct RenderPassHash
 {
@@ -573,6 +655,54 @@ typedef struct RenderPassHashMap
 	VkRenderPass value;
 } RenderPassHashMap;
 
+typedef struct RenderPassHashArray
+{
+	RenderPassHashMap *elements;
+	int32_t count;
+	int32_t capacity;
+} RenderPassHashArray;
+
+static inline VkRenderPass RenderPassHashArray_Fetch(
+	RenderPassHashArray *arr,
+	RenderPassHash key
+) {
+	int32_t i;
+
+	for (i = 0; i < arr->count; i += 1)
+	{
+		const RenderPassHash *e = &arr->elements[i].key;
+		if (	key.colorAttachmentFormatOne == e->colorAttachmentFormatOne &&
+			key.colorAttachmentFormatTwo == e->colorAttachmentFormatTwo &&
+			key.colorAttachmentFormatThree == e->colorAttachmentFormatThree &&
+			key.colorAttachmentFormatFour == e->colorAttachmentFormatFour &&
+			key.depthStencilAttachmentFormat == e->depthStencilAttachmentFormat &&
+			key.width == e->width &&
+			key.height == e->height &&
+			key.multiSampleCount == e->multiSampleCount	)
+		{
+			return arr->elements[i].value;
+		}
+	}
+
+	return VK_NULL_HANDLE;
+}
+
+static inline void RenderPassHashArray_Insert(
+	RenderPassHashArray *arr,
+	RenderPassHash key,
+	VkRenderPass value
+) {
+	RenderPassHashMap map;
+
+	map.key = key;
+	map.value = value;
+
+	EXPAND_ARRAY_IF_NEEDED(arr, 4, RenderPassHashMap)
+
+	arr->elements[arr->count] = map;
+	arr->count += 1;
+}
+
 typedef struct FramebufferHash
 {
 	VkImageView colorAttachmentViews[MAX_RENDERTARGET_BINDINGS];
@@ -588,11 +718,97 @@ typedef struct FramebufferHashMap
 	VkFramebuffer value;
 } FramebufferHashMap;
 
+typedef struct FramebufferHashArray
+{
+	FramebufferHashMap *elements;
+	int32_t count;
+	int32_t capacity;
+} FramebufferHashArray;
+
+static inline VkFramebuffer FramebufferHashArray_Fetch(
+	FramebufferHashArray *arr,
+	FramebufferHash key
+) {
+	int32_t i;
+
+	for (i = 0; i < arr->count; i += 1)
+	{
+		const FramebufferHash *e = &arr->elements[i].key;
+		if (	SDL_memcmp(key.colorAttachmentViews, e->colorAttachmentViews, sizeof(key.colorAttachmentViews)) == 0 &&
+			SDL_memcmp(key.colorAttachmentViews, e->colorAttachmentViews, sizeof(key.colorAttachmentViews)) == 0 &&
+			key.depthStencilAttachmentView == e->depthStencilAttachmentView &&
+			key.width == e->width &&
+			key.height == e->height	)
+		{
+			return arr->elements[i].value;
+		}
+	}
+
+	return VK_NULL_HANDLE;
+}
+
+static inline void FramebufferHashArray_Insert(
+	FramebufferHashArray *arr,
+	FramebufferHash key,
+	VkFramebuffer value
+) {
+	FramebufferHashMap map;
+	map.key = key;
+	map.value = value;
+
+	EXPAND_ARRAY_IF_NEEDED(arr, 4, FramebufferHashMap)
+
+	arr->elements[arr->count] = map;
+	arr->count += 1;
+}
+
 typedef struct SamplerStateHashMap
 {
-	StateHash key;
+	PackedState key;
 	VkSampler value;
 } SamplerStateHashMap;
+
+typedef struct SamplerStateHashArray
+{
+	SamplerStateHashMap *elements;
+	int32_t count;
+	int32_t capacity;
+} SamplerStateHashArray;
+
+static inline VkSampler SamplerStateHashArray_Fetch(
+	SamplerStateHashArray *arr,
+	PackedState key
+) {
+	int32_t i;
+
+	for (i = 0; i < arr->count; i += 1)
+	{
+		if (	key.a == arr->elements[i].key.a &&
+			key.b == arr->elements[i].key.b		)
+		{
+			return arr->elements[i].value;
+		}
+	}
+
+	return VK_NULL_HANDLE;
+}
+
+static inline void SamplerStateHashArray_Insert(
+	SamplerStateHashArray *arr,
+	PackedState key,
+	VkSampler value
+) {
+	SamplerStateHashMap map =
+	{
+		{ key.a, key.b }, /* FIXME: Why can't VS2010 compile with just "key"? */
+		value
+	};
+
+	EXPAND_ARRAY_IF_NEEDED(arr, 4, SamplerStateHashMap)
+
+	arr->elements[arr->count] = map;
+	arr->count += 1;
+}
 
 /* FIXME: This can be packed better */
 typedef struct PipelineLayoutHash
@@ -608,6 +824,49 @@ typedef struct PipelineLayoutHashMap
 	PipelineLayoutHash key;
 	VkPipelineLayout value;
 } PipelineLayoutHashMap;
+
+typedef struct PipelineLayoutHashArray
+{
+	PipelineLayoutHashMap *elements;
+	int32_t count;
+	int32_t capacity;
+} PipelineLayoutHashArray;
+
+static inline VkPipelineLayout PipelineLayoutHashArray_Fetch(
+	PipelineLayoutHashArray *arr,
+	PipelineLayoutHash key
+) {
+	int32_t i;
+
+	for (i = 0; i < arr->count; i += 1)
+	{
+		const PipelineLayoutHash *e = &arr->elements[i].key;
+		if (	key.vertUniformBufferCount == e->vertUniformBufferCount &&
+			key.vertSamplerCount == e->vertSamplerCount &&
+			key.fragUniformBufferCount == e->fragUniformBufferCount &&
+			key.fragSamplerCount == e->fragSamplerCount	)
+		{
+			return arr->elements[i].value;
+		}
+	}
+
+	return VK_NULL_HANDLE;
+}
+
+static inline void PipelineLayoutHashArray_Insert(
+	PipelineLayoutHashArray *arr,
+	PipelineLayoutHash key,
+	VkPipelineLayout value
+) {
+	PipelineLayoutHashMap map;
+	map.key = key;
+	map.value = value;
+
+	EXPAND_ARRAY_IF_NEEDED(arr, 4, PipelineLayoutHashMap)
+
+	arr->elements[arr->count] = map;
+	arr->count += 1;
+}
 
 /* Used to delay destruction until command buffer completes */
 typedef struct BufferMemoryWrapper
@@ -739,12 +998,13 @@ typedef struct VulkanRenderer
 	uint32_t swapChainImageCount;
 	VkExtent2D swapChainExtent;
 
+	PackedVertexBufferBindingsArray vertexBufferBindingsCache;
 	VkPipelineCache pipelineCache;
 
 	VkRenderPass renderPass;
 	VkPipeline currentPipeline;
 	VkPipelineLayout currentPipelineLayout;
-	uint64_t currentVertexBufferBindingHash;
+	int32_t currentVertexBufferBindingsIndex;
 
 	/* Command Buffers */
 	VkCommandPool commandPool;
@@ -852,11 +1112,11 @@ typedef struct VulkanRenderer
 	VulkanTexture *dummyVertTexture;
 	VulkanTexture *dummyFragTexture;
 
-	PipelineLayoutHashMap *pipelineLayoutHashMap;
-	PipelineHashMap *pipelineHashMap;
-	RenderPassHashMap *renderPassHashMap;
-	FramebufferHashMap *framebufferHashMap;
-	SamplerStateHashMap *samplerStateHashMap;
+	PipelineLayoutHashArray pipelineLayoutArray;
+	PipelineHashTable pipelineHashTable;
+	RenderPassHashArray renderPassArray;
+	FramebufferHashArray framebufferArray;
+	SamplerStateHashArray samplerStateArray;
 
 	VkFence inFlightFence;
 	VkSemaphore imageAvailableSemaphore;
@@ -2994,15 +3254,15 @@ static void VULKAN_INTERNAL_DestroySwapchain(VulkanRenderer *renderer)
 {
 	uint32_t i;
 
-	for (i = 0; i < hmlenu(renderer->framebufferHashMap); i += 1)
+	for (i = 0; i < renderer->framebufferArray.count; i += 1)
 	{
 		renderer->vkDestroyFramebuffer(
 			renderer->logicalDevice,
-			renderer->framebufferHashMap[i].value,
+			renderer->framebufferArray.elements[i].value,
 			NULL
 		);
 	}
-	hmfree(renderer->framebufferHashMap);
+	SDL_free(renderer->framebufferArray.elements);
 
 	for (i = 0; i < renderer->swapChainImageCount; i += 1)
 	{
@@ -3930,9 +4190,13 @@ static VkPipelineLayout VULKAN_INTERNAL_FetchPipelineLayout(
 
 	renderer->currentPipelineLayoutHash = hash;
 
-	if (hmgeti(renderer->pipelineLayoutHashMap, hash) != -1)
+	layout = PipelineLayoutHashArray_Fetch(
+		&renderer->pipelineLayoutArray,
+		hash
+	);
+	if (layout != VK_NULL_HANDLE)
 	{
-		return hmget(renderer->pipelineLayoutHashMap, hash);
+		return layout;
 	}
 
 	setLayouts[0] = renderer->vertSamplerDescriptorSetLayouts[
@@ -3960,7 +4224,11 @@ static VkPipelineLayout VULKAN_INTERNAL_FetchPipelineLayout(
 		return NULL_PIPELINE_LAYOUT;
 	}
 
-	hmput(renderer->pipelineLayoutHashMap, hash, layout);
+	PipelineLayoutHashArray_Insert(
+		&renderer->pipelineLayoutArray,
+		hash,
+		layout
+	);
 	return layout;
 }
 
@@ -4147,8 +4415,8 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 	};
 
 	PipelineHash hash;
-	hash.blendState = GetBlendStateHash(renderer->blendState);
-	hash.rasterizerState = GetRasterizerStateHash(
+	hash.blendState = GetPackedBlendState(renderer->blendState);
+	hash.rasterizerState = GetPackedRasterizerState(
 		renderer->rasterizerState,
 		renderer->rasterizerState.depthBias * XNAToVK_DepthBiasScale(
 			XNAToVK_DepthFormat(
@@ -4157,15 +4425,15 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 			)
 		)
 	);
-	hash.depthStencilState = GetDepthStencilStateHash(
+	hash.depthStencilState = GetPackedDepthStencilState(
 		renderer->depthStencilState
 	);
-	hash.vertexBufferBindingsHash = renderer->currentVertexBufferBindingHash;
+	hash.vertexBufferBindingsIndex = renderer->currentVertexBufferBindingsIndex;
 	hash.primitiveType = renderer->currentPrimitiveType;
 	hash.sampleMask = renderer->multiSampleMask[0];
 	MOJOSHADER_vkGetBoundShaders(&vertShader, &fragShader);
-	hash.vertShader = (uint64_t) (size_t) vertShader;
-	hash.fragShader = (uint64_t) (size_t) fragShader;
+	hash.vertShader = vertShader;
+	hash.fragShader = fragShader;
 	hash.renderPass = renderer->renderPass;
 
 	renderer->currentPipelineLayout = VULKAN_INTERNAL_FetchPipelineLayout(
@@ -4174,9 +4442,10 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 		fragShader
 	);
 
-	if (hmgeti(renderer->pipelineHashMap, hash) != -1)
+	pipeline = PipelineHashTable_Fetch(&renderer->pipelineHashTable, hash);
+	if (pipeline != VK_NULL_HANDLE)
 	{
-		return hmget(renderer->pipelineHashMap, hash);
+		return pipeline;
 	}
 
 	/* Viewport / Scissor */
@@ -4416,7 +4685,7 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 	SDL_free(attributeDescriptions);
 	SDL_free(divisorDescriptions);
 
-	hmput(renderer->pipelineHashMap, hash, pipeline);
+	PipelineHashTable_Insert(&renderer->pipelineHashTable, hash, pipeline);
 	return pipeline;
 }
 
@@ -4853,7 +5122,7 @@ static void VULKAN_INTERNAL_DestroyFauxBackbuffer(VulkanRenderer *renderer)
 static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 {
 	VkResult vulkanResult;
-	VkRenderPass renderPass = NULL_RENDER_PASS;
+	VkRenderPass renderPass;
 	VkAttachmentDescription attachmentDescriptions[MAX_RENDERTARGET_BINDINGS + 1];
 	uint32_t attachmentDescriptionsCount = 0;
 	uint32_t i;
@@ -4888,9 +5157,13 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 	hash.multiSampleCount = renderer->multiSampleCount;
 
 	/* The render pass is already cached, can return it */
-	if (hmgeti(renderer->renderPassHashMap, hash) != -1)
+	renderPass = RenderPassHashArray_Fetch(
+		&renderer->renderPassArray,
+		hash
+	);
+	if (renderPass != VK_NULL_HANDLE)
 	{
-		return hmget(renderer->renderPassHashMap, hash);
+		return renderPass;
 	}
 
 	/* Otherwise lets make a new one */
@@ -5059,7 +5332,11 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 		return NULL_RENDER_PASS;
 	}
 
-	hmput(renderer->renderPassHashMap, hash, renderPass);
+	RenderPassHashArray_Insert(
+		&renderer->renderPassArray,
+		hash,
+		renderPass
+	);
 	return renderPass;
 }
 
@@ -5103,9 +5380,13 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 	hash.height = renderer->colorAttachments[0]->dimensions.height;
 
 	/* Framebuffer is cached, can return it */
-	if (hmgeti(renderer->framebufferHashMap, hash) != -1)
+	framebuffer = FramebufferHashArray_Fetch(
+		&renderer->framebufferArray,
+		hash
+	);
+	if (framebuffer != VK_NULL_HANDLE)
 	{
-		return hmget(renderer->framebufferHashMap, hash);
+		return framebuffer;
 	}
 
 	/* Otherwise make a new one */
@@ -5156,8 +5437,11 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 		LogVulkanResult("vkCreateFramebuffer", vulkanResult);
 	}
 
-	hmput(renderer->framebufferHashMap, hash, framebuffer);
-
+	FramebufferHashArray_Insert(
+		&renderer->framebufferArray,
+		hash,
+		framebuffer
+	);
 	return framebuffer;
 }
 
@@ -6255,10 +6539,14 @@ static VkSampler VULKAN_INTERNAL_FetchSamplerState(
 	VkSampler state;
 	VkResult result;
 
-	StateHash hash = GetSamplerStateHash(*samplerState);
-	if (hmgeti(renderer->samplerStateHashMap, hash) != -1)
+	PackedState hash = GetPackedSamplerState(*samplerState);
+	state = SamplerStateHashArray_Fetch(
+		&renderer->samplerStateArray,
+		hash
+	);
+	if (state != VK_NULL_HANDLE)
 	{
-		return hmget(renderer->samplerStateHashMap, hash);
+		return state;
 	}
 
 	createInfo.addressModeU = XNAToVK_SamplerAddressMode[
@@ -6296,8 +6584,11 @@ static VkSampler VULKAN_INTERNAL_FetchSamplerState(
 		return 0;
 	}
 
-	hmput(renderer->samplerStateHashMap, hash, state);
-
+	SamplerStateHashArray_Insert(
+		&renderer->samplerStateArray,
+		hash,
+		state
+	);
 	return state;
 }
 
@@ -6308,7 +6599,8 @@ static VkSampler VULKAN_INTERNAL_FetchSamplerState(
 static void VULKAN_DestroyDevice(FNA3D_Device *device)
 {
 	VulkanRenderer *renderer = (VulkanRenderer*) device->driverData;
-	uint32_t i;
+	uint32_t i, j;
+	PipelineHashArray hashArray;
 	VkResult waitResult;
 
 	VULKAN_INTERNAL_Flush(renderer);
@@ -6365,13 +6657,21 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 	SDL_free(renderer->commands);
 
-	for (i = 0; i < hmlenu(renderer->pipelineHashMap); i += 1)
+	for (i = 0; i < NUM_PIPELINE_HASH_BUCKETS; i += 1)
 	{
-		renderer->vkDestroyPipeline(
-			renderer->logicalDevice,
-			renderer->pipelineHashMap[i].value,
-			NULL
-		);
+		hashArray = renderer->pipelineHashTable.buckets[i];
+		for (j = 0; j < hashArray.count; j += 1)
+		{
+			renderer->vkDestroyPipeline(
+				renderer->logicalDevice,
+				renderer->pipelineHashTable.buckets[i].elements[j].value,
+				NULL
+			);
+		}
+		if (hashArray.elements != NULL)
+		{
+			SDL_free(hashArray.elements);
+		}
 	}
 
 	for (i = 0; i < MAX_VERTEXTEXTURE_SAMPLERS; i += 1)
@@ -6404,11 +6704,11 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		NULL
 	);
 
-	for (i = 0; i < hmlenu(renderer->pipelineLayoutHashMap); i += 1)
+	for (i = 0; i < renderer->pipelineLayoutArray.count; i += 1)
 	{
 		renderer->vkDestroyPipelineLayout(
 			renderer->logicalDevice,
-			renderer->pipelineLayoutHashMap[i].value,
+			renderer->pipelineLayoutArray.elements[i].value,
 			NULL
 		);
 	}
@@ -6437,20 +6737,20 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		);
 	}
 
-	for (i = 0; i < hmlenu(renderer->renderPassHashMap); i += 1)
+	for (i = 0; i < renderer->renderPassArray.count; i += 1)
 	{
 		renderer->vkDestroyRenderPass(
 			renderer->logicalDevice,
-			renderer->renderPassHashMap[i].value,
+			renderer->renderPassArray.elements[i].value,
 			NULL
 		);
 	}
 
-	for (i = 0; i < hmlenu(renderer->samplerStateHashMap); i += 1)
+	for (i = 0; i < renderer->samplerStateArray.count; i += 1)
 	{
 		renderer->vkDestroySampler(
 			renderer->logicalDevice,
-			renderer->samplerStateHashMap[i].value,
+			renderer->samplerStateArray.elements[i].value,
 			NULL
 		);
 	}
@@ -6498,11 +6798,9 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	renderer->vkDestroyDevice(renderer->logicalDevice, NULL);
 	renderer->vkDestroyInstance(renderer->instance, NULL);
 
-	hmfree(renderer->pipelineLayoutHashMap);
-	hmfree(renderer->pipelineHashMap);
-	hmfree(renderer->renderPassHashMap);
-	hmfree(renderer->framebufferHashMap);
-	hmfree(renderer->samplerStateHashMap);
+	SDL_free(renderer->pipelineLayoutArray.elements);
+	SDL_free(renderer->renderPassArray.elements);
+	SDL_free(renderer->samplerStateArray.elements);
 
 	SDL_free(renderer->imagesInFlight);
 
@@ -7233,26 +7531,39 @@ static void VULKAN_ApplyVertexBufferBindings(
 	int32_t baseVertex
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	MOJOSHADER_vkShader *vertexShader, *blah;
+	int32_t i, bindingsIndex;
+	void* bindingsResult;
 	VulkanBuffer *vertexBuffer;
 	VulkanSubBuffer subbuf;
 	VkDeviceSize offset;
-	int32_t i;
-	MOJOSHADER_vkShader *vertexShader, *blah;
-	uint64_t hash;
 
 	/* Check VertexBufferBindings */
 	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
-	hash = GetVertexBufferBindingsHash(
+	bindingsResult = PackedVertexBufferBindingsArray_Fetch(
+		renderer->vertexBufferBindingsCache,
 		bindings,
 		numBindings,
-		vertexShader
+		vertexShader,
+		&bindingsIndex
 	);
+	if (bindingsResult == NULL)
+	{
+		PackedVertexBufferBindingsArray_Insert(
+			&renderer->vertexBufferBindingsCache,
+			bindings,
+			numBindings,
+			vertexShader,
+			(void*) 69420
+		);
+	}
+
 	renderer->vertexBindings = bindings;
 	renderer->numVertexBindings = numBindings;
 
-	if (hash != renderer->currentVertexBufferBindingHash)
+	if (bindingsIndex != renderer->currentVertexBufferBindingsIndex)
 	{
-		renderer->currentVertexBufferBindingHash = hash;
+		renderer->currentVertexBufferBindingsIndex = bindingsIndex;
 		renderer->needNewPipeline = 1;
 	}
 
@@ -9688,16 +9999,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		SUPPORTED_FORMAT(formatPropsBC2) ||
 		SUPPORTED_FORMAT(formatPropsBC3)
 	);
-
-	/*
-	 * Initialize various render object caches
-	 */
-
-	hmdefault(renderer->pipelineHashMap, NULL_PIPELINE);
-	hmdefault(renderer->pipelineLayoutHashMap, NULL_PIPELINE_LAYOUT);
-	hmdefault(renderer->renderPassHashMap, NULL_RENDER_PASS);
-	hmdefault(renderer->framebufferHashMap, NULL_FRAMEBUFFER);
-	hmdefault(renderer->samplerStateHashMap, NULL_SAMPLER);
 
 	/*
 	 * Initialize renderer members not covered by SDL_memset('\0')

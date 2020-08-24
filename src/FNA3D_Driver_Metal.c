@@ -28,20 +28,10 @@
 
 #include "FNA3D_Driver_Metal.h"
 #include "FNA3D_PipelineCache.h"
-#include "stb_ds.h"
 
 /* Internal Structures */
 
-typedef struct MetalTexture MetalTexture;
-typedef struct MetalSubBuffer MetalSubBuffer;
-typedef struct MetalBuffer MetalBuffer;
-typedef struct MetalBufferAllocator MetalBufferAllocator;
-typedef struct MetalRenderbuffer MetalRenderbuffer;
-typedef struct MetalEffect MetalEffect;
-typedef struct MetalQuery MetalQuery;
-typedef struct PipelineHashMap PipelineHashMap;
-
-struct MetalTexture /* Cast from FNA3D_Texture* */
+typedef struct MetalTexture /* Cast from FNA3D_Texture* */
 {
 	MTLTexture *handle;
 	uint8_t hasMipmaps;
@@ -49,8 +39,8 @@ struct MetalTexture /* Cast from FNA3D_Texture* */
 	int32_t height;
 	uint8_t isPrivate;
 	FNA3D_SurfaceFormat format;
-	MetalTexture *next; /* linked list */
-};
+	struct MetalTexture *next; /* FIXME: Remove this */
+} MetalTexture;
 
 static MetalTexture NullTexture =
 {
@@ -63,14 +53,14 @@ static MetalTexture NullTexture =
 	NULL
 };
 
-struct MetalSubBuffer
+typedef struct MetalSubBuffer
 {
 	MTLBuffer *buffer;
 	uint8_t *ptr;
 	int32_t offset;
-};
+} MetalSubBuffer;
 
-struct MetalBuffer /* Cast from FNA3D_Buffer* */
+typedef struct MetalBuffer /* Cast from FNA3D_Buffer* */
 {
 	int32_t size;
 	int32_t subBufferCount;
@@ -78,34 +68,34 @@ struct MetalBuffer /* Cast from FNA3D_Buffer* */
 	int32_t currentSubBufferIndex;
 	uint8_t bound;
 	MetalSubBuffer *subBuffers;
-};
+} MetalBuffer;
 
-struct MetalBufferAllocator
+typedef struct MetalBufferAllocator
 {
 	#define PHYSICAL_BUFFER_BASE_SIZE 4000000
 	#define PHYSICAL_BUFFER_MAX_COUNT 7
 	MTLBuffer *physicalBuffers[PHYSICAL_BUFFER_MAX_COUNT];
 	int32_t totalAllocated[PHYSICAL_BUFFER_MAX_COUNT];
-};
+} MetalBufferAllocator;
 
-struct MetalRenderbuffer /* Cast from FNA3D_Renderbuffer* */
+typedef struct MetalRenderbuffer /* Cast from FNA3D_Renderbuffer* */
 {
 	MTLTexture *handle;
 	MTLTexture *multiSampleHandle;
 	MTLPixelFormat pixelFormat;
 	int32_t multiSampleCount;
-};
+} MetalRenderbuffer;
 
-struct MetalEffect /* Cast from FNA3D_Effect* */
+typedef struct MetalEffect /* Cast from FNA3D_Effect* */
 {
 	MOJOSHADER_effect *effect;
 	void *library; /* MTLLibrary */
-};
+} MetalEffect;
 
-struct MetalQuery /* Cast from FNA3D_Query* */
+typedef struct MetalQuery /* Cast from FNA3D_Query* */
 {
 	MTLBuffer *handle;
-};
+} MetalQuery;
 
 typedef struct MetalBackbuffer
 {
@@ -120,6 +110,29 @@ typedef struct MetalBackbuffer
 	MTLTexture *multiSampleColorBuffer;
 	MTLTexture *depthStencilBuffer;
 } MetalBackbuffer;
+
+typedef struct PackedRenderPipeline
+{
+	MOJOSHADER_mtlShader *vshader, *pshader;
+	PackedState blendState;
+	MTLPixelFormat colorFormats[4];
+	MTLPixelFormat depthFormat;
+	MTLVertexDescriptor *vertexDescriptor;
+	int32_t sampleCount;
+} PackedRenderPipeline;
+
+typedef struct PackedRenderPipelineMap
+{
+	PackedRenderPipeline key;
+	MTLRenderPipelineState *value;
+} PackedRenderPipelineMap;
+
+typedef struct PackedRenderPipelineArray
+{
+	PackedRenderPipelineMap *elements;
+	int32_t count;
+	int32_t capacity;
+} PackedRenderPipelineArray;
 
 typedef struct MetalRenderer /* Cast from FNA3D_Renderer* */
 {
@@ -228,10 +241,10 @@ typedef struct MetalRenderer /* Cast from FNA3D_Renderer* */
 	uint8_t shouldClearStencil;
 
 	/* Pipeline State Object Caches */
-	UInt64HashMap *vertexDescriptorCache;
-	PipelineHashMap *pipelineStateCache;
-	StateHashMap *depthStencilStateCache;
-	StateHashMap *samplerStateCache;
+	PackedRenderPipelineArray pipelineStateCache;
+	PackedStateArray depthStencilStateCache;
+	PackedStateArray samplerStateCache;
+	PackedVertexBufferBindingsArray vertexDescriptorCache;
 
 	/* MojoShader Interop */
 	MOJOSHADER_mtlContext *mtlContext;
@@ -1181,111 +1194,75 @@ static void METAL_INTERNAL_MarkAsBound(
 
 /* Pipeline State Object Creation / Retrieval */
 
-typedef struct PipelineHash
-{
-	uint64_t a;
-	uint64_t b;
-	uint64_t c;
-	uint64_t d;
-} PipelineHash;
-
-struct PipelineHashMap
-{
-	PipelineHash key;
-	MTLRenderPipelineState *value;
-};
-
-static int32_t METAL_INTERNAL_GetBlendStateHashCode(
-	FNA3D_BlendState blendState
+static PackedRenderPipeline METAL_INTERNAL_GetPackedRenderPipeline(
+	MetalRenderer *renderer
 ) {
-	StateHash hash = GetBlendStateHash(blendState);
-	return (
-		(hash.a ^ (hash.a >> 32)) +
-		(hash.b ^ (hash.b >> 32))
+	PackedRenderPipeline result;
+
+	MOJOSHADER_mtlGetBoundShaders(&result.vshader, &result.pshader);
+	result.blendState = GetPackedBlendState(renderer->blendState);
+	result.colorFormats[0] = renderer->currentColorFormats[0];
+	result.colorFormats[1] = renderer->currentColorFormats[1];
+	result.colorFormats[2] = renderer->currentColorFormats[2];
+	result.colorFormats[3] = renderer->currentColorFormats[3];
+	result.depthFormat = XNAToMTL_DepthFormat(
+		renderer,
+		renderer->currentDepthFormat
 	);
+	result.vertexDescriptor = renderer->currentVertexDescriptor;
+	result.sampleCount = renderer->currentSampleCount;
+
+	return result;
 }
 
-static int32_t METAL_INTERNAL_HashPixelFormat(MTLPixelFormat format)
-{
-	switch (format)
+static MTLRenderPipelineState* METAL_INTERNAL_PackedRenderPipelineArray_Fetch(
+	PackedRenderPipelineArray arr,
+	PackedRenderPipeline key
+) {
+	int32_t i;
+	PackedRenderPipeline other;
+
+	for (i = 0; i < arr.count; i += 1)
 	{
-		case MTLPixelFormatInvalid:
-			return 0;
-		case MTLPixelFormatR16Float:
-			return 1;
-		case MTLPixelFormatR32Float:
-			return 2;
-		case MTLPixelFormatRG16Float:
-			return 3;
-		case MTLPixelFormatRG16Snorm:
-			return 4;
-		case MTLPixelFormatRG16Unorm:
-			return 5;
-		case MTLPixelFormatRG32Float:
-			return 6;
-		case MTLPixelFormatRG8Snorm:
-			return 7;
-		case MTLPixelFormatRGB10A2Unorm:
-			return 8;
-		case MTLPixelFormatRGBA16Float:
-			return 9;
-		case MTLPixelFormatRGBA16Unorm:
-			return 10;
-		case MTLPixelFormatRGBA32Float:
-			return 11;
-		case MTLPixelFormatRGBA8Unorm:
-			return 12;
-		case MTLPixelFormatA8Unorm:
-			return 13;
-		case MTLPixelFormatABGR4Unorm:
-			return 14;
-		case MTLPixelFormatB5G6R5Unorm:
-			return 15;
-		case MTLPixelFormatBC1RGBA:
-			return 16;
-		case MTLPixelFormatBC2RGBA:
-			return 17;
-		case MTLPixelFormatBC3RGBA:
-			return 18;
-		case MTLPixelFormatBGR5A1Unorm:
-			return 19;
-		case MTLPixelFormatBGRA8Unorm:
-			return 20;
-		default:
-			SDL_assert(0 && "Invalid pixel format!");
+		other = arr.elements[i].key;
+		if (	key.vshader == other.vshader &&
+			key.pshader == other.pshader &&
+			key.vertexDescriptor == other.vertexDescriptor &&
+			key.blendState.a == other.blendState.a &&
+			key.blendState.b == other.blendState.b &&
+			key.depthFormat == other.depthFormat &&
+			key.sampleCount == other.sampleCount &&
+			key.colorFormats[0] == other.colorFormats[0] &&
+			key.colorFormats[1] == other.colorFormats[1] &&
+			key.colorFormats[2] == other.colorFormats[2] &&
+			key.colorFormats[3] == other.colorFormats[3]	)
+		{
+			return arr.elements[i].value;
+		}
 	}
 
-	/* This should never happen! */
-	return 0;
+	return NULL;
 }
 
-static PipelineHash METAL_INTERNAL_GetPipelineHash(MetalRenderer *renderer)
-{
-	PipelineHash result;
-	int32_t packedProperties = (
-		  renderer->currentSampleCount << 22
-		| renderer->currentDepthFormat << 20
-		| METAL_INTERNAL_HashPixelFormat(renderer->currentColorFormats[3]) << 15
-		| METAL_INTERNAL_HashPixelFormat(renderer->currentColorFormats[2]) << 10
-		| METAL_INTERNAL_HashPixelFormat(renderer->currentColorFormats[1]) << 5
-		| METAL_INTERNAL_HashPixelFormat(renderer->currentColorFormats[0])
-	);
-	MOJOSHADER_mtlShader *vert, *pixl;
-	MOJOSHADER_mtlGetBoundShaders(&vert, &pixl);
-	result.a = (uint64_t) vert;
-	result.b = (uint64_t) pixl;
-	result.c = (uint64_t) renderer->currentVertexDescriptor;
-	result.d = (
-		(uint64_t) METAL_INTERNAL_GetBlendStateHashCode(renderer->blendState) << 32 |
-		(uint64_t) packedProperties
-	);
-	return result;
+static void METAL_INTERNAL_PackedRenderPipelineArray_Insert(
+	PackedRenderPipelineArray *arr,
+	PackedRenderPipeline key,
+	MTLRenderPipelineState* value
+) {
+	PackedRenderPipelineMap map;
+	map.key = key;
+	map.value = value;
+
+	EXPAND_ARRAY_IF_NEEDED(arr, 4, PackedRenderPipelineMap)
+
+	arr->elements[arr->count] = map;
+	arr->count += 1;
 }
 
 static MTLRenderPipelineState* METAL_INTERNAL_FetchRenderPipeline(
 	MetalRenderer *renderer
 ) {
-	PipelineHash hash = METAL_INTERNAL_GetPipelineHash(renderer);
+	PackedRenderPipeline packedPipeline;
 	MTLRenderPipelineDescriptor *pipelineDesc;
 	MTLFunction *vertHandle;
 	MTLFunction *fragHandle;
@@ -1296,7 +1273,11 @@ static MTLRenderPipelineState* METAL_INTERNAL_FetchRenderPipeline(
 	MTLRenderPipelineState *result;
 
 	/* Can we just reuse an existing pipeline? */
-	result = hmget(renderer->pipelineStateCache, hash);
+	packedPipeline = METAL_INTERNAL_GetPackedRenderPipeline(renderer);
+	result = METAL_INTERNAL_PackedRenderPipelineArray_Fetch(
+		renderer->pipelineStateCache,
+		packedPipeline
+	);
 	if (result != NULL)
 	{
 		/* We already have this state cached! */
@@ -1451,7 +1432,11 @@ static MTLRenderPipelineState* METAL_INTERNAL_FetchRenderPipeline(
 		renderer->device,
 		pipelineDesc
 	);
-	hmput(renderer->pipelineStateCache, hash, result);
+	METAL_INTERNAL_PackedRenderPipelineArray_Insert(
+		&renderer->pipelineStateCache,
+		packedPipeline,
+		result
+	);
 
 	/* Clean up */
 	objc_release(pipelineDesc);
@@ -1463,8 +1448,8 @@ static MTLRenderPipelineState* METAL_INTERNAL_FetchRenderPipeline(
 static MTLDepthStencilState* METAL_INTERNAL_FetchDepthStencilState(
 	MetalRenderer *renderer
 ) {
-	StateHash hash;
-	MTLDepthStencilState *state;
+	PackedState packedState;
+	MTLDepthStencilState *result;
 	MTLDepthStencilDescriptor *dsDesc;
 	MTLStencilDescriptor *front, *back;
 	uint8_t zEnable, sEnable, zFormat;
@@ -1484,12 +1469,15 @@ static MTLDepthStencilState* METAL_INTERNAL_FetchDepthStencilState(
 	}
 
 	/* Can we just reuse an existing state? */
-	hash = GetDepthStencilStateHash(renderer->depthStencilState);
-	state = hmget(renderer->depthStencilStateCache, hash);
-	if (state != NULL)
+	packedState = GetPackedDepthStencilState(renderer->depthStencilState);
+	result = PackedStateArray_Fetch(
+		renderer->depthStencilStateCache,
+		packedState
+	);
+	if (result != NULL)
 	{
 		/* This state has already been cached! */
-		return state;
+		return result;
 	}
 
 	/* We have to make a new DepthStencilState... */
@@ -1601,17 +1589,21 @@ static MTLDepthStencilState* METAL_INTERNAL_FetchDepthStencilState(
 	);
 
 	/* Bake the state! */
-	state = mtlNewDepthStencilState(
+	result = mtlNewDepthStencilState(
 		renderer->device,
 		dsDesc
 	);
-	hmput(renderer->depthStencilStateCache, hash, state);
+	PackedStateArray_Insert(
+		&renderer->depthStencilStateCache,
+		packedState,
+		result
+	);
 
 	/* Clean up */
 	objc_release(dsDesc);
 
 	/* Return the state! */
-	return state;
+	return result;
 }
 
 static MTLSamplerState* METAL_INTERNAL_FetchSamplerState(
@@ -1619,17 +1611,20 @@ static MTLSamplerState* METAL_INTERNAL_FetchSamplerState(
 	FNA3D_SamplerState *samplerState,
 	uint8_t hasMipmaps
 ) {
-	StateHash hash;
-	MTLSamplerState *state;
+	PackedState packedState;
+	MTLSamplerState *result;
 	MTLSamplerDescriptor *desc;
 
 	/* Can we reuse an existing state? */
-	hash = GetSamplerStateHash(*samplerState);
-	state = hmget(renderer->samplerStateCache, hash);
-	if (state != NULL)
+	packedState = GetPackedSamplerState(*samplerState);
+	result = PackedStateArray_Fetch(
+		renderer->samplerStateCache,
+		packedState
+	);
+	if (result != NULL)
 	{
 		/* This state has already been cached! */
-		return state;
+		return result;
 	}
 
 	/* We have to make a new sampler state... */
@@ -1688,17 +1683,21 @@ static MTLSamplerState* METAL_INTERNAL_FetchSamplerState(
 	 */
 
 	/* Bake the state! */
-	state = mtlNewSamplerState(
+	result = mtlNewSamplerState(
 		renderer->device,
 		desc
 	);
-	hmput(renderer->samplerStateCache, hash, state);
+	PackedStateArray_Insert(
+		&renderer->samplerStateCache,
+		packedState,
+		result
+	);
 
 	/* Clean up */
 	objc_release(desc);
 
 	/* Return the state! */
-	return state;
+	return result;
 }
 
 static MTLTexture* METAL_INTERNAL_FetchTransientTexture(
@@ -1751,8 +1750,7 @@ static MTLVertexDescriptor* METAL_INTERNAL_FetchVertexBufferBindingsDescriptor(
 	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings
 ) {
-	uint64_t hash;
-	int32_t i, j, k, usage, index, attribLoc;
+	int32_t whatever, i, j, k, usage, index, attribLoc;
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 	FNA3D_VertexDeclaration vertexDeclaration;
 	FNA3D_VertexElement element;
@@ -1765,12 +1763,13 @@ static MTLVertexDescriptor* METAL_INTERNAL_FetchVertexBufferBindingsDescriptor(
 	MOJOSHADER_mtlGetBoundShaders(&vertexShader, &blah);
 
 	/* Can we just reuse an existing descriptor? */
-	hash = GetVertexBufferBindingsHash(
+	result = PackedVertexBufferBindingsArray_Fetch(
+		renderer->vertexDescriptorCache,
 		bindings,
 		numBindings,
-		vertexShader
+		vertexShader,
+		&whatever
 	);
-	result = hmget(renderer->vertexDescriptorCache, hash);
 	if (result != NULL)
 	{
 		/* This descriptor has already been cached! */
@@ -1867,7 +1866,14 @@ static MTLVertexDescriptor* METAL_INTERNAL_FetchVertexBufferBindingsDescriptor(
 		}
 	}
 
-	hmput(renderer->vertexDescriptorCache, hash, result);
+	/* Store and return the vertex descriptor! */
+	PackedVertexBufferBindingsArray_Insert(
+		&renderer->vertexDescriptorCache,
+		bindings,
+		numBindings,
+		vertexShader,
+		result
+	);
 	return result;
 }
 
@@ -1909,33 +1915,33 @@ static void METAL_DestroyDevice(FNA3D_Device *device)
 	/* Stop rendering */
 	METAL_INTERNAL_EndPass(renderer);
 
-	/* Release vertex descriptors */
-	for (i = 0; i < hmlen(renderer->vertexDescriptorCache); i += 1)
-	{
-		objc_release(renderer->vertexDescriptorCache[i].value);
-	}
-	hmfree(renderer->vertexDescriptorCache);
-
 	/* Release depth stencil states */
-	for (i = 0; i < hmlen(renderer->depthStencilStateCache); i += 1)
+	for (i = 0; i < renderer->depthStencilStateCache.count; i += 1)
 	{
-		objc_release(renderer->depthStencilStateCache[i].value);
+		objc_release(renderer->depthStencilStateCache.elements[i].value);
 	}
-	hmfree(renderer->depthStencilStateCache);
-
-	/* Release pipeline states */
-	for (i = 0; i < hmlen(renderer->pipelineStateCache); i += 1)
-	{
-		objc_release(renderer->pipelineStateCache[i].value);
-	}
-	hmfree(renderer->pipelineStateCache);
+	SDL_free(renderer->depthStencilStateCache.elements);
 
 	/* Release sampler states */
-	for (i = 0; i < hmlen(renderer->samplerStateCache); i += 1)
+	for (i = 0; i < renderer->samplerStateCache.count; i += 1)
 	{
-		objc_release(renderer->samplerStateCache[i].value);
+		objc_release(renderer->samplerStateCache.elements[i].value);
 	}
-	hmfree(renderer->samplerStateCache);
+	SDL_free(renderer->samplerStateCache.elements);
+
+	/* Release pipeline states */
+	for (i = 0; i < renderer->pipelineStateCache.count; i += 1)
+	{
+		objc_release(renderer->pipelineStateCache.elements[i].value);
+	}
+	SDL_free(renderer->pipelineStateCache.elements);
+
+	/* Release vertex descriptors */
+	for (i = 0; i < renderer->vertexDescriptorCache.count; i += 1)
+	{
+		objc_release(renderer->vertexDescriptorCache.elements[i].value);
+	}
+	SDL_free(renderer->vertexDescriptorCache.elements);
 
 	/* Release transient textures */
 	tex = renderer->transientTextures;
@@ -4520,12 +4526,6 @@ FNA3D_Device* METAL_CreateDevice(
 		renderer,
 		presentationParameters->presentationInterval
 	);
-
-	/* Initialize PSO caches */
-	hmdefault(renderer->pipelineStateCache, NULL);
-	hmdefault(renderer->depthStencilStateCache, NULL);
-	hmdefault(renderer->samplerStateCache, NULL);
-	hmdefault(renderer->vertexDescriptorCache, NULL);
 
 	/* Initialize buffer allocator */
 	renderer->bufferAllocator = (MetalBufferAllocator*) SDL_malloc(
