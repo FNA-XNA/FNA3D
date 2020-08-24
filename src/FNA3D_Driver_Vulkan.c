@@ -1160,11 +1160,31 @@ typedef struct PipelineLayoutHashArray
 	int32_t capacity;
 } PipelineLayoutHashArray;
 
+#define NUM_PIPELINE_LAYOUT_BUCKETS 1031
+
+typedef struct PipelineLayoutHashTable
+{
+	PipelineLayoutHashArray buckets[NUM_PIPELINE_LAYOUT_BUCKETS];
+} PipelineLayoutHashTable;
+
+static inline uint64_t PipelineLayoutHashTable_GetHashCode(PipelineLayoutHash key)
+{
+	const uint64_t HASH_FACTOR = 97;
+	uint64_t result = 1;
+	result = result * HASH_FACTOR + (uint64_t) key.vertexSamplerLayout;
+	result = result * HASH_FACTOR + (uint64_t) key.fragSamplerLayout;
+	result = result * HASH_FACTOR + (uint64_t) key.vertexUniformLayout;
+	result = result * HASH_FACTOR + (uint64_t) key.fragUniformLayout;
+	return result;
+}
+
 static inline VkPipelineLayout PipelineLayoutHashArray_Fetch(
-	PipelineLayoutHashArray *arr,
+	PipelineLayoutHashTable *table,
 	PipelineLayoutHash key
 ) {
 	int32_t i;
+	uint64_t hashcode = PipelineLayoutHashTable_GetHashCode(key);
+	PipelineLayoutHashArray *arr = &table->buckets[hashcode % NUM_PIPELINE_LAYOUT_BUCKETS];
 
 	for (i = 0; i < arr->count; i += 1)
 	{
@@ -1182,10 +1202,13 @@ static inline VkPipelineLayout PipelineLayoutHashArray_Fetch(
 }
 
 static inline void PipelineLayoutHashArray_Insert(
-	PipelineLayoutHashArray *arr,
+	PipelineLayoutHashTable *table,
 	PipelineLayoutHash key,
 	VkPipelineLayout value
 ) {
+	uint64_t hashcode = PipelineLayoutHashTable_GetHashCode(key);
+	PipelineLayoutHashArray *arr = &table->buckets[hashcode % NUM_PIPELINE_HASH_BUCKETS];
+
 	PipelineLayoutHashMap map;
 	map.key = key;
 	map.value = value;
@@ -1422,7 +1445,7 @@ typedef struct VulkanRenderer
 
 	ShaderResourcesHashTable shaderResourcesHashTable;
 	DescriptorSetLayoutHashArray descriptorSetLayoutArray;
-	PipelineLayoutHashArray pipelineLayoutArray;
+	PipelineLayoutHashTable pipelineLayoutTable;
 	PipelineHashTable pipelineHashTable;
 	RenderPassHashArray renderPassArray;
 	FramebufferHashArray framebufferArray;
@@ -5266,8 +5289,8 @@ static VkPipelineLayout VULKAN_INTERNAL_FetchPipelineLayout(
 	pipelineLayoutHash.fragUniformLayout = renderer->fragUniformBufferDescriptorSetLayout;
 
 	layout = PipelineLayoutHashArray_Fetch(
-		&renderer->pipelineLayoutArray,
-		hash
+		&renderer->pipelineLayoutTable,
+		pipelineLayoutHash
 	);
 
 	if (layout != VK_NULL_HANDLE)
@@ -5297,8 +5320,8 @@ static VkPipelineLayout VULKAN_INTERNAL_FetchPipelineLayout(
 	}
 
 	PipelineLayoutHashArray_Insert(
-		&renderer->pipelineLayoutArray,
-		hash,
+		&renderer->pipelineLayoutTable,
+		pipelineLayoutHash,
 		layout
 	);
 	return layout;
@@ -7187,13 +7210,18 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		NULL
 	);
 
-	for (i = 0; i < renderer->pipelineLayoutArray.count; i += 1)
+	for (i = 0; i < NUM_PIPELINE_LAYOUT_BUCKETS; i += 1)
 	{
-		renderer->vkDestroyPipelineLayout(
-			renderer->logicalDevice,
-			renderer->pipelineLayoutArray.elements[i].value,
-			NULL
-		);
+		for (j = 0; j < renderer->pipelineLayoutTable.buckets[i].count; j += 1)
+		{
+			renderer->vkDestroyPipelineLayout(
+				renderer->logicalDevice,
+				renderer->pipelineLayoutTable.buckets[i].elements[j].value,
+				NULL
+			);
+		}
+
+		SDL_free(renderer->pipelineLayoutTable.buckets[i].elements);
 	}
 
 	renderer->vkDestroyPipelineCache(
@@ -7265,7 +7293,6 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 	SDL_free(renderer->shaderResourcesHashTable.elements);
 	SDL_free(renderer->descriptorSetLayoutArray.elements);
-	SDL_free(renderer->pipelineLayoutArray.elements);
 	SDL_free(renderer->renderPassArray.elements);
 	SDL_free(renderer->samplerStateArray.elements);
 
