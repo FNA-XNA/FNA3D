@@ -4590,6 +4590,8 @@ static FNA3D_Device* D3D11_CreateDevice(
 	{
 		flags |= D3D11_CREATE_DEVICE_DEBUG;
 	}
+
+try_create_device:
 	res = D3D11CreateDeviceFunc(
 		NULL, /* FIXME: Should be renderer->adapter! */
 		D3D_DRIVER_TYPE_HARDWARE,
@@ -4602,6 +4604,17 @@ static FNA3D_Device* D3D11_CreateDevice(
 		&renderer->featureLevel,
 		&renderer->context
 	);
+
+	if (FAILED(res) && debugMode)
+	{
+		/* Creating a debug mode device will fail on some systems due to the necessary
+		 * debug infrastructure not being available. Remove the debug flag and retry. */
+		FNA3D_LogWarn("Creating device in debug mode failed with error %08X. Trying non-debug.");
+		flags ^= D3D11_CREATE_DEVICE_DEBUG;
+        debugMode = 0;
+		goto try_create_device;
+	}
+
 	ERROR_CHECK_RETURN("Could not create D3D11Device", NULL)
 
 	/* Print driver info */
