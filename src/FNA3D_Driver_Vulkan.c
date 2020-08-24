@@ -1099,6 +1099,46 @@ typedef struct DescriptorSetLayoutHashMap
 	VkDescriptorSetLayout value;
 } DescriptorSetLayoutHashMap;
 
+typedef struct DescriptorSetLayoutHashArray
+{
+	DescriptorSetLayoutHashMap *elements;
+	int32_t count;
+	int32_t capacity;
+} DescriptorSetLayoutHashArray;
+
+static inline VkDescriptorSetLayout DescriptorSetLayoutHashArray_Fetch(
+	DescriptorSetLayoutHashArray *arr,
+	DescriptorSetLayoutHash key
+) {
+	int32_t i;
+
+	for (i = 0; i < arr->count; i += 1)
+	{
+		const DescriptorSetLayoutHash *e = &arr->elements[i].key;
+		if (SDL_memcmp(&key, e, sizeof(DescriptorSetLayoutHash)) == 0)
+		{
+			return arr->elements[i].value;
+		}
+	}
+
+	return VK_NULL_HANDLE;
+}
+
+static inline void DescriptorSetLayoutHashArray_Insert(
+	DescriptorSetLayoutHashArray *arr,
+	DescriptorSetLayoutHash key,
+	VkDescriptorSetLayout value
+) {
+	DescriptorSetLayoutHashMap map;
+	map.key = key;
+	map.value = value;
+
+	EXPAND_ARRAY_IF_NEEDED(arr, 4, DescriptorSetLayoutHashMap);
+
+	arr->elements[arr->count] = map;
+	arr->count += 1;
+}
+
 typedef struct PipelineLayoutHash
 {
 	VkDescriptorSetLayout vertexSamplerLayout;
@@ -2779,19 +2819,30 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 		return hmget(renderer->descriptorSetLayoutHashMap, descriptorSetLayoutHash);
 	}
 
-	for (i = 0; i < samplerCount; i += 1)
+	if (samplerCount == 0) /* dummy sampler case */
 	{
-		setLayoutBindings[i].binding = samplerInfos[i].index;
-		setLayoutBindings[i].descriptorCount = 1;
-		setLayoutBindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		setLayoutBindings[i].stageFlags = stageFlag;
-		setLayoutBindings[i].pImmutableSamplers = NULL;
+		setLayoutBindings[0].binding = 0;
+		setLayoutBindings[0].descriptorCount = 1;
+		setLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		setLayoutBindings[0].stageFlags = stageFlag;
+		setLayoutBindings[0].pImmutableSamplers = NULL;
+	}
+	else
+	{
+		for (i = 0; i < samplerCount; i += 1)
+		{
+			setLayoutBindings[i].binding = samplerInfos[i].index;
+			setLayoutBindings[i].descriptorCount = 1;
+			setLayoutBindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+			setLayoutBindings[i].stageFlags = stageFlag;
+			setLayoutBindings[i].pImmutableSamplers = NULL;
+		}
 	}
 
 	setLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
 	setLayoutCreateInfo.pNext = NULL;
 	setLayoutCreateInfo.flags = 0;
-	setLayoutCreateInfo.bindingCount = samplerCount;
+	setLayoutCreateInfo.bindingCount = SDL_max(samplerCount, 1);
 	setLayoutCreateInfo.pBindings = setLayoutBindings;
 
 	vulkanResult = renderer->vkCreateDescriptorSetLayout(
@@ -2828,8 +2879,14 @@ static ShaderResources* VULKAN_INTERNAL_FetchShaderResources(
 		shaderResources->uniformDescriptorPool = NULL;
 
 		shaderResources->samplerLayout = VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(renderer, shader, shaderStageFlag);
-		shaderResources->uniformBufferLayout = renderer->vertexUniformBufferDescriptorSetLayout;
-
+		if (shaderStageFlag == VK_SHADER_STAGE_VERTEX_BIT)
+		{
+			shaderResources->uniformBufferLayout = renderer->vertexUniformBufferDescriptorSetLayout;
+		}
+		else
+		{
+			shaderResources->uniformBufferLayout = renderer->fragUniformBufferDescriptorSetLayout;
+		}
 		shaderResources->samplerBitmask = VULKAN_INTERNAL_FetchSamplerBitmask(shader);
 		shaderResources->samplerCount = MOJOSHADER_vkGetShaderParseData(shader)->sampler_count;
 
@@ -3338,7 +3395,7 @@ static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer *renderer)
 
 	/* TODO: we could probably hang on to these for n frames as an optimization */
 
-	for (i = 0; renderer->shaderResourcesHashTable.count; i += 1)
+	for (i = 0; i < renderer->shaderResourcesHashTable.count; i += 1)
 	{
 		shaderResources = renderer->shaderResourcesHashTable.elements[i].value;
 
@@ -5212,6 +5269,7 @@ static VkPipelineLayout VULKAN_INTERNAL_FetchPipelineLayout(
 		&renderer->pipelineLayoutArray,
 		hash
 	);
+
 	if (layout != VK_NULL_HANDLE)
 	{
 		return layout;
@@ -7585,6 +7643,7 @@ static void VULKAN_DrawPrimitives(
 	{
 		CMDTYPE_DRAW
 	};
+	MOJOSHADER_vkShader *vertShader, *fragShader;
 
 	if (primitiveType != renderer->currentPrimitiveType)
 	{
@@ -7619,6 +7678,10 @@ static void VULKAN_DrawPrimitives(
 	);
 	drawCmd.draw.firstVertex = vertexStart;
 	drawCmd.draw.pipelineLayout = renderer->currentPipelineLayout;
+
+	MOJOSHADER_vkGetBoundShaders(&vertShader, &fragShader);
+	drawCmd.draw.vertShaderResources = VULKAN_INTERNAL_FetchShaderResources(renderer, vertShader, VK_SHADER_STAGE_VERTEX_BIT);
+	drawCmd.draw.fragShaderResources = VULKAN_INTERNAL_FetchShaderResources(renderer, fragShader, VK_SHADER_STAGE_FRAGMENT_BIT);
 
 	VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 		renderer,
