@@ -559,7 +559,7 @@ typedef struct PipelineHashArray
 	int32_t capacity;
 } PipelineHashArray;
 
-#define NUM_PIPELINE_HASH_BUCKETS 32
+#define NUM_PIPELINE_HASH_BUCKETS 1031
 
 typedef struct PipelineHashTable
 {
@@ -572,7 +572,7 @@ static inline uint64_t PipelineHashTable_GetHashCode(PipelineHash hash)
 	 * is taken from Josh Bloch's "Effective Java".
 	 * (https://stackoverflow.com/a/113600/12492383)
 	 */
-	const uint64_t HASH_FACTOR = 37;
+	const uint64_t HASH_FACTOR = 97;
 	uint64_t result = 1;
 	result = result * HASH_FACTOR + hash.blendState.a;
 	result = result * HASH_FACTOR + hash.blendState.b;
