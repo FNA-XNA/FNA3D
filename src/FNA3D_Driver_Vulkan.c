@@ -537,11 +537,11 @@ typedef struct PipelineHash
 	PackedState blendState;
 	PackedState rasterizerState;
 	PackedState depthStencilState;
-	uint64_t vertexBufferBindingsHash;
+	uint32_t vertexBufferBindingsIndex;
 	FNA3D_PrimitiveType primitiveType;
 	VkSampleMask sampleMask;
-	uint64_t vertShader;
-	uint64_t fragShader;
+	MOJOSHADER_vkShader *vertShader;
+	MOJOSHADER_vkShader *fragShader;
 	/* Pipelines have to be compatible with a render pass */
 	VkRenderPass renderPass;
 } PipelineHash;
@@ -559,11 +559,41 @@ typedef struct PipelineHashArray
 	int32_t capacity;
 } PipelineHashArray;
 
-static inline VkPipeline PipelineHashArray_Fetch(
-	PipelineHashArray *arr,
+#define NUM_PIPELINE_HASH_BUCKETS 16
+
+typedef struct PipelineHashTable
+{
+	PipelineHashArray buckets[NUM_PIPELINE_HASH_BUCKETS];
+} PipelineHashTable;
+
+static inline uint64_t PipelineHashTable_GetHashCode(PipelineHash hash)
+{
+	uint64_t result = 1;
+
+	/* The algorithm for this hashing function
+	 * is taken from Josh Bloch's "Effective Java".
+	 * (https://stackoverflow.com/a/113600/12492383)
+	 */
+	const uint64_t HASH_FACTOR = 37;
+	result = result * HASH_FACTOR + hash.blendState.a;
+	result = result * HASH_FACTOR + hash.blendState.b;
+	result = result * HASH_FACTOR + hash.rasterizerState.a;
+	result = result * HASH_FACTOR + hash.rasterizerState.b;
+	result = result * HASH_FACTOR + hash.depthStencilState.a;
+	result = result * HASH_FACTOR + hash.depthStencilState.b;
+	result = result * HASH_FACTOR + hash.vertexBufferBindingsIndex;
+	result = result * HASH_FACTOR + hash.primitiveType;
+	result = result * HASH_FACTOR + hash.sampleMask;
+	return result;
+}
+
+static inline VkPipeline PipelineHashTable_Fetch(
+	PipelineHashTable *table,
 	PipelineHash key
 ) {
 	int32_t i;
+	uint64_t hashcode = PipelineHashTable_GetHashCode(key);
+	PipelineHashArray *arr = &table->buckets[hashcode % NUM_PIPELINE_HASH_BUCKETS];
 
 	for (i = 0; i < arr->count; i += 1)
 	{
@@ -574,7 +604,7 @@ static inline VkPipeline PipelineHashArray_Fetch(
 			key.rasterizerState.b == e->rasterizerState.b &&
 			key.depthStencilState.a == e->depthStencilState.a &&
 			key.depthStencilState.b == e->depthStencilState.b &&
-			key.vertexBufferBindingsHash == e->vertexBufferBindingsHash &&
+			key.vertexBufferBindingsIndex == e->vertexBufferBindingsIndex &&
 			key.primitiveType == e->primitiveType &&
 			key.sampleMask == e->sampleMask &&
 			key.vertShader == e->vertShader &&
@@ -588,11 +618,13 @@ static inline VkPipeline PipelineHashArray_Fetch(
 	return VK_NULL_HANDLE;
 }
 
-static inline void PipelineHashArray_Insert(
-	PipelineHashArray *arr,
+static inline void PipelineHashTable_Insert(
+	PipelineHashTable *table,
 	PipelineHash key,
 	VkPipeline value
 ) {
+	uint64_t hashcode = PipelineHashTable_GetHashCode(key);
+	PipelineHashArray *arr = &table->buckets[hashcode % NUM_PIPELINE_HASH_BUCKETS];
 	PipelineHashMap map;
 	map.key = key;
 	map.value = value;
@@ -1079,7 +1111,7 @@ typedef struct VulkanRenderer
 	VulkanTexture *dummyFragTexture;
 
 	PipelineLayoutHashArray pipelineLayoutArray;
-	PipelineHashArray pipelineArray;
+	PipelineHashTable pipelineHashTable;
 	RenderPassHashArray renderPassArray;
 	FramebufferHashArray framebufferArray;
 	SamplerStateHashArray samplerStateArray;
@@ -4394,12 +4426,12 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 	hash.depthStencilState = GetPackedDepthStencilState(
 		renderer->depthStencilState
 	);
-	hash.vertexBufferBindingsHash = renderer->currentVertexBufferBindingsIndex;
+	hash.vertexBufferBindingsIndex = renderer->currentVertexBufferBindingsIndex;
 	hash.primitiveType = renderer->currentPrimitiveType;
 	hash.sampleMask = renderer->multiSampleMask[0];
 	MOJOSHADER_vkGetBoundShaders(&vertShader, &fragShader);
-	hash.vertShader = (uint64_t) (size_t) vertShader;
-	hash.fragShader = (uint64_t) (size_t) fragShader;
+	hash.vertShader = vertShader;
+	hash.fragShader = fragShader;
 	hash.renderPass = renderer->renderPass;
 
 	renderer->currentPipelineLayout = VULKAN_INTERNAL_FetchPipelineLayout(
@@ -4408,7 +4440,7 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 		fragShader
 	);
 
-	pipeline = PipelineHashArray_Fetch(&renderer->pipelineArray, hash);
+	pipeline = PipelineHashTable_Fetch(&renderer->pipelineHashTable, hash);
 	if (pipeline != VK_NULL_HANDLE)
 	{
 		return pipeline;
@@ -4651,7 +4683,7 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 	SDL_free(attributeDescriptions);
 	SDL_free(divisorDescriptions);
 
-	PipelineHashArray_Insert(&renderer->pipelineArray, hash, pipeline);
+	PipelineHashTable_Insert(&renderer->pipelineHashTable, hash, pipeline);
 	return pipeline;
 }
 
@@ -6565,7 +6597,8 @@ static VkSampler VULKAN_INTERNAL_FetchSamplerState(
 static void VULKAN_DestroyDevice(FNA3D_Device *device)
 {
 	VulkanRenderer *renderer = (VulkanRenderer*) device->driverData;
-	uint32_t i;
+	uint32_t i, j;
+	PipelineHashArray hashArray;
 	VkResult waitResult;
 
 	VULKAN_INTERNAL_Flush(renderer);
@@ -6622,13 +6655,21 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 	SDL_free(renderer->commands);
 
-	for (i = 0; i < renderer->pipelineArray.count; i += 1)
+	for (i = 0; i < NUM_PIPELINE_HASH_BUCKETS; i += 1)
 	{
-		renderer->vkDestroyPipeline(
-			renderer->logicalDevice,
-			renderer->pipelineArray.elements[i].value,
-			NULL
-		);
+		hashArray = renderer->pipelineHashTable.buckets[i];
+		for (j = 0; j < hashArray.count; j += 1)
+		{
+			renderer->vkDestroyPipeline(
+				renderer->logicalDevice,
+				renderer->pipelineHashTable.buckets[i].elements[j].value,
+				NULL
+			);
+		}
+		if (hashArray.elements != NULL)
+		{
+			SDL_free(hashArray.elements);
+		}
 	}
 
 	for (i = 0; i < MAX_VERTEXTEXTURE_SAMPLERS; i += 1)
@@ -6756,7 +6797,6 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	renderer->vkDestroyInstance(renderer->instance, NULL);
 
 	SDL_free(renderer->pipelineLayoutArray.elements);
-	SDL_free(renderer->pipelineArray.elements);
 	SDL_free(renderer->renderPassArray.elements);
 	SDL_free(renderer->samplerStateArray.elements);
 
