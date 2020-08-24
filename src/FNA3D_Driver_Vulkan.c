@@ -331,11 +331,6 @@ typedef struct SamplerDescriptorSetData
 	VkDescriptorImageInfo descriptorImageInfo[MAX_TEXTURE_SAMPLERS]; /* used for vertex samplers as well */
 } SamplerDescriptorSetData;
 
-typedef struct UniformDescriptorSetData
-{
-	VkDescriptorBufferInfo descriptorBufferInfo;
-} UniformDescriptorSetData;
-
 typedef struct SamplerDescriptorSetHashMap
 {
 	uint64_t key;
@@ -1086,6 +1081,54 @@ static inline void FramebufferHashArray_Insert(
 	arr->count += 1;
 }
 
+typedef struct SamplerStateHashMap
+{
+	PackedState key;
+	VkSampler value;
+} SamplerStateHashMap;
+
+typedef struct SamplerStateHashArray
+{
+	SamplerStateHashMap *elements;
+	int32_t count;
+	int32_t capacity;
+} SamplerStateHashArray;
+
+static inline VkSampler SamplerStateHashArray_Fetch(
+	SamplerStateHashArray *arr,
+	PackedState key
+) {
+	int32_t i;
+
+	for (i = 0; i < arr->count; i += 1)
+	{
+		if (	key.a == arr->elements[i].key.a &&
+			key.b == arr->elements[i].key.b		)
+		{
+			return arr->elements[i].value;
+		}
+	}
+
+	return VK_NULL_HANDLE;
+}
+
+static inline void SamplerStateHashArray_Insert(
+	SamplerStateHashArray *arr,
+	PackedState key,
+	VkSampler value
+) {
+	SamplerStateHashMap map =
+	{
+		{ key.a, key.b }, /* FIXME: Why can't VS2010 compile with just "key"? */
+		value
+	};
+
+	EXPAND_ARRAY_IF_NEEDED(arr, 4, SamplerStateHashMap)
+
+	arr->elements[arr->count] = map;
+	arr->count += 1;
+}
+
 typedef struct DescriptorSetLayoutHash
 {
 	VkDescriptorType descriptorType;
@@ -1189,10 +1232,10 @@ static inline VkPipelineLayout PipelineLayoutHashArray_Fetch(
 	for (i = 0; i < arr->count; i += 1)
 	{
 		const PipelineLayoutHash *e = &arr->elements[i].key;
-		if (	key.vertUniformBufferCount == e->vertUniformBufferCount &&
-			key.vertSamplerCount == e->vertSamplerCount &&
-			key.fragUniformBufferCount == e->fragUniformBufferCount &&
-			key.fragSamplerCount == e->fragSamplerCount	)
+		if (	key.vertexSamplerLayout == e->vertexSamplerLayout &&
+			key.fragSamplerLayout == e->fragSamplerLayout &&
+			key.vertexUniformLayout == e->vertexUniformLayout &&
+			key.fragUniformLayout == e->fragUniformLayout	)
 		{
 			return arr->elements[i].value;
 		}
@@ -1442,6 +1485,9 @@ typedef struct VulkanRenderer
 	VkSampler dummyVertSamplerState;
 	VulkanTexture *dummyVertTexture;
 	VulkanTexture *dummyFragTexture;
+
+	VkDescriptorSetLayout vertexUniformBufferDescriptorSetLayout;
+	VkDescriptorSetLayout fragUniformBufferDescriptorSetLayout;
 
 	ShaderResourcesHashTable shaderResourcesHashTable;
 	DescriptorSetLayoutHashArray descriptorSetLayoutArray;
@@ -2837,9 +2883,11 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 	descriptorSetLayoutHash.stageFlag = stageFlag;
 	descriptorSetLayoutHash.bitmask = VULKAN_INTERNAL_FetchSamplerBitmask(shader);
 
-	if (hmgeti(renderer->descriptorSetLayoutHashMap, descriptorSetLayoutHash) != -1)
+	descriptorSetLayout = DescriptorSetLayoutHashArray_Fetch(&renderer->descriptorSetLayoutArray, descriptorSetLayoutHash);
+
+	if (descriptorSetLayout != VK_NULL_HANDLE)
 	{
-		return hmget(renderer->descriptorSetLayoutHashMap, descriptorSetLayoutHash);
+		return descriptorSetLayout;
 	}
 
 	if (samplerCount == 0) /* dummy sampler case */
@@ -2881,7 +2929,12 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 		return NULL_DESC_LAYOUT;
 	}
 
-	hmput(renderer->descriptorSetLayoutHashMap, descriptorSetLayoutHash, descriptorSetLayout);
+	DescriptorSetLayoutHashArray_Insert(
+		&renderer->descriptorSetLayoutArray,
+		descriptorSetLayoutHash,
+		descriptorSetLayout
+	);
+	
 	return descriptorSetLayout;
 }
 
@@ -5527,8 +5580,8 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 	hash.primitiveType = renderer->currentPrimitiveType;
 	hash.sampleMask = renderer->multiSampleMask[0];
 	MOJOSHADER_vkGetBoundShaders(&vertShader, &fragShader);
-	hash.vertShader = (uint64_t) vertShader;
-	hash.fragShader = (uint64_t) fragShader;
+	hash.vertShader = vertShader;
+	hash.fragShader = fragShader;
 	hash.renderPass = renderer->renderPass;
 
 	renderer->currentPipelineLayout = VULKAN_INTERNAL_FetchPipelineLayout(
@@ -7032,10 +7085,14 @@ static VkSampler VULKAN_INTERNAL_FetchSamplerState(
 	VkSampler state;
 	VkResult result;
 
-	StateHash hash = GetSamplerStateHash(*samplerState);
-	if (hmgeti(renderer->samplerStateHashMap, hash) != -1)
+	PackedState hash = GetPackedSamplerState(*samplerState);
+	state = SamplerStateHashArray_Fetch(
+		&renderer->samplerStateArray,
+		hash
+	);
+	if (state != VK_NULL_HANDLE)
 	{
-		return hmget(renderer->samplerStateHashMap, hash);
+		return state;
 	}
 
 	createInfo.addressModeU = XNAToVK_SamplerAddressMode[
@@ -7073,7 +7130,11 @@ static VkSampler VULKAN_INTERNAL_FetchSamplerState(
 		return 0;
 	}
 
-	hmput(renderer->samplerStateHashMap, hash, state);
+	SamplerStateHashArray_Insert(
+		&renderer->samplerStateArray,
+		hash,
+		state
+	);
 
 	return state;
 }
@@ -7086,7 +7147,8 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 {
 	VulkanRenderer *renderer = (VulkanRenderer*) device->driverData;
 	ShaderResources *shaderResources;
-	uint32_t i;
+	PipelineHashArray hashArray;
+	uint32_t i, j;
 	VkResult waitResult;
 
 	VULKAN_INTERNAL_Flush(renderer);
@@ -7189,11 +7251,11 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		}
 	}
 
-	for (i = 0; i < hmlenu(renderer->descriptorSetLayoutHashMap); i += 1)
+	for (i = 0; i < renderer->descriptorSetLayoutArray.count; i += 1)
 	{
 		renderer->vkDestroyDescriptorSetLayout(
 			renderer->logicalDevice,
-			renderer->descriptorSetLayoutHashMap[i].value,
+			renderer->descriptorSetLayoutArray.elements[i].value,
 			NULL
 		);
 	}
@@ -10234,12 +10296,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		MAX_VERTEXTEXTURE_SAMPLERS
 	);
 
-	/*
-	 * Create descriptor set layouts
-	 */
-
-	hmdefault(renderer->descriptorSetLayoutHashMap, NULL_DESC_LAYOUT);
-
 	/* Define vertex UBO set layout */
 	SDL_zero(layoutBinding);
 	layoutBinding.binding = 0;
@@ -10344,9 +10400,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		-1,
 		sizeof(renderer->multiSampleMask) /* AKA 0xFFFFFFFF */
 	);
-
-	SDL_memset(&NullSamplerDescriptorSetHashMapEntry, 0, sizeof(SamplerDescriptorSetHashMap));
-	SDL_memset(&NullUniformDescriptorSetHashMapEntry, 0, sizeof(UniformDescriptorSetHashMap));
 
 	/*
 	 * Create query pool
