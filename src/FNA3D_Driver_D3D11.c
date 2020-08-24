@@ -4609,7 +4609,7 @@ try_create_device:
 	{
 		/* Creating a debug mode device will fail on some systems due to the necessary
 		 * debug infrastructure not being available. Remove the debug flag and retry. */
-		FNA3D_LogWarn("Creating device in debug mode failed with error %08X. Trying non-debug.");
+		FNA3D_LogWarn("Creating device in debug mode failed with error %08X. Trying non-debug.", res);
 		flags ^= D3D11_CREATE_DEVICE_DEBUG;
 		debugMode = 0;
 		goto try_create_device;
