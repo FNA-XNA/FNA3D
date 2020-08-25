@@ -340,7 +340,7 @@ typedef struct SamplerDescriptorSetHashMap
 
 typedef struct SamplerDescriptorSetHashArray
 {
-	SamplerDescriptorSetHashMap *elements;
+	uint32_t *elements;
 	int32_t count;
 	int32_t capacity;
 } SamplerDescriptorSetHashArray;
@@ -349,7 +349,10 @@ typedef struct SamplerDescriptorSetHashArray
 
 typedef struct SamplerDescriptorSetHashTable
 {
-	SamplerDescriptorSetHashArray buckets[NUM_DESCRIPTOR_SET_HASH_BUCKETS];
+	SamplerDescriptorSetHashArray buckets[NUM_DESCRIPTOR_SET_HASH_BUCKETS]; /* these buckets store indices */
+	SamplerDescriptorSetHashMap *elements; /* where the hash map elements are stored */
+	uint32_t count;
+	uint32_t capacity;
 } SamplerDescriptorSetHashTable;
 
 /* The hashing logic was taken from DXVK:
@@ -385,10 +388,10 @@ static inline VkDescriptorSet SamplerDescriptorSetHashTable_FetchDescriptorSet(
 
 	for (i = 0; i < arr->count; i += 1)
 	{
-		const SamplerDescriptorSetData *e = &arr->elements[i].descriptorSetData;
+		const SamplerDescriptorSetData *e = &table->elements[arr->elements[i]].descriptorSetData;
 		if (SDL_memcmp(&key, e, sizeof(SamplerDescriptorSetData)) == 0)
 		{
-			return arr->elements[i].descriptorSet;
+			return table->elements[arr->elements[i]].descriptorSet;
 		}
 	}
 
@@ -405,7 +408,7 @@ static inline uint8_t SamplerDescriptorSetHashTable_DescriptorSetDataExists(
 
 	for (i = 0; i < arr->count; i += 1)
 	{
-		const SamplerDescriptorSetData *e = &arr->elements[i].descriptorSetData;
+		const SamplerDescriptorSetData *e = &table->elements[arr->elements[i]].descriptorSetData;
 		if (SDL_memcmp(&key, e, sizeof(SamplerDescriptorSetData)) == 0)
 		{
 			return 1;
@@ -427,10 +430,15 @@ static inline void SamplerDescriptorSetHashTable_InsertDescriptorSetData(
 	map.descriptorSetData = value;
 	map.descriptorSet = NULL_DESC_SET; /* this gets filled in later */
 
-	EXPAND_ARRAY_IF_NEEDED(arr, 2, SamplerDescriptorSetHashMap)
+	EXPAND_ARRAY_IF_NEEDED(arr, 2, uint32_t)
 
-	arr->elements[arr->count] = map;
+	arr->elements[arr->count] = table->count;
 	arr->count += 1;
+
+	EXPAND_ARRAY_IF_NEEDED(table, 2, SamplerDescriptorSetHashMap)
+
+	table->elements[table->count] = map;
+	table->count += 1;
 }
 
 typedef struct UniformDescriptorSetData
@@ -447,14 +455,17 @@ typedef struct UniformDescriptorSetHashMap
 
 typedef struct UniformDescriptorSetHashArray
 {
-	UniformDescriptorSetHashMap *elements;
+	uint32_t *elements;
 	int32_t count;
 	int32_t capacity;
 } UniformDescriptorSetHashArray;
 
 typedef struct UniformDescriptorSetHashTable
 {
-	UniformDescriptorSetHashArray buckets[NUM_DESCRIPTOR_SET_HASH_BUCKETS];
+	UniformDescriptorSetHashArray buckets[NUM_DESCRIPTOR_SET_HASH_BUCKETS]; /* these buckets store indices */
+	UniformDescriptorSetHashMap *elements; /* where the hash map elements are stored */
+	uint32_t count;
+	uint32_t capacity;
 } UniformDescriptorSetHashTable;
 
 static inline uint64_t UniformDescriptorSetHashTable_GetHashCode(
@@ -485,10 +496,10 @@ static inline VkDescriptorSet UniformDescriptorSetHashTable_FetchDescriptorSet(
 
 	for (i = 0; i < arr->count; i += 1)
 	{
-		const UniformDescriptorSetData *e = &arr->elements[i].descriptorSetData;
+		const UniformDescriptorSetData *e = &table->elements[arr->elements[i]].descriptorSetData;
 		if (SDL_memcmp(&key, e, sizeof(UniformDescriptorSetData)) == 0)
 		{
-			return arr->elements[i].descriptorSet;
+			return table->elements[arr->elements[i]].descriptorSet;
 		}
 	}
 
@@ -505,7 +516,7 @@ static inline uint8_t UniformDescriptorSetHashTable_DescriptorSetDataExists(
 
 	for (i = 0; i < arr->count; i += 1)
 	{
-		const UniformDescriptorSetData *e = &arr->elements[i].descriptorSetData;
+		const UniformDescriptorSetData *e = &table->elements[arr->elements[i]].descriptorSetData;
 		if (SDL_memcmp(&key, e, sizeof(UniformDescriptorSetData)) == 0)
 		{
 			return 1;
@@ -527,10 +538,15 @@ static inline void UniformDescriptorSetHashTable_InsertDescriptorSetData(
 	map.descriptorSetData = value;
 	map.descriptorSet = NULL_DESC_SET; /* this gets filled in later */
 
-	EXPAND_ARRAY_IF_NEEDED(arr, 2, UniformDescriptorSetHashMap)
+	EXPAND_ARRAY_IF_NEEDED(arr, 2, uint32_t)
 
-	arr->elements[arr->count] = map;
+	arr->elements[arr->count] = table->count;
 	arr->count += 1;
+
+	EXPAND_ARRAY_IF_NEEDED(table, 2, UniformDescriptorSetHashMap)
+
+	table->elements[table->count] = map;
+	table->count += 1;
 }
 
 typedef struct ShaderResources
@@ -1149,11 +1165,30 @@ typedef struct DescriptorSetLayoutHashArray
 	int32_t capacity;
 } DescriptorSetLayoutHashArray;
 
-static inline VkDescriptorSetLayout DescriptorSetLayoutHashArray_Fetch(
-	DescriptorSetLayoutHashArray *arr,
+#define NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS 1031
+
+typedef struct DescriptorSetLayoutHashTable
+{
+	DescriptorSetLayoutHashArray buckets[NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS];
+} DescriptorSetLayoutHashTable;
+
+static inline uint64_t DescriptorSetLayoutHashTable_GetHashCode(DescriptorSetLayoutHash key)
+{
+	const uint64_t HASH_FACTOR = 97;
+	uint64_t result = 1;
+	result = result * HASH_FACTOR + key.descriptorType;
+	result = result * HASH_FACTOR + key.bitmask;
+	result = result * HASH_FACTOR + key.stageFlag;
+	return result;
+}
+
+static inline VkDescriptorSetLayout DescriptorSetLayoutHashTable_Fetch(
+	DescriptorSetLayoutHashTable *table,
 	DescriptorSetLayoutHash key
 ) {
 	int32_t i;
+	uint64_t hashcode = DescriptorSetLayoutHashTable_GetHashCode(key);
+	DescriptorSetLayoutHashArray *arr = &table->buckets[hashcode % NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS];
 
 	for (i = 0; i < arr->count; i += 1)
 	{
@@ -1167,11 +1202,14 @@ static inline VkDescriptorSetLayout DescriptorSetLayoutHashArray_Fetch(
 	return VK_NULL_HANDLE;
 }
 
-static inline void DescriptorSetLayoutHashArray_Insert(
-	DescriptorSetLayoutHashArray *arr,
+static inline void DescriptorSetLayoutHashTable_Insert(
+	DescriptorSetLayoutHashTable *table,
 	DescriptorSetLayoutHash key,
 	VkDescriptorSetLayout value
 ) {
+	uint64_t hashcode = DescriptorSetLayoutHashTable_GetHashCode(key);
+	DescriptorSetLayoutHashArray *arr = &table->buckets[hashcode % NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS];
+
 	DescriptorSetLayoutHashMap map;
 	map.key = key;
 	map.value = value;
@@ -1490,7 +1528,7 @@ typedef struct VulkanRenderer
 	VkDescriptorSetLayout fragUniformBufferDescriptorSetLayout;
 
 	ShaderResourcesHashTable shaderResourcesHashTable;
-	DescriptorSetLayoutHashArray descriptorSetLayoutArray;
+	DescriptorSetLayoutHashTable descriptorSetLayoutTable;
 	PipelineLayoutHashTable pipelineLayoutTable;
 	PipelineHashTable pipelineHashTable;
 	RenderPassHashArray renderPassArray;
@@ -2883,7 +2921,7 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 	descriptorSetLayoutHash.stageFlag = stageFlag;
 	descriptorSetLayoutHash.bitmask = VULKAN_INTERNAL_FetchSamplerBitmask(shader);
 
-	descriptorSetLayout = DescriptorSetLayoutHashArray_Fetch(&renderer->descriptorSetLayoutArray, descriptorSetLayoutHash);
+	descriptorSetLayout = DescriptorSetLayoutHashTable_Fetch(&renderer->descriptorSetLayoutTable, descriptorSetLayoutHash);
 
 	if (descriptorSetLayout != VK_NULL_HANDLE)
 	{
@@ -2929,8 +2967,8 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 		return NULL_DESC_LAYOUT;
 	}
 
-	DescriptorSetLayoutHashArray_Insert(
-		&renderer->descriptorSetLayoutArray,
+	DescriptorSetLayoutHashTable_Insert(
+		&renderer->descriptorSetLayoutTable,
 		descriptorSetLayoutHash,
 		descriptorSetLayout
 	);
@@ -2971,6 +3009,14 @@ static ShaderResources* VULKAN_INTERNAL_FetchShaderResources(
 
 		shaderResources->allocatedSamplerDescriptorSetCount = 0;
 		shaderResources->allocatedUniformDescriptorSetCount = 0;
+
+		shaderResources->samplerDescriptorSetHashTable.elements = NULL;
+		shaderResources->samplerDescriptorSetHashTable.count = 0;
+		shaderResources->samplerDescriptorSetHashTable.capacity = 0;
+
+		shaderResources->uniformDescriptorSetHashTable.elements = NULL;
+		shaderResources->uniformDescriptorSetHashTable.count = 0;
+		shaderResources->uniformDescriptorSetHashTable.capacity = 0;
 
 		for (i = 0; i < NUM_DESCRIPTOR_SET_HASH_BUCKETS; i += 1)
 		{
@@ -3231,7 +3277,7 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 
 static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 {
-	uint32_t i, j, k, m;
+	uint32_t i, j, k;
 
 	uint32_t samplerDescriptorSetCount;
 	uint32_t uniformDescriptorSetCount;
@@ -3239,8 +3285,6 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 	uint32_t samplerDescriptorCount;
 	uint32_t uniformDescriptorCount;
 
-	uint32_t nextSamplerDescriptorSetIndex;
-	uint32_t nextUniformDescriptorSetIndex;
 	VkDescriptorSet nextDescriptorSet;
 
 	uint32_t writeDescriptorSetIndex = 0;
@@ -3355,30 +3399,16 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 
 		/* assign actual descriptor sets */
 
-		nextSamplerDescriptorSetIndex = 0;
-
-		for (j = 0; j < NUM_DESCRIPTOR_SET_HASH_BUCKETS; j += 1)
+		for (j = 0; j < shaderResources->samplerDescriptorSetHashTable.count; j += 1)
 		{
-			for (k = 0; k < shaderResources->samplerDescriptorSetHashTable.buckets[j].count; k += 1)
-			{
-				shaderResources->samplerDescriptorSetHashTable.buckets[j].elements[k].descriptorSet =
-					shaderResources->samplerDescriptorSets[nextSamplerDescriptorSetIndex];
-
-				nextSamplerDescriptorSetIndex += 1;
-			}
+			shaderResources->samplerDescriptorSetHashTable.elements[j].descriptorSet =
+				shaderResources->samplerDescriptorSets[j];
 		}
 
-		nextUniformDescriptorSetIndex = 0;
-
-		for (j = 0; j < NUM_DESCRIPTOR_SET_HASH_BUCKETS; j += 1)
+		for (j = 0; j < shaderResources->uniformDescriptorSetHashTable.count; j += 1)
 		{
-			for (k = 0; k < shaderResources->uniformDescriptorSetHashTable.buckets[j].count; k += 1)
-			{
-				shaderResources->uniformDescriptorSetHashTable.buckets[j].elements[k].descriptorSet =
-					shaderResources->uniformDescriptorSets[nextUniformDescriptorSetIndex];
-
-				nextSamplerDescriptorSetIndex += 1;
-			}
+			shaderResources->uniformDescriptorSetHashTable.elements[j].descriptorSet =
+				shaderResources->uniformDescriptorSets[j];
 		}
 
 	}
@@ -3391,52 +3421,46 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 	{
 		shaderResources = renderer->shaderResourcesHashTable.elements[i].value;
 
-		for (j = 0; j < NUM_DESCRIPTOR_SET_HASH_BUCKETS; j += 1)
+		for (j = 0; j < shaderResources->samplerDescriptorSetHashTable.count; j += 1)
 		{
-			for (k = 0; k < shaderResources->samplerDescriptorSetHashTable.buckets[j].count; k += 1)
+			nextDescriptorSet = shaderResources->samplerDescriptorSetHashTable.elements[j].descriptorSet;
+
+			for (k = 0; k < MAX_TEXTURE_SAMPLERS; k += 1)
 			{
-				nextDescriptorSet = shaderResources->samplerDescriptorSetHashTable.buckets[j].elements[k].descriptorSet;
-
-				for (m = 0; m < MAX_TEXTURE_SAMPLERS; m += 1)
+				if (shaderResources->samplerBitmask & (1 << k))
 				{
-					if (shaderResources->samplerBitmask & (1 << m))
-					{
-						writeDescriptorSets[writeDescriptorSetIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-						writeDescriptorSets[writeDescriptorSetIndex].pNext = NULL;
-						writeDescriptorSets[writeDescriptorSetIndex].dstSet = nextDescriptorSet;
-						writeDescriptorSets[writeDescriptorSetIndex].dstBinding = m;
-						writeDescriptorSets[writeDescriptorSetIndex].dstArrayElement = 0;
-						writeDescriptorSets[writeDescriptorSetIndex].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-						writeDescriptorSets[writeDescriptorSetIndex].descriptorCount = 1;
-						writeDescriptorSets[writeDescriptorSetIndex].pBufferInfo = NULL;
-						writeDescriptorSets[writeDescriptorSetIndex].pImageInfo = &shaderResources->samplerDescriptorSetHashTable.buckets[j].elements[k].descriptorSetData.descriptorImageInfo[m];
-						writeDescriptorSets[writeDescriptorSetIndex].pTexelBufferView = NULL;
+					writeDescriptorSets[writeDescriptorSetIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+					writeDescriptorSets[writeDescriptorSetIndex].pNext = NULL;
+					writeDescriptorSets[writeDescriptorSetIndex].dstSet = nextDescriptorSet;
+					writeDescriptorSets[writeDescriptorSetIndex].dstBinding = k;
+					writeDescriptorSets[writeDescriptorSetIndex].dstArrayElement = 0;
+					writeDescriptorSets[writeDescriptorSetIndex].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+					writeDescriptorSets[writeDescriptorSetIndex].descriptorCount = 1;
+					writeDescriptorSets[writeDescriptorSetIndex].pBufferInfo = NULL;
+					writeDescriptorSets[writeDescriptorSetIndex].pImageInfo = &shaderResources->samplerDescriptorSetHashTable.elements[j].descriptorSetData.descriptorImageInfo[k];
+					writeDescriptorSets[writeDescriptorSetIndex].pTexelBufferView = NULL;
 
-						writeDescriptorSetIndex += 1;
-					}
+					writeDescriptorSetIndex += 1;
 				}
 			}
 		}
 
-		for (j = 0; j < NUM_DESCRIPTOR_SET_HASH_BUCKETS; j += 1)
+		for (j = 0; j < shaderResources->uniformDescriptorSetHashTable.count; j += 1)
 		{
-			for (k = 0; k < shaderResources->uniformDescriptorSetHashTable.buckets[j].count; k += 1)
-			{
-				nextDescriptorSet = shaderResources->uniformDescriptorSetHashTable.buckets[j].elements[k].descriptorSet;
+			nextDescriptorSet = shaderResources->uniformDescriptorSetHashTable.elements[j].descriptorSet;
 
-				writeDescriptorSets[writeDescriptorSetIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-				writeDescriptorSets[writeDescriptorSetIndex].pNext = NULL;
-				writeDescriptorSets[writeDescriptorSetIndex].dstSet = nextDescriptorSet;
-				writeDescriptorSets[writeDescriptorSetIndex].dstBinding = 0;
-				writeDescriptorSets[writeDescriptorSetIndex].dstArrayElement = 0;
-				writeDescriptorSets[writeDescriptorSetIndex].descriptorCount = 1;
-				writeDescriptorSets[writeDescriptorSetIndex].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-				writeDescriptorSets[writeDescriptorSetIndex].pBufferInfo = &shaderResources->uniformDescriptorSetHashTable.buckets[j].elements[k].descriptorSetData.descriptorBufferInfo;
-				writeDescriptorSets[writeDescriptorSetIndex].pImageInfo = NULL;
-				writeDescriptorSets[writeDescriptorSetIndex].pTexelBufferView = NULL;
+			writeDescriptorSets[writeDescriptorSetIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			writeDescriptorSets[writeDescriptorSetIndex].pNext = NULL;
+			writeDescriptorSets[writeDescriptorSetIndex].dstSet = nextDescriptorSet;
+			writeDescriptorSets[writeDescriptorSetIndex].dstBinding = 0;
+			writeDescriptorSets[writeDescriptorSetIndex].dstArrayElement = 0;
+			writeDescriptorSets[writeDescriptorSetIndex].descriptorCount = 1;
+			writeDescriptorSets[writeDescriptorSetIndex].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+			writeDescriptorSets[writeDescriptorSetIndex].pBufferInfo = &shaderResources->uniformDescriptorSetHashTable.elements[j].descriptorSetData.descriptorBufferInfo;
+			writeDescriptorSets[writeDescriptorSetIndex].pImageInfo = NULL;
+			writeDescriptorSets[writeDescriptorSetIndex].pTexelBufferView = NULL;
 
-				writeDescriptorSetIndex += 1;
-			}
+			writeDescriptorSetIndex += 1;
 		}
 	}
 
@@ -3477,6 +3501,9 @@ static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer *renderer)
 
 		shaderResources->samplerDataCount = 0;
 		shaderResources->uniformDataCount = 0;
+
+		shaderResources->samplerDescriptorSetHashTable.count = 0;
+		shaderResources->uniformDescriptorSetHashTable.count = 0;
 
 		for (j = 0; j < NUM_DESCRIPTOR_SET_HASH_BUCKETS; j += 1)
 		{
@@ -7251,13 +7278,18 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		}
 	}
 
-	for (i = 0; i < renderer->descriptorSetLayoutArray.count; i += 1)
+	for (i = 0; i < NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS; i += 1)
 	{
-		renderer->vkDestroyDescriptorSetLayout(
-			renderer->logicalDevice,
-			renderer->descriptorSetLayoutArray.elements[i].value,
-			NULL
-		);
+		for (j = 0; j < renderer->descriptorSetLayoutTable.buckets[i].count; j += 1)
+		{
+			renderer->vkDestroyDescriptorSetLayout(
+				renderer->logicalDevice,
+				renderer->descriptorSetLayoutTable.buckets[i].elements[j].value,
+				NULL
+			);
+		}
+
+		SDL_free(renderer->descriptorSetLayoutTable.buckets[i].elements);
 	}
 
 	renderer->vkDestroyDescriptorSetLayout(
@@ -7354,7 +7386,6 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	renderer->vkDestroyInstance(renderer->instance, NULL);
 
 	SDL_free(renderer->shaderResourcesHashTable.elements);
-	SDL_free(renderer->descriptorSetLayoutArray.elements);
 	SDL_free(renderer->renderPassArray.elements);
 	SDL_free(renderer->samplerStateArray.elements);
 
@@ -10435,6 +10466,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	{
 		renderer->shaderResourcesHashTable.buckets[i].count = 0;
 		renderer->shaderResourcesHashTable.buckets[i].capacity = 0;
+		renderer->shaderResourcesHashTable.elements = NULL;
 		renderer->shaderResourcesHashTable.count = 0;
 		renderer->shaderResourcesHashTable.capacity = 0;
 	}
