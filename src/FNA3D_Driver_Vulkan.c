@@ -2344,12 +2344,16 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
 	VkResult vulkanResult;
-	VkApplicationInfo appInfo = { VK_STRUCTURE_TYPE_APPLICATION_INFO };
+	VkApplicationInfo appInfo;
 	const char **instanceExtensionNames;
 	uint32_t instanceExtensionCount;
-	VkInstanceCreateInfo createInfo = { VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO };
-	const char *layerNames[] = { "VK_LAYER_KHRONOS_validation" };
+	VkInstanceCreateInfo createInfo;
+	static const char *layerNames[] = { "VK_LAYER_KHRONOS_validation" };
 
+	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
+	appInfo.pNext = NULL;
+	appInfo.pApplicationName = NULL;
+	appInfo.applicationVersion = 0;
 	appInfo.pEngineName = "FNA3D";
 	appInfo.engineVersion = FNA3D_COMPILED_VERSION;
 	appInfo.apiVersion = VK_MAKE_VERSION(1, 0, 0);
@@ -2416,10 +2420,13 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 		);
 	}
 
+	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
+	createInfo.pNext = NULL;
+	createInfo.flags = 0;
 	createInfo.pApplicationInfo = &appInfo;
+	createInfo.ppEnabledLayerNames = layerNames;
 	createInfo.enabledExtensionCount = instanceExtensionCount;
 	createInfo.ppEnabledExtensionNames = instanceExtensionNames;
-	createInfo.ppEnabledLayerNames = layerNames;
 	if (renderer->debugMode)
 	{
 		createInfo.enabledLayerCount = SDL_arraysize(layerNames);
@@ -3997,7 +4004,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	SwapChainSupportDetails swapChainSupportDetails;
 	VkSurfaceFormatKHR surfaceFormat;
 	VkPresentModeKHR presentMode;
-	VkExtent2D extent = { 0, 0 };
+	VkExtent2D extent;
 	uint32_t imageCount, swapChainImageCount, i;
 	VkSwapchainCreateInfoKHR swapChainCreateInfo;
 	VkImage *swapChainImages;
