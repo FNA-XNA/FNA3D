@@ -2864,13 +2864,17 @@ static ShaderResources* VULKAN_INTERNAL_FetchShaderResources(
 ) {
 	VkResult vulkanResult;
 	uint32_t i;
-	ShaderResources *shaderResources = ShaderResourcesHashTable_Fetch(&renderer->shaderResourcesHashTable, shader);
+	ShaderResources *shaderResources;
 	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo;
 	VkWriteDescriptorSet writeDescriptorSet;
 	VkDescriptorBufferInfo bufferInfo;
 	VkBuffer vUniform, fUniform;
 	unsigned long long vOff, fOff, vSize, fSize;
 
+	shaderResources = ShaderResourcesHashTable_Fetch(
+		&renderer->shaderResourcesHashTable,
+		shader
+	);
 	if (shaderResources == NULL_SHADER_RESOURCES)
 	{
 		shaderResources = SDL_malloc(sizeof(ShaderResources));
