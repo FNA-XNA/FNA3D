@@ -152,11 +152,10 @@ void* PackedStateArray_Fetch(PackedStateArray arr, PackedState key)
 
 void PackedStateArray_Insert(PackedStateArray *arr, PackedState key, void* value)
 {
-	PackedStateMap map =
-	{
-		{ key.a, key.b }, /* FIXME: Why can't VS2010 compile with just "key"? */
-		value
-	};
+	PackedStateMap map;
+	map.key.a = key.a;
+	map.key.b = key.b;
+	map.value = value;
 
 	EXPAND_ARRAY_IF_NEEDED(arr, 4, PackedStateMap)
 
