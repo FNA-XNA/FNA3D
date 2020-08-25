@@ -3311,7 +3311,9 @@ static void VULKAN_INTERNAL_RecordCommands(VulkanRenderer *renderer)
 
 	/* Begin recording */
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.pNext = NULL;
 	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	beginInfo.pInheritanceInfo = NULL;
 	result = renderer->vkBeginCommandBuffer(
 		renderer->commandBuffer,
 		&beginInfo
@@ -3822,6 +3824,7 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 	}
 
 	memoryBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+	memoryBarrier.pNext = NULL;
 	memoryBarrier.srcAccessMask = 0;
 	memoryBarrier.dstAccessMask = 0;
 	memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
@@ -3898,8 +3901,11 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	}
 
 	memoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	memoryBarrier.pNext = NULL;
 	memoryBarrier.srcAccessMask = 0;
 	memoryBarrier.dstAccessMask = 0;
+	memoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	memoryBarrier.newLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	memoryBarrier.image = image;
@@ -3908,8 +3914,6 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	memoryBarrier.subresourceRange.layerCount = layerCount;
 	memoryBarrier.subresourceRange.baseMipLevel = baseLevel;
 	memoryBarrier.subresourceRange.levelCount = levelCount;
-	memoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	memoryBarrier.newLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 	prevAccess = *resourceAccessType;
 	pPrevAccessInfo = &AccessMap[prevAccess];
@@ -4783,6 +4787,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	}
 
 	imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	imageViewCreateInfo.pNext = NULL;
 	imageViewCreateInfo.flags = 0;
 	imageViewCreateInfo.image = texture->image;
 	imageViewCreateInfo.format = format;
