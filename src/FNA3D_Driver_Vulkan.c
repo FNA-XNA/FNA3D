@@ -2664,10 +2664,7 @@ static uint8_t VULKAN_INTERNAL_AllocateDescriptorSets(
 ) {
 	VkResult vulkanResult;
 	uint32_t i;
-	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo =
-	{
-		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
-	};
+	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo;
 	VkDescriptorSetLayout *descriptorSetLayouts = SDL_stack_alloc(VkDescriptorSetLayout, descriptorSetCount);
 
 	for (i = 0; i < descriptorSetCount; i += 1)
