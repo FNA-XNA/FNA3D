@@ -6418,14 +6418,17 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	renderer->needNewPipeline = 1;
 
 	renderPassBeginInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+	renderPassBeginInfo.pNext = NULL;
+	renderPassBeginInfo.renderPass = renderer->renderPass;
+	renderPassBeginInfo.framebuffer = framebuffer;
 	renderPassBeginInfo.renderArea.offset.x = 0;
+	renderPassBeginInfo.renderArea.offset.y = 0;
 	renderPassBeginInfo.renderArea.extent.width =
 		renderer->colorAttachments[0]->dimensions.width;
 	renderPassBeginInfo.renderArea.extent.height =
 		renderer->colorAttachments[0]->dimensions.height;
-
-	renderPassBeginInfo.renderPass = renderer->renderPass;
-	renderPassBeginInfo.framebuffer = framebuffer;
+	renderPassBeginInfo.clearValueCount = 0;
+	renderPassBeginInfo.pClearValues = NULL;
 
 	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
 	{
