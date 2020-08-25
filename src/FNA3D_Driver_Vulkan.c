@@ -369,7 +369,6 @@ typedef struct ShaderResources
 {
 	SamplerDescriptorSetHashArray buckets[NUM_DESCRIPTOR_SET_HASH_BUCKETS]; /* these buckets store indices */
 	SamplerDescriptorSetHashMap *elements; /* where the hash map elements are stored */
-	uint32_t *indexToBucketLookup; /* reverse lookup so we can delete items */
 	uint32_t count;
 	uint32_t capacity;
 
@@ -2709,9 +2708,10 @@ static void VULKAN_INTERNAL_PrepareDescriptorSetWrite(
 ) {
 	VkWriteDescriptorSet *writeDescriptorSet;
 
-	if (renderer->writeDescriptorSetCount + 1 > renderer->writeDescriptorSetCapacity)
+	if (renderer->writeDescriptorSetCount == renderer->writeDescriptorSetCapacity)
 	{
 		renderer->writeDescriptorSetCapacity *= 2;
+
 		renderer->writeDescriptorSets = SDL_realloc(
 			renderer->writeDescriptorSets,
 			sizeof(VkWriteDescriptorSet) * renderer->writeDescriptorSetCapacity
@@ -2835,9 +2835,9 @@ static ShaderResources *ShaderResources_Init(
 	unsigned long long vOff, fOff, vSize, fSize;
 	ShaderResources *shaderResources = SDL_malloc(sizeof(ShaderResources));
 
-	shaderResources->elements = NULL;
+	shaderResources->elements = SDL_malloc(sizeof(SamplerDescriptorSetHashMap) * 16);
 	shaderResources->count = 0;
-	shaderResources->capacity = 0;
+	shaderResources->capacity = 16;
 
 	for (i = 0; i < NUM_DESCRIPTOR_SET_HASH_BUCKETS; i += 1)
 	{
@@ -2845,8 +2845,6 @@ static ShaderResources *ShaderResources_Init(
 		shaderResources->buckets[i].count = 0;
 		shaderResources->buckets[i].capacity = 0;
 	}
-
-	shaderResources->indexToBucketLookup = NULL;
 
 	shaderResources->samplerLayout = VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(renderer, shader, shaderStageFlag);
 	shaderResources->samplerCount = MOJOSHADER_vkGetShaderParseData(shader)->sampler_count;
@@ -3021,22 +3019,15 @@ static VkDescriptorSet ShaderResources_FetchDescriptorSet(
 
 	if (shaderResources->count == shaderResources->capacity)
 	{
-		shaderResources->capacity += SDL_max(shaderResources->capacity, 2);
+		shaderResources->capacity *= 2;
 
 		shaderResources->elements = SDL_realloc(
 			shaderResources->elements,
 			sizeof(SamplerDescriptorSetHashMap) * shaderResources->capacity
 		);
-
-		shaderResources->indexToBucketLookup = SDL_realloc(
-			shaderResources->indexToBucketLookup,
-			sizeof(uint32_t) * shaderResources->capacity
-		);
 	}
 
 	shaderResources->elements[shaderResources->count] = map;
-	shaderResources->indexToBucketLookup[shaderResources->count] = hashcode % NUM_DESCRIPTOR_SET_HASH_BUCKETS;
-
 	shaderResources->count += 1;
 
 	for (i = 0; i < shaderResources->samplerCount; i += 1)
@@ -3059,7 +3050,6 @@ static void ShaderResources_DeactivateUnusedDescriptorSets(
 	ShaderResources *shaderResources
 ) {
 	uint32_t i, j;
-	uint32_t bucketIndex;
 	SamplerDescriptorSetHashArray *arr;
 
 	for (i = 0; i < shaderResources->count; i += 1)
@@ -3067,11 +3057,10 @@ static void ShaderResources_DeactivateUnusedDescriptorSets(
 		shaderResources->elements[i].inactiveFrameCount += 1;
 
 		if (shaderResources->elements[i].inactiveFrameCount + 1 > 10) {
-			bucketIndex = shaderResources->indexToBucketLookup[i];
-			arr = &shaderResources->buckets[bucketIndex];
+			arr = &shaderResources->buckets[shaderResources->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
 
 			/* remove index from bucket */
-			for (j = 0; j < i; j += 1)
+			for (j = 0; j < arr->count; j += 1)
 			{
 				if (arr->elements[j] == i)
 				{
@@ -3093,7 +3082,6 @@ static void ShaderResources_DeactivateUnusedDescriptorSets(
 			if (i < shaderResources->count - 1)
 			{
 				shaderResources->elements[i] = shaderResources->elements[shaderResources->count - 1];
-				shaderResources->indexToBucketLookup[i] = shaderResources->indexToBucketLookup[shaderResources->count - 1];
 			}
 
 			shaderResources->count -= 1;
@@ -6926,7 +6914,6 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 			);
 		}
 
-		SDL_free(shaderResources->indexToBucketLookup);
 		SDL_free(shaderResources->samplerBindingIndices);
 		SDL_free(shaderResources->inactiveDescriptorSets);
 		SDL_free(shaderResources->elements);
