@@ -2968,13 +2968,17 @@ static ShaderResources* VULKAN_INTERNAL_FetchShaderResources(
 		writeDescriptorSet.pBufferInfo = &bufferInfo;
 		writeDescriptorSet.pTexelBufferView = NULL;
 
-		renderer->vkUpdateDescriptorSets(
-			renderer->logicalDevice,
-			1,
-			&writeDescriptorSet,
-			0,
-			NULL
-		);
+		/* FIXME: Should we even bother at all in this case? -flibit */
+		if (bufferInfo.buffer != VK_NULL_HANDLE)
+		{
+			renderer->vkUpdateDescriptorSets(
+				renderer->logicalDevice,
+				1,
+				&writeDescriptorSet,
+				0,
+				NULL
+			);
+		}
 
 		ShaderResourcesHashTable_Insert(&renderer->shaderResourcesHashTable, shader, shaderResources);
 	}
