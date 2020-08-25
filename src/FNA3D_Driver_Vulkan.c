@@ -4144,6 +4144,8 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	renderer->swapChainExtent = extent;
 
 	createInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	createInfo.pNext = NULL;
+	createInfo.flags = 0;
 	createInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 	createInfo.format = surfaceFormat.format;
 	createInfo.components = renderer->swapchainSwizzle;
