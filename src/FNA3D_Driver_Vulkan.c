@@ -57,6 +57,7 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
 #define TEXTURE_COUNT MAX_TOTAL_SAMPLERS
 #define MAX_MULTISAMPLE_MASK_SIZE 2
 #define MAX_QUERIES 16
+#define MAX_UNIFORM_DESCRIPTOR_SETS 1024
 
 /* Should be equivalent to the number of values in FNA3D_PrimitiveType */
 #define PRIMITIVE_TYPES_COUNT 5
@@ -434,140 +435,23 @@ static inline void SamplerDescriptorSetHashTable_InsertDescriptorSetData(
 	table->count += 1;
 }
 
-typedef struct UniformDescriptorSetData
-{
-	VkDescriptorBufferInfo descriptorBufferInfo;
-} UniformDescriptorSetData;
-
-typedef struct UniformDescriptorSetHashMap
-{
-	uint64_t key;
-	UniformDescriptorSetData descriptorSetData;
-	VkDescriptorSet descriptorSet;
-} UniformDescriptorSetHashMap;
-
-typedef struct UniformDescriptorSetHashArray
-{
-	uint32_t *elements;
-	int32_t count;
-	int32_t capacity;
-} UniformDescriptorSetHashArray;
-
-typedef struct UniformDescriptorSetHashTable
-{
-	UniformDescriptorSetHashArray buckets[NUM_DESCRIPTOR_SET_HASH_BUCKETS]; /* these buckets store indices */
-	UniformDescriptorSetHashMap *elements; /* where the hash map elements are stored */
-	uint32_t count;
-	uint32_t capacity;
-} UniformDescriptorSetHashTable;
-
-static inline uint64_t UniformDescriptorSetHashTable_GetHashCode(
-	UniformDescriptorSetData *descriptorSetData
-) {
-	uint64_t next;
-	uint64_t hash = 0;
-
-	next = (uint64_t) descriptorSetData->descriptorBufferInfo.buffer;
-	hash ^= hash + 0x9e3779b9 + (next << 6) + (next >> 2);
-
-	next = (uint64_t) descriptorSetData->descriptorBufferInfo.offset;
-	hash ^= hash + 0x9e3779b9 + (next << 6) + (next >> 2);
-
-	next = (uint64_t) descriptorSetData->descriptorBufferInfo.range;
-	hash ^= hash + 0x9e3779b9 + (next << 6) + (next >> 2);
-
-	return hash;
-}
-
-static inline VkDescriptorSet UniformDescriptorSetHashTable_FetchDescriptorSet(
-	UniformDescriptorSetHashTable *table,
-	UniformDescriptorSetData key
-) {
-	int32_t i;
-	uint64_t hashcode = UniformDescriptorSetHashTable_GetHashCode(&key);
-	UniformDescriptorSetHashArray *arr = &table->buckets[hashcode % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
-
-	for (i = 0; i < arr->count; i += 1)
-	{
-		const UniformDescriptorSetData *e = &table->elements[arr->elements[i]].descriptorSetData;
-		if (SDL_memcmp(&key, e, sizeof(UniformDescriptorSetData)) == 0)
-		{
-			return table->elements[arr->elements[i]].descriptorSet;
-		}
-	}
-
-	return NULL_DESC_SET;
-}
-
-static inline uint8_t UniformDescriptorSetHashTable_DescriptorSetDataExists(
-	UniformDescriptorSetHashTable *table,
-	UniformDescriptorSetData key
-) {
-	int32_t i;
-	uint64_t hashcode = UniformDescriptorSetHashTable_GetHashCode(&key);
-	UniformDescriptorSetHashArray *arr = &table->buckets[hashcode % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
-
-	for (i = 0; i < arr->count; i += 1)
-	{
-		const UniformDescriptorSetData *e = &table->elements[arr->elements[i]].descriptorSetData;
-		if (SDL_memcmp(&key, e, sizeof(UniformDescriptorSetData)) == 0)
-		{
-			return 1;
-		}
-	}
-
-	return 0;
-}
-
-static inline void UniformDescriptorSetHashTable_InsertDescriptorSetData(
-	UniformDescriptorSetHashTable *table,
-	UniformDescriptorSetData value
-) {
-	uint64_t hashcode = UniformDescriptorSetHashTable_GetHashCode(&value);
-	UniformDescriptorSetHashArray *arr = &table->buckets[hashcode % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
-
-	UniformDescriptorSetHashMap map;
-	map.key = hashcode;
-	map.descriptorSetData = value;
-	map.descriptorSet = NULL_DESC_SET; /* this gets filled in later */
-
-	EXPAND_ARRAY_IF_NEEDED(arr, 2, uint32_t)
-
-	arr->elements[arr->count] = table->count;
-	arr->count += 1;
-
-	EXPAND_ARRAY_IF_NEEDED(table, 2, UniformDescriptorSetHashMap)
-
-	table->elements[table->count] = map;
-	table->count += 1;
-}
-
 typedef struct ShaderResources
 {
 	VkDescriptorPool samplerDescriptorPool;
-	VkDescriptorPool uniformDescriptorPool;
-
 	VkDescriptorSetLayout samplerLayout;
-	VkDescriptorSetLayout uniformBufferLayout;
-
 	uint16_t samplerBitmask;
 	uint8_t samplerCount;
 
 	VkDescriptorSet *samplerDescriptorSets;
-	VkDescriptorSet *uniformDescriptorSets;
-
 	uint32_t allocatedSamplerDescriptorSetCount;
-	uint32_t allocatedUniformDescriptorSetCount;
+
+	VkDescriptorSet uniformDescriptorSet;
 
 	SamplerDescriptorSetHashTable samplerDescriptorSetHashTable;
-	UniformDescriptorSetHashTable uniformDescriptorSetHashTable;
 
 	SamplerDescriptorSetData *samplerDatas;
-	UniformDescriptorSetData *uniformDatas;
 	uint32_t samplerDataCount;
-	uint32_t uniformDataCount;
 	uint32_t samplerDataCapacity;
-	uint32_t uniformDataCapacity;
 } ShaderResources;
 
 typedef struct ShaderResourcesHashMap
@@ -646,8 +530,8 @@ typedef struct DescriptorSetDrawInfo
 	uint16_t vertexSamplerBitmask;
 	SamplerDescriptorSetData fragSamplerDescriptorSetData;
 	uint16_t fragSamplerBitmask;
-	UniformDescriptorSetData vertexUniformDescriptorSetData;
-	UniformDescriptorSetData fragUniformDescriptorSetData;
+	VkDescriptorSet vertexUniformDescriptorSet;
+	VkDescriptorSet fragUniformDescriptorSet;
 } DescriptorSetDrawInfo;
 
 typedef enum VulkanCommandType
@@ -1519,8 +1403,11 @@ typedef struct VulkanRenderer
 	VulkanTexture *dummyVertTexture;
 	VulkanTexture *dummyFragTexture;
 
+	VkDescriptorPool uniformBufferDescriptorPool;
 	VkDescriptorSetLayout vertexUniformBufferDescriptorSetLayout;
 	VkDescriptorSetLayout fragUniformBufferDescriptorSetLayout;
+	VkDescriptorSet dummyVertexUniformBufferDescriptorSet;
+	VkDescriptorSet dummyFragUniformBufferDescriptorSet;
 
 	ShaderResourcesHashTable shaderResourcesHashTable;
 	DescriptorSetLayoutHashTable descriptorSetLayoutTable;
@@ -1549,18 +1436,12 @@ typedef struct VulkanRenderer
 
 	uint8_t vertexSamplerDescriptorSetDataNeedsUpdate;
 	uint8_t fragSamplerDescriptorSetDataNeedsUpdate;
-	uint8_t vertexUniformDescriptorSetDataNeedsUpdate;
-	uint8_t fragUniformDescriptorSetDataNeedsUpdate;
 
 	uint64_t currentVertexSamplerDescriptorSetDataHash;
 	uint64_t currentFragSamplerDescriptorSetDataHash;
-	uint64_t currentVertexUniformDescriptorSetDataHash;
-	uint64_t currentFragUniformDescriptorSetDataHash;
 
 	SamplerDescriptorSetData currentVertexSamplerDescriptorSetData;
 	SamplerDescriptorSetData currentFragSamplerDescriptorSetData;
-	UniformDescriptorSetData currentVertexUniformDescriptorSetData;
-	UniformDescriptorSetData currentFragUniformDescriptorSetData;
 
 	/* Storing references to objects that need to be destroyed
 	 * so we don't have to stall or invalidate the command buffer
@@ -2976,8 +2857,20 @@ static ShaderResources* VULKAN_INTERNAL_FetchShaderResources(
 	MOJOSHADER_vkShader *shader,
 	VkShaderStageFlags shaderStageFlag
 ) {
+	VkResult vulkanResult;
 	uint32_t i;
 	ShaderResources *shaderResources = ShaderResourcesHashTable_Fetch(&renderer->shaderResourcesHashTable, shader);
+	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo =
+	{
+		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
+	};
+	VkWriteDescriptorSet writeDescriptorSet =
+	{
+		VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET
+	};
+	VkDescriptorBufferInfo bufferInfo;
+	VkBuffer vUniform, fUniform;
+	unsigned long long vOff, fOff, vSize, fSize;
 
 	if (shaderResources == NULL_SHADER_RESOURCES)
 	{
@@ -2985,53 +2878,85 @@ static ShaderResources* VULKAN_INTERNAL_FetchShaderResources(
 
 		/* At resource allocation time we have a special init case for the pools being NULL */
 		shaderResources->samplerDescriptorPool = NULL;
-		shaderResources->uniformDescriptorPool = NULL;
-
 		shaderResources->samplerLayout = VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(renderer, shader, shaderStageFlag);
-		if (shaderStageFlag == VK_SHADER_STAGE_VERTEX_BIT)
-		{
-			shaderResources->uniformBufferLayout = renderer->vertexUniformBufferDescriptorSetLayout;
-		}
-		else
-		{
-			shaderResources->uniformBufferLayout = renderer->fragUniformBufferDescriptorSetLayout;
-		}
 		shaderResources->samplerBitmask = VULKAN_INTERNAL_FetchSamplerBitmask(shader);
 		shaderResources->samplerCount = MOJOSHADER_vkGetShaderParseData(shader)->sampler_count;
 
 		shaderResources->samplerDescriptorSets = SDL_malloc(sizeof(VkDescriptorSet) * 16);
-		shaderResources->uniformDescriptorSets = SDL_malloc(sizeof(VkDescriptorSet) * 16);
-
 		shaderResources->allocatedSamplerDescriptorSetCount = 0;
-		shaderResources->allocatedUniformDescriptorSetCount = 0;
 
 		shaderResources->samplerDescriptorSetHashTable.elements = NULL;
 		shaderResources->samplerDescriptorSetHashTable.count = 0;
 		shaderResources->samplerDescriptorSetHashTable.capacity = 0;
-
-		shaderResources->uniformDescriptorSetHashTable.elements = NULL;
-		shaderResources->uniformDescriptorSetHashTable.count = 0;
-		shaderResources->uniformDescriptorSetHashTable.capacity = 0;
 
 		for (i = 0; i < NUM_DESCRIPTOR_SET_HASH_BUCKETS; i += 1)
 		{
 			shaderResources->samplerDescriptorSetHashTable.buckets[i].elements = NULL;
 			shaderResources->samplerDescriptorSetHashTable.buckets[i].capacity = 0;
 			shaderResources->samplerDescriptorSetHashTable.buckets[i].count = 0;
-
-			shaderResources->uniformDescriptorSetHashTable.buckets[i].elements = NULL;
-			shaderResources->uniformDescriptorSetHashTable.buckets[i].capacity = 0;
-			shaderResources->uniformDescriptorSetHashTable.buckets[i].count = 0;
 		}
 
 		shaderResources->samplerDatas = SDL_malloc(sizeof(SamplerDescriptorSetData) * 16);
-		shaderResources->uniformDatas = SDL_malloc(sizeof(UniformDescriptorSetData) * 16);
-
 		shaderResources->samplerDataCount = 0;
-		shaderResources->uniformDataCount = 0;
-
 		shaderResources->samplerDataCapacity = 16;
-		shaderResources->uniformDataCapacity = 16;
+
+		descriptorSetAllocateInfo.descriptorPool = renderer->uniformBufferDescriptorPool;
+		descriptorSetAllocateInfo.descriptorSetCount = 1;
+
+		if (shaderStageFlag == VK_SHADER_STAGE_VERTEX_BIT)
+		{
+			descriptorSetAllocateInfo.pSetLayouts = &renderer->vertexUniformBufferDescriptorSetLayout;
+		}
+		else
+		{
+			descriptorSetAllocateInfo.pSetLayouts = &renderer->fragUniformBufferDescriptorSetLayout;
+		}
+
+		vulkanResult = renderer->vkAllocateDescriptorSets(
+			renderer->logicalDevice,
+			&descriptorSetAllocateInfo,
+			&shaderResources->uniformDescriptorSet
+		);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkAllocateDescriptorSets", vulkanResult);
+		}
+
+		MOJOSHADER_vkGetUniformBuffers(&vUniform, &vOff, &vSize, &fUniform, &fOff, &fSize);
+		if (shaderStageFlag == VK_SHADER_STAGE_VERTEX_BIT)
+		{
+			if (vUniform != NULL_BUFFER)
+			{
+				bufferInfo.buffer = vUniform;
+				bufferInfo.offset = 0;
+				bufferInfo.range = vSize;
+			}
+		}
+		else
+		{
+			if (fUniform != NULL_BUFFER)
+			{
+				bufferInfo.buffer = fUniform;
+				bufferInfo.offset = 0;
+				bufferInfo.range = fSize;
+			}
+		}
+
+		writeDescriptorSet.descriptorCount = 1;
+		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		writeDescriptorSet.dstArrayElement = 0;
+		writeDescriptorSet.dstBinding = 0;
+		writeDescriptorSet.dstSet = shaderResources->uniformDescriptorSet;
+		writeDescriptorSet.pBufferInfo = &bufferInfo;
+
+		renderer->vkUpdateDescriptorSets(
+			renderer->logicalDevice,
+			1,
+			&writeDescriptorSet,
+			0,
+			NULL
+		);
 
 		ShaderResourcesHashTable_Insert(&renderer->shaderResourcesHashTable, shader, shaderResources);
 	}
@@ -3045,15 +2970,12 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 	uint32_t *dynamicOffsets
 ) {
 	VkBuffer vUniform, fUniform;
-	VulkanSubBuffer *vSubbuf, *fSubbuf;
 	unsigned long long vOff, fOff, vSize, fSize; /* MojoShader type */
 
 	MOJOSHADER_vkShader *vertShader, *fragShader;
 
 	SamplerDescriptorSetData vertexSamplerDescriptorSetData = { 0 };
 	SamplerDescriptorSetData fragSamplerDescriptorSetData = { 0 };
-	UniformDescriptorSetData vertexUniformDescriptorSetData = { 0 };
-	UniformDescriptorSetData fragUniformDescriptorSetData = { 0 } ;
 
 	ShaderResources *vertShaderResources;
 	ShaderResources *fragShaderResources;
@@ -3149,94 +3071,6 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 			);
 	}
 
-	MOJOSHADER_vkGetUniformBuffers(
-		&vUniform,
-		&vOff,
-		&vSize,
-		&fUniform,
-		&fOff,
-		&fSize
-	);
-
-	if (	renderer->vertexUniformDescriptorSetDataNeedsUpdate ||
-		vUniform != renderer->currentVertexUniformDescriptorSetData.descriptorBufferInfo.buffer ||
-		vOff != renderer->currentVertexUniformDescriptorSetData.descriptorBufferInfo.offset ||
-		vSize != renderer->currentVertexUniformDescriptorSetData.descriptorBufferInfo.range	)
-	{
-		/* if a uniform buffer is null we bind dummy data */
-		if (vUniform == NULL_BUFFER)
-		{
-			vSubbuf = &renderer->dummyVertUniformBuffer->subBuffers[
-				renderer->dummyVertUniformBuffer->currentSubBufferIndex
-			];
-			vertexUniformDescriptorSetData.descriptorBufferInfo.buffer = vSubbuf->physicalBuffer->buffer;
-			vertexUniformDescriptorSetData.descriptorBufferInfo.offset = vSubbuf->offset;
-			vertexUniformDescriptorSetData.descriptorBufferInfo.range  = renderer->dummyVertUniformBuffer->size;
-		}
-		else
-		{
-			vertexUniformDescriptorSetData.descriptorBufferInfo.buffer = vUniform;
-			vertexUniformDescriptorSetData.descriptorBufferInfo.offset = 0;
-			vertexUniformDescriptorSetData.descriptorBufferInfo.range = vSize;
-		}
-
-		if (vertShaderResources->uniformDataCount + 1 > vertShaderResources->uniformDataCapacity)
-		{
-			vertShaderResources->uniformDataCapacity *= 2;
-
-			vertShaderResources->uniformDatas = SDL_realloc(
-				vertShaderResources->uniformDatas,
-				sizeof(UniformDescriptorSetData) * vertShaderResources->uniformDataCapacity
-			);
-		}
-
-		vertShaderResources->uniformDatas[vertShaderResources->uniformDataCount] = vertexUniformDescriptorSetData;
-		vertShaderResources->uniformDataCount += 1;
-
-		renderer->currentVertexUniformDescriptorSetData = vertexUniformDescriptorSetData;
-		renderer->currentVertexUniformDescriptorSetDataHash =
-			UniformDescriptorSetHashTable_GetHashCode(&vertexUniformDescriptorSetData);
-	}
-
-	if (	renderer->fragUniformDescriptorSetDataNeedsUpdate ||
-		fUniform != renderer->currentFragUniformDescriptorSetData.descriptorBufferInfo.buffer ||
-		fOff != renderer->currentFragUniformDescriptorSetData.descriptorBufferInfo.offset ||
-		fSize != renderer->currentFragUniformDescriptorSetData.descriptorBufferInfo.range	)
-	{
-		if (fUniform == NULL_BUFFER)
-		{
-			fSubbuf = &renderer->dummyFragUniformBuffer->subBuffers[
-				renderer->dummyFragUniformBuffer->currentSubBufferIndex
-			];
-			fragUniformDescriptorSetData.descriptorBufferInfo.buffer = fSubbuf->physicalBuffer->buffer;
-			fragUniformDescriptorSetData.descriptorBufferInfo.offset = fSubbuf->offset;
-			fragUniformDescriptorSetData.descriptorBufferInfo.range = renderer->dummyFragUniformBuffer->size;
-		}
-		else
-		{
-			fragUniformDescriptorSetData.descriptorBufferInfo.buffer = fUniform;
-			fragUniformDescriptorSetData.descriptorBufferInfo.offset = 0;
-			fragUniformDescriptorSetData.descriptorBufferInfo.range = fSize;
-		}
-
-		if (fragShaderResources->uniformDataCount + 1 > fragShaderResources->uniformDataCapacity)
-		{
-			fragShaderResources->uniformDataCapacity *= 2;
-
-			fragShaderResources->uniformDatas = SDL_realloc(
-				fragShaderResources->uniformDatas,
-				sizeof(UniformDescriptorSetData) * fragShaderResources->uniformDataCapacity
-			);
-		}
-
-		fragShaderResources->uniformDatas[fragShaderResources->uniformDataCount] = fragUniformDescriptorSetData;
-		fragShaderResources->uniformDataCount += 1;
-
-		renderer->currentFragUniformDescriptorSetData = fragUniformDescriptorSetData;
-		renderer->currentFragUniformDescriptorSetDataHash =
-			UniformDescriptorSetHashTable_GetHashCode(&fragUniformDescriptorSetData);
-	}
-
 	/* We dont ever want these values to be zero because there is always at
 	 * least a dummy sampler
 	 */
@@ -3255,16 +3089,16 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 	descriptorSetDrawInfo->fragSamplerDescriptorSetData =
 		renderer->currentFragSamplerDescriptorSetData;
 
-	descriptorSetDrawInfo->vertexUniformDescriptorSetData =
-		renderer->currentVertexUniformDescriptorSetData;
+	descriptorSetDrawInfo->vertexUniformDescriptorSet =
+		vertShaderResources->uniformDescriptorSet;
 
-	descriptorSetDrawInfo->fragUniformDescriptorSetData =
-		renderer->currentFragUniformDescriptorSetData;
+	descriptorSetDrawInfo->fragUniformDescriptorSet =
+		fragShaderResources->uniformDescriptorSet;
 
 	renderer->vertexSamplerDescriptorSetDataNeedsUpdate = 0;
 	renderer->fragSamplerDescriptorSetDataNeedsUpdate = 0;
-	renderer->vertexUniformDescriptorSetDataNeedsUpdate = 0;
-	renderer->fragUniformDescriptorSetDataNeedsUpdate = 0;
+
+	MOJOSHADER_vkGetUniformBuffers(&vUniform, &vOff, &vSize, &fUniform, &fOff, &fSize);
 
 	dynamicOffsets[0] = vOff;
 	dynamicOffsets[1] = fOff;
@@ -3320,25 +3154,6 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 			}
 		}
 
-		for (j = 0; j < shaderResources->uniformDataCount; j += 1)
-		{
-			if (
-				!UniformDescriptorSetHashTable_DescriptorSetDataExists(
-					&shaderResources->uniformDescriptorSetHashTable,
-					shaderResources->uniformDatas[j]
-				)
-			) {
-				UniformDescriptorSetHashTable_InsertDescriptorSetData(
-					&shaderResources->uniformDescriptorSetHashTable,
-					shaderResources->uniformDatas[j]
-				);
-
-				uniformDescriptorSetCount += 1;
-				uniformDescriptorCount += 1;
-				writeDescriptorSetCount += 1;
-			}
-		}
-
 		/* If any of the descriptor pools are too small, regenerate them */
 
 		if (
@@ -3366,32 +3181,6 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 			shaderResources->allocatedSamplerDescriptorSetCount = samplerDescriptorSetCount * 2;
 		}
 
-		if (
-			shaderResources->allocatedUniformDescriptorSetCount < samplerDescriptorSetCount
-		) {
-
-			if (shaderResources->uniformDescriptorPool != NULL)
-			{
-				renderer->vkDestroyDescriptorPool(
-					renderer->logicalDevice,
-					shaderResources->uniformDescriptorPool,
-					NULL
-				);
-			}
-
-			VULKAN_INTERNAL_CreateDescriptorPoolAndSets(
-				renderer,
-				VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
-				uniformDescriptorSetCount * 2, /* give some wiggle room */
-				uniformDescriptorCount * 2,
-				&shaderResources->uniformDescriptorPool,
-				shaderResources->uniformBufferLayout,
-				&shaderResources->uniformDescriptorSets
-			);
-
-			shaderResources->allocatedUniformDescriptorSetCount = uniformDescriptorSetCount * 2;
-		}
-
 		/* assign actual descriptor sets */
 
 		for (j = 0; j < shaderResources->samplerDescriptorSetHashTable.count; j += 1)
@@ -3399,13 +3188,6 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 			shaderResources->samplerDescriptorSetHashTable.elements[j].descriptorSet =
 				shaderResources->samplerDescriptorSets[j];
 		}
-
-		for (j = 0; j < shaderResources->uniformDescriptorSetHashTable.count; j += 1)
-		{
-			shaderResources->uniformDescriptorSetHashTable.elements[j].descriptorSet =
-				shaderResources->uniformDescriptorSets[j];
-		}
-
 	}
 
 	/* Generate the VkWriteDescriptorSets */
@@ -3439,24 +3221,6 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 				}
 			}
 		}
-
-		for (j = 0; j < shaderResources->uniformDescriptorSetHashTable.count; j += 1)
-		{
-			nextDescriptorSet = shaderResources->uniformDescriptorSetHashTable.elements[j].descriptorSet;
-
-			writeDescriptorSets[writeDescriptorSetIndex].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-			writeDescriptorSets[writeDescriptorSetIndex].pNext = NULL;
-			writeDescriptorSets[writeDescriptorSetIndex].dstSet = nextDescriptorSet;
-			writeDescriptorSets[writeDescriptorSetIndex].dstBinding = 0;
-			writeDescriptorSets[writeDescriptorSetIndex].dstArrayElement = 0;
-			writeDescriptorSets[writeDescriptorSetIndex].descriptorCount = 1;
-			writeDescriptorSets[writeDescriptorSetIndex].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
-			writeDescriptorSets[writeDescriptorSetIndex].pBufferInfo = &shaderResources->uniformDescriptorSetHashTable.elements[j].descriptorSetData.descriptorBufferInfo;
-			writeDescriptorSets[writeDescriptorSetIndex].pImageInfo = NULL;
-			writeDescriptorSets[writeDescriptorSetIndex].pTexelBufferView = NULL;
-
-			writeDescriptorSetIndex += 1;
-		}
 	}
 
 	renderer->vkUpdateDescriptorSets(
@@ -3479,8 +3243,8 @@ static void VULKAN_INTERNAL_FetchDescriptorSets(
 ) {
 	descriptorSets[0] = SamplerDescriptorSetHashTable_FetchDescriptorSet(&vertShaderResources->samplerDescriptorSetHashTable, descriptorSetDrawInfo->vertexSamplerDescriptorSetData);
 	descriptorSets[1] = SamplerDescriptorSetHashTable_FetchDescriptorSet(&fragShaderResources->samplerDescriptorSetHashTable, descriptorSetDrawInfo->fragSamplerDescriptorSetData);
-	descriptorSets[2] = UniformDescriptorSetHashTable_FetchDescriptorSet(&vertShaderResources->uniformDescriptorSetHashTable, descriptorSetDrawInfo->vertexUniformDescriptorSetData);
-	descriptorSets[3] = UniformDescriptorSetHashTable_FetchDescriptorSet(&fragShaderResources->uniformDescriptorSetHashTable, descriptorSetDrawInfo->fragUniformDescriptorSetData);
+	descriptorSets[2] = vertShaderResources->uniformDescriptorSet;
+	descriptorSets[3] = fragShaderResources->uniformDescriptorSet;
 }
 
 static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer *renderer)
@@ -3495,22 +3259,17 @@ static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer *renderer)
 		shaderResources = renderer->shaderResourcesHashTable.elements[i].value;
 
 		shaderResources->samplerDataCount = 0;
-		shaderResources->uniformDataCount = 0;
 
 		shaderResources->samplerDescriptorSetHashTable.count = 0;
-		shaderResources->uniformDescriptorSetHashTable.count = 0;
 
 		for (j = 0; j < NUM_DESCRIPTOR_SET_HASH_BUCKETS; j += 1)
 		{
 			shaderResources->samplerDescriptorSetHashTable.buckets[j].count = 0;
-			shaderResources->uniformDescriptorSetHashTable.buckets[j].count = 0;
 		}
 	}
 
 	renderer->vertexSamplerDescriptorSetDataNeedsUpdate = 1;
 	renderer->fragSamplerDescriptorSetDataNeedsUpdate = 1;
-	renderer->vertexUniformDescriptorSetDataNeedsUpdate = 1;
-	renderer->fragUniformDescriptorSetDataNeedsUpdate = 1;
 }
 
 /* Vulkan: Command Buffers */
@@ -7254,22 +7013,13 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 			NULL
 		);
 
-		renderer->vkDestroyDescriptorPool(
-			renderer->logicalDevice,
-			shaderResources->uniformDescriptorPool,
-			NULL
-		);
-
 		SDL_free(shaderResources->samplerDescriptorSets);
-		SDL_free(shaderResources->uniformDescriptorSets);
 
 		SDL_free(shaderResources->samplerDatas);
-		SDL_free(shaderResources->uniformDatas);
 
 		for (j = 0; j < NUM_DESCRIPTOR_SET_HASH_BUCKETS; j += 1)
 		{
 			SDL_free(shaderResources->samplerDescriptorSetHashTable.buckets[j].elements);
-			SDL_free(shaderResources->uniformDescriptorSetHashTable.buckets[j].elements);
 		}
 	}
 
@@ -9966,6 +9716,19 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	VkSamplerCreateInfo samplerCreateInfo;
 	uint8_t dummyData[] = { 0 };
 
+	/* Variables: Create UBO pool and dummy UBO descriptor sets */
+	VkDescriptorPoolSize descriptorPoolSize;
+	VkDescriptorPoolCreateInfo descriptorPoolInfo =
+	{
+		VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO
+	};
+	VkDescriptorSetAllocateInfo descriptorSetAllocateInfo =
+	{
+		VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO
+	};
+	VkWriteDescriptorSet writeDescriptorSets[2];
+	VkDescriptorBufferInfo bufferInfos[2];
+
 	/*
 	 * Create the FNA3D_Device
 	 */
@@ -10376,8 +10139,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	renderer->vertexSamplerDescriptorSetDataNeedsUpdate = 1;
 	renderer->fragSamplerDescriptorSetDataNeedsUpdate = 1;
-	renderer->vertexUniformDescriptorSetDataNeedsUpdate = 1;
-	renderer->fragUniformDescriptorSetDataNeedsUpdate = 1;
 
 	/*
 	 * Init various renderer properties
@@ -10564,6 +10325,94 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		&samplerCreateInfo,
 		NULL,
 		&renderer->dummyFragSamplerState
+	);
+
+	descriptorPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	descriptorPoolSize.descriptorCount = MAX_UNIFORM_DESCRIPTOR_SETS;
+
+	descriptorPoolInfo.maxSets = MAX_UNIFORM_DESCRIPTOR_SETS;
+	descriptorPoolInfo.poolSizeCount = 1;
+	descriptorPoolInfo.pPoolSizes = &descriptorPoolSize;
+
+	vulkanResult = renderer->vkCreateDescriptorPool(
+		renderer->logicalDevice,
+		&descriptorPoolInfo,
+		NULL,
+		&renderer->uniformBufferDescriptorPool
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkCreateDescriptorPool", vulkanResult);
+		return 0;
+	}
+
+	descriptorSetAllocateInfo.descriptorPool = renderer->uniformBufferDescriptorPool;
+	descriptorSetAllocateInfo.descriptorSetCount = 1;
+	descriptorSetAllocateInfo.pSetLayouts = &renderer->vertexUniformBufferDescriptorSetLayout;
+
+	vulkanResult = renderer->vkAllocateDescriptorSets(
+		renderer->logicalDevice,
+		&descriptorSetAllocateInfo,
+		&renderer->dummyVertexUniformBufferDescriptorSet
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkAllocateDescriptorSets", vulkanResult);
+		return 0;
+	}
+
+	descriptorSetAllocateInfo.pSetLayouts = &renderer->fragUniformBufferDescriptorSetLayout;
+
+	vulkanResult = renderer->vkAllocateDescriptorSets(
+		renderer->logicalDevice,
+		&descriptorSetAllocateInfo,
+		&renderer->dummyFragUniformBufferDescriptorSet
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResult("vkAllocateDescriptorSets", vulkanResult);
+		return 0;
+	}
+
+	bufferInfos[0].buffer = renderer->dummyVertUniformBuffer->subBuffers[renderer->dummyVertUniformBuffer->currentSubBufferIndex].physicalBuffer->buffer;
+	bufferInfos[0].offset = renderer->dummyVertUniformBuffer->subBuffers[renderer->dummyVertUniformBuffer->currentSubBufferIndex].offset;
+	bufferInfos[0].range = renderer->dummyVertUniformBuffer->size;
+
+	writeDescriptorSets[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writeDescriptorSets[0].pNext = NULL;
+	writeDescriptorSets[0].descriptorCount = 1;
+	writeDescriptorSets[0].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	writeDescriptorSets[0].dstArrayElement = 0;
+	writeDescriptorSets[0].dstBinding = 0;
+	writeDescriptorSets[0].dstSet = renderer->dummyVertexUniformBufferDescriptorSet;
+	writeDescriptorSets[0].pBufferInfo = &bufferInfos[0];
+	writeDescriptorSets[0].pImageInfo = NULL;
+	writeDescriptorSets[0].pTexelBufferView = NULL;
+
+	bufferInfos[1].buffer = renderer->dummyFragUniformBuffer->subBuffers[renderer->dummyFragUniformBuffer->currentSubBufferIndex].physicalBuffer->buffer;
+	bufferInfos[1].offset = renderer->dummyFragUniformBuffer->subBuffers[renderer->dummyFragUniformBuffer->currentSubBufferIndex].offset;
+	bufferInfos[1].range = renderer->dummyFragUniformBuffer->size;
+
+	writeDescriptorSets[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writeDescriptorSets[1].pNext = NULL;
+	writeDescriptorSets[1].descriptorCount = 1;
+	writeDescriptorSets[1].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+	writeDescriptorSets[1].dstArrayElement = 0;
+	writeDescriptorSets[1].dstBinding = 0;
+	writeDescriptorSets[1].dstSet = renderer->dummyFragUniformBufferDescriptorSet;
+	writeDescriptorSets[1].pBufferInfo = &bufferInfos[1];
+	writeDescriptorSets[1].pImageInfo = NULL;
+	writeDescriptorSets[1].pTexelBufferView = NULL;
+
+	renderer->vkUpdateDescriptorSets(
+		renderer->logicalDevice,
+		2,
+		writeDescriptorSets,
+		0,
+		NULL
 	);
 
 	return result;
