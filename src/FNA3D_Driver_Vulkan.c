@@ -3109,10 +3109,7 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 	uint32_t i, j, k;
 
 	uint32_t samplerDescriptorSetCount;
-	uint32_t uniformDescriptorSetCount;
-
 	uint32_t samplerDescriptorCount;
-	uint32_t uniformDescriptorCount;
 
 	VkDescriptorSet nextDescriptorSet;
 
@@ -3125,9 +3122,7 @@ static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
 	for (i = 0; i < renderer->shaderResourcesHashTable.count; i++)
 	{
 		samplerDescriptorSetCount = 0;
-		uniformDescriptorSetCount = 0;
 		samplerDescriptorCount = 0;
-		uniformDescriptorCount = 0;
 
 		/* Iterate over all the descriptor set datas and hash to filter out duplicates.
 		* The descriptor sets get filled in after we ensure enough are allocated.
