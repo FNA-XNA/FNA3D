@@ -3053,7 +3053,8 @@ static void ShaderResources_DeactivateUnusedDescriptorSets(
 	{
 		shaderResources->elements[i].inactiveFrameCount += 1;
 
-		if (shaderResources->elements[i].inactiveFrameCount + 1 > 10) {
+		if (shaderResources->elements[i].inactiveFrameCount + 1 > 10)
+		{
 			arr = &shaderResources->buckets[shaderResources->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
 
 			/* remove index from bucket */
