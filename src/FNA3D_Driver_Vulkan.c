@@ -355,27 +355,20 @@ typedef struct SamplerDescriptorSetHashTable
 	uint32_t capacity;
 } SamplerDescriptorSetHashTable;
 
-/* The hashing logic was taken from DXVK:
- * https://github.com/doitsujin/dxvk/blob/master/src/dxvk/dxvk_hash.h
- */
-
 static inline uint64_t SamplerDescriptorSetHashTable_GetHashCode(
 	SamplerDescriptorSetData *descriptorSetData
 ) {
+	const uint64_t HASH_FACTOR = 97;
 	uint32_t i;
-	uint64_t next;
-	uint64_t hash = 0;
+	uint64_t result = 1;
 
 	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i++)
 	{
-		next = (uint64_t) descriptorSetData->descriptorImageInfo[i].imageView;
-		hash ^= hash + 0x9e3779b9 + (next << 6) + (next >> 2);
-
-		next = (uint64_t) descriptorSetData->descriptorImageInfo[i].sampler;
-		hash ^= hash + 0x9e3779b9 + (next << 6) + (next >> 2);
+		result = result * HASH_FACTOR + (uint64_t) descriptorSetData->descriptorImageInfo[i].imageView;
+		result = result * HASH_FACTOR + (uint64_t) descriptorSetData->descriptorImageInfo[i].sampler;
 	}
 
-	return hash;
+	return result;
 }
 
 static inline VkDescriptorSet SamplerDescriptorSetHashTable_FetchDescriptorSet(
@@ -1193,7 +1186,9 @@ static inline VkDescriptorSetLayout DescriptorSetLayoutHashTable_Fetch(
 	for (i = 0; i < arr->count; i += 1)
 	{
 		const DescriptorSetLayoutHash *e = &arr->elements[i].key;
-		if (SDL_memcmp(&key, e, sizeof(DescriptorSetLayoutHash)) == 0)
+		if (    key.descriptorType == e->descriptorType &&
+			key.bitmask == e->bitmask &&
+			key.stageFlag == e->stageFlag   )
 		{
 			return arr->elements[i].value;
 		}
@@ -10471,6 +10466,12 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer->shaderResourcesHashTable.capacity = 0;
 	}
 
+	for (i = 0; i < NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS; i += 1)
+	{
+		renderer->descriptorSetLayoutTable.buckets[i].elements = NULL;
+		renderer->descriptorSetLayoutTable.buckets[i].count = 0;
+		renderer->descriptorSetLayoutTable.buckets[i].capacity = 0;
+	}
 	/*
 	 * Create dummy data
 	 */
