@@ -63,6 +63,7 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
 #define PRIMITIVE_TYPES_COUNT 5
 
 #define STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE 16
+#define DESCRIPTOR_SET_DEACTIVATE_FRAMES 10
 
 #define NULL_BUFFER (VkBuffer) 0
 #define NULL_DESC_SET (VkDescriptorSet) 0
@@ -3053,7 +3054,7 @@ static void ShaderResources_DeactivateUnusedDescriptorSets(
 	{
 		shaderResources->elements[i].inactiveFrameCount += 1;
 
-		if (shaderResources->elements[i].inactiveFrameCount + 1 > 10)
+		if (shaderResources->elements[i].inactiveFrameCount + 1 > DESCRIPTOR_SET_DEACTIVATE_FRAMES)
 		{
 			arr = &shaderResources->buckets[shaderResources->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
 
