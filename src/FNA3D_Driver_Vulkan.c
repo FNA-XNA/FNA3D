@@ -6276,6 +6276,7 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 	}
 
 	framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+	framebufferInfo.pNext = NULL;
 	framebufferInfo.flags = 0;
 	framebufferInfo.renderPass = renderPass;
 	framebufferInfo.attachmentCount = attachmentCount;
