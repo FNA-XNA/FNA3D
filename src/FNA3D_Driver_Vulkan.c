@@ -2974,7 +2974,9 @@ static ShaderResources* VULKAN_INTERNAL_FetchShaderResources(
 static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 	VulkanRenderer *renderer,
 	DescriptorSetDrawInfo *descriptorSetDrawInfo,
-	uint32_t *dynamicOffsets
+	uint32_t *dynamicOffsets,
+	ShaderResources *vertShaderResources,
+	ShaderResources *fragShaderResources
 ) {
 	VkBuffer vUniform, fUniform;
 	unsigned long long vOff, fOff, vSize, fSize; /* MojoShader type */
@@ -2984,13 +2986,9 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 	SamplerDescriptorSetData vertexSamplerDescriptorSetData = { 0 };
 	SamplerDescriptorSetData fragSamplerDescriptorSetData = { 0 };
 
-	ShaderResources *vertShaderResources;
-	ShaderResources *fragShaderResources;
 	uint32_t i;
 
 	MOJOSHADER_vkGetBoundShaders(&vertShader, &fragShader);
-	vertShaderResources = VULKAN_INTERNAL_FetchShaderResources(renderer, vertShader, VK_SHADER_STAGE_VERTEX_BIT);
-	fragShaderResources = VULKAN_INTERNAL_FetchShaderResources(renderer, fragShader, VK_SHADER_STAGE_FRAGMENT_BIT);
 
 	if (renderer->vertexSamplerDescriptorSetDataNeedsUpdate)
 	{
@@ -7444,7 +7442,9 @@ static void VULKAN_DrawInstancedPrimitives(
 	VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 		renderer,
 		&drawIndexedCmd.drawIndexed.descriptorSetDrawInfo,
-		drawIndexedCmd.drawIndexed.dynamicOffsets
+		drawIndexedCmd.drawIndexed.dynamicOffsets,
+		drawIndexedCmd.drawIndexed.vertShaderResources,
+		drawIndexedCmd.drawIndexed.fragShaderResources
 	);
 
 	VULKAN_INTERNAL_EncodeCommand(
@@ -7532,7 +7532,9 @@ static void VULKAN_DrawPrimitives(
 	VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 		renderer,
 		&drawCmd.draw.descriptorSetDrawInfo,
-		drawCmd.draw.dynamicOffsets
+		drawCmd.draw.dynamicOffsets,
+		drawCmd.draw.vertShaderResources,
+		drawCmd.draw.fragShaderResources
 	);
 
 	VULKAN_INTERNAL_EncodeCommand(
