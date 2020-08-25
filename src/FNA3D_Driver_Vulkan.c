@@ -7009,14 +7009,27 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		);
 
 		SDL_free(shaderResources->samplerDescriptorSets);
-
 		SDL_free(shaderResources->samplerDatas);
+		SDL_free(shaderResources->samplerDescriptorSetHashTable.elements);
 
 		for (j = 0; j < NUM_DESCRIPTOR_SET_HASH_BUCKETS; j += 1)
 		{
 			SDL_free(shaderResources->samplerDescriptorSetHashTable.buckets[j].elements);
 		}
+
+		SDL_free(shaderResources);
 	}
+
+	for (i = 0; i < NUM_SHADER_RESOURCES_BUCKETS; i += 1)
+	{
+		SDL_free(renderer->shaderResourcesHashTable.buckets[i].elements);
+	}
+
+	renderer->vkDestroyDescriptorPool(
+		renderer->logicalDevice,
+		renderer->uniformBufferDescriptorPool,
+		NULL
+	);
 
 	for (i = 0; i < NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS; i += 1)
 	{
@@ -7116,6 +7129,8 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 				renderer->bufferAllocator->physicalBuffers[i]->deviceMemory,
 				NULL
 			);
+
+			SDL_free(renderer->bufferAllocator->physicalBuffers[i]);
 		}
 	}
 
@@ -10218,6 +10233,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	for (i = 0; i < NUM_SHADER_RESOURCES_BUCKETS; i += 1)
 	{
+		renderer->shaderResourcesHashTable.buckets[i].elements = NULL;
 		renderer->shaderResourcesHashTable.buckets[i].count = 0;
 		renderer->shaderResourcesHashTable.buckets[i].capacity = 0;
 		renderer->shaderResourcesHashTable.elements = NULL;
