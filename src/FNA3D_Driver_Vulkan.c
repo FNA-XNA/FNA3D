@@ -2941,22 +2941,42 @@ static ShaderResources* VULKAN_INTERNAL_FetchShaderResources(
 	return shaderResources;
 }
 
+static inline uint8_t SamplerDescriptorSetDataEqual(
+	SamplerDescriptorSetData *a,
+	SamplerDescriptorSetData *b,
+	uint8_t samplerCount
+) {
+	uint32_t i;
+
+	for (i = 0; i < samplerCount; i += 1)
+	{
+		if (a->descriptorImageInfo[i].imageLayout != b->descriptorImageInfo[i].imageLayout ||
+			a->descriptorImageInfo[i].imageView != b->descriptorImageInfo[i].imageView ||
+			a->descriptorImageInfo[i].sampler != b->descriptorImageInfo[i].sampler
+		) {
+			return 0;
+		}
+	}
+
+	return 1;
+}
+
 /* Fetches or creates a new descriptor set based on data */
 static VkDescriptorSet ShaderResources_FetchDescriptorSet(
 	VulkanRenderer *renderer,
 	ShaderResources *shaderResources,
-	SamplerDescriptorSetData value
+	SamplerDescriptorSetData *value
 ) {
 	uint32_t i;
 	VkDescriptorSet newDescriptorSet;
 	SamplerDescriptorSetHashMap map;
-	uint64_t hashcode = SamplerDescriptorSetHashTable_GetHashCode(&value, shaderResources->samplerCount);
+	uint64_t hashcode = SamplerDescriptorSetHashTable_GetHashCode(value, SDL_max(shaderResources->samplerCount, 1));
 	SamplerDescriptorSetHashArray *arr = &shaderResources->buckets[hashcode % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
 
 	for (i = 0; i < arr->count; i += 1)
 	{
 		SamplerDescriptorSetHashMap *e = &shaderResources->elements[arr->elements[i]];
-		if (SDL_memcmp(&value, &e->descriptorSetData, sizeof(SamplerDescriptorSetData)) == 0)
+		if (SamplerDescriptorSetDataEqual(value, &e->descriptorSetData, shaderResources->samplerCount))
 		{
 			e->inactiveFrameCount = 0;
 			return e->descriptorSet;
@@ -3006,7 +3026,14 @@ static VkDescriptorSet ShaderResources_FetchDescriptorSet(
 	shaderResources->inactiveDescriptorSetCount -= 1;
 
 	map.key = hashcode;
-	map.descriptorSetData = value;
+
+	for (i = 0; i < shaderResources->samplerCount; i += 1)
+	{
+		map.descriptorSetData.descriptorImageInfo[i].imageLayout = value->descriptorImageInfo[i].imageLayout;
+		map.descriptorSetData.descriptorImageInfo[i].imageView = value->descriptorImageInfo[i].imageView;
+		map.descriptorSetData.descriptorImageInfo[i].sampler = value->descriptorImageInfo[i].sampler;
+	}
+
 	map.descriptorSet = newDescriptorSet;
 	map.inactiveFrameCount = 0;
 
@@ -3113,8 +3140,8 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 
 	MOJOSHADER_vkShader *vertShader, *fragShader;
 
-	SamplerDescriptorSetData vertexSamplerDescriptorSetData = { 0 };
-	SamplerDescriptorSetData fragSamplerDescriptorSetData = { 0 };
+	SamplerDescriptorSetData vertexSamplerDescriptorSetData;
+	SamplerDescriptorSetData fragSamplerDescriptorSetData;
 
 	uint32_t i;
 
@@ -3142,7 +3169,7 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 		renderer->currentVertexSamplerDescriptorSet = ShaderResources_FetchDescriptorSet(
 			renderer,
 			vertShaderResources,
-			vertexSamplerDescriptorSetData
+			&vertexSamplerDescriptorSetData
 		);
 	}
 
@@ -3167,7 +3194,7 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 		renderer->currentFragSamplerDescriptorSet = ShaderResources_FetchDescriptorSet(
 			renderer,
 			fragShaderResources,
-			fragSamplerDescriptorSetData
+			&fragSamplerDescriptorSetData
 		);
 	}
 
