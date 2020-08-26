@@ -4182,6 +4182,9 @@ static void VULKAN_INTERNAL_DestroySwapchain(VulkanRenderer *renderer)
 		);
 	}
 	SDL_free(renderer->framebufferArray.elements);
+	renderer->framebufferArray.elements = NULL;
+	renderer->framebufferArray.count = 0;
+	renderer->framebufferArray.capacity = 0;
 
 	for (i = 0; i < renderer->swapChainImageCount; i += 1)
 	{
