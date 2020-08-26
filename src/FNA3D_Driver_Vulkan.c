@@ -2950,10 +2950,10 @@ static inline uint8_t SamplerDescriptorSetDataEqual(
 
 	for (i = 0; i < samplerCount; i += 1)
 	{
-		if (a->descriptorImageInfo[i].imageLayout != b->descriptorImageInfo[i].imageLayout ||
+		if (	a->descriptorImageInfo[i].imageLayout != b->descriptorImageInfo[i].imageLayout ||
 			a->descriptorImageInfo[i].imageView != b->descriptorImageInfo[i].imageView ||
-			a->descriptorImageInfo[i].sampler != b->descriptorImageInfo[i].sampler
-		) {
+			a->descriptorImageInfo[i].sampler != b->descriptorImageInfo[i].sampler	)
+		{
 			return 0;
 		}
 	}
