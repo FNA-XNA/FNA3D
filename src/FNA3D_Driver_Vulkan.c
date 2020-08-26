@@ -6913,6 +6913,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 			);
 		}
 
+		SDL_free(shaderResources->samplerDescriptorPools);
 		SDL_free(shaderResources->samplerBindingIndices);
 		SDL_free(shaderResources->inactiveDescriptorSets);
 		SDL_free(shaderResources->elements);
@@ -7045,6 +7046,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	renderer->vkDestroyDevice(renderer->logicalDevice, NULL);
 	renderer->vkDestroyInstance(renderer->instance, NULL);
 
+	SDL_free(renderer->writeDescriptorSets);
 	SDL_free(renderer->shaderResourcesHashTable.elements);
 	SDL_free(renderer->renderPassArray.elements);
 	SDL_free(renderer->samplerStateArray.elements);
