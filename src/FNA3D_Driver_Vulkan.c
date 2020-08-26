@@ -2481,6 +2481,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 
 	renderer->physicalDeviceDriverProperties.sType =
 		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR;
+	renderer->physicalDeviceDriverProperties.pNext = NULL;
 
 	renderer->physicalDeviceProperties.sType =
 		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
@@ -2539,6 +2540,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 
 	queueCreateInfoGraphics.sType =
 		VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+	queueCreateInfoGraphics.pNext = NULL;
 	queueCreateInfoGraphics.queueFamilyIndex =
 		renderer->queueFamilyIndices.graphicsFamily;
 	queueCreateInfoGraphics.queueCount = 1;
@@ -2550,6 +2552,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	{
 		queueCreateInfoPresent.sType =
 			VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
+		queueCreateInfoPresent.pNext = NULL;
 		queueCreateInfoPresent.queueFamilyIndex =
 			renderer->queueFamilyIndices.presentFamily;
 		queueCreateInfoPresent.queueCount = 1;
@@ -2567,6 +2570,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	/* creating the logical device */
 
 	deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
+	deviceCreateInfo.pNext = NULL;
 	deviceCreateInfo.queueCreateInfoCount = queueInfoCount;
 	deviceCreateInfo.pQueueCreateInfos = queueCreateInfos;
 	deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
@@ -5345,6 +5349,7 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 	{
 		divisorStateInfo.sType =
 			VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_DIVISOR_STATE_CREATE_INFO_EXT;
+		divisorStateInfo.pNext = NULL;
 		divisorStateInfo.vertexBindingDivisorCount =
 			divisorDescriptionCount;
 		divisorStateInfo.pVertexBindingDivisors = divisorDescriptions;
@@ -9521,6 +9526,7 @@ static void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 	if (renderer->supportsDebugUtils)
 	{
 		labelInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
+		labelInfo.pNext = NULL;
 		labelInfo.pLabelName = text;
 		insertLabelCmd = VULKAN_INTERNAL_BeginEncodeCommand(renderer);
 		insertLabelCmd->type = CMDTYPE_INSERT_DEBUG_UTILS_LABEL;
