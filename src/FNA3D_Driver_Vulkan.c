@@ -2971,7 +2971,7 @@ static VkDescriptorSet ShaderResources_FetchDescriptorSet(
 		shaderResources->samplerDescriptorPoolCount += 1;
 		shaderResources->samplerDescriptorPools = SDL_realloc(
 			shaderResources->samplerDescriptorPools,
-			shaderResources->samplerDescriptorPoolCount
+			sizeof(VkDescriptorPool) * shaderResources->samplerDescriptorPoolCount
 		);
 
 		VULKAN_INTERNAL_CreateDescriptorPool(
@@ -3047,10 +3047,10 @@ static VkDescriptorSet ShaderResources_FetchDescriptorSet(
 static void ShaderResources_DeactivateUnusedDescriptorSets(
 	ShaderResources *shaderResources
 ) {
-	uint32_t i, j;
+	int32_t i, j;
 	SamplerDescriptorSetHashArray *arr;
 
-	for (i = 0; i < shaderResources->count; i += 1)
+	for (i = shaderResources->count - 1; i >= 0; i -= 1)
 	{
 		shaderResources->elements[i].inactiveFrameCount += 1;
 
@@ -3078,9 +3078,22 @@ static void ShaderResources_DeactivateUnusedDescriptorSets(
 			shaderResources->inactiveDescriptorSets[shaderResources->inactiveDescriptorSetCount] = shaderResources->elements[i].descriptorSet;
 			shaderResources->inactiveDescriptorSetCount += 1;
 
+			/* move another descriptor set to fill the hole */
 			if (i < shaderResources->count - 1)
 			{
 				shaderResources->elements[i] = shaderResources->elements[shaderResources->count - 1];
+
+				/* update index in bucket */
+				arr = &shaderResources->buckets[shaderResources->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
+
+				for (j = 0; j < arr->count; j += 1)
+				{
+					if (arr->elements[j] == shaderResources->count - 1)
+					{
+						arr->elements[j] = i;
+						break;
+					}
+				}
 			}
 
 			shaderResources->count -= 1;
