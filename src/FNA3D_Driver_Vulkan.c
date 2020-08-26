@@ -4853,8 +4853,28 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	{
 		if (!isCube && levelCount == 1)
 		{
-			/* Skip a step and just use the view directly */
-			texture->rtViews[0] = texture->view;
+			/* Framebuffer views don't like swizzling */
+			imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+			imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+			imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+			imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+			result = renderer->vkCreateImageView(
+				renderer->logicalDevice,
+				&imageViewCreateInfo,
+				NULL,
+				&texture->rtViews[0]
+			);
+
+			if (result != VK_SUCCESS)
+			{
+				LogVulkanResult(
+					"vkCreateImageView",
+					result
+				);
+				FNA3D_LogError("Failed to create color attachment image view");
+				return 0;
+			}
 		}
 		else
 		{
@@ -4864,6 +4884,10 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 				imageViewCreateInfo.subresourceRange.levelCount = 1;
 				imageViewCreateInfo.subresourceRange.layerCount = 1;
 				imageViewCreateInfo.subresourceRange.baseArrayLayer = i;
+				imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
+				imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
+				imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
+				imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
 
 				result = renderer->vkCreateImageView(
 					renderer->logicalDevice,
