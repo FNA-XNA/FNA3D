@@ -2838,7 +2838,7 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 		descriptorSetLayoutHash,
 		descriptorSetLayout
 	);
-	
+
 	return descriptorSetLayout;
 }
 
@@ -4867,6 +4867,8 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 		return 0;
 	}
 
+	/* FIXME: Reduce this memset to the minimum necessary for init! */
+	SDL_memset(texture->rtViews, '\0', sizeof(texture->rtViews));
 	if (isRenderTarget)
 	{
 		if (!isCube && levelCount == 1)
