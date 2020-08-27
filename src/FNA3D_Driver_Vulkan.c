@@ -419,7 +419,7 @@ static inline ShaderResources *ShaderResourcesHashTable_Fetch(
 	MOJOSHADER_vkShader *key
 ) {
 	int32_t i;
-	uint64_t hashcode = (uint64_t) key;
+	uint64_t hashcode = (uint64_t) (size_t) key;
 	ShaderResourcesHashArray *arr = &table->buckets[hashcode % NUM_SHADER_RESOURCES_BUCKETS];
 
 	for (i = 0; i < arr->count; i += 1)
@@ -439,7 +439,7 @@ static inline void ShaderResourcesHashTable_Insert(
 	MOJOSHADER_vkShader *key,
 	ShaderResources *value
 ) {
-	uint64_t hashcode = (uint64_t) key;
+	uint64_t hashcode = (uint64_t) (size_t) key;
 	ShaderResourcesHashArray *arr = &table->buckets[hashcode % NUM_SHADER_RESOURCES_BUCKETS];
 
 	ShaderResourcesHashMap map;
