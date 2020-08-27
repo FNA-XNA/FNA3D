@@ -2534,11 +2534,6 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	int32_t queueInfoCount = 1;
 	float queuePriority = 1.0f;
 
-	SDL_zero(deviceCreateInfo);
-	SDL_zero(deviceFeatures);
-	SDL_zero(queueCreateInfoGraphics);
-	SDL_zero(queueCreateInfoPresent);
-
 	queueCreateInfoGraphics.sType =
 		VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 	queueCreateInfoGraphics.pNext = NULL;
@@ -2565,6 +2560,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 
 	/* specifying used device features */
 
+	SDL_zero(deviceFeatures);
 	deviceFeatures.occlusionQueryPrecise = VK_TRUE;
 	deviceFeatures.fillModeNonSolid = VK_TRUE;
 
@@ -2572,11 +2568,14 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 
 	deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
 	deviceCreateInfo.pNext = NULL;
+	deviceCreateInfo.flags = 0;
 	deviceCreateInfo.queueCreateInfoCount = queueInfoCount;
 	deviceCreateInfo.pQueueCreateInfos = queueCreateInfos;
-	deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
-	deviceCreateInfo.ppEnabledExtensionNames = deviceExtensionNames;
+	deviceCreateInfo.enabledLayerCount = 0;
+	deviceCreateInfo.ppEnabledLayerNames = NULL;
 	deviceCreateInfo.enabledExtensionCount = deviceExtensionCount;
+	deviceCreateInfo.ppEnabledExtensionNames = deviceExtensionNames;
+	deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
 
 	vulkanResult = renderer->vkCreateDevice(
 		renderer->physicalDevice,
@@ -3791,7 +3790,7 @@ static void VULKAN_INTERNAL_FlushAndPresent(
 		);
 		presentInfoGGP.sType = VK_STRUCTURE_TYPE_PRESENT_FRAME_TOKEN_GGP;
 		presentInfoGGP.pNext = NULL;
-		presentInfoGGP.frameToken = (uint64_t) token;
+		presentInfoGGP.frameToken = (uint64_t) (size_t) token;
 		presentInfo.pNext = &presentInfoGGP;
 	}
 	else
@@ -4349,7 +4348,6 @@ static VulkanPhysicalBuffer *VULKAN_INTERNAL_NewPhysicalBuffer(
 	VkBufferMemoryRequirementsInfo2KHR bufferRequirementsInfo;
 
 	VulkanPhysicalBuffer *result = (VulkanPhysicalBuffer*) SDL_malloc(sizeof(VulkanPhysicalBuffer));
-	SDL_zerop(result);
 
 	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufferCreateInfo.pNext = NULL;
@@ -4638,11 +4636,13 @@ static FNA3D_Buffer* VULKAN_INTERNAL_CreateBuffer(
 	VulkanResourceAccessType resourceAccessType
 ) {
 	VulkanBuffer *result = SDL_malloc(sizeof(VulkanBuffer));
-	SDL_memset(result, '\0', sizeof(VulkanBuffer));
 
 	result->size = size;
-	result->resourceAccessType = resourceAccessType;
+	result->subBufferCount = 0;
 	result->subBufferCapacity = 4;
+	result->currentSubBufferIndex = 0;
+	result->bound = 0;
+	result->resourceAccessType = resourceAccessType;
 	result->subBuffers = SDL_malloc(
 		sizeof(VulkanSubBuffer) * result->subBufferCapacity
 	);
@@ -4930,10 +4930,10 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	texture->dimensions.width = width;
 	texture->dimensions.height = height;
 	texture->depth = depth;
-	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
 	texture->surfaceFormat = format;
 	texture->levelCount = levelCount;
 	texture->layerCount = layerCount;
+	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
 
 	return 1;
 }
@@ -5477,7 +5477,6 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 
 	/* Blend */
 
-	SDL_zero(colorBlendAttachments);
 	colorBlendAttachments[0].blendEnable = !(
 		renderer->blendState.colorSourceBlend == FNA3D_BLEND_ONE &&
 		renderer->blendState.colorDestinationBlend == FNA3D_BLEND_ZERO &&
@@ -5505,6 +5504,15 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 		colorBlendAttachments[0].alphaBlendOp = XNAToVK_BlendOp[
 			renderer->blendState.alphaBlendFunction
 		];
+	}
+	else
+	{
+		colorBlendAttachments[0].srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+		colorBlendAttachments[0].srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
+		colorBlendAttachments[0].dstColorBlendFactor = VK_BLEND_FACTOR_ZERO;
+		colorBlendAttachments[0].dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
+		colorBlendAttachments[0].colorBlendOp = VK_BLEND_OP_ADD;
+		colorBlendAttachments[0].alphaBlendOp = VK_BLEND_OP_ADD;
 	}
 	colorBlendAttachments[1] = colorBlendAttachments[0];
 	colorBlendAttachments[2] = colorBlendAttachments[0];
@@ -5863,7 +5871,6 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 	VkImageAspectFlags depthAspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
 
 	renderer->fauxBackbufferColor.handle = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
-	SDL_memset(renderer->fauxBackbufferColor.handle, '\0', sizeof(VulkanTexture));
 
 	if (!VULKAN_INTERNAL_CreateTexture(
 		renderer,
@@ -5919,11 +5926,6 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 		renderer->fauxBackbufferMultiSampleColor = (VulkanTexture*) SDL_malloc(
 			sizeof(VulkanTexture)
 		);
-		SDL_memset(
-			renderer->fauxBackbufferMultiSampleColor,
-			'\0',
-			sizeof(VulkanTexture)
-		);
 
 		VULKAN_INTERNAL_CreateTexture(
 			renderer,
@@ -5966,11 +5968,6 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 	if (presentationParameters->depthStencilFormat != FNA3D_DEPTHFORMAT_NONE)
 	{
 		renderer->fauxBackbufferDepthStencil.handle = (VulkanTexture*) SDL_malloc(
-			sizeof(VulkanTexture)
-		);
-		SDL_memset(
-			renderer->fauxBackbufferDepthStencil.handle,
-			'\0',
 			sizeof(VulkanTexture)
 		);
 
@@ -6618,7 +6615,6 @@ static void VULKAN_INTERNAL_RenderPassClear(
 	{
 		for (i = 0; i < renderer->colorAttachmentCount; i += 1)
 		{
-			SDL_zero(clearAttachments[attachmentCount]);
 			clearAttachments[attachmentCount].aspectMask =
 				VK_IMAGE_ASPECT_COLOR_BIT;
 			clearAttachments[attachmentCount].colorAttachment =
@@ -6636,8 +6632,8 @@ static void VULKAN_INTERNAL_RenderPassClear(
 
 	if (shouldClearDepthStencil)
 	{
-		SDL_zero(clearAttachments[attachmentCount]);
-
+		clearAttachments[attachmentCount].aspectMask = 0;
+		clearAttachments[attachmentCount].colorAttachment = 0;
 		if (clearDepth)
 		{
 			if (depth < 0.0f)
@@ -6651,10 +6647,18 @@ static void VULKAN_INTERNAL_RenderPassClear(
 			clearAttachments[attachmentCount].aspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
 			clearAttachments[attachmentCount].clearValue.depthStencil.depth = depth;
 		}
+		else
+		{
+			clearAttachments[attachmentCount].clearValue.depthStencil.depth = 0.0f;
+		}
 		if (clearStencil)
 		{
 			clearAttachments[attachmentCount].aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
 			clearAttachments[attachmentCount].clearValue.depthStencil.stencil = stencil;
+		}
+		else
+		{
+			clearAttachments[attachmentCount].clearValue.depthStencil.stencil = 0;
 		}
 
 		attachmentCount += 1;
@@ -8283,7 +8287,6 @@ static FNA3D_Texture* VULKAN_CreateTexture2D(
 	);
 
 	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
-	SDL_memset(result, '\0', sizeof(VulkanTexture));
 
 	if (isRenderTarget)
 	{
@@ -8330,7 +8333,6 @@ static FNA3D_Texture* VULKAN_CreateTexture3D(
 	);
 
 	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
-	SDL_memset(result, '\0', sizeof(VulkanTexture));
 
 	VULKAN_INTERNAL_CreateTexture(
 		renderer,
@@ -8371,7 +8373,6 @@ static FNA3D_Texture* VULKAN_CreateTextureCube(
 	);
 
 	result = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
-	SDL_memset(result, '\0', sizeof(VulkanTexture));
 
 	if (isRenderTarget)
 	{
@@ -8879,12 +8880,6 @@ static FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 	{
 		renderbuffer->colorBuffer->multiSampleTexture =
 			(VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
-		SDL_memset(
-			renderbuffer->colorBuffer->multiSampleTexture,
-			'\0',
-			sizeof(VulkanTexture)
-		);
-
 		VULKAN_INTERNAL_CreateTexture(
 			renderer,
 			width,
@@ -8952,12 +8947,6 @@ static FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 	renderbuffer->depthBuffer->handle = (VulkanTexture*) SDL_malloc(
 		sizeof(VulkanTexture)
 	);
-	SDL_memset(
-		renderbuffer->depthBuffer->handle,
-		'\0',
-		sizeof(VulkanTexture)
-	);
-
 	if (!VULKAN_INTERNAL_CreateTexture(
 		renderer,
 		width,
