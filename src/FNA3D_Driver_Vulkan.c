@@ -1330,10 +1330,20 @@ typedef struct VulkanRenderer
 
 	VulkanBuffer *dummyVertUniformBuffer;
 	VulkanBuffer *dummyFragUniformBuffer;
-	VkSampler dummyFragSamplerState;
+
 	VkSampler dummyVertSamplerState;
+	VkSampler dummyVertSampler3DState;
+	VkSampler dummyVertSamplerCubeState;
+	VkSampler dummyFragSamplerState;
+	VkSampler dummyFragSampler3DState;
+	VkSampler dummyFragSamplerCubeState;
+
 	VulkanTexture *dummyVertTexture;
+	VulkanTexture *dummyVertTexture3D;
+	VulkanTexture *dummyVertTextureCube;
 	VulkanTexture *dummyFragTexture;
+	VulkanTexture *dummyFragTexture3D;
+	VulkanTexture *dummyFragTextureCube;
 
 	VkDescriptorPool uniformBufferDescriptorPool;
 	VkDescriptorSetLayout vertexUniformBufferDescriptorSetLayout;
@@ -3158,6 +3168,7 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 	unsigned long long vOff, fOff, vSize, fSize; /* MojoShader type */
 
 	MOJOSHADER_vkShader *vertShader, *fragShader;
+	MOJOSHADER_samplerType samplerType;
 
 	SamplerDescriptorSetData vertexSamplerDescriptorSetData;
 	SamplerDescriptorSetData fragSamplerDescriptorSetData;
@@ -3187,9 +3198,25 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 				}
 				else
 				{
-					vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-					vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyVertTexture->view;
-					vertexSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->dummyVertSamplerState;
+					samplerType = MOJOSHADER_vkGetShaderParseData(vertShader)->samplers[i].type;
+					if (samplerType == MOJOSHADER_SAMPLER_2D)
+					{
+						vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+						vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyVertTexture->view;
+						vertexSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->dummyVertSamplerState;
+					}
+					else if (samplerType == MOJOSHADER_SAMPLER_VOLUME)
+					{
+						vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+						vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyVertTexture3D->view;
+						vertexSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->dummyVertSampler3DState;
+					}
+					else if (samplerType == MOJOSHADER_SAMPLER_CUBE)
+					{
+						vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+						vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyVertTextureCube->view;
+						vertexSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->dummyVertSamplerCubeState;
+					}
 				}
 			}
 		}
@@ -3221,9 +3248,26 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 				}
 				else
 				{
-					fragSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-					fragSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyFragTexture->view;
-					fragSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->dummyFragSamplerState;
+
+					samplerType = MOJOSHADER_vkGetShaderParseData(fragShader)->samplers[i].type;
+					if (samplerType == MOJOSHADER_SAMPLER_2D)
+					{
+						fragSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+						fragSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyFragTexture->view;
+						fragSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->dummyFragSamplerState;
+					}
+					else if (samplerType == MOJOSHADER_SAMPLER_VOLUME)
+					{
+						fragSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+						fragSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyFragTexture3D->view;
+						fragSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->dummyFragSampler3DState;
+					}
+					else if (samplerType == MOJOSHADER_SAMPLER_CUBE)
+					{
+						fragSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+						fragSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyFragTextureCube->view;
+						fragSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->dummyFragSamplerCubeState;
+					}
 				}
 			}
 		}
@@ -4903,6 +4947,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 			/* Create a framebuffer-compatible view for each layer */
 			for (i = 0; i < layerCount; i += 1)
 			{
+				imageViewCreateInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
 				imageViewCreateInfo.subresourceRange.levelCount = 1;
 				imageViewCreateInfo.subresourceRange.layerCount = 1;
 				imageViewCreateInfo.subresourceRange.baseArrayLayer = i;
@@ -6967,7 +7012,12 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyFragUniformBuffer);
 
 	VULKAN_INTERNAL_DestroyTexture(renderer, renderer->dummyVertTexture);
+	VULKAN_INTERNAL_DestroyTexture(renderer, renderer->dummyVertTexture3D);
+	VULKAN_INTERNAL_DestroyTexture(renderer, renderer->dummyVertTextureCube);
+
 	VULKAN_INTERNAL_DestroyTexture(renderer, renderer->dummyFragTexture);
+	VULKAN_INTERNAL_DestroyTexture(renderer, renderer->dummyFragTexture3D);
+	VULKAN_INTERNAL_DestroyTexture(renderer, renderer->dummyFragTextureCube);
 
 	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
 
@@ -7131,10 +7181,30 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		renderer->dummyVertSamplerState,
 		NULL
 	);
+	renderer->vkDestroySampler(
+		renderer->logicalDevice,
+		renderer->dummyVertSampler3DState,
+		NULL
+	);
+	renderer->vkDestroySampler(
+		renderer->logicalDevice,
+		renderer->dummyVertSamplerCubeState,
+		NULL
+	);
 
 	renderer->vkDestroySampler(
 		renderer->logicalDevice,
 		renderer->dummyFragSamplerState,
+		NULL
+	);
+	renderer->vkDestroySampler(
+		renderer->logicalDevice,
+		renderer->dummyFragSampler3DState,
+		NULL
+	);
+	renderer->vkDestroySampler(
+		renderer->logicalDevice,
+		renderer->dummyFragSamplerCubeState,
 		NULL
 	);
 
@@ -10232,10 +10302,40 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		1,
 		0
 	);
+	renderer->dummyVertTexture3D = (VulkanTexture*) VULKAN_CreateTexture3D(
+		(FNA3D_Renderer*) renderer,
+		FNA3D_SURFACEFORMAT_COLOR,
+		1,
+		1,
+		1,
+		1
+	);
+	renderer->dummyVertTextureCube = (VulkanTexture*) VULKAN_CreateTextureCube(
+		(FNA3D_Renderer*) renderer,
+		FNA3D_SURFACEFORMAT_COLOR,
+		1,
+		1,
+		0
+	);
 	renderer->dummyFragTexture = (VulkanTexture*) VULKAN_CreateTexture2D(
 		(FNA3D_Renderer*) renderer,
 		FNA3D_SURFACEFORMAT_COLOR,
 		1,
+		1,
+		1,
+		0
+	);
+	renderer->dummyFragTexture3D = (VulkanTexture*) VULKAN_CreateTexture3D(
+		(FNA3D_Renderer*) renderer,
+		FNA3D_SURFACEFORMAT_COLOR,
+		1,
+		1,
+		1,
+		1
+	);
+	renderer->dummyFragTextureCube = (VulkanTexture*) VULKAN_CreateTextureCube(
+		(FNA3D_Renderer*) renderer,
+		FNA3D_SURFACEFORMAT_COLOR,
 		1,
 		1,
 		0
@@ -10261,8 +10361,56 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		0,
 		1,
 		1,
+		renderer->dummyVertTexture3D->image,
+		&renderer->dummyVertTexture3D->resourceAccessType
+	);
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		6,
+		0,
+		1,
+		1,
+		renderer->dummyVertTextureCube->image,
+		&renderer->dummyVertTextureCube->resourceAccessType
+	);
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		1,
+		0,
+		1,
+		1,
 		renderer->dummyFragTexture->image,
 		&renderer->dummyFragTexture->resourceAccessType
+	);
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		1,
+		0,
+		1,
+		1,
+		renderer->dummyFragTexture3D->image,
+		&renderer->dummyFragTexture3D->resourceAccessType
+	);
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		6,
+		0,
+		1,
+		1,
+		renderer->dummyFragTextureCube->image,
+		&renderer->dummyFragTextureCube->resourceAccessType
 	);
 	renderer->dummyVertUniformBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
 		1,
@@ -10318,7 +10466,31 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer->logicalDevice,
 		&samplerCreateInfo,
 		NULL,
+		&renderer->dummyVertSampler3DState
+	);
+	renderer->vkCreateSampler(
+		renderer->logicalDevice,
+		&samplerCreateInfo,
+		NULL,
+		&renderer->dummyVertSamplerCubeState
+	);
+	renderer->vkCreateSampler(
+		renderer->logicalDevice,
+		&samplerCreateInfo,
+		NULL,
 		&renderer->dummyFragSamplerState
+	);
+	renderer->vkCreateSampler(
+		renderer->logicalDevice,
+		&samplerCreateInfo,
+		NULL,
+		&renderer->dummyFragSampler3DState
+	);
+	renderer->vkCreateSampler(
+		renderer->logicalDevice,
+		&samplerCreateInfo,
+		NULL,
+		&renderer->dummyFragSamplerCubeState
 	);
 
 	descriptorPoolSize.type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
@@ -10418,6 +10590,20 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->writeDescriptorImageInfos = SDL_malloc(sizeof(VkDescriptorImageInfo) * 16);
 	renderer->writeDescriptorSetCount = 0;
 	renderer->writeDescriptorSetCapacity = 16;
+
+	/* init texture storage */
+
+	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
+	{
+		renderer->textures[i] = &NullTexture;
+		renderer->samplers[i] = renderer->dummyFragSamplerState;
+	}
+
+	for (i = 0; i < MAX_VERTEXTEXTURE_SAMPLERS; i += 1)
+	{
+		renderer->textures[MAX_TEXTURE_SAMPLERS + i] = &NullTexture;
+		renderer->samplers[MAX_TEXTURE_SAMPLERS + i] = renderer->dummyVertSamplerState;
+	}
 
 	return result;
 }
