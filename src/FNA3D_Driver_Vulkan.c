@@ -2537,6 +2537,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	queueCreateInfoGraphics.sType =
 		VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 	queueCreateInfoGraphics.pNext = NULL;
+	queueCreateInfoGraphics.flags = 0;
 	queueCreateInfoGraphics.queueFamilyIndex =
 		renderer->queueFamilyIndices.graphicsFamily;
 	queueCreateInfoGraphics.queueCount = 1;
@@ -2549,6 +2550,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 		queueCreateInfoPresent.sType =
 			VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
 		queueCreateInfoPresent.pNext = NULL;
+		queueCreateInfoPresent.flags = 0;
 		queueCreateInfoPresent.queueFamilyIndex =
 			renderer->queueFamilyIndices.presentFamily;
 		queueCreateInfoPresent.queueCount = 1;
