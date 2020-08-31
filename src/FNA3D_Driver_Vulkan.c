@@ -5087,7 +5087,7 @@ static void VULKAN_INTERNAL_SetViewportCommand(VulkanRenderer *renderer)
 
 	/* Flipping the viewport for compatibility with D3D */
 	vulkanViewport.x = (float) renderer->viewport.x;
-	vulkanViewport.y = (float) renderer->viewport.h + renderer->viewport.y;
+	vulkanViewport.y = (float) (renderer->viewport.y + renderer->viewport.h);
 	vulkanViewport.width = (float) renderer->viewport.w;
 	vulkanViewport.height = (float) -renderer->viewport.h;
 	vulkanViewport.minDepth = renderer->viewport.minDepth;
