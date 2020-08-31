@@ -5082,26 +5082,12 @@ static void VULKAN_INTERNAL_GetTextureData(
 
 static void VULKAN_INTERNAL_SetViewportCommand(VulkanRenderer *renderer)
 {
-	int32_t targetHeight, meh;
 	VkViewport vulkanViewport;
 	VulkanCommand *setViewportCmd;
 
 	/* Flipping the viewport for compatibility with D3D */
 	vulkanViewport.x = (float) renderer->viewport.x;
-	if (!renderer->renderTargetBound)
-	{
-		VULKAN_GetBackbufferSize(
-			(FNA3D_Renderer*) renderer,
-			&meh,
-			&targetHeight
-		);
-	}
-	else
-	{
-		targetHeight = renderer->viewport.h;
-	}
-
-	vulkanViewport.y = (float) (targetHeight - renderer->viewport.y);
+	vulkanViewport.y = (float) renderer->viewport.h + renderer->viewport.y;
 	vulkanViewport.width = (float) renderer->viewport.w;
 	vulkanViewport.height = (float) -renderer->viewport.h;
 	vulkanViewport.minDepth = renderer->viewport.minDepth;
