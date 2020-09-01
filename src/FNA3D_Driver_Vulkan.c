@@ -2520,6 +2520,11 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 		renderer->physicalDeviceDriverProperties.conformanceVersion.minor,
 		renderer->physicalDeviceDriverProperties.conformanceVersion.patch
 	);
+	FNA3D_LogWarn(
+		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+		"FNA3D Vulkan is still in development! You have been warned!\n"
+		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+	);
 
 	SDL_stack_free(physicalDevices);
 	return 1;
