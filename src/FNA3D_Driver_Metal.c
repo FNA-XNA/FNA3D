@@ -605,6 +605,7 @@ static void METAL_INTERNAL_SetEncoderViewport(MetalRenderer *renderer)
 static void METAL_INTERNAL_SetEncoderScissorRect(MetalRenderer *renderer)
 {
 	FNA3D_Rect rect = renderer->scissorRect;
+	int32_t x0, y0, x1, y1;
 
 	if (	renderer->renderCommandEncoder != NULL &&
 		!renderer->needNewRenderPass			)
@@ -612,24 +613,26 @@ static void METAL_INTERNAL_SetEncoderScissorRect(MetalRenderer *renderer)
 		if (!renderer->scissorTestEnable)
 		{
 			/* Default to the size of the current RT */
-			rect.x = 0;
-			rect.y = 0;
-			rect.w = renderer->currentAttachmentWidth;
-			rect.h = renderer->currentAttachmentHeight;
+			x0 = 0;
+			y0 = 0;
+			x1 = renderer->currentAttachmentWidth;
+			y1 = renderer->currentAttachmentHeight;
 		}
-
-		/* Clamp to the size of the viewport */
-		rect.x = SDL_max(0, SDL_min(rect.x, renderer->viewport.w));
-		rect.y = SDL_max(0, SDL_min(rect.y, renderer->viewport.h));
-		rect.w = SDL_max(0, SDL_min(rect.w, renderer->viewport.w - rect.x));
-		rect.h = SDL_max(0, SDL_min(rect.h, renderer->viewport.h - rect.y));
+		else
+		{
+			/* Keep the rect within the RT dimensions */
+			x0 = SDL_max(0, rect.x);
+			y0 = SDL_max(0, rect.y);
+			x1 = SDL_min(rect.x + rect.w, renderer->currentAttachmentWidth - 1);
+			y1 = SDL_min(rect.y + rect.h, renderer->currentAttachmentHeight - 1);
+		}
 
 		mtlSetScissorRect(
 			renderer->renderCommandEncoder,
-			rect.x,
-			rect.y,
-			rect.w,
-			rect.h
+			x0,
+			y0,
+			x1 - x0,
+			y1 - y0
 		);
 	}
 }
