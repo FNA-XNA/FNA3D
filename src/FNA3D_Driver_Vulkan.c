@@ -6735,6 +6735,7 @@ static void VULKAN_INTERNAL_OutsideRenderPassClear(
 	);
 	VulkanCommand *clearDepthStencilCmd;
 	VkImageAspectFlags depthAspectMask = 0;
+	VkImageAspectFlags transitionAspectMask = 0;
 	VkClearDepthStencilValue clearDepthStencilValue;
 	VkImageSubresourceRange subresourceRange;
 
@@ -6841,6 +6842,17 @@ static void VULKAN_INTERNAL_OutsideRenderPassClear(
 			depthAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
 		}
 
+		/* Vulkan will yell at us if we transition a depth-stencil format using only a depth aspect */
+		if (clearDepth || clearStencil)
+		{
+			transitionAspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+			if (DepthFormatContainsStencil(renderer->depthStencilAttachment->surfaceFormat))
+			{
+				transitionAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+			}
+		}
+
 		clearDepthStencilValue.stencil = stencil;
 		if (depth < 0.0f)
 		{
@@ -6866,7 +6878,7 @@ static void VULKAN_INTERNAL_OutsideRenderPassClear(
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
 			RESOURCE_ACCESS_TRANSFER_WRITE,
-			depthAspectMask,
+			transitionAspectMask,
 			0,
 			renderer->depthStencilAttachment->layerCount,
 			0,
@@ -6889,7 +6901,7 @@ static void VULKAN_INTERNAL_OutsideRenderPassClear(
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
 			RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
-			depthAspectMask,
+			transitionAspectMask,
 			0,
 			renderer->depthStencilAttachment->layerCount,
 			0,
