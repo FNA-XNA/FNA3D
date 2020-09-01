@@ -6843,14 +6843,11 @@ static void VULKAN_INTERNAL_OutsideRenderPassClear(
 		}
 
 		/* Vulkan will yell at us if we transition a depth-stencil format using only a depth aspect */
-		if (clearDepth || clearStencil)
-		{
-			transitionAspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
+		transitionAspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
 
-			if (DepthFormatContainsStencil(renderer->depthStencilAttachment->surfaceFormat))
-			{
-				transitionAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-			}
+		if (DepthFormatContainsStencil(renderer->depthStencilAttachment->surfaceFormat))
+		{
+			transitionAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
 		}
 
 		clearDepthStencilValue.stencil = stencil;
