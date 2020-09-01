@@ -73,6 +73,16 @@ else()
 	)
 endif()
 
+if(EMSCRIPTEN)
+	remove_definitions(
+		-DFNA3D_DRIVER_VULKAN
+	)
+	add_definitions(
+		-DSUPPORT_PROFILE_GLSPIRV=0
+		-DSUPPORT_PROFILE_SPIRV=0
+	)
+endif()
+
 # Source lists
 add_library(FNA3D
 	# Public Headers
