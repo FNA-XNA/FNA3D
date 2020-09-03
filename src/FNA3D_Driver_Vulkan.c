@@ -2096,6 +2096,18 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
 	uint32_t availablePresentModesLength,
 	VkPresentModeKHR *outputPresentMode
 ) {
+	#define CHECK_MODE(m) \
+		for (i = 0; i < availablePresentModesLength; i += 1) \
+		{ \
+			if (availablePresentModes[i] == m) \
+			{ \
+				*outputPresentMode = m; \
+				FNA3D_LogInfo("Using " #m "!"); \
+				return 1; \
+			} \
+		} \
+		FNA3D_LogInfo(#m " unsupported.");
+
 	uint32_t i;
 	if (	desiredPresentInterval == FNA3D_PRESENTINTERVAL_DEFAULT ||
 		desiredPresentInterval == FNA3D_PRESENTINTERVAL_ONE	)
@@ -2105,28 +2117,15 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
 			*outputPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 			return 1;
 		}
-		for (i = 0; i < availablePresentModesLength; i += 1)
+		if (SDL_GetHintBoolean("FNA3D_VULKAN_FORCE_MAILBOX_VSYNC", 0))
 		{
-			if (availablePresentModes[i] == VK_PRESENT_MODE_FIFO_RELAXED_KHR)
-			{
-				*outputPresentMode = VK_PRESENT_MODE_FIFO_RELAXED_KHR;
-				FNA3D_LogInfo("Using VK_PRESENT_MODE_FIFO_RELAXED_KHR!");
-				return 1;
-			}
+			CHECK_MODE(VK_PRESENT_MODE_MAILBOX_KHR)
 		}
-		FNA3D_LogInfo("VK_PRESENT_MODE_FIFO_RELAXED_KHR unsupported.");
+		CHECK_MODE(VK_PRESENT_MODE_FIFO_RELAXED_KHR)
 	}
 	else if (desiredPresentInterval ==  FNA3D_PRESENTINTERVAL_IMMEDIATE)
 	{
-		for (i = 0; i < availablePresentModesLength; i += 1)
-		{
-			if (availablePresentModes[i] == VK_PRESENT_MODE_IMMEDIATE_KHR)
-			{
-				*outputPresentMode = VK_PRESENT_MODE_IMMEDIATE_KHR;
-				return 1;
-			}
-		}
-		FNA3D_LogInfo("VK_PRESENT_MODE_IMMEDIATE_KHR unsupported.");
+		CHECK_MODE(VK_PRESENT_MODE_IMMEDIATE_KHR)
 	}
 	else if (desiredPresentInterval == FNA3D_PRESENTINTERVAL_TWO)
 	{
@@ -2141,6 +2140,8 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
 		);
 		return 0;
 	}
+
+	#undef CHECK_MODE
 
 	FNA3D_LogInfo("Fall back to VK_PRESENT_MODE_FIFO_KHR.");
 	*outputPresentMode = VK_PRESENT_MODE_FIFO_KHR;
@@ -4144,6 +4145,17 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		imageCount > swapChainSupportDetails.capabilities.maxImageCount	)
 	{
 		imageCount = swapChainSupportDetails.capabilities.maxImageCount;
+	}
+
+	if (presentMode == VK_PRESENT_MODE_MAILBOX_KHR)
+	{
+		/* Required for proper triple-buffering.
+		 * Note that this is below the above maxImageCount check!
+		 * If the driver advertises MAILBOX but does not support 3 swap
+		 * images, it's not real mailbox support, so let it fail hard.
+		 * -flibit
+		 */
+		imageCount = SDL_max(imageCount, 3);
 	}
 
 	swapChainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
