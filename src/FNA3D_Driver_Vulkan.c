@@ -3385,15 +3385,34 @@ static void VULKAN_INTERNAL_EndEncodeCommand(VulkanRenderer *renderer)
 	SDL_UnlockMutex(renderer->commandLock);
 }
 
-static void VULKAN_INTERNAL_RecordCommands(VulkanRenderer *renderer)
-{
+static void VULKAN_INTERNAL_FlushCommands(
+	VulkanRenderer *renderer,
+	void* overrideWindowHandle,
+	uint32_t swapChainImageIndex
+) {
 	VkCommandBufferBeginInfo beginInfo;
+	VkSubmitInfo submitInfo;
 	uint32_t i;
 	VulkanCommand *cmd;
-	VkResult result;
+	VkResult result, presentResult;
 	VkDescriptorSet descriptorSets[4];
 
-	/* renderer->commandLock must be LOCKED at this point! */
+	VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	VkPresentInfoKHR presentInfo;
+	struct
+	{
+		VkStructureType sType;
+		const void *pNext;
+		uint64_t frameToken;
+	} presentInfoGGP;
+	uint8_t present = (overrideWindowHandle != NULL);
+
+	/* Keep these locked until the end of the function! */
+	SDL_LockMutex(renderer->passLock);
+	SDL_LockMutex(renderer->commandLock);
+
+	/* Batch descriptor set updates */
+	VULKAN_INTERNAL_UpdateDescriptorSets(renderer);
 
 	/* Begin recording */
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -3676,19 +3695,97 @@ static void VULKAN_INTERNAL_RecordCommands(VulkanRenderer *renderer)
 	{
 		LogVulkanResult("vkEndCommandBuffer", result);
 	}
-}
 
-static void VULKAN_INTERNAL_WaitAndReset(VulkanRenderer *renderer)
-{
-	uint32_t i;
-	VkResult result = renderer->vkWaitForFences(
+	/* Command list should be cleared now */
+	renderer->numActiveCommands = 0;
+
+	/* Reset descriptor set data */
+	VULKAN_INTERNAL_ResetDescriptorSetData(renderer);
+
+	/* Prepare the command buffer fence for submission */
+	renderer->vkResetFences(
+		renderer->logicalDevice,
+		1,
+		&renderer->inFlightFence
+	);
+
+	/* Prepare the command buffer for submission */
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.pNext = NULL;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &renderer->commandBuffer;
+	if (present)
+	{
+		submitInfo.waitSemaphoreCount = 1;
+		submitInfo.pWaitSemaphores = &renderer->imageAvailableSemaphore;
+		submitInfo.pWaitDstStageMask = &waitStages;
+		submitInfo.signalSemaphoreCount = 1;
+		submitInfo.pSignalSemaphores = &renderer->renderFinishedSemaphore;
+	}
+	else
+	{
+		submitInfo.waitSemaphoreCount = 0;
+		submitInfo.pWaitSemaphores = NULL;
+		submitInfo.pWaitDstStageMask = NULL;
+		submitInfo.signalSemaphoreCount = 0;
+		submitInfo.pSignalSemaphores = NULL;
+	}
+
+	/* Submit the commands, finally. */
+	result = renderer->vkQueueSubmit(
+		renderer->graphicsQueue,
+		1,
+		&submitInfo,
+		renderer->inFlightFence
+	);
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkQueueSubmit", result);
+		return;
+	}
+
+	/* Present, if applicable */
+	if (present)
+	{
+		if (renderer->physicalDeviceDriverProperties.driverID == VK_DRIVER_ID_GGP_PROPRIETARY)
+		{
+			const void* token = SDL_GetWindowData(
+				(SDL_Window*) overrideWindowHandle,
+				"GgpFrameToken"
+			);
+			presentInfoGGP.sType = VK_STRUCTURE_TYPE_PRESENT_FRAME_TOKEN_GGP;
+			presentInfoGGP.pNext = NULL;
+			presentInfoGGP.frameToken = (uint64_t) (size_t) token;
+			presentInfo.pNext = &presentInfoGGP;
+		}
+		else
+		{
+			presentInfo.pNext = NULL;
+		}
+		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+		presentInfo.pNext = NULL;
+		presentInfo.waitSemaphoreCount = 1;
+		presentInfo.pWaitSemaphores =
+			&renderer->renderFinishedSemaphore;
+		presentInfo.swapchainCount = 1;
+		presentInfo.pSwapchains = &renderer->swapChain;
+		presentInfo.pImageIndices = &swapChainImageIndex;
+		presentInfo.pResults = NULL;
+
+		presentResult = renderer->vkQueuePresentKHR(
+			renderer->presentQueue,
+			&presentInfo
+		);
+	}
+
+	/* Wait for the submission to complete */
+	result = renderer->vkWaitForFences(
 		renderer->logicalDevice,
 		1,
 		&renderer->inFlightFence,
 		VK_TRUE,
 		UINT64_MAX
 	);
-
 	if (result != VK_SUCCESS)
 	{
 		LogVulkanResult("vkWaitForFences", result);
@@ -3716,168 +3813,19 @@ static void VULKAN_INTERNAL_WaitAndReset(VulkanRenderer *renderer)
 	{
 		LogVulkanResult("vkResetCommandBuffer", result);
 	}
-}
 
-static void VULKAN_INTERNAL_Flush(VulkanRenderer *renderer)
-{
-	VkResult result;
-	VkSubmitInfo submitInfo;
-
-	/* Keep these locked until the end of the function! */
-	SDL_LockMutex(renderer->passLock);
-	SDL_LockMutex(renderer->commandLock);
-
-	/* Batch descriptor set updates */
-	VULKAN_INTERNAL_UpdateDescriptorSets(renderer);
-
-	/* Record commands into the command buffer */
-	VULKAN_INTERNAL_RecordCommands(renderer);
-	renderer->numActiveCommands = 0;
-
-	/* Reset descriptor set data */
-	VULKAN_INTERNAL_ResetDescriptorSetData(renderer);
-
-	/* Submit the command buffer */
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.pNext = NULL;
-	submitInfo.waitSemaphoreCount = 0;
-	submitInfo.pWaitSemaphores = NULL;
-	submitInfo.pWaitDstStageMask = NULL;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &renderer->commandBuffer;
-	submitInfo.signalSemaphoreCount = 0;
-	submitInfo.pSignalSemaphores = NULL;
-
-	renderer->vkResetFences(
-		renderer->logicalDevice,
-		1,
-		&renderer->inFlightFence
-	);
-
-	result = renderer->vkQueueSubmit(
-		renderer->graphicsQueue,
-		1,
-		&submitInfo,
-		renderer->inFlightFence
-	);
-
-	if (result != VK_SUCCESS)
+	/* Now that commands are totally done, check for present errors */
+	if (present)
 	{
-		LogVulkanResult("vkQueueSubmit", result);
-		return;
-	}
-
-	/* Wait for completion */
-	VULKAN_INTERNAL_WaitAndReset(renderer);
-
-	/* It should be safe to unlock now */
-	SDL_UnlockMutex(renderer->commandLock);
-	SDL_UnlockMutex(renderer->passLock);
-}
-
-static void VULKAN_INTERNAL_FlushAndPresent(
-	VulkanRenderer *renderer,
-	void* overrideWindowHandle,
-	uint32_t swapChainImageIndex
-) {
-	VkResult result;
-	VkSubmitInfo submitInfo;
-	VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	VkPresentInfoKHR presentInfo;
-	struct
-	{
-		VkStructureType sType;
-		const void *pNext;
-		uint64_t frameToken;
-	} presentInfoGGP;
-
-	SDL_LockMutex(renderer->passLock);
-	SDL_LockMutex(renderer->commandLock);
-
-	/* Batch descriptor set updates */
-	VULKAN_INTERNAL_UpdateDescriptorSets(renderer);
-
-	/* Record commands into the command buffer */
-	VULKAN_INTERNAL_RecordCommands(renderer);
-	renderer->numActiveCommands = 0;
-
-	/* Reset descriptor set data */
-	VULKAN_INTERNAL_ResetDescriptorSetData(renderer);
-
-	/* Prepare the command buffer for submission */
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.pNext = NULL;
-	submitInfo.waitSemaphoreCount = 1;
-	submitInfo.pWaitSemaphores = &renderer->imageAvailableSemaphore;
-	submitInfo.pWaitDstStageMask = &waitStages;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &renderer->commandBuffer;
-	submitInfo.signalSemaphoreCount = 1;
-	submitInfo.pSignalSemaphores = &renderer->renderFinishedSemaphore;
-
-	renderer->vkResetFences(
-		renderer->logicalDevice,
-		1,
-		&renderer->inFlightFence
-	);
-
-	result = renderer->vkQueueSubmit(
-		renderer->graphicsQueue,
-		1,
-		&submitInfo,
-		renderer->inFlightFence
-	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResult("vkQueueSubmit", result);
-		return;
-	}
-
-	if (renderer->physicalDeviceDriverProperties.driverID == VK_DRIVER_ID_GGP_PROPRIETARY)
-	{
-		const void* token = SDL_GetWindowData(
-			(SDL_Window*) overrideWindowHandle,
-			"GgpFrameToken"
-		);
-		presentInfoGGP.sType = VK_STRUCTURE_TYPE_PRESENT_FRAME_TOKEN_GGP;
-		presentInfoGGP.pNext = NULL;
-		presentInfoGGP.frameToken = (uint64_t) (size_t) token;
-		presentInfo.pNext = &presentInfoGGP;
-	}
-	else
-	{
-		presentInfo.pNext = NULL;
-	}
-	presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-	presentInfo.pNext = NULL;
-	presentInfo.waitSemaphoreCount = 1;
-	presentInfo.pWaitSemaphores =
-		&renderer->renderFinishedSemaphore;
-	presentInfo.swapchainCount = 1;
-	presentInfo.pSwapchains = &renderer->swapChain;
-	presentInfo.pImageIndices = &swapChainImageIndex;
-	presentInfo.pResults = NULL;
-
-	result = renderer->vkQueuePresentKHR(
-		renderer->presentQueue,
-		&presentInfo
-	);
-
-	/* Wait for frame completion */
-	VULKAN_INTERNAL_WaitAndReset(renderer);
-
-	if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR)
-	{
-		VULKAN_INTERNAL_RecreateSwapchain(renderer);
-		SDL_UnlockMutex(renderer->commandLock);
-		SDL_UnlockMutex(renderer->passLock);
-		return;
-	}
-	else if (result != VK_SUCCESS)
-	{
-		LogVulkanResult("vkQueuePresentKHR", result);
-		FNA3D_LogError("failed to present image");
+		if (	presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
+			presentResult == VK_SUBOPTIMAL_KHR	)
+		{
+			VULKAN_INTERNAL_RecreateSwapchain(renderer);
+		}
+		else if (presentResult != VK_SUCCESS)
+		{
+			LogVulkanResult("vkQueuePresentKHR", result);
+		}
 	}
 
 	/* It should be safe to unlock now */
@@ -4323,7 +4271,7 @@ static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer)
 	VkExtent2D extent;
 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
-	VULKAN_INTERNAL_Flush(renderer);
+	VULKAN_INTERNAL_FlushCommands(renderer, NULL, 0);
 
 	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
 
@@ -4656,7 +4604,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 	{
 		if (options == FNA3D_SETDATAOPTIONS_NONE)
 		{
-			VULKAN_INTERNAL_Flush(renderer);
+			VULKAN_INTERNAL_FlushCommands(renderer, NULL, 0);
 			vulkanBuffer->bound = 1;
 		}
 		else if (options == FNA3D_SETDATAOPTIONS_DISCARD)
@@ -5082,7 +5030,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 		&vulkanTexture->resourceAccessType
 	);
 
-	VULKAN_INTERNAL_Flush(renderer);
+	VULKAN_INTERNAL_FlushCommands(renderer, NULL, 0);
 
 	/* Read from staging buffer */
 
@@ -7011,7 +6959,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	uint32_t i, j;
 	VkResult waitResult;
 
-	VULKAN_INTERNAL_Flush(renderer);
+	VULKAN_INTERNAL_FlushCommands(renderer, NULL, 0);
 
 	waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
 
@@ -7439,7 +7387,7 @@ static void VULKAN_SwapBuffers(
 
 	/* Record and submit the commands, then present! */
 
-	VULKAN_INTERNAL_FlushAndPresent(
+	VULKAN_INTERNAL_FlushCommands(
 		renderer,
 		overrideWindowHandle,
 		swapChainImageIndex
@@ -8587,7 +8535,7 @@ static void VULKAN_SetTextureData2D(
 	copyCmd->copyBufferToImage.region = imageCopy;
 	VULKAN_INTERNAL_EndEncodeCommand(renderer);
 
-	VULKAN_INTERNAL_Flush(renderer);
+	VULKAN_INTERNAL_FlushCommands(renderer, NULL, 0);
 
 	SDL_UnlockMutex(renderer->passLock);
 }
@@ -8651,7 +8599,7 @@ static void VULKAN_SetTextureData3D(
 	copyCmd->copyBufferToImage.region = imageCopy;
 	VULKAN_INTERNAL_EndEncodeCommand(renderer);
 
-	VULKAN_INTERNAL_Flush(renderer);
+	VULKAN_INTERNAL_FlushCommands(renderer, NULL, 0);
 
 	SDL_UnlockMutex(renderer->passLock);
 }
@@ -8714,7 +8662,7 @@ static void VULKAN_SetTextureDataCube(
 	copyCmd->copyBufferToImage.region = imageCopy;
 	VULKAN_INTERNAL_EndEncodeCommand(renderer);
 
-	VULKAN_INTERNAL_Flush(renderer);
+	VULKAN_INTERNAL_FlushCommands(renderer, NULL, 0);
 
 	SDL_UnlockMutex(renderer->passLock);
 }
@@ -8864,7 +8812,7 @@ static void VULKAN_SetTextureDataYUV(
 	copyCmd->copyBufferToImage.region = imageCopy;
 	VULKAN_INTERNAL_EndEncodeCommand(renderer);
 
-	VULKAN_INTERNAL_Flush(renderer);
+	VULKAN_INTERNAL_FlushCommands(renderer, NULL, 0);
 
 	SDL_UnlockMutex(renderer->passLock);
 }
