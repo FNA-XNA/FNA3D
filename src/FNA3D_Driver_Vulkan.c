@@ -7480,6 +7480,7 @@ static void VULKAN_DrawInstancedPrimitives(
 
 	if (renderer->bufferCount > 0)
 	{
+		/* FIXME: State shadowing for vertex buffers? -flibit */
 		bindBuffersCmd = VULKAN_INTERNAL_BeginEncodeCommand(
 			renderer
 		);
@@ -7498,6 +7499,7 @@ static void VULKAN_DrawInstancedPrimitives(
 		);
 		VULKAN_INTERNAL_EndEncodeCommand(renderer);
 	}
+	/* FIXME: State shadowing for index buffers? -flibit */
 	bindIndexCmd = VULKAN_INTERNAL_BeginEncodeCommand(renderer);
 	bindIndexCmd->type = CMDTYPE_BIND_INDEX_BUFFER;
 	bindIndexCmd->bindIndexBuffer.buffer = subbuf.physicalBuffer->buffer;
@@ -7587,6 +7589,7 @@ static void VULKAN_DrawPrimitives(
 
 	if (renderer->bufferCount > 0)
 	{
+		/* FIXME: State shadowing for vertex buffers? -flibit */
 		bindBuffersCmd = VULKAN_INTERNAL_BeginEncodeCommand(
 			renderer
 		);
