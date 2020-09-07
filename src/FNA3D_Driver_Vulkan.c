@@ -3394,7 +3394,7 @@ static void VULKAN_INTERNAL_FlushCommands(
 	VkSubmitInfo submitInfo;
 	uint32_t i;
 	VulkanCommand *cmd;
-	VkResult result, presentResult;
+	VkResult result, presentResult = VK_SUCCESS;
 	VkDescriptorSet descriptorSets[4];
 
 	VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
