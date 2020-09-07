@@ -1189,7 +1189,8 @@ static void D3D11_INTERNAL_BlitFramebuffer(
 	float blendFactor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
 	ID3D11VertexShader *oldVertexShader;
 	ID3D11PixelShader *oldPixelShader;
-	uint32_t whatever;
+	ID3D11ClassInstance *whatever;
+	uint32_t noReallyWhatever = 0;
 	D3D11_VIEWPORT origViewport =
 	{
 		(float) renderer->viewport.x,
@@ -1215,14 +1216,14 @@ static void D3D11_INTERNAL_BlitFramebuffer(
 	ID3D11DeviceContext_VSGetShader(
 		renderer->context,
 		&oldVertexShader,
-		NULL,
-		&whatever
+		&whatever,
+		&noReallyWhatever
 	);
 	ID3D11DeviceContext_PSGetShader(
 		renderer->context,
 		&oldPixelShader,
-		NULL,
-		&whatever
+		&whatever,
+		&noReallyWhatever
 	);
 
 	/* Bind the swapchain render target */
