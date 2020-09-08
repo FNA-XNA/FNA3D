@@ -214,7 +214,8 @@ void* PackedVertexBufferBindingsArray_Fetch(
 	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings,
 	void* vertexShader,
-	int32_t *outIndex
+	int32_t *outIndex,
+	uint32_t *outHash
 ) {
 	int32_t i;
 	PackedVertexBufferBindings other;
@@ -232,6 +233,7 @@ void* PackedVertexBufferBindingsArray_Fetch(
 	}
 
 	*outIndex = i;
+	*outHash = hash;
 	return result;
 }
 

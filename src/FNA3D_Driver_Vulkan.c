@@ -7960,11 +7960,12 @@ static void VULKAN_ApplyVertexBufferBindings(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	MOJOSHADER_vkShader *vertexShader, *blah;
 	int32_t i, bindingsIndex;
+	uint32_t hash;
 	void* bindingsResult;
 	VulkanBuffer *vertexBuffer;
 	VulkanSubBuffer subbuf;
 	VkDeviceSize offset;
-
+	
 	/* Check VertexBufferBindings */
 	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
 	bindingsResult = PackedVertexBufferBindingsArray_Fetch(
@@ -7972,7 +7973,8 @@ static void VULKAN_ApplyVertexBufferBindings(
 		bindings,
 		numBindings,
 		vertexShader,
-		&bindingsIndex
+		&bindingsIndex,
+		&hash
 	);
 	if (bindingsResult == NULL)
 	{
