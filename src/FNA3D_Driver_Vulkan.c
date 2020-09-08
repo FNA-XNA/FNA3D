@@ -7965,7 +7965,7 @@ static void VULKAN_ApplyVertexBufferBindings(
 	VulkanBuffer *vertexBuffer;
 	VulkanSubBuffer subbuf;
 	VkDeviceSize offset;
-	
+
 	/* Check VertexBufferBindings */
 	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
 	bindingsResult = PackedVertexBufferBindingsArray_Fetch(

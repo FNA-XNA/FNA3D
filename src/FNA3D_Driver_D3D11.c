@@ -794,7 +794,7 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 	int32_t numBindings,
 	uint32_t *hash
 ) {
-	int32_t numElements, bufsize, i, j, k, usage, index, attribLoc, bytecodeLength;
+	int32_t numElements, bufsize, i, j, k, usage, index, attribLoc, bytecodeLength, bindingsIndex;
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 	FNA3D_VertexDeclaration vertexDeclaration;
 	FNA3D_VertexElement element;
@@ -807,7 +807,6 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 	/* We need the vertex shader... */
 	MOJOSHADER_d3d11GetBoundShaders(&vertexShader, &blah);
 
-	int32_t bindingsIndex;
 
 	/* Can we just reuse an existing input layout? */
 	result = (ID3D11InputLayout*) PackedVertexBufferBindingsArray_Fetch(
@@ -4008,6 +4007,8 @@ static void D3D11_AddDisposeEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
+	int i;
+
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	MOJOSHADER_effect *effectData = ((D3D11Effect*) effect)->effect;
 
@@ -4022,8 +4023,8 @@ static void D3D11_AddDisposeEffect(
 		renderer->effectApplied = 1;
 	}
 
-	// invalidate all inputLayouts
-	for (int i = 0; i < renderer->inputLayoutCache.count; i += 1)
+	/* invalidate all inputLayouts */
+	for ( i = 0; i < renderer->inputLayoutCache.count; i += 1)
 	{
 		ID3D11InputLayout_Release(
 			(ID3D11InputLayout*)renderer->inputLayoutCache.elements[i].value
