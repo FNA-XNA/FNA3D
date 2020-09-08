@@ -775,8 +775,8 @@ FNA3DAPI void FNA3D_ApplyVertexBufferBindings(
  * numRenderTargets:	The size of the renderTargets array (can be 0).
  * depthStencilBuffer:	The depth/stencil renderbuffer (can be NULL).
  * depthFormat:		The format of the depth/stencil renderbuffer.
- * preserveDepthStencilContents:
- * 			Set this to 1 to store the depth/stencil contents
+ * preserveTargetContents:
+ * 			Set this to 1 to store the color/depth/stencil contents
  * 			for future use. Most of the time you'll want to
  * 			keep this at 0 to not waste GPU bandwidth.
  */
@@ -786,7 +786,7 @@ FNA3DAPI void FNA3D_SetRenderTargets(
 	int32_t numRenderTargets,
 	FNA3D_Renderbuffer *depthStencilBuffer,
 	FNA3D_DepthFormat depthFormat,
-	uint8_t preserveDepthStencilContents
+	uint8_t preserveTargetContents
 );
 
 /* After unsetting a render target, call this to resolve multisample targets or

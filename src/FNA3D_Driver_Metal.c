@@ -1890,7 +1890,7 @@ static void METAL_SetRenderTargets(
 	int32_t numRenderTargets,
 	FNA3D_Renderbuffer *depthStencilBuffer,
 	FNA3D_DepthFormat depthFormat,
-	uint8_t preserveDepthStencilContents
+	uint8_t preserveTargetContents
 );
 
 static void METAL_GetTextureData2D(
@@ -2721,7 +2721,7 @@ static void METAL_SetRenderTargets(
 	int32_t numRenderTargets,
 	FNA3D_Renderbuffer *depthStencilBuffer,
 	FNA3D_DepthFormat depthFormat,
-	uint8_t preserveDepthStencilContents
+	uint8_t preserveTargetContents
 ) {
 	MetalRenderer *renderer = (MetalRenderer*) driverData;
 	MetalBackbuffer *bb;
@@ -2810,7 +2810,7 @@ static void METAL_SetRenderTargets(
 			FNA3D_DEPTHFORMAT_NONE :
 			depthFormat
 	);
-	renderer->preserveDepthStencil = preserveDepthStencilContents;
+	renderer->preserveDepthStencil = preserveTargetContents;
 }
 
 static void METAL_ResolveTarget(

@@ -968,7 +968,7 @@ static void D3D11_SetRenderTargets(
 	int32_t numRenderTargets,
 	FNA3D_Renderbuffer *depthStencilBuffer,
 	FNA3D_DepthFormat depthFormat,
-	uint8_t preserveDepthStencilContents
+	uint8_t preserveTargetContents
 );
 static void D3D11_GetTextureData2D(
 	FNA3D_Renderer *driverData,
@@ -2103,7 +2103,7 @@ static void D3D11_SetRenderTargets(
 	int32_t numRenderTargets,
 	FNA3D_Renderbuffer *depthStencilBuffer,
 	FNA3D_DepthFormat depthFormat,
-	uint8_t preserveDepthStencilContents
+	uint8_t preserveTargetContents
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *tex;
