@@ -4006,7 +4006,7 @@ static void D3D11_AddDisposeEffect(
 	FNA3D_Renderer *driverData,
 	FNA3D_Effect *effect
 ) {
-	int i;
+	int32_t i;
 
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	MOJOSHADER_effect *effectData = ((D3D11Effect*) effect)->effect;
