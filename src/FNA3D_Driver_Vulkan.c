@@ -832,7 +832,7 @@ static inline VkRenderPass RenderPassHashArray_Fetch(
 			key.clearColor == e->clearColor &&
 			key.clearDepth == e->clearDepth &&
 			key.clearStencil == e->clearStencil &&
-			key.preserveTargetContents == e->preserveTargetContents)
+			key.preserveTargetContents == e->preserveTargetContents	)
 		{
 			return arr->elements[i].value;
 		}
@@ -6162,7 +6162,9 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 			attachmentDescriptions[attachmentDescriptionsCount].samples =
 				VK_SAMPLE_COUNT_1_BIT;
 			attachmentDescriptions[attachmentDescriptionsCount].loadOp =
-				hash.clearColor ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+				hash.clearColor ?
+					VK_ATTACHMENT_LOAD_OP_CLEAR :
+					VK_ATTACHMENT_LOAD_OP_LOAD;
 			attachmentDescriptions[attachmentDescriptionsCount].storeOp =
 				VK_ATTACHMENT_STORE_OP_STORE;
 			attachmentDescriptions[attachmentDescriptionsCount].stencilLoadOp =
@@ -6188,7 +6190,11 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 			attachmentDescriptions[attachmentDescriptionsCount].samples =
 				XNAToVK_SampleCount(renderer->multiSampleCount);
 			attachmentDescriptions[attachmentDescriptionsCount].loadOp =
-				hash.clearColor ? VK_ATTACHMENT_LOAD_OP_CLEAR : hash.preserveTargetContents ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+				hash.clearColor ?
+					VK_ATTACHMENT_LOAD_OP_CLEAR :
+					(hash.preserveTargetContents ?
+						VK_ATTACHMENT_LOAD_OP_LOAD :
+						VK_ATTACHMENT_LOAD_OP_DONT_CARE);
 			attachmentDescriptions[attachmentDescriptionsCount].storeOp =
 				hash.preserveTargetContents ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
 			attachmentDescriptions[attachmentDescriptionsCount].stencilLoadOp =
@@ -6218,7 +6224,9 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 			attachmentDescriptions[attachmentDescriptionsCount].samples =
 				VK_SAMPLE_COUNT_1_BIT;
 			attachmentDescriptions[attachmentDescriptionsCount].loadOp =
-				hash.clearColor ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
+				hash.clearColor ?
+					VK_ATTACHMENT_LOAD_OP_CLEAR :
+					VK_ATTACHMENT_LOAD_OP_LOAD;
 			attachmentDescriptions[attachmentDescriptionsCount].storeOp =
 				VK_ATTACHMENT_STORE_OP_STORE;
 			attachmentDescriptions[attachmentDescriptionsCount].stencilLoadOp =
@@ -6261,13 +6269,25 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 		attachmentDescriptions[attachmentDescriptionsCount].samples =
 			XNAToVK_SampleCount(renderer->multiSampleCount);
 		attachmentDescriptions[attachmentDescriptionsCount].loadOp =
-			hash.clearDepth ? VK_ATTACHMENT_LOAD_OP_CLEAR : hash.preserveTargetContents ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			hash.clearDepth ?
+				VK_ATTACHMENT_LOAD_OP_CLEAR :
+				(hash.preserveTargetContents ?
+					VK_ATTACHMENT_LOAD_OP_LOAD :
+					VK_ATTACHMENT_LOAD_OP_DONT_CARE);
 		attachmentDescriptions[attachmentDescriptionsCount].storeOp =
-			hash.preserveTargetContents ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			hash.preserveTargetContents ?
+				VK_ATTACHMENT_STORE_OP_STORE :
+				VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		attachmentDescriptions[attachmentDescriptionsCount].stencilLoadOp =
-			hash.clearStencil ? VK_ATTACHMENT_LOAD_OP_CLEAR : hash.preserveTargetContents ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			hash.clearStencil ?
+				VK_ATTACHMENT_LOAD_OP_CLEAR :
+				(hash.preserveTargetContents ?
+					VK_ATTACHMENT_LOAD_OP_LOAD :
+					VK_ATTACHMENT_LOAD_OP_DONT_CARE);
 		attachmentDescriptions[attachmentDescriptionsCount].stencilStoreOp =
-			hash.preserveTargetContents ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			hash.preserveTargetContents ?
+				VK_ATTACHMENT_STORE_OP_STORE :
+				VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		attachmentDescriptions[attachmentDescriptionsCount].initialLayout =
 			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		attachmentDescriptions[attachmentDescriptionsCount].finalLayout =
@@ -7951,9 +7971,9 @@ static void VULKAN_SetRenderTargets(
 	int32_t i;
 
 	/* Perform any pending clears before switching render targets */
-	if (renderer->shouldClearColorOnBeginPass ||
+	if (	renderer->shouldClearColorOnBeginPass ||
 		renderer->shouldClearDepthOnBeginPass ||
-		renderer->shouldClearStencilOnBeginPass)
+		renderer->shouldClearStencilOnBeginPass	)
 	{
 		VULKAN_INTERNAL_BeginRenderPass(renderer);
 	}
