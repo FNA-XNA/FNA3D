@@ -807,7 +807,6 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 	/* We need the vertex shader... */
 	MOJOSHADER_d3d11GetBoundShaders(&vertexShader, &blah);
 
-
 	/* Can we just reuse an existing input layout? */
 	result = (ID3D11InputLayout*) PackedVertexBufferBindingsArray_Fetch(
 		renderer->inputLayoutCache,
