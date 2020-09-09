@@ -649,6 +649,7 @@ typedef struct VulkanCommand
 		struct
 		{
 			VkRenderPassBeginInfo beginInfo;
+			VkClearValue clearValues[MAX_RENDERTARGET_BINDINGS + 1];
 		} beginRenderPass;
 
 		struct
@@ -792,6 +793,10 @@ typedef struct RenderPassHash
 	uint32_t width;
 	uint32_t height;
 	uint32_t multiSampleCount;
+	uint8_t  clearColor;
+	uint8_t  clearDepth;
+	uint8_t  clearStencil;
+	uint8_t  preserveTargetContents;
 } RenderPassHash;
 
 typedef struct RenderPassHashMap
@@ -823,7 +828,11 @@ static inline VkRenderPass RenderPassHashArray_Fetch(
 			key.depthStencilAttachmentFormat == e->depthStencilAttachmentFormat &&
 			key.width == e->width &&
 			key.height == e->height &&
-			key.multiSampleCount == e->multiSampleCount	)
+			key.multiSampleCount == e->multiSampleCount &&
+			key.clearColor == e->clearColor &&
+			key.clearDepth == e->clearDepth &&
+			key.clearStencil == e->clearStencil &&
+			key.preserveTargetContents == e->preserveTargetContents)
 		{
 			return arr->elements[i].value;
 		}
@@ -1408,6 +1417,15 @@ typedef struct VulkanRenderer
 	uint8_t needNewRenderPass;
 	uint8_t renderTargetBound;
 	uint8_t needNewPipeline;
+
+	uint8_t shouldClearColorOnBeginPass;
+	uint8_t shouldClearDepthOnBeginPass;
+	uint8_t shouldClearStencilOnBeginPass;
+	uint8_t preserveTargetContents;
+	uint8_t drawCallMadeThisPass;
+
+	VkClearColorValue clearColorValue;
+	VkClearDepthStencilValue clearDepthStencilValue;
 
 	/* Depth Formats (may not match the format implied by the name!) */
 	VkFormat D16Format;
@@ -6111,6 +6129,10 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 	hash.depthStencilAttachmentFormat = renderer->depthStencilAttachment != NULL ?
 		renderer->depthStencilAttachment->surfaceFormat :
 		VK_FORMAT_UNDEFINED;
+	hash.clearColor = renderer->shouldClearColorOnBeginPass;
+	hash.clearDepth = renderer->shouldClearDepthOnBeginPass;
+	hash.clearStencil = renderer->shouldClearStencilOnBeginPass;
+	hash.preserveTargetContents = renderer->preserveTargetContents;
 
 	hash.width = renderer->colorAttachments[0]->dimensions.width;
 	hash.height = renderer->colorAttachments[0]->dimensions.height;
@@ -6140,13 +6162,13 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 			attachmentDescriptions[attachmentDescriptionsCount].samples =
 				VK_SAMPLE_COUNT_1_BIT;
 			attachmentDescriptions[attachmentDescriptionsCount].loadOp =
-				VK_ATTACHMENT_LOAD_OP_LOAD;
+				hash.clearColor ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
 			attachmentDescriptions[attachmentDescriptionsCount].storeOp =
 				VK_ATTACHMENT_STORE_OP_STORE;
 			attachmentDescriptions[attachmentDescriptionsCount].stencilLoadOp =
-				VK_ATTACHMENT_LOAD_OP_LOAD;
+				VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			attachmentDescriptions[attachmentDescriptionsCount].stencilStoreOp =
-				VK_ATTACHMENT_STORE_OP_STORE;
+				VK_ATTACHMENT_STORE_OP_DONT_CARE;
 			attachmentDescriptions[attachmentDescriptionsCount].initialLayout =
 				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 			attachmentDescriptions[attachmentDescriptionsCount].finalLayout =
@@ -6166,13 +6188,13 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 			attachmentDescriptions[attachmentDescriptionsCount].samples =
 				XNAToVK_SampleCount(renderer->multiSampleCount);
 			attachmentDescriptions[attachmentDescriptionsCount].loadOp =
-				VK_ATTACHMENT_LOAD_OP_LOAD;
+				hash.clearColor ? VK_ATTACHMENT_LOAD_OP_CLEAR : hash.preserveTargetContents ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			attachmentDescriptions[attachmentDescriptionsCount].storeOp =
-				VK_ATTACHMENT_STORE_OP_STORE;
+				hash.preserveTargetContents ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
 			attachmentDescriptions[attachmentDescriptionsCount].stencilLoadOp =
-				VK_ATTACHMENT_LOAD_OP_LOAD;
+				VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			attachmentDescriptions[attachmentDescriptionsCount].stencilStoreOp =
-				VK_ATTACHMENT_STORE_OP_STORE;
+				VK_ATTACHMENT_STORE_OP_DONT_CARE;
 			attachmentDescriptions[attachmentDescriptionsCount].initialLayout =
 				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 			attachmentDescriptions[attachmentDescriptionsCount].finalLayout =
@@ -6196,13 +6218,13 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 			attachmentDescriptions[attachmentDescriptionsCount].samples =
 				VK_SAMPLE_COUNT_1_BIT;
 			attachmentDescriptions[attachmentDescriptionsCount].loadOp =
-				VK_ATTACHMENT_LOAD_OP_LOAD;
+				hash.clearColor ? VK_ATTACHMENT_LOAD_OP_CLEAR : VK_ATTACHMENT_LOAD_OP_LOAD;
 			attachmentDescriptions[attachmentDescriptionsCount].storeOp =
 				VK_ATTACHMENT_STORE_OP_STORE;
 			attachmentDescriptions[attachmentDescriptionsCount].stencilLoadOp =
-				VK_ATTACHMENT_LOAD_OP_LOAD;
+				VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			attachmentDescriptions[attachmentDescriptionsCount].stencilStoreOp =
-				VK_ATTACHMENT_STORE_OP_STORE;
+				VK_ATTACHMENT_STORE_OP_DONT_CARE;
 			attachmentDescriptions[attachmentDescriptionsCount].initialLayout =
 				VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 			attachmentDescriptions[attachmentDescriptionsCount].finalLayout =
@@ -6239,13 +6261,13 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 		attachmentDescriptions[attachmentDescriptionsCount].samples =
 			XNAToVK_SampleCount(renderer->multiSampleCount);
 		attachmentDescriptions[attachmentDescriptionsCount].loadOp =
-			VK_ATTACHMENT_LOAD_OP_LOAD;
+			hash.clearDepth ? VK_ATTACHMENT_LOAD_OP_CLEAR : hash.preserveTargetContents ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		attachmentDescriptions[attachmentDescriptionsCount].storeOp =
-			VK_ATTACHMENT_STORE_OP_STORE;
+			hash.preserveTargetContents ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		attachmentDescriptions[attachmentDescriptionsCount].stencilLoadOp =
-			VK_ATTACHMENT_LOAD_OP_LOAD;
+			hash.clearStencil ? VK_ATTACHMENT_LOAD_OP_CLEAR : hash.preserveTargetContents ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 		attachmentDescriptions[attachmentDescriptionsCount].stencilStoreOp =
-			VK_ATTACHMENT_STORE_OP_STORE;
+			hash.preserveTargetContents ? VK_ATTACHMENT_STORE_OP_STORE : VK_ATTACHMENT_STORE_OP_DONT_CARE;
 		attachmentDescriptions[attachmentDescriptionsCount].initialLayout =
 			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		attachmentDescriptions[attachmentDescriptionsCount].finalLayout =
@@ -6418,6 +6440,7 @@ static void VULKAN_INTERNAL_MaybeEndRenderPass(
 		endPassCmd->type = CMDTYPE_END_RENDER_PASS;
 		VULKAN_INTERNAL_EndEncodeCommand(renderer);
 		renderer->renderPassInProgress = 0;
+		renderer->drawCallMadeThisPass = 0;
 
 		/* This was locked in BeginRenderPass! */
 		SDL_UnlockMutex(renderer->passLock);
@@ -6433,6 +6456,8 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	VkFramebuffer framebuffer;
 	VkImageAspectFlags depthAspectFlags;
 	float blendConstants[4];
+	VkClearValue clearValues[MAX_RENDERTARGET_BINDINGS + 1];
+	uint32_t clearValueCount = 0;
 	VulkanCommand *setBlendConstantsCmd;
 	uint32_t i;
 
@@ -6463,8 +6488,6 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 		renderer->colorAttachments[0]->dimensions.width;
 	renderPassBeginInfo.renderArea.extent.height =
 		renderer->colorAttachments[0]->dimensions.height;
-	renderPassBeginInfo.clearValueCount = 0;
-	renderPassBeginInfo.pClearValues = NULL;
 
 	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
 	{
@@ -6482,6 +6505,24 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 				renderer->colorAttachments[i]->image,
 				&renderer->colorAttachments[i]->resourceAccessType
 			);
+
+			if (renderer->shouldClearColorOnBeginPass)
+			{
+				clearValues[clearValueCount].color.float32[0] = renderer->clearColorValue.float32[0];
+				clearValues[clearValueCount].color.float32[1] = renderer->clearColorValue.float32[1];
+				clearValues[clearValueCount].color.float32[2] = renderer->clearColorValue.float32[2];
+				clearValues[clearValueCount].color.float32[3] = renderer->clearColorValue.float32[3];
+				clearValueCount += 1;
+			}
+
+			if (renderer->colorMultiSampleAttachments[i] != NULL)
+			{
+				clearValues[clearValueCount].color.float32[0] = renderer->clearColorValue.float32[0];
+				clearValues[clearValueCount].color.float32[1] = renderer->clearColorValue.float32[1];
+				clearValues[clearValueCount].color.float32[2] = renderer->clearColorValue.float32[2];
+				clearValues[clearValueCount].color.float32[3] = renderer->clearColorValue.float32[3];
+				clearValueCount += 1;
+			}
 		}
 	}
 
@@ -6506,10 +6547,27 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 			renderer->depthStencilAttachment->image,
 			&renderer->depthStencilAttachment->resourceAccessType
 		);
+
+		if (renderer->shouldClearDepthOnBeginPass || renderer->shouldClearStencilOnBeginPass)
+		{
+			clearValues[clearValueCount].depthStencil.depth = renderer->clearDepthStencilValue.depth;
+			clearValues[clearValueCount].depthStencil.stencil = renderer->clearDepthStencilValue.stencil;
+			clearValueCount += 1;
+		}
 	}
+
+	renderPassBeginInfo.clearValueCount = clearValueCount;
 
 	beginPassCmd = VULKAN_INTERNAL_BeginEncodeCommand(renderer);
 	beginPassCmd->type = CMDTYPE_BEGIN_RENDER_PASS;
+
+	for (i = 0; i < clearValueCount; i += 1)
+	{
+		beginPassCmd->beginRenderPass.clearValues[i] = clearValues[i];
+	}
+
+	renderPassBeginInfo.pClearValues = beginPassCmd->beginRenderPass.clearValues;
+
 	beginPassCmd->beginRenderPass.beginInfo = renderPassBeginInfo;
 	VULKAN_INTERNAL_EndEncodeCommand(renderer);
 
@@ -6568,11 +6626,62 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	}
 
 	renderer->needNewRenderPass = 0;
+	renderer->shouldClearColorOnBeginPass = 0;
+	renderer->shouldClearDepthOnBeginPass = 0;
+	renderer->shouldClearStencilOnBeginPass = 0;
 
 	SDL_UnlockMutex(renderer->passLock);
 }
 
-static void VULKAN_INTERNAL_RenderPassClear(
+static void VULKAN_INTERNAL_BeginRenderPassClear(
+	VulkanRenderer *renderer,
+	FNA3D_Vec4 *color,
+	float depth,
+	int32_t stencil,
+	uint8_t clearColor,
+	uint8_t clearDepth,
+	uint8_t clearStencil
+) {
+	if (!clearColor && !clearDepth && !clearStencil)
+	{
+		return;
+	}
+
+	renderer->shouldClearColorOnBeginPass = clearColor;
+	renderer->shouldClearDepthOnBeginPass = clearDepth;
+	renderer->shouldClearStencilOnBeginPass = clearStencil;
+
+	if (clearColor)
+	{
+		renderer->clearColorValue.float32[0] = color->x;
+		renderer->clearColorValue.float32[1] = color->y;
+		renderer->clearColorValue.float32[2] = color->z;
+		renderer->clearColorValue.float32[3] = color->w;
+	}
+
+	if (clearDepth)
+	{
+		if (depth < 0.0f)
+		{
+			depth = 0.0f;
+		}
+		else if (depth > 1.0f)
+		{
+			depth = 1.0f;
+		}
+
+		renderer->clearDepthStencilValue.depth = depth;
+	}
+
+	if (clearStencil)
+	{
+		renderer->clearDepthStencilValue.stencil = stencil;
+	}
+
+	renderer->needNewRenderPass = 1;
+}
+
+static void VULKAN_INTERNAL_MidRenderPassClear(
 	VulkanRenderer *renderer,
 	FNA3D_Vec4 *color,
 	float depth,
@@ -6674,207 +6783,6 @@ static void VULKAN_INTERNAL_RenderPassClear(
 	);
 	clearAttachmentsCmd->clearAttachments.rect = clearRect;
 	VULKAN_INTERNAL_EndEncodeCommand(renderer);
-}
-
-static void VULKAN_INTERNAL_OutsideRenderPassClear(
-	VulkanRenderer *renderer,
-	FNA3D_Vec4 *color,
-	float depth,
-	int32_t stencil,
-	uint8_t clearColor,
-	uint8_t clearDepth,
-	uint8_t clearStencil
-) {
-	uint32_t i;
-	VkClearColorValue clearValue =
-	{{
-		color->x,
-		color->y,
-		color->z,
-		color->w
-	}};
-	VulkanCommand *clearColorCmd;
-	uint8_t shouldClearDepthStencil = (
-		(clearDepth || clearStencil) &&
-		renderer->depthStencilAttachment != NULL
-	);
-	VulkanCommand *clearDepthStencilCmd;
-	VkImageAspectFlags depthAspectMask = 0;
-	VkImageAspectFlags transitionAspectMask = 0;
-	VkClearDepthStencilValue clearDepthStencilValue;
-	VkImageSubresourceRange subresourceRange;
-
-	SDL_LockMutex(renderer->passLock);
-
-	if (clearColor)
-	{
-		subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-		subresourceRange.baseArrayLayer = 0;
-		subresourceRange.baseMipLevel = 0;
-
-		for (i = 0; i < renderer->colorAttachmentCount; i += 1)
-		{
-			subresourceRange.layerCount = renderer->colorAttachments[i]->layerCount;
-			subresourceRange.levelCount = renderer->colorAttachments[i]->levelCount;
-
-			VULKAN_INTERNAL_ImageMemoryBarrier(
-				renderer,
-				RESOURCE_ACCESS_TRANSFER_WRITE,
-				VK_IMAGE_ASPECT_COLOR_BIT,
-				0,
-				renderer->colorAttachments[i]->layerCount,
-				0,
-				renderer->colorAttachments[i]->levelCount,
-				0,
-				renderer->colorAttachments[i]->image,
-				&renderer->colorAttachments[i]->resourceAccessType
-			);
-
-			clearColorCmd = VULKAN_INTERNAL_BeginEncodeCommand(renderer);
-			clearColorCmd->type = CMDTYPE_CLEAR_COLOR_IMAGE;
-			clearColorCmd->clearColorImage.color = clearValue;
-			clearColorCmd->clearColorImage.image =
-				renderer->colorAttachments[i]->image;
-			clearColorCmd->clearColorImage.range = subresourceRange;
-			VULKAN_INTERNAL_EndEncodeCommand(renderer);
-
-			VULKAN_INTERNAL_ImageMemoryBarrier(
-				renderer,
-				RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
-				VK_IMAGE_ASPECT_COLOR_BIT,
-				0,
-				renderer->colorAttachments[i]->layerCount,
-				0,
-				renderer->colorAttachments[i]->levelCount,
-				0,
-				renderer->colorAttachments[i]->image,
-				&renderer->colorAttachments[i]->resourceAccessType
-			);
-
-			if (renderer->multiSampleCount > 0)
-			{
-				subresourceRange.layerCount =
-					renderer->colorMultiSampleAttachments[i]->layerCount;
-				subresourceRange.levelCount =
-					renderer->colorMultiSampleAttachments[i]->levelCount;
-
-				VULKAN_INTERNAL_ImageMemoryBarrier(
-					renderer,
-					RESOURCE_ACCESS_TRANSFER_WRITE,
-					VK_IMAGE_ASPECT_COLOR_BIT,
-					0,
-					renderer->colorMultiSampleAttachments[i]->layerCount,
-					0,
-					renderer->colorMultiSampleAttachments[i]->levelCount,
-					0,
-					renderer->colorMultiSampleAttachments[i]->image,
-					&renderer->colorMultiSampleAttachments[i]->resourceAccessType
-				);
-
-				clearColorCmd = VULKAN_INTERNAL_BeginEncodeCommand(renderer);
-				clearColorCmd->type = CMDTYPE_CLEAR_COLOR_IMAGE;
-				clearColorCmd->clearColorImage.color = clearValue;
-				clearColorCmd->clearColorImage.image =
-					renderer->colorMultiSampleAttachments[i]->image;
-				/* clearValue is already set */
-				clearColorCmd->clearColorImage.range = subresourceRange;
-				VULKAN_INTERNAL_EndEncodeCommand(renderer);
-
-				VULKAN_INTERNAL_ImageMemoryBarrier(
-					renderer,
-					RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
-					VK_IMAGE_ASPECT_COLOR_BIT,
-					0,
-					renderer->colorMultiSampleAttachments[i]->layerCount,
-					0,
-					renderer->colorMultiSampleAttachments[i]->levelCount,
-					0,
-					renderer->colorMultiSampleAttachments[i]->image,
-					&renderer->colorMultiSampleAttachments[i]->resourceAccessType
-				);
-			}
-		}
-	}
-
-	if (shouldClearDepthStencil)
-	{
-		if (clearDepth)
-		{
-			depthAspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
-		}
-		if (clearStencil)
-		{
-			depthAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-		}
-
-		/* Vulkan will yell at us if we transition a depth-stencil format using only a depth aspect */
-		transitionAspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-
-		if (DepthFormatContainsStencil(renderer->depthStencilAttachment->surfaceFormat))
-		{
-			transitionAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-		}
-
-		clearDepthStencilValue.stencil = stencil;
-		if (depth < 0.0f)
-		{
-			clearDepthStencilValue.depth = 0.0f;
-		}
-		else if (depth > 1.0f)
-		{
-			clearDepthStencilValue.depth = 1.0f;
-		}
-		else
-		{
-			clearDepthStencilValue.depth = depth;
-		}
-
-		subresourceRange.aspectMask = depthAspectMask;
-		subresourceRange.baseArrayLayer = 0;
-		subresourceRange.layerCount =
-			renderer->depthStencilAttachment->layerCount;
-		subresourceRange.baseMipLevel = 0;
-		subresourceRange.levelCount =
-			renderer->depthStencilAttachment->levelCount;
-
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			RESOURCE_ACCESS_TRANSFER_WRITE,
-			transitionAspectMask,
-			0,
-			renderer->depthStencilAttachment->layerCount,
-			0,
-			renderer->depthStencilAttachment->levelCount,
-			0,
-			renderer->depthStencilAttachment->image,
-			&renderer->depthStencilAttachment->resourceAccessType
-		);
-
-		clearDepthStencilCmd = VULKAN_INTERNAL_BeginEncodeCommand(renderer);
-		clearDepthStencilCmd->type = CMDTYPE_CLEAR_DEPTH_STENCIL_IMAGE;
-		clearDepthStencilCmd->clearDepthStencilImage.image =
-			renderer->depthStencilAttachment->image;
-		clearDepthStencilCmd->clearDepthStencilImage.depthStencil =
-			clearDepthStencilValue;
-		clearDepthStencilCmd->clearDepthStencilImage.range =
-			subresourceRange;
-		VULKAN_INTERNAL_EndEncodeCommand(renderer);
-
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_WRITE,
-			transitionAspectMask,
-			0,
-			renderer->depthStencilAttachment->layerCount,
-			0,
-			renderer->depthStencilAttachment->levelCount,
-			0,
-			renderer->depthStencilAttachment->image,
-			&renderer->depthStencilAttachment->resourceAccessType
-		);
-	}
-
-	SDL_UnlockMutex(renderer->passLock);
 }
 
 /* Vulkan: Sampler State */
@@ -7415,12 +7323,9 @@ static void VULKAN_Clear(
 	uint8_t clearDepth = (options & FNA3D_CLEAROPTIONS_DEPTHBUFFER) == FNA3D_CLEAROPTIONS_DEPTHBUFFER;
 	uint8_t clearStencil = (options & FNA3D_CLEAROPTIONS_STENCIL) == FNA3D_CLEAROPTIONS_STENCIL;
 
-	if (renderer->renderPassInProgress)
+	if (renderer->renderPassInProgress && renderer->drawCallMadeThisPass && !renderer->needNewRenderPass)
 	{
-		/* May need a new render pass! */
-		VULKAN_INTERNAL_BeginRenderPass(renderer);
-
-		VULKAN_INTERNAL_RenderPassClear(
+		VULKAN_INTERNAL_MidRenderPassClear(
 			renderer,
 			color,
 			depth,
@@ -7432,7 +7337,7 @@ static void VULKAN_Clear(
 	}
 	else
 	{
-		VULKAN_INTERNAL_OutsideRenderPassClear(
+		VULKAN_INTERNAL_BeginRenderPassClear(
 			renderer,
 			color,
 			depth,
@@ -7541,6 +7446,8 @@ static void VULKAN_DrawInstancedPrimitives(
 	);
 
 	VULKAN_INTERNAL_EndEncodeCommand(renderer);
+
+	renderer->drawCallMadeThisPass = 1;
 }
 
 static void VULKAN_DrawIndexedPrimitives(
@@ -7640,6 +7547,8 @@ static void VULKAN_DrawPrimitives(
 	);
 
 	VULKAN_INTERNAL_EndEncodeCommand(renderer);
+
+	renderer->drawCallMadeThisPass = 1;
 }
 
 /* Mutable Render States */
@@ -8040,6 +7949,16 @@ static void VULKAN_SetRenderTargets(
 	VulkanColorBuffer *cb;
 	VulkanTexture *tex;
 	int32_t i;
+
+	/* Perform any pending clears before switching render targets */
+	if (renderer->shouldClearColorOnBeginPass ||
+		renderer->shouldClearDepthOnBeginPass ||
+		renderer->shouldClearStencilOnBeginPass)
+	{
+		VULKAN_INTERNAL_BeginRenderPass(renderer);
+	}
+
+	renderer->preserveTargetContents = preserveTargetContents;
 
 	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
 	{
