@@ -4022,7 +4022,7 @@ static void D3D11_AddDisposeEffect(
 	}
 
 	/* invalidate all inputLayouts */
-	for ( i = 0; i < renderer->inputLayoutCache.count; i += 1)
+	for (i = 0; i < renderer->inputLayoutCache.count; i += 1)
 	{
 		ID3D11InputLayout_Release(
 			(ID3D11InputLayout*)renderer->inputLayoutCache.elements[i].value
