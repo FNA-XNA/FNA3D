@@ -649,7 +649,7 @@ typedef struct VulkanCommand
 		struct
 		{
 			VkRenderPassBeginInfo beginInfo;
-			VkClearValue clearValues[MAX_RENDERTARGET_BINDINGS + 1];
+			VkClearValue clearValues[2 * MAX_RENDERTARGET_BINDINGS + 1];
 		} beginRenderPass;
 
 		struct
@@ -6456,7 +6456,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	VkFramebuffer framebuffer;
 	VkImageAspectFlags depthAspectFlags;
 	float blendConstants[4];
-	VkClearValue clearValues[MAX_RENDERTARGET_BINDINGS + 1];
+	VkClearValue clearValues[2 * MAX_RENDERTARGET_BINDINGS + 1];
 	uint32_t clearValueCount = 0;
 	VulkanCommand *setBlendConstantsCmd;
 	uint32_t i;
