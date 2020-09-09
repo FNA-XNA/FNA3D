@@ -792,9 +792,9 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 	D3D11Renderer *renderer,
 	FNA3D_VertexBufferBinding *bindings,
 	int32_t numBindings,
-	int32_t *hash
+	uint32_t *hash
 ) {
-	int32_t numElements, bufsize, i, j, k, usage, index, attribLoc, bytecodeLength;
+	int32_t numElements, bufsize, i, j, k, usage, index, attribLoc, bytecodeLength, bindingsIndex;
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 	FNA3D_VertexDeclaration vertexDeclaration;
 	FNA3D_VertexElement element;
@@ -813,6 +813,7 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 		bindings,
 		numBindings,
 		vertexShader,
+		&bindingsIndex,
 		hash
 	);
 	if (result != NULL)
@@ -2031,7 +2032,8 @@ static void D3D11_ApplyVertexBufferBindings(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Buffer *vertexBuffer;
 	ID3D11InputLayout *inputLayout;
-	int32_t i, stride, offset, hash;
+	int32_t i, stride, offset;
+	uint32_t hash;
 
 	if (!bindingsUpdated && !renderer->effectApplied)
 	{
