@@ -6513,15 +6513,15 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 				clearValues[clearValueCount].color.float32[2] = renderer->clearColorValue.float32[2];
 				clearValues[clearValueCount].color.float32[3] = renderer->clearColorValue.float32[3];
 				clearValueCount += 1;
-			}
 
-			if (renderer->colorMultiSampleAttachments[i] != NULL)
-			{
-				clearValues[clearValueCount].color.float32[0] = renderer->clearColorValue.float32[0];
-				clearValues[clearValueCount].color.float32[1] = renderer->clearColorValue.float32[1];
-				clearValues[clearValueCount].color.float32[2] = renderer->clearColorValue.float32[2];
-				clearValues[clearValueCount].color.float32[3] = renderer->clearColorValue.float32[3];
-				clearValueCount += 1;
+				if (renderer->colorMultiSampleAttachments[i] != NULL)
+				{
+					clearValues[clearValueCount].color.float32[0] = renderer->clearColorValue.float32[0];
+					clearValues[clearValueCount].color.float32[1] = renderer->clearColorValue.float32[1];
+					clearValues[clearValueCount].color.float32[2] = renderer->clearColorValue.float32[2];
+					clearValues[clearValueCount].color.float32[3] = renderer->clearColorValue.float32[3];
+					clearValueCount += 1;
+				}
 			}
 		}
 	}
