@@ -796,8 +796,6 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 ) {
 	int32_t numElements, bufsize, i, j, k, usage, index, attribLoc, bytecodeLength, bindingsIndex;
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
-	FNA3D_VertexDeclaration vertexDeclaration;
-	FNA3D_VertexElement element;
 	D3D11_INPUT_ELEMENT_DESC *d3dElement, *elements;
 	MOJOSHADER_d3d11Shader *vertexShader, *blah;
 	void *bytecode;
@@ -837,12 +835,12 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 	numElements = 0;
 	for (i = 0; i < numBindings; i += 1)
 	{
-		vertexDeclaration = bindings[i].vertexDeclaration;
-		for (j = 0; j < vertexDeclaration.elementCount; j += 1)
+		const FNA3D_VertexBufferBinding *binding = &bindings[i];
+		for (j = 0; j < binding->vertexDeclaration.elementCount; j += 1)
 		{
-			element = vertexDeclaration.elements[j];
-			usage = element.vertexElementUsage;
-			index = element.usageIndex;
+			const FNA3D_VertexElement *element = &binding->vertexDeclaration.elements[j];
+			usage = element->vertexElementUsage;
+			index = element->usageIndex;
 
 			if (attrUse[usage][index])
 			{
@@ -887,12 +885,12 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 	for (i = 0; i < numBindings; i += 1)
 	{
 		/* Describe vertex attributes */
-		vertexDeclaration = bindings[i].vertexDeclaration;
-		for (j = 0; j < vertexDeclaration.elementCount; j += 1)
+		const FNA3D_VertexBufferBinding *binding = &bindings[i];
+		for (j = 0; j < binding->vertexDeclaration.elementCount; j += 1)
 		{
-			element = vertexDeclaration.elements[j];
-			usage = element.vertexElementUsage;
-			index = element.usageIndex;
+			const FNA3D_VertexElement *element = &binding->vertexDeclaration.elements[j];
+			usage = element->vertexElementUsage;
+			index = element->usageIndex;
 
 			attribLoc = MOJOSHADER_d3d11GetVertexAttribLocation(
 				vertexShader,
@@ -909,18 +907,18 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 			d3dElement->SemanticName = XNAToD3D_VertexAttribSemanticName[usage];
 			d3dElement->SemanticIndex = index;
 			d3dElement->Format = XNAToD3D_VertexAttribFormat[
-				element.vertexElementFormat
+				element->vertexElementFormat
 			];
 			d3dElement->InputSlot = i;
-			d3dElement->AlignedByteOffset = element.offset;
+			d3dElement->AlignedByteOffset = element->offset;
 			d3dElement->InputSlotClass = (
-				bindings[i].instanceFrequency > 0 ?
+				binding->instanceFrequency > 0 ?
 					D3D11_INPUT_PER_INSTANCE_DATA :
 					D3D11_INPUT_PER_VERTEX_DATA
 			);
 			d3dElement->InstanceDataStepRate = (
-				bindings[i].instanceFrequency > 0 ?
-					bindings[i].instanceFrequency :
+				bindings->instanceFrequency > 0 ?
+					bindings->instanceFrequency :
 					0
 			);
 		}
