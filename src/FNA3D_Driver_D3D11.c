@@ -794,11 +794,13 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 	int32_t numBindings,
 	uint32_t *hash
 ) {
-	int32_t numElements, bufsize, i, j, k, usage, index, attribLoc, bytecodeLength, bindingsIndex;
+	int32_t numElements, i, j, k, usage, index, attribLoc, bindingsIndex;
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
-	D3D11_INPUT_ELEMENT_DESC *d3dElement, *elements;
+	D3D11_INPUT_ELEMENT_DESC elements[16]; /* D3DCAPS9 MaxStreams <= 16 */
+	D3D11_INPUT_ELEMENT_DESC *d3dElement;
 	MOJOSHADER_d3d11Shader *vertexShader, *blah;
 	void *bytecode;
+	int32_t bytecodeLength;
 	HRESULT res;
 	ID3D11InputLayout *result;
 
@@ -833,8 +835,10 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 
 	/* Determine how many elements are actually in use */
 	numElements = 0;
+	SDL_zero(elements);
 	for (i = 0; i < numBindings; i += 1)
 	{
+		/* Describe vertex attributes */
 		const FNA3D_VertexBufferBinding *binding = &bindings[i];
 		for (j = 0; j < binding->vertexDeclaration.elementCount; j += 1)
 		{
@@ -873,35 +877,6 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 			}
 
 			numElements += 1;
-		}
-	}
-
-	/* Allocate an array for the elements */
-	bufsize = numElements * sizeof(D3D11_INPUT_ELEMENT_DESC);
-	elements = (D3D11_INPUT_ELEMENT_DESC*) SDL_malloc(bufsize);
-	SDL_memset(elements, '\0', bufsize);
-
-	/* Describe the elements */
-	for (i = 0; i < numBindings; i += 1)
-	{
-		/* Describe vertex attributes */
-		const FNA3D_VertexBufferBinding *binding = &bindings[i];
-		for (j = 0; j < binding->vertexDeclaration.elementCount; j += 1)
-		{
-			const FNA3D_VertexElement *element = &binding->vertexDeclaration.elements[j];
-			usage = element->vertexElementUsage;
-			index = element->usageIndex;
-
-			attribLoc = MOJOSHADER_d3d11GetVertexAttribLocation(
-				vertexShader,
-				VertexAttribUsage(usage),
-				index
-			);
-			if (attribLoc == -1)
-			{
-				/* Stream not in use! */
-				continue;
-			}
 
 			d3dElement = &elements[attribLoc];
 			d3dElement->SemanticName = XNAToD3D_VertexAttribSemanticName[usage];
@@ -939,9 +914,6 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 		bytecodeLength,
 		&result
 	);
-
-	/* Clean up */
-	SDL_free(elements);
 
 	/* Check for errors now that elements is freed */
 	ERROR_CHECK_RETURN("Could not compile input layout", NULL)
