@@ -835,7 +835,6 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 
 	/* Determine how many elements are actually in use */
 	numElements = 0;
-	SDL_zero(elements);
 	for (i = 0; i < numBindings; i += 1)
 	{
 		/* Describe vertex attributes */
