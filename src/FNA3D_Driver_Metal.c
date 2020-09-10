@@ -1754,6 +1754,7 @@ static MTLVertexDescriptor* METAL_INTERNAL_FetchVertexBufferBindingsDescriptor(
 	int32_t numBindings
 ) {
 	int32_t whatever, i, j, k, usage, index, attribLoc;
+	uint32_t noReallyWhatever;
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 	FNA3D_VertexDeclaration vertexDeclaration;
 	FNA3D_VertexElement element;
@@ -1771,7 +1772,8 @@ static MTLVertexDescriptor* METAL_INTERNAL_FetchVertexBufferBindingsDescriptor(
 		bindings,
 		numBindings,
 		vertexShader,
-		&whatever
+		&whatever,
+		&noReallyWhatever
 	);
 	if (result != NULL)
 	{
