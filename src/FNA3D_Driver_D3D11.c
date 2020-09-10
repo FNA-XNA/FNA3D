@@ -891,7 +891,7 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 					D3D11_INPUT_PER_VERTEX_DATA
 			);
 			d3dElement->InstanceDataStepRate = (
-				bindings->instanceFrequency > 0 ?
+				binding->instanceFrequency > 0 ?
 					bindings->instanceFrequency :
 					0
 			);
