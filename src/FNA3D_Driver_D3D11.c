@@ -1531,7 +1531,8 @@ static void D3D11_DrawIndexedPrimitives(
 	SDL_LockMutex(renderer->ctxLock);
 
 	/* Bind index buffer */
-	if (renderer->indexBuffer != d3dIndices->handle)
+	if (	renderer->indexBuffer != d3dIndices->handle ||
+		renderer->indexElementSize != indexElementSize 	)
 	{
 		renderer->indexBuffer = d3dIndices->handle;
 		renderer->indexElementSize = indexElementSize;
@@ -1582,7 +1583,8 @@ static void D3D11_DrawInstancedPrimitives(
 	SDL_LockMutex(renderer->ctxLock);
 
 	/* Bind index buffer */
-	if (renderer->indexBuffer != d3dIndices->handle)
+	if (	renderer->indexBuffer != d3dIndices->handle ||
+		renderer->indexElementSize != indexElementSize 	)
 	{
 		renderer->indexBuffer = d3dIndices->handle;
 		renderer->indexElementSize = indexElementSize;
