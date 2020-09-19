@@ -1151,8 +1151,8 @@ static void D3D11_INTERNAL_UpdateBackbufferVertexBuffer(
 
 static void D3D11_INTERNAL_BlitFramebuffer(
 	D3D11Renderer *renderer,
-	int32_t swapchainWidth,
-	int32_t swapchainHeight
+	int32_t drawableWidth,
+	int32_t drawableHeight
 ) {
 	const uint32_t vertexStride = 16;
 	const uint32_t offsets[] = { 0 };
@@ -1170,17 +1170,33 @@ static void D3D11_INTERNAL_BlitFramebuffer(
 		renderer->viewport.minDepth,
 		renderer->viewport.maxDepth
 	};
+
+	SDL_LockMutex(renderer->ctxLock);
+
+	/* HACK ahead: During a window resize operation, the swapchain size does not necessarily
+	 *  match the size of the drawable. As a result, we need to set our viewport to match the
+	 *  size of the swapchain instead of the size of the drawable.
+	 * If we don't do this, during the resize the damaged area will contain garbage pixels and
+	 *  the framebuffer will be drawn at the incorrect size as well.
+	 * The result of this hack is that the framebuffer is scaled up to match whatever the size
+	 *  of the drawable happens to be (this will introduce some blurring, and does not match
+	 *  the behavior of OpenGL/Vulkan - just show black pixels in the damaged area - but is
+	 *  better than the alternatives.)
+	 * The ideal solution would be to resize the swapchain to fit, but resizing a swapchain
+	 *  requires us to first release any references to its backbuffers, so attempting to
+	 *  resize it here will always fail.
+	 */
+	DXGI_SWAP_CHAIN_DESC swapchainDesc;
+	IDXGISwapChain_GetDesc(renderer->swapchain, &swapchainDesc);
 	D3D11_VIEWPORT tempViewport =
 	{
 		0,
 		0,
-		(float) swapchainWidth,
-		(float) swapchainHeight,
+		(float) swapchainDesc.BufferDesc.Width,
+		(float) swapchainDesc.BufferDesc.Height,
 		0,
 		1
 	};
-
-	SDL_LockMutex(renderer->ctxLock);
 
 	/* Push the current shader state */
 	ID3D11DeviceContext_VSGetShader(
