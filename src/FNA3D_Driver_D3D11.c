@@ -1154,6 +1154,8 @@ static void D3D11_INTERNAL_BlitFramebuffer(
 	int32_t drawableWidth,
 	int32_t drawableHeight
 ) {
+	DXGI_SWAP_CHAIN_DESC swapchainDesc;
+	D3D11_VIEWPORT tempViewport;
 	const uint32_t vertexStride = 16;
 	const uint32_t offsets[] = { 0 };
 	float blendFactor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
@@ -1186,17 +1188,13 @@ static void D3D11_INTERNAL_BlitFramebuffer(
 	 *  requires us to first release any references to its backbuffers, so attempting to
 	 *  resize it here will always fail.
 	 */
-	DXGI_SWAP_CHAIN_DESC swapchainDesc;
 	IDXGISwapChain_GetDesc(renderer->swapchain, &swapchainDesc);
-	D3D11_VIEWPORT tempViewport =
-	{
-		0,
-		0,
-		(float) swapchainDesc.BufferDesc.Width,
-		(float) swapchainDesc.BufferDesc.Height,
-		0,
-		1
-	};
+	tempViewport.TopLeftX = 0;
+	tempViewport.TopLeftY = 0;
+	tempViewport.Width = (float) swapchainDesc.BufferDesc.Width;
+	tempViewport.Height = (float) swapchainDesc.BufferDesc.Height;
+	tempViewport.MinDepth = 0;
+	tempViewport.MaxDepth = 1;
 
 	/* Push the current shader state */
 	ID3D11DeviceContext_VSGetShader(
