@@ -1438,6 +1438,17 @@ typedef struct VulkanRenderer
 	uint8_t supportsDebugUtils;
 	uint8_t debugMode;
 
+	/* Threading */
+	SDL_Thread *queueThread;
+	SDL_mutex *beginSubmitLock;
+	SDL_mutex *endSubmitLock;
+	SDL_cond *submitQueueCond;
+	SDL_cond *submitQueueCompleteCond;
+
+	void *overrideWindowHandle;
+	uint32_t currentSwapChainImageIndex;
+	uint8_t active;
+
 	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
 	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
@@ -3408,407 +3419,26 @@ static void VULKAN_INTERNAL_FlushCommands(
 	void* overrideWindowHandle,
 	uint32_t swapChainImageIndex
 ) {
-	VkCommandBufferBeginInfo beginInfo;
-	VkSubmitInfo submitInfo;
 	uint32_t i;
-	VulkanCommand *cmd;
-	VkResult result, presentResult = VK_SUCCESS;
-	VkDescriptorSet descriptorSets[4];
-
-	VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-	VkPresentInfoKHR presentInfo;
-	struct
-	{
-		VkStructureType sType;
-		const void *pNext;
-		uint64_t frameToken;
-	} presentInfoGGP;
-	uint8_t present = (overrideWindowHandle != NULL);
+	VkResult result = VK_SUCCESS;
 
 	/* Keep these locked until the end of the function! */
 	SDL_LockMutex(renderer->passLock);
 	SDL_LockMutex(renderer->commandLock);
 
-	/* Batch descriptor set updates */
-	VULKAN_INTERNAL_UpdateDescriptorSets(renderer);
+	/* These are used by the QueueThread */
+	renderer->overrideWindowHandle = overrideWindowHandle;
+	renderer->currentSwapChainImageIndex = swapChainImageIndex;
 
-	/* Begin recording */
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.pNext = NULL;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	beginInfo.pInheritanceInfo = NULL;
-	result = renderer->vkBeginCommandBuffer(
-		renderer->commandBuffer,
-		&beginInfo
-	);
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResult("vkBeginCommandBuffer", result);
-	}
+	/* Allow the QueueThread to execute */
+	SDL_LockMutex(renderer->beginSubmitLock);
+	SDL_CondSignal(renderer->submitQueueCond);
+	SDL_UnlockMutex(renderer->beginSubmitLock);
 
-	/* Record the commands, in order! */
-	for (i = 0; i < renderer->numActiveCommands; i += 1)
-	{
-		cmd = &renderer->commands[i];
-		switch (cmd->type)
-		{
-			case CMDTYPE_BIND_INDEX_BUFFER:
-				renderer->vkCmdBindIndexBuffer(
-					renderer->commandBuffer,
-					cmd->bindIndexBuffer.buffer,
-					cmd->bindIndexBuffer.offset,
-					cmd->bindIndexBuffer.indexType
-				);
-				break;
-
-			case CMDTYPE_BIND_PIPELINE:
-				renderer->vkCmdBindPipeline(
-					renderer->commandBuffer,
-					VK_PIPELINE_BIND_POINT_GRAPHICS,
-					cmd->bindPipeline.pipeline
-				);
-				break;
-
-			case CMDTYPE_BIND_VERTEX_BUFFERS:
-				renderer->vkCmdBindVertexBuffers(
-					renderer->commandBuffer,
-					0,
-					cmd->bindVertexBuffers.bindingCount,
-					cmd->bindVertexBuffers.buffers,
-					cmd->bindVertexBuffers.offsets
-				);
-				break;
-
-			case CMDTYPE_CLEAR_ATTACHMENTS:
-				renderer->vkCmdClearAttachments(
-					renderer->commandBuffer,
-					cmd->clearAttachments.attachmentCount,
-					cmd->clearAttachments.attachments,
-					1,
-					&cmd->clearAttachments.rect
-				);
-				break;
-
-			case CMDTYPE_CLEAR_COLOR_IMAGE:
-				renderer->vkCmdClearColorImage(
-					renderer->commandBuffer,
-					cmd->clearColorImage.image,
-					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-					&cmd->clearColorImage.color,
-					1,
-					&cmd->clearColorImage.range
-				);
-				break;
-
-			case CMDTYPE_CLEAR_DEPTH_STENCIL_IMAGE:
-				renderer->vkCmdClearDepthStencilImage(
-					renderer->commandBuffer,
-					cmd->clearDepthStencilImage.image,
-					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-					&cmd->clearDepthStencilImage.depthStencil,
-					1,
-					&cmd->clearDepthStencilImage.range
-				);
-				break;
-
-			case CMDTYPE_DRAW:
-				/* grab the actual descriptor set objects */
-				VULKAN_INTERNAL_FetchDescriptorSets(
-					&cmd->draw.descriptorSetDrawInfo,
-					descriptorSets
-				);
-
-				renderer->vkCmdBindDescriptorSets(
-					renderer->commandBuffer,
-					VK_PIPELINE_BIND_POINT_GRAPHICS,
-					cmd->draw.pipelineLayout,
-					0,
-					4,
-					descriptorSets,
-					2, /* always have 2 dynamic offsets for UBOs */
-					cmd->draw.dynamicOffsets
-				);
-
-				renderer->vkCmdDraw(
-					renderer->commandBuffer,
-					cmd->draw.vertexCount,
-					1,
-					cmd->draw.firstVertex,
-					0
-				);
-				break;
-
-			case CMDTYPE_DRAW_INDEXED:
-				/* grab the actual descriptor set objects */
-				VULKAN_INTERNAL_FetchDescriptorSets(
-					&cmd->drawIndexed.descriptorSetDrawInfo,
-					descriptorSets
-				);
-
-				renderer->vkCmdBindDescriptorSets(
-					renderer->commandBuffer,
-					VK_PIPELINE_BIND_POINT_GRAPHICS,
-					cmd->drawIndexed.pipelineLayout,
-					0,
-					4,
-					descriptorSets,
-					2, /* always have 2 dynamic offsets for the UBOs */
-					cmd->drawIndexed.dynamicOffsets
-				);
-
-				renderer->vkCmdDrawIndexed(
-					renderer->commandBuffer,
-					cmd->drawIndexed.indexCount,
-					cmd->drawIndexed.instanceCount,
-					cmd->drawIndexed.firstIndex,
-					cmd->drawIndexed.vertexOffset,
-					0
-				);
-				break;
-
-			case CMDTYPE_SET_BLEND_CONSTANTS:
-				renderer->vkCmdSetBlendConstants(
-					renderer->commandBuffer,
-					cmd->setBlendConstants.blendConstants
-				);
-				break;
-
-			case CMDTYPE_SET_DEPTH_BIAS:
-				renderer->vkCmdSetDepthBias(
-					renderer->commandBuffer,
-					cmd->setDepthBias.depthBiasConstantFactor,
-					0.0f, /* no clamp */
-					cmd->setDepthBias.depthBiasSlopeFactor
-				);
-				break;
-
-			case CMDTYPE_BLIT_IMAGE:
-				renderer->vkCmdBlitImage(
-					renderer->commandBuffer,
-					cmd->blitImage.srcImage,
-					VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-					cmd->blitImage.dstImage,
-					VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-					1,
-					&cmd->blitImage.region,
-					cmd->blitImage.filter
-				);
-				break;
-
-			case CMDTYPE_COPY_BUFFER_TO_IMAGE:
-				renderer->vkCmdCopyBufferToImage(
-					renderer->commandBuffer,
-					cmd->copyBufferToImage.srcBuffer,
-					cmd->copyBufferToImage.dstImage,
-					cmd->copyBufferToImage.dstImageLayout,
-					1,
-					&cmd->copyBufferToImage.region
-				);
-				break;
-
-			case CMDTYPE_COPY_IMAGE_TO_BUFFER:
-				renderer->vkCmdCopyImageToBuffer(
-					renderer->commandBuffer,
-					cmd->copyImageToBuffer.srcImage,
-					cmd->copyImageToBuffer.srcImageLayout,
-					cmd->copyImageToBuffer.dstBuffer,
-					1,
-					&cmd->copyImageToBuffer.region
-				);
-				break;
-
-			case CMDTYPE_PIPELINE_BARRIER:
-				renderer->vkCmdPipelineBarrier(
-					renderer->commandBuffer,
-					cmd->pipelineBarrier.srcStageMask,
-					cmd->pipelineBarrier.dstStageMask,
-					0,
-					0,
-					NULL,
-					cmd->pipelineBarrier.bufferMemoryBarrierCount,
-					&cmd->pipelineBarrier.bufferMemoryBarrier,
-					cmd->pipelineBarrier.imageMemoryBarrierCount,
-					&cmd->pipelineBarrier.imageMemoryBarrier
-				);
-				break;
-
-			case CMDTYPE_SET_SCISSOR:
-				renderer->vkCmdSetScissor(
-					renderer->commandBuffer,
-					0,
-					1,
-					&cmd->setScissor.scissor
-				);
-				break;
-
-			case CMDTYPE_SET_VIEWPORT:
-				renderer->vkCmdSetViewport(
-					renderer->commandBuffer,
-					0,
-					1,
-					&cmd->setViewport.viewport
-				);
-				break;
-
-			case CMDTYPE_SET_STENCIL_REFERENCE:
-				renderer->vkCmdSetStencilReference(
-					renderer->commandBuffer,
-					VK_STENCIL_FACE_FRONT_AND_BACK,
-					cmd->setStencilReference.reference
-				);
-				break;
-
-			case CMDTYPE_INSERT_DEBUG_UTILS_LABEL:
-				renderer->vkCmdInsertDebugUtilsLabelEXT(
-					renderer->commandBuffer,
-					&cmd->insertDebugUtilsLabel.labelInfo
-				);
-				break;
-
-			case CMDTYPE_RESET_QUERY_POOL:
-				renderer->vkCmdResetQueryPool(
-					renderer->commandBuffer,
-					cmd->resetQueryPool.queryPool,
-					cmd->resetQueryPool.firstQuery,
-					1
-				);
-				break;
-
-			case CMDTYPE_BEGIN_QUERY:
-				renderer->vkCmdBeginQuery(
-					renderer->commandBuffer,
-					cmd->beginQuery.queryPool,
-					cmd->beginQuery.query,
-					VK_QUERY_CONTROL_PRECISE_BIT
-				);
-				break;
-
-			case CMDTYPE_END_QUERY:
-				renderer->vkCmdEndQuery(
-					renderer->commandBuffer,
-					cmd->endQuery.queryPool,
-					cmd->endQuery.query
-				);
-				break;
-
-			case CMDTYPE_BEGIN_RENDER_PASS:
-				renderer->vkCmdBeginRenderPass(
-					renderer->commandBuffer,
-					&cmd->beginRenderPass.beginInfo,
-					VK_SUBPASS_CONTENTS_INLINE
-				);
-				break;
-
-			case CMDTYPE_END_RENDER_PASS:
-				renderer->vkCmdEndRenderPass(renderer->commandBuffer);
-				break;
-		}
-	}
-
-	/* End command recording */
-	result = renderer->vkEndCommandBuffer(
-		renderer->commandBuffer
-	);
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResult("vkEndCommandBuffer", result);
-	}
-
-	/* Command list should be cleared now */
-	renderer->numActiveCommands = 0;
-
-	/* Reset descriptor set data */
-	VULKAN_INTERNAL_ResetDescriptorSetData(renderer);
-
-	/* Prepare the command buffer fence for submission */
-	renderer->vkResetFences(
-		renderer->logicalDevice,
-		1,
-		&renderer->inFlightFence
-	);
-
-	/* Prepare the command buffer for submission */
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.pNext = NULL;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &renderer->commandBuffer;
-	if (present)
-	{
-		submitInfo.waitSemaphoreCount = 1;
-		submitInfo.pWaitSemaphores = &renderer->imageAvailableSemaphore;
-		submitInfo.pWaitDstStageMask = &waitStages;
-		submitInfo.signalSemaphoreCount = 1;
-		submitInfo.pSignalSemaphores = &renderer->renderFinishedSemaphore;
-	}
-	else
-	{
-		submitInfo.waitSemaphoreCount = 0;
-		submitInfo.pWaitSemaphores = NULL;
-		submitInfo.pWaitDstStageMask = NULL;
-		submitInfo.signalSemaphoreCount = 0;
-		submitInfo.pSignalSemaphores = NULL;
-	}
-
-	/* Submit the commands, finally. */
-	result = renderer->vkQueueSubmit(
-		renderer->graphicsQueue,
-		1,
-		&submitInfo,
-		renderer->inFlightFence
-	);
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResult("vkQueueSubmit", result);
-		return;
-	}
-
-	/* Present, if applicable */
-	if (present)
-	{
-		if (renderer->physicalDeviceDriverProperties.driverID == VK_DRIVER_ID_GGP_PROPRIETARY)
-		{
-			const void* token = SDL_GetWindowData(
-				(SDL_Window*) overrideWindowHandle,
-				"GgpFrameToken"
-			);
-			presentInfoGGP.sType = VK_STRUCTURE_TYPE_PRESENT_FRAME_TOKEN_GGP;
-			presentInfoGGP.pNext = NULL;
-			presentInfoGGP.frameToken = (uint64_t) (size_t) token;
-			presentInfo.pNext = &presentInfoGGP;
-		}
-		else
-		{
-			presentInfo.pNext = NULL;
-		}
-		presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-		presentInfo.pNext = NULL;
-		presentInfo.waitSemaphoreCount = 1;
-		presentInfo.pWaitSemaphores =
-			&renderer->renderFinishedSemaphore;
-		presentInfo.swapchainCount = 1;
-		presentInfo.pSwapchains = &renderer->swapChain;
-		presentInfo.pImageIndices = &swapChainImageIndex;
-		presentInfo.pResults = NULL;
-
-		presentResult = renderer->vkQueuePresentKHR(
-			renderer->presentQueue,
-			&presentInfo
-		);
-	}
-
-	/* Wait for the submission to complete */
-	result = renderer->vkWaitForFences(
-		renderer->logicalDevice,
-		1,
-		&renderer->inFlightFence,
-		VK_TRUE,
-		UINT64_MAX
-	);
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResult("vkWaitForFences", result);
-		return;
-	}
+	/* Wait for submission to complete */
+	SDL_LockMutex(renderer->endSubmitLock);
+	SDL_CondWait(renderer->submitQueueCompleteCond, renderer->endSubmitLock);
+	SDL_UnlockMutex(renderer->endSubmitLock);
 
 	/* Reset buffer and subbuffer binding info */
 	for (i = 0; i < renderer->numBuffersInUse; i += 1)
@@ -3832,23 +3462,9 @@ static void VULKAN_INTERNAL_FlushCommands(
 		LogVulkanResult("vkResetCommandBuffer", result);
 	}
 
-	/* Now that commands are totally done, check for present errors */
-	if (present)
-	{
-		if (	presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
-			presentResult == VK_SUBOPTIMAL_KHR	)
-		{
-			VULKAN_INTERNAL_RecreateSwapchain(renderer);
-		}
-		else if (presentResult != VK_SUCCESS)
-		{
-			LogVulkanResult("vkQueuePresentKHR", result);
-		}
-	}
-
 	/* It should be safe to unlock now */
-	SDL_UnlockMutex(renderer->commandLock);
 	SDL_UnlockMutex(renderer->passLock);
+	SDL_UnlockMutex(renderer->commandLock);
 }
 
 /* Vulkan: Memory Barriers */
@@ -6885,8 +6501,10 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	ShaderResources *shaderResources;
 	PipelineHashArray hashArray;
 	uint32_t i, j;
+	int queueThreadStatus;
 	VkResult waitResult;
 
+	renderer->active = 0;
 	VULKAN_INTERNAL_FlushCommands(renderer, NULL, 0);
 
 	waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
@@ -6895,6 +6513,8 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	{
 		LogVulkanResult("vkDeviceWaitIdle", waitResult);
 	}
+
+	SDL_WaitThread(renderer->queueThread, &queueThreadStatus);
 
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyVertUniformBuffer);
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyFragUniformBuffer);
@@ -7144,12 +6764,452 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 	SDL_DestroyMutex(renderer->commandLock);
 	SDL_DestroyMutex(renderer->passLock);
+	SDL_DestroyMutex(renderer->beginSubmitLock);
+	SDL_DestroyMutex(renderer->endSubmitLock);
+
+	SDL_DestroyCond(renderer->submitQueueCond);
+	SDL_DestroyCond(renderer->submitQueueCompleteCond);
 
 	SDL_free(renderer);
 	SDL_free(device);
 }
 
 /* Presentation */
+
+static int QueueThread(void *rendererPtr)
+{
+	VkCommandBufferBeginInfo beginInfo;
+	VkSubmitInfo submitInfo;
+	uint32_t i;
+	VulkanCommand *cmd;
+	VkResult result, presentResult = VK_SUCCESS;
+	VkDescriptorSet descriptorSets[4];
+
+	VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+	uint8_t present;
+	VkPresentInfoKHR presentInfo;
+	struct
+	{
+		VkStructureType sType;
+		const void *pNext;
+		uint64_t frameToken;
+	} presentInfoGGP;
+
+	VulkanRenderer *renderer = (VulkanRenderer*) rendererPtr;
+
+	while (renderer->active)
+	{
+		/* Wait for FlushCommands to give us the go-ahead */
+		SDL_LockMutex(renderer->beginSubmitLock);
+		SDL_CondWait(renderer->submitQueueCond, renderer->beginSubmitLock);
+		SDL_UnlockMutex(renderer->beginSubmitLock);
+
+		present = (renderer->overrideWindowHandle != NULL);
+
+		/* Batch descriptor set updates */
+		VULKAN_INTERNAL_UpdateDescriptorSets(renderer);
+
+		/* Begin recording */
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.pNext = NULL;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		beginInfo.pInheritanceInfo = NULL;
+		result = renderer->vkBeginCommandBuffer(
+			renderer->commandBuffer,
+			&beginInfo
+		);
+		if (result != VK_SUCCESS)
+		{
+			LogVulkanResult("vkBeginCommandBuffer", result);
+		}
+
+		/* Record the commands, in order! */
+		for (i = 0; i < renderer->numActiveCommands; i += 1)
+		{
+			cmd = &renderer->commands[i];
+			switch (cmd->type)
+			{
+				case CMDTYPE_BIND_INDEX_BUFFER:
+					renderer->vkCmdBindIndexBuffer(
+						renderer->commandBuffer,
+						cmd->bindIndexBuffer.buffer,
+						cmd->bindIndexBuffer.offset,
+						cmd->bindIndexBuffer.indexType
+					);
+					break;
+
+				case CMDTYPE_BIND_PIPELINE:
+					renderer->vkCmdBindPipeline(
+						renderer->commandBuffer,
+						VK_PIPELINE_BIND_POINT_GRAPHICS,
+						cmd->bindPipeline.pipeline
+					);
+					break;
+
+				case CMDTYPE_BIND_VERTEX_BUFFERS:
+					renderer->vkCmdBindVertexBuffers(
+						renderer->commandBuffer,
+						0,
+						cmd->bindVertexBuffers.bindingCount,
+						cmd->bindVertexBuffers.buffers,
+						cmd->bindVertexBuffers.offsets
+					);
+					break;
+
+				case CMDTYPE_CLEAR_ATTACHMENTS:
+					renderer->vkCmdClearAttachments(
+						renderer->commandBuffer,
+						cmd->clearAttachments.attachmentCount,
+						cmd->clearAttachments.attachments,
+						1,
+						&cmd->clearAttachments.rect
+					);
+					break;
+
+				case CMDTYPE_CLEAR_COLOR_IMAGE:
+					renderer->vkCmdClearColorImage(
+						renderer->commandBuffer,
+						cmd->clearColorImage.image,
+						VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+						&cmd->clearColorImage.color,
+						1,
+						&cmd->clearColorImage.range
+					);
+					break;
+
+				case CMDTYPE_CLEAR_DEPTH_STENCIL_IMAGE:
+					renderer->vkCmdClearDepthStencilImage(
+						renderer->commandBuffer,
+						cmd->clearDepthStencilImage.image,
+						VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+						&cmd->clearDepthStencilImage.depthStencil,
+						1,
+						&cmd->clearDepthStencilImage.range
+					);
+					break;
+
+				case CMDTYPE_DRAW:
+					/* grab the actual descriptor set objects */
+					VULKAN_INTERNAL_FetchDescriptorSets(
+						&cmd->draw.descriptorSetDrawInfo,
+						descriptorSets
+					);
+
+					renderer->vkCmdBindDescriptorSets(
+						renderer->commandBuffer,
+						VK_PIPELINE_BIND_POINT_GRAPHICS,
+						cmd->draw.pipelineLayout,
+						0,
+						4,
+						descriptorSets,
+						2, /* always have 2 dynamic offsets for UBOs */
+						cmd->draw.dynamicOffsets
+					);
+
+					renderer->vkCmdDraw(
+						renderer->commandBuffer,
+						cmd->draw.vertexCount,
+						1,
+						cmd->draw.firstVertex,
+						0
+					);
+					break;
+
+				case CMDTYPE_DRAW_INDEXED:
+					/* grab the actual descriptor set objects */
+					VULKAN_INTERNAL_FetchDescriptorSets(
+						&cmd->drawIndexed.descriptorSetDrawInfo,
+						descriptorSets
+					);
+
+					renderer->vkCmdBindDescriptorSets(
+						renderer->commandBuffer,
+						VK_PIPELINE_BIND_POINT_GRAPHICS,
+						cmd->drawIndexed.pipelineLayout,
+						0,
+						4,
+						descriptorSets,
+						2, /* always have 2 dynamic offsets for the UBOs */
+						cmd->drawIndexed.dynamicOffsets
+					);
+
+					renderer->vkCmdDrawIndexed(
+						renderer->commandBuffer,
+						cmd->drawIndexed.indexCount,
+						cmd->drawIndexed.instanceCount,
+						cmd->drawIndexed.firstIndex,
+						cmd->drawIndexed.vertexOffset,
+						0
+					);
+					break;
+
+				case CMDTYPE_SET_BLEND_CONSTANTS:
+					renderer->vkCmdSetBlendConstants(
+						renderer->commandBuffer,
+						cmd->setBlendConstants.blendConstants
+					);
+					break;
+
+				case CMDTYPE_SET_DEPTH_BIAS:
+					renderer->vkCmdSetDepthBias(
+						renderer->commandBuffer,
+						cmd->setDepthBias.depthBiasConstantFactor,
+						0.0f, /* no clamp */
+						cmd->setDepthBias.depthBiasSlopeFactor
+					);
+					break;
+
+				case CMDTYPE_BLIT_IMAGE:
+					renderer->vkCmdBlitImage(
+						renderer->commandBuffer,
+						cmd->blitImage.srcImage,
+						VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+						cmd->blitImage.dstImage,
+						VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+						1,
+						&cmd->blitImage.region,
+						cmd->blitImage.filter
+					);
+					break;
+
+				case CMDTYPE_COPY_BUFFER_TO_IMAGE:
+					renderer->vkCmdCopyBufferToImage(
+						renderer->commandBuffer,
+						cmd->copyBufferToImage.srcBuffer,
+						cmd->copyBufferToImage.dstImage,
+						cmd->copyBufferToImage.dstImageLayout,
+						1,
+						&cmd->copyBufferToImage.region
+					);
+					break;
+
+				case CMDTYPE_COPY_IMAGE_TO_BUFFER:
+					renderer->vkCmdCopyImageToBuffer(
+						renderer->commandBuffer,
+						cmd->copyImageToBuffer.srcImage,
+						cmd->copyImageToBuffer.srcImageLayout,
+						cmd->copyImageToBuffer.dstBuffer,
+						1,
+						&cmd->copyImageToBuffer.region
+					);
+					break;
+
+				case CMDTYPE_PIPELINE_BARRIER:
+					renderer->vkCmdPipelineBarrier(
+						renderer->commandBuffer,
+						cmd->pipelineBarrier.srcStageMask,
+						cmd->pipelineBarrier.dstStageMask,
+						0,
+						0,
+						NULL,
+						cmd->pipelineBarrier.bufferMemoryBarrierCount,
+						&cmd->pipelineBarrier.bufferMemoryBarrier,
+						cmd->pipelineBarrier.imageMemoryBarrierCount,
+						&cmd->pipelineBarrier.imageMemoryBarrier
+					);
+					break;
+
+				case CMDTYPE_SET_SCISSOR:
+					renderer->vkCmdSetScissor(
+						renderer->commandBuffer,
+						0,
+						1,
+						&cmd->setScissor.scissor
+					);
+					break;
+
+				case CMDTYPE_SET_VIEWPORT:
+					renderer->vkCmdSetViewport(
+						renderer->commandBuffer,
+						0,
+						1,
+						&cmd->setViewport.viewport
+					);
+					break;
+
+				case CMDTYPE_SET_STENCIL_REFERENCE:
+					renderer->vkCmdSetStencilReference(
+						renderer->commandBuffer,
+						VK_STENCIL_FACE_FRONT_AND_BACK,
+						cmd->setStencilReference.reference
+					);
+					break;
+
+				case CMDTYPE_INSERT_DEBUG_UTILS_LABEL:
+					renderer->vkCmdInsertDebugUtilsLabelEXT(
+						renderer->commandBuffer,
+						&cmd->insertDebugUtilsLabel.labelInfo
+					);
+					break;
+
+				case CMDTYPE_RESET_QUERY_POOL:
+					renderer->vkCmdResetQueryPool(
+						renderer->commandBuffer,
+						cmd->resetQueryPool.queryPool,
+						cmd->resetQueryPool.firstQuery,
+						1
+					);
+					break;
+
+				case CMDTYPE_BEGIN_QUERY:
+					renderer->vkCmdBeginQuery(
+						renderer->commandBuffer,
+						cmd->beginQuery.queryPool,
+						cmd->beginQuery.query,
+						VK_QUERY_CONTROL_PRECISE_BIT
+					);
+					break;
+
+				case CMDTYPE_END_QUERY:
+					renderer->vkCmdEndQuery(
+						renderer->commandBuffer,
+						cmd->endQuery.queryPool,
+						cmd->endQuery.query
+					);
+					break;
+
+				case CMDTYPE_BEGIN_RENDER_PASS:
+					renderer->vkCmdBeginRenderPass(
+						renderer->commandBuffer,
+						&cmd->beginRenderPass.beginInfo,
+						VK_SUBPASS_CONTENTS_INLINE
+					);
+					break;
+
+				case CMDTYPE_END_RENDER_PASS:
+					renderer->vkCmdEndRenderPass(renderer->commandBuffer);
+					break;
+			}
+		}
+
+		/* End command recording */
+		result = renderer->vkEndCommandBuffer(
+			renderer->commandBuffer
+		);
+		if (result != VK_SUCCESS)
+		{
+			LogVulkanResult("vkEndCommandBuffer", result);
+		}
+
+		/* Command list should be cleared now */
+		renderer->numActiveCommands = 0;
+
+		/* Reset descriptor set data */
+		VULKAN_INTERNAL_ResetDescriptorSetData(renderer);
+
+		/* Prepare the command buffer fence for submission */
+		renderer->vkResetFences(
+			renderer->logicalDevice,
+			1,
+			&renderer->inFlightFence
+		);
+
+		/* Prepare the command buffer for submission */
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.pNext = NULL;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &renderer->commandBuffer;
+		if (present)
+		{
+			submitInfo.waitSemaphoreCount = 1;
+			submitInfo.pWaitSemaphores = &renderer->imageAvailableSemaphore;
+			submitInfo.pWaitDstStageMask = &waitStages;
+			submitInfo.signalSemaphoreCount = 1;
+			submitInfo.pSignalSemaphores = &renderer->renderFinishedSemaphore;
+		}
+		else
+		{
+			submitInfo.waitSemaphoreCount = 0;
+			submitInfo.pWaitSemaphores = NULL;
+			submitInfo.pWaitDstStageMask = NULL;
+			submitInfo.signalSemaphoreCount = 0;
+			submitInfo.pSignalSemaphores = NULL;
+		}
+
+		/* Submit the commands, finally. */
+		result = renderer->vkQueueSubmit(
+			renderer->graphicsQueue,
+			1,
+			&submitInfo,
+			renderer->inFlightFence
+		);
+		if (result != VK_SUCCESS)
+		{
+			LogVulkanResult("vkQueueSubmit", result);
+			return 1;
+		}
+
+		if (present)
+		{
+			if (renderer->physicalDeviceDriverProperties.driverID == VK_DRIVER_ID_GGP_PROPRIETARY)
+			{
+				const void* token = SDL_GetWindowData(
+					(SDL_Window*) renderer->overrideWindowHandle,
+					"GgpFrameToken"
+				);
+				presentInfoGGP.sType = VK_STRUCTURE_TYPE_PRESENT_FRAME_TOKEN_GGP;
+				presentInfoGGP.pNext = NULL;
+				presentInfoGGP.frameToken = (uint64_t) (size_t) token;
+				presentInfo.pNext = &presentInfoGGP;
+			}
+			else
+			{
+				presentInfo.pNext = NULL;
+			}
+			presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+			presentInfo.pNext = NULL;
+			presentInfo.waitSemaphoreCount = 1;
+			presentInfo.pWaitSemaphores =
+				&renderer->renderFinishedSemaphore;
+			presentInfo.swapchainCount = 1;
+			presentInfo.pSwapchains = &renderer->swapChain;
+			presentInfo.pImageIndices = &renderer->currentSwapChainImageIndex;
+			presentInfo.pResults = NULL;
+
+			presentResult = renderer->vkQueuePresentKHR(
+				renderer->presentQueue,
+				&presentInfo
+			);
+		}
+
+		/* Wait for the submission to complete */
+		result = renderer->vkWaitForFences(
+			renderer->logicalDevice,
+			1,
+			&renderer->inFlightFence,
+			VK_TRUE,
+			UINT64_MAX
+		);
+
+		if (result != VK_SUCCESS)
+		{
+			LogVulkanResult("vkWaitForFences", result);
+			return 1;
+		}
+
+		/* Allow FlushCommands to proceed */
+		SDL_LockMutex(renderer->endSubmitLock);
+		SDL_CondSignal(renderer->submitQueueCompleteCond);
+		SDL_UnlockMutex(renderer->endSubmitLock);
+
+		/* Now that commands are totally done, check for present errors */
+		if (present)
+		{
+			if (	presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
+				presentResult == VK_SUBOPTIMAL_KHR	)
+			{
+				VULKAN_INTERNAL_RecreateSwapchain(renderer);
+			}
+			else if (presentResult != VK_SUCCESS)
+			{
+				LogVulkanResult("vkQueuePresentKHR", result);
+			}
+		}
+	}
+
+	return 0;
+}
 
 static void VULKAN_SwapBuffers(
 	FNA3D_Renderer *driverData,
@@ -10508,6 +10568,18 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer->textures[MAX_TEXTURE_SAMPLERS + i] = &NullTexture;
 		renderer->samplers[MAX_TEXTURE_SAMPLERS + i] = renderer->dummyVertSamplerState;
 	}
+
+	/* init threading */
+
+	renderer->active = 1;
+
+	renderer->beginSubmitLock = SDL_CreateMutex();
+	renderer->endSubmitLock = SDL_CreateMutex();
+
+	renderer->submitQueueCond = SDL_CreateCond();
+	renderer->submitQueueCompleteCond = SDL_CreateCond();
+
+	renderer->queueThread = SDL_CreateThread(QueueThread, "QueueThread", renderer);
 
 	return result;
 }
