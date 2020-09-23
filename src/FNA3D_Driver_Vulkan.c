@@ -1264,8 +1264,6 @@ typedef struct VulkanRenderer
 	uint32_t commandCapacity;
 	uint32_t numActiveCommands;
 	VulkanCommand *commands;
-	SDL_mutex *commandLock;
-	SDL_mutex *passLock;
 
 	/* Queries */
 	VkQueryPool queryPool;
@@ -3396,8 +3394,6 @@ static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer *renderer)
 static VulkanCommand* VULKAN_INTERNAL_BeginEncodeCommand(
 	VulkanRenderer *renderer
 ) {
-	SDL_LockMutex(renderer->commandLock);
-
 	/* Grow the array if needed */
 	if (renderer->numActiveCommands == renderer->commandCapacity)
 	{
@@ -3415,7 +3411,6 @@ static VulkanCommand* VULKAN_INTERNAL_BeginEncodeCommand(
 static void VULKAN_INTERNAL_EndEncodeCommand(VulkanRenderer *renderer)
 {
 	renderer->numActiveCommands += 1;
-	SDL_UnlockMutex(renderer->commandLock);
 }
 
 static void VULKAN_INTERNAL_QueueSubmit(VulkanRenderer *renderer)
@@ -4595,8 +4590,6 @@ static void VULKAN_INTERNAL_GetTextureData(
 	uint8_t *dataPtr = (uint8_t*) data;
 	VulkanCommand *copyImageCmd;
 
-	SDL_LockMutex(renderer->passLock);
-
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
 	/* Cache this so we can restore it later */
@@ -4663,8 +4656,6 @@ static void VULKAN_INTERNAL_GetTextureData(
 		renderer->textureStagingBuffer->mapPointer,
 		BytesPerImage(w, h, vulkanTexture->colorFormat)
 	);
-
-	SDL_UnlockMutex(renderer->passLock);
 }
 
 /* Vulkan: Mutable State Commands */
@@ -6059,7 +6050,6 @@ static void VULKAN_INTERNAL_MaybeEndRenderPass(
 ) {
 	VulkanCommand *endPassCmd;
 
-	SDL_LockMutex(renderer->passLock);
 	if (renderer->renderPassInProgress)
 	{
 		endPassCmd = VULKAN_INTERNAL_BeginEncodeCommand(renderer);
@@ -6067,11 +6057,7 @@ static void VULKAN_INTERNAL_MaybeEndRenderPass(
 		VULKAN_INTERNAL_EndEncodeCommand(renderer);
 		renderer->renderPassInProgress = 0;
 		renderer->drawCallMadeThisPass = 0;
-
-		/* This was locked in BeginRenderPass! */
-		SDL_UnlockMutex(renderer->passLock);
 	}
-	SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_INTERNAL_BeginRenderPass(
@@ -6093,8 +6079,6 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	}
 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
-
-	SDL_LockMutex(renderer->passLock);
 
 	renderer->renderPass = VULKAN_INTERNAL_FetchRenderPass(renderer);
 	framebuffer = VULKAN_INTERNAL_FetchFramebuffer(
@@ -6197,11 +6181,6 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	beginPassCmd->beginRenderPass.beginInfo = renderPassBeginInfo;
 	VULKAN_INTERNAL_EndEncodeCommand(renderer);
 
-	/* This is a long-term lock that lasts the whole render pass.
-	 * It gets unlocked inside MaybeEndRenderPass!
-	 */
-	SDL_LockMutex(renderer->passLock);
-
 	renderer->renderPassInProgress = 1;
 
 	VULKAN_INTERNAL_SetViewportCommand(renderer);
@@ -6255,8 +6234,6 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	renderer->shouldClearColorOnBeginPass = 0;
 	renderer->shouldClearDepthOnBeginPass = 0;
 	renderer->shouldClearStencilOnBeginPass = 0;
-
-	SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_INTERNAL_BeginRenderPassClear(
@@ -6750,8 +6727,6 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	SDL_free(renderer->effectsToDestroy);
 	SDL_free(renderer->texturesToDestroy);
 
-	SDL_DestroyMutex(renderer->commandLock);
-	SDL_DestroyMutex(renderer->passLock);
 	SDL_DestroyMutex(renderer->beginSubmitLock);
 
 	SDL_DestroyCond(renderer->submitQueueCond);
@@ -8502,8 +8477,6 @@ static void VULKAN_SetTextureData2D(
 	VkBufferImageCopy imageCopy;
 	VulkanCommand *copyCmd;
 
-	SDL_LockMutex(renderer->passLock);
-
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
 	SDL_memcpy(renderer->textureStagingBuffer->mapPointer, data, dataLength);
@@ -8544,8 +8517,6 @@ static void VULKAN_SetTextureData2D(
 	VULKAN_INTERNAL_EndEncodeCommand(renderer);
 
 	VULKAN_INTERNAL_FlushCommands(renderer);
-
-	SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_SetTextureData3D(
@@ -8565,8 +8536,6 @@ static void VULKAN_SetTextureData3D(
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
 	VulkanCommand *copyCmd;
-
-	SDL_LockMutex(renderer->passLock);
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
@@ -8608,8 +8577,6 @@ static void VULKAN_SetTextureData3D(
 	VULKAN_INTERNAL_EndEncodeCommand(renderer);
 
 	VULKAN_INTERNAL_FlushCommands(renderer);
-
-	SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_SetTextureDataCube(
@@ -8628,8 +8595,6 @@ static void VULKAN_SetTextureDataCube(
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
 	VulkanCommand *copyCmd;
-
-	SDL_LockMutex(renderer->passLock);
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
@@ -8671,8 +8636,6 @@ static void VULKAN_SetTextureDataCube(
 	VULKAN_INTERNAL_EndEncodeCommand(renderer);
 
 	VULKAN_INTERNAL_FlushCommands(renderer);
-
-	SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_SetTextureDataYUV(
@@ -8694,8 +8657,6 @@ static void VULKAN_SetTextureDataYUV(
 	int32_t uvDataLength = BytesPerImage(uvWidth, uvHeight, FNA3D_SURFACEFORMAT_ALPHA8);
 	VkBufferImageCopy imageCopy;
 	VulkanCommand *copyCmd;
-
-	SDL_LockMutex(renderer->passLock);
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, yDataLength + uvDataLength);
 
@@ -8821,8 +8782,6 @@ static void VULKAN_SetTextureDataYUV(
 	VULKAN_INTERNAL_EndEncodeCommand(renderer);
 
 	VULKAN_INTERNAL_FlushCommands(renderer);
-
-	SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_GetTextureData2D(
@@ -10047,9 +10006,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->commands = (VulkanCommand*) SDL_malloc(
 		sizeof(VulkanCommand) * renderer->commandCapacity
 	);
-
-	renderer->commandLock = SDL_CreateMutex();
-	renderer->passLock = SDL_CreateMutex();
 
 	/*
 	 * Create the initial faux-backbuffer
