@@ -1373,6 +1373,10 @@ typedef struct VulkanRenderer
 	uint32_t writeDescriptorSetCount;
 	uint32_t writeDescriptorSetCapacity;
 
+	VkWriteDescriptorSet *submittedWriteDescriptorSets;
+	VkDescriptorImageInfo *submittedWriteDescriptorImageInfos;
+	uint32_t submittedWriteDescriptorSetCapacity;
+
 	ShaderResourcesHashTable shaderResourcesHashTable;
 	DescriptorSetLayoutHashTable descriptorSetLayoutTable;
 	PipelineLayoutHashTable pipelineLayoutTable;
@@ -1441,6 +1445,7 @@ typedef struct VulkanRenderer
 	/* Threading */
 	SDL_Thread *queueThread;
 	SDL_mutex *fenceLock;
+	SDL_mutex *descriptorSetLock;
 	SDL_mutex *beginSubmitLock;
 	SDL_mutex *paramSubmitLock;
 	SDL_mutex *endSubmitLock;
@@ -2916,6 +2921,8 @@ static ShaderResources *ShaderResources_Init(
 	unsigned long long vOff, fOff, vSize, fSize;
 	ShaderResources *shaderResources = SDL_malloc(sizeof(ShaderResources));
 
+	SDL_LockMutex(renderer->descriptorSetLock);
+
 	shaderResources->elements = SDL_malloc(sizeof(SamplerDescriptorSetHashMap) * 16);
 	shaderResources->count = 0;
 	shaderResources->capacity = 16;
@@ -3005,6 +3012,8 @@ static ShaderResources *ShaderResources_Init(
 		);
 	}
 
+	SDL_UnlockMutex(renderer->descriptorSetLock);
+
 	return shaderResources;
 }
 
@@ -3053,8 +3062,13 @@ static VkDescriptorSet ShaderResources_FetchDescriptorSet(
 	uint32_t i;
 	VkDescriptorSet newDescriptorSet;
 	SamplerDescriptorSetHashMap *map;
-	uint64_t hashcode = SamplerDescriptorSetHashTable_GetHashCode(value, SDL_max(shaderResources->samplerCount, 1));
-	SamplerDescriptorSetHashArray *arr = &shaderResources->buckets[hashcode % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
+	uint64_t hashcode;
+	SamplerDescriptorSetHashArray *arr;
+
+	SDL_LockMutex(renderer->descriptorSetLock);
+
+	hashcode = SamplerDescriptorSetHashTable_GetHashCode(value, SDL_max(shaderResources->samplerCount, 1));
+	arr= &shaderResources->buckets[hashcode % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
 
 	for (i = 0; i < arr->count; i += 1)
 	{
@@ -3062,6 +3076,9 @@ static VkDescriptorSet ShaderResources_FetchDescriptorSet(
 		if (SamplerDescriptorSetDataEqual(value, &e->descriptorSetData, shaderResources->samplerCount))
 		{
 			e->inactiveFrameCount = 0;
+
+			SDL_UnlockMutex(renderer->descriptorSetLock);
+
 			return e->descriptorSet;
 		}
 	}
@@ -3147,6 +3164,8 @@ static VkDescriptorSet ShaderResources_FetchDescriptorSet(
 	map->descriptorSet = newDescriptorSet;
 	map->inactiveFrameCount = 0;
 	shaderResources->count += 1;
+
+	SDL_UnlockMutex(renderer->descriptorSetLock);
 
 	return newDescriptorSet;
 }
@@ -3352,30 +3371,28 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 	dynamicOffsets[1] = fOff;
 }
 
-static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
+static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer, uint32_t writeDescriptorSetCount)
 {
 	uint32_t i;
-	for (i = 0; i < renderer->writeDescriptorSetCount; i += 1)
+	for (i = 0; i < writeDescriptorSetCount; i += 1)
 	{
-		if (renderer->writeDescriptorSets[i].pImageInfo != NULL)
+		if (renderer->submittedWriteDescriptorSets[i].pImageInfo != NULL)
 		{
 			/* We have to assign this at the end, otherwise realloc
 			 * will cause half the pointers to get outdated on a
 			 * resize!
 			 */
-			renderer->writeDescriptorSets[i].pImageInfo =
-				&renderer->writeDescriptorImageInfos[i];
+			renderer->submittedWriteDescriptorSets[i].pImageInfo =
+				&renderer->submittedWriteDescriptorImageInfos[i];
 		}
 	}
 	renderer->vkUpdateDescriptorSets(
 		renderer->logicalDevice,
-		renderer->writeDescriptorSetCount,
-		renderer->writeDescriptorSets,
+		writeDescriptorSetCount,
+		renderer->submittedWriteDescriptorSets,
 		0,
 		NULL
 	);
-
-	renderer->writeDescriptorSetCount = 0;
 }
 
 /* Must take an array of descriptor sets of size 4 */
@@ -3394,6 +3411,8 @@ static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer *renderer)
 	uint32_t i;
 	ShaderResources *shaderResources;
 
+	SDL_LockMutex(renderer->descriptorSetLock);
+
 	for (i = 0; i < renderer->shaderResourcesHashTable.count; i += 1)
 	{
 		shaderResources = renderer->shaderResourcesHashTable.elements[i].value;
@@ -3402,6 +3421,8 @@ static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer *renderer)
 
 	renderer->vertexSamplerDescriptorSetDataNeedsUpdate = 1;
 	renderer->fragSamplerDescriptorSetDataNeedsUpdate = 1;
+
+	SDL_UnlockMutex(renderer->descriptorSetLock);
 }
 
 /* Vulkan: Command Buffers */
@@ -3430,6 +3451,7 @@ static void VULKAN_INTERNAL_EndEncodeCommand(VulkanRenderer *renderer)
 
 static void VULKAN_INTERNAL_QueueSubmit(VulkanRenderer *renderer, uint8_t sync, uint8_t end)
 {
+	//sync = 1;
 	renderer->syncQueueSubmit = sync;
 
 	/* Wait for QueueThread to become idle */
@@ -6798,6 +6820,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	SDL_free(renderer->texturesToDestroy);
 
 	SDL_DestroyMutex(renderer->fenceLock);
+	SDL_DestroyMutex(renderer->descriptorSetLock);
 	SDL_DestroyMutex(renderer->beginSubmitLock);
 	SDL_DestroyMutex(renderer->paramSubmitLock);
 	SDL_DestroyMutex(renderer->endSubmitLock);
@@ -6827,6 +6850,10 @@ static int QueueThread(void *rendererPtr)
 	VulkanCommand *tmpCommandList;
 	uint32_t tmpCommandCapacity;
 
+	VkWriteDescriptorSet *tmpWriteDescriptorSets;
+	VkDescriptorImageInfo *tmpDescriptorImageInfos;
+	uint32_t tmpWriteDescriptorSetCapacity;
+
 	VkCommandBufferBeginInfo beginInfo;
 	VkSubmitInfo submitInfo;
 	uint32_t i;
@@ -6844,7 +6871,6 @@ static int QueueThread(void *rendererPtr)
 		uint64_t frameToken;
 	} presentInfoGGP;
 
-
 	/* Parameters */
 	uint8_t present;
 	uint8_t syncQueueSubmit;
@@ -6854,6 +6880,7 @@ static int QueueThread(void *rendererPtr)
 
 	uint32_t numCommands;
 	uint32_t numBuffersInUse;
+	uint32_t numDescriptorSets;
 
 	VulkanRenderer *renderer = (VulkanRenderer*) rendererPtr;
 	renderer->queueThreadIdle = 1;
@@ -7033,11 +7060,13 @@ static int QueueThread(void *rendererPtr)
 
 		numCommands = renderer->numActiveCommands;
 		numBuffersInUse = renderer->numBuffersInUse;
+		numDescriptorSets = renderer->writeDescriptorSetCount;
 
 		renderer->numBuffersInUse = 0;
 		renderer->numActiveCommands = 0;
+		renderer->writeDescriptorSetCount = 0;
 
-		/* Rotate the command lists */
+		/* Rotate the command lists and VkWriteDescriptorSets */
 		tmpCommandList = renderer->commandsSubmitted;
 		renderer->commandsSubmitted = renderer->commands;
 		renderer->commands = tmpCommandList;
@@ -7046,16 +7075,29 @@ static int QueueThread(void *rendererPtr)
 		renderer->commandsSubmittedCapacity = renderer->commandCapacity;
 		renderer->commandCapacity = tmpCommandCapacity;
 
+		tmpWriteDescriptorSets = renderer->submittedWriteDescriptorSets;
+		renderer->submittedWriteDescriptorSets = renderer->writeDescriptorSets;
+		renderer->writeDescriptorSets = tmpWriteDescriptorSets;
+
+		tmpDescriptorImageInfos = renderer->submittedWriteDescriptorImageInfos;
+		renderer->submittedWriteDescriptorImageInfos = renderer->writeDescriptorImageInfos;
+		renderer->writeDescriptorImageInfos = tmpDescriptorImageInfos;
+
+		tmpWriteDescriptorSetCapacity = renderer->submittedWriteDescriptorSetCapacity;
+		renderer->submittedWriteDescriptorSetCapacity = renderer->writeDescriptorSetCapacity;
+		renderer->writeDescriptorSetCapacity = tmpWriteDescriptorSetCapacity;
+
+		/* Rotate the UBO buffers */
+		MOJOSHADER_vkEndFrame();
+
 		/* Allow the main thread to proceed */
 		SDL_LockMutex(renderer->paramSubmitLock);
 		renderer->paramSubmit = 1;
 		SDL_CondSignal(renderer->paramSubmitCond);
 		SDL_UnlockMutex(renderer->paramSubmitLock);
 
-		renderer->queueThreadIdle = 0;
-
 		/* Batch descriptor set updates */
-		VULKAN_INTERNAL_UpdateDescriptorSets(renderer);
+		VULKAN_INTERNAL_UpdateDescriptorSets(renderer, numDescriptorSets);
 
 		/* Reset the command buffer */
 		result = renderer->vkResetCommandBuffer(
@@ -7349,9 +7391,6 @@ static int QueueThread(void *rendererPtr)
 			LogVulkanResult("vkEndCommandBuffer", result);
 		}
 
-		/* Reset descriptor set data */
-		VULKAN_INTERNAL_ResetDescriptorSetData(renderer);
-
 		/* Reset buffer and subbuffer binding info */
 		for (i = 0; i < numBuffersInUse; i += 1)
 		{
@@ -7452,6 +7491,9 @@ static int QueueThread(void *rendererPtr)
 			UINT64_MAX
 		);
 
+		/* Reset descriptor set data */
+		VULKAN_INTERNAL_ResetDescriptorSetData(renderer);
+
 		for (i = 0; i < renderer->numBuffersInUse; i += 1)
 		{
 			if (renderer->buffersInUse[i] != NULL)
@@ -7505,7 +7547,6 @@ static void VULKAN_SwapBuffers(
 
 	/* Cleanup */
 
-	MOJOSHADER_vkEndFrame();
 	renderer->needNewRenderPass = 1;
 }
 
@@ -10024,7 +10065,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		&renderer->instance,
 		&renderer->physicalDevice,
 		&renderer->logicalDevice,
-		1,
 		(PFN_MOJOSHADER_vkGetInstanceProcAddr) vkGetInstanceProcAddr,
 		(PFN_MOJOSHADER_vkGetDeviceProcAddr) renderer->vkGetDeviceProcAddr,
 		renderer->queueFamilyIndices.graphicsFamily,
@@ -10651,8 +10691,12 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	renderer->writeDescriptorSets = SDL_malloc(sizeof(VkWriteDescriptorSet) * 16);
 	renderer->writeDescriptorImageInfos = SDL_malloc(sizeof(VkDescriptorImageInfo) * 16);
-	renderer->writeDescriptorSetCount = 0;
 	renderer->writeDescriptorSetCapacity = 16;
+	renderer->writeDescriptorSetCount = 0;
+
+	renderer->submittedWriteDescriptorSets = SDL_malloc(sizeof(VkWriteDescriptorSet) * 16);
+	renderer->submittedWriteDescriptorImageInfos = SDL_malloc(sizeof(VkDescriptorImageInfo) * 16);
+	renderer->submittedWriteDescriptorSetCapacity = 16;
 
 	/* init texture storage */
 
@@ -10674,11 +10718,12 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->beginSubmit = 0;
 	renderer->paramSubmit = 0;
 
-	renderer->fenceLock       = SDL_CreateMutex();
-	renderer->beginSubmitLock = SDL_CreateMutex();
-	renderer->paramSubmitLock = SDL_CreateMutex();
-	renderer->endSubmitLock   = SDL_CreateMutex();
-	renderer->workLock        = SDL_CreateMutex();
+	renderer->fenceLock         = SDL_CreateMutex();
+	renderer->descriptorSetLock = SDL_CreateMutex();
+	renderer->beginSubmitLock   = SDL_CreateMutex();
+	renderer->paramSubmitLock   = SDL_CreateMutex();
+	renderer->endSubmitLock     = SDL_CreateMutex();
+	renderer->workLock          = SDL_CreateMutex();
 
 	renderer->submitQueueCond         = SDL_CreateCond();
 	renderer->paramSubmitCond         = SDL_CreateCond();
