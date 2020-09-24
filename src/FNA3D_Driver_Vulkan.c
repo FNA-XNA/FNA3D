@@ -1462,8 +1462,9 @@ typedef struct VulkanRenderer
 
 	VkFence inFlightFence;
 
-	uint32_t currentSwapChainImageIndex;
 	uint8_t active;
+	uint8_t beginSubmit;
+	uint8_t paramSubmit;
 
 	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
@@ -3442,13 +3443,19 @@ static void VULKAN_INTERNAL_QueueSubmit(VulkanRenderer *renderer, uint8_t sync, 
 	/* Allow the QueueThread to execute */
 	SDL_LockMutex(renderer->beginSubmitLock);
 	renderer->active = !end;
+	renderer->beginSubmit = 1;
 	SDL_CondSignal(renderer->submitQueueCond);
 	SDL_UnlockMutex(renderer->beginSubmitLock);
 
 	/* Wait for thread params to be stored */
 	SDL_LockMutex(renderer->paramSubmitLock);
-	SDL_CondWait(renderer->paramSubmitCond, renderer->paramSubmitLock);
+	while (!renderer->paramSubmit)
+	{
+		SDL_CondWait(renderer->paramSubmitCond, renderer->paramSubmitLock);
+	}
 	SDL_UnlockMutex(renderer->paramSubmitLock);
+
+	renderer->paramSubmit = 0;
 
 	if (sync)
 	{
@@ -3458,6 +3465,8 @@ static void VULKAN_INTERNAL_QueueSubmit(VulkanRenderer *renderer, uint8_t sync, 
 			SDL_CondWait(renderer->submitQueueCompleteCond, renderer->endSubmitLock);
 		}
 		SDL_UnlockMutex(renderer->endSubmitLock);
+
+		renderer->queueComplete = 0;
 	}
 }
 
@@ -6860,8 +6869,13 @@ static int QueueThread(void *rendererPtr)
 
 		/* Wait for QueueSubmit to give us the go-ahead */
 		SDL_LockMutex(renderer->beginSubmitLock);
-		SDL_CondWait(renderer->submitQueueCond, renderer->beginSubmitLock);
+		while (!renderer->beginSubmit)
+		{
+			SDL_CondWait(renderer->submitQueueCond, renderer->beginSubmitLock);
+		}
 		SDL_UnlockMutex(renderer->beginSubmitLock);
+
+		renderer->beginSubmit = 0;
 
 		commandBuffer = renderer->commandBuffer;
 
@@ -7034,11 +7048,11 @@ static int QueueThread(void *rendererPtr)
 
 		/* Allow the main thread to proceed */
 		SDL_LockMutex(renderer->paramSubmitLock);
+		renderer->paramSubmit = 1;
 		SDL_CondSignal(renderer->paramSubmitCond);
 		SDL_UnlockMutex(renderer->paramSubmitLock);
 
 		renderer->queueThreadIdle = 0;
-		renderer->queueComplete = 0;
 
 		/* Batch descriptor set updates */
 		VULKAN_INTERNAL_UpdateDescriptorSets(renderer);
@@ -7438,8 +7452,6 @@ static int QueueThread(void *rendererPtr)
 			UINT64_MAX
 		);
 
-		renderer->queueComplete = 1;
-
 		for (i = 0; i < renderer->numBuffersInUse; i += 1)
 		{
 			if (renderer->buffersInUse[i] != NULL)
@@ -7452,6 +7464,7 @@ static int QueueThread(void *rendererPtr)
 		if (syncQueueSubmit)
 		{
 			SDL_LockMutex(renderer->endSubmitLock);
+			renderer->queueComplete = 1;
 			SDL_CondSignal(renderer->submitQueueCompleteCond);
 			SDL_UnlockMutex(renderer->endSubmitLock);
 		}
@@ -10658,6 +10671,8 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	/* init threading */
 
 	renderer->active = 1;
+	renderer->beginSubmit = 0;
+	renderer->paramSubmit = 0;
 
 	renderer->fenceLock       = SDL_CreateMutex();
 	renderer->beginSubmitLock = SDL_CreateMutex();
