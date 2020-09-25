@@ -4313,7 +4313,11 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 
 	D3D11_PLATFORM_UnloadD3D11(module);
 
-	ERROR_CHECK_RETURN("D3D11 is unsupported", 0)
+	if (FAILED(res))
+	{
+		FNA3D_LogWarn("D3D11 is unsupported! Error Code: %08X", res);
+		return 0;
+	}
 
 	/* No window flags required */
 	SDL_SetHint(SDL_HINT_VIDEO_EXTERNAL_CONTEXT, "1");
