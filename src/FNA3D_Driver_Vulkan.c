@@ -1178,11 +1178,6 @@ typedef struct VulkanRenderer
 	VkDescriptorSet currentVertexSamplerDescriptorSet;
 	VkDescriptorSet currentFragSamplerDescriptorSet;
 
-	VkWriteDescriptorSet *writeDescriptorSets;
-	VkDescriptorImageInfo *writeDescriptorImageInfos;
-	uint32_t writeDescriptorSetCount;
-	uint32_t writeDescriptorSetCapacity;
-
 	ShaderResourcesHashTable shaderResourcesHashTable;
 	DescriptorSetLayoutHashTable descriptorSetLayoutTable;
 	PipelineLayoutHashTable pipelineLayoutTable;
@@ -2391,7 +2386,6 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	VkResult vulkanResult;
 	VkDeviceCreateInfo deviceCreateInfo;
 	VkPhysicalDeviceFeatures deviceFeatures;
-	VkPhysicalDeviceDescriptorIndexingFeaturesEXT indexingFeatures;
 
 	VkDeviceQueueCreateInfo *queueCreateInfos = SDL_stack_alloc(
 		VkDeviceQueueCreateInfo,
@@ -2435,14 +2429,10 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	deviceFeatures.occlusionQueryPrecise = VK_TRUE;
 	deviceFeatures.fillModeNonSolid = VK_TRUE;
 
-	indexingFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES_EXT;
-	indexingFeatures.pNext = NULL;
-	indexingFeatures.descriptorBindingSampledImageUpdateAfterBind = VK_TRUE;
-
 	/* creating the logical device */
 
 	deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	deviceCreateInfo.pNext = &indexingFeatures;
+	deviceCreateInfo.pNext = NULL;
 	deviceCreateInfo.flags = 0;
 	deviceCreateInfo.queueCreateInfoCount = queueInfoCount;
 	deviceCreateInfo.pQueueCreateInfos = queueCreateInfos;
@@ -2514,7 +2504,7 @@ static uint8_t VULKAN_INTERNAL_CreateDescriptorPool(
 
 	descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	descriptorPoolInfo.pNext = NULL;
-	descriptorPoolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT_EXT;
+	descriptorPoolInfo.flags = 0;
 	descriptorPoolInfo.maxSets = descriptorSetCount;
 	descriptorPoolInfo.poolSizeCount = 1;
 	descriptorPoolInfo.pPoolSizes = &descriptorPoolSize;
@@ -2575,57 +2565,6 @@ static uint8_t VULKAN_INTERNAL_AllocateDescriptorSets(
 	return 1;
 }
 
-static void VULKAN_INTERNAL_PrepareDescriptorSetWrite(
-	VulkanRenderer *renderer,
-	VkDescriptorType descriptorType,
-	uint32_t bindingIndex,
-	VkDescriptorSet descriptorSet,
-	const VkDescriptorBufferInfo *pBufferInfo,
-	const VkDescriptorImageInfo *pImageInfo
-) {
-	VkWriteDescriptorSet *writeDescriptorSet;
-	VkDescriptorImageInfo *writeDescriptorImageInfo;
-
-	if (renderer->writeDescriptorSetCount == renderer->writeDescriptorSetCapacity)
-	{
-		renderer->writeDescriptorSetCapacity *= 2;
-
-		renderer->writeDescriptorSets = SDL_realloc(
-			renderer->writeDescriptorSets,
-			sizeof(VkWriteDescriptorSet) * renderer->writeDescriptorSetCapacity
-		);
-		renderer->writeDescriptorImageInfos = SDL_realloc(
-			renderer->writeDescriptorImageInfos,
-			sizeof(VkDescriptorImageInfo) * renderer->writeDescriptorSetCapacity
-		);
-	}
-
-	writeDescriptorSet = &renderer->writeDescriptorSets[renderer->writeDescriptorSetCount];
-
-	writeDescriptorSet->sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writeDescriptorSet->pNext = NULL;
-	writeDescriptorSet->descriptorCount = 1;
-	writeDescriptorSet->descriptorType = descriptorType;
-	writeDescriptorSet->dstArrayElement = 0;
-	writeDescriptorSet->dstBinding = bindingIndex;
-	writeDescriptorSet->dstSet = descriptorSet;
-	writeDescriptorSet->pBufferInfo = pBufferInfo;
-	writeDescriptorSet->pImageInfo = NULL;
-	if (pImageInfo != NULL)
-	{
-		writeDescriptorSet->pImageInfo += 1; /* Just get it to non-NULL */
-
-		writeDescriptorImageInfo =
-			&renderer->writeDescriptorImageInfos[renderer->writeDescriptorSetCount];
-		writeDescriptorImageInfo->sampler = pImageInfo->sampler;
-		writeDescriptorImageInfo->imageView = pImageInfo->imageView;
-		writeDescriptorImageInfo->imageLayout = pImageInfo->imageLayout;
-	}
-	writeDescriptorSet->pTexelBufferView = NULL;
-
-	renderer->writeDescriptorSetCount += 1;
-}
-
 static uint16_t VULKAN_INTERNAL_FetchSamplerBitmask(
 	MOJOSHADER_vkShader *shader
 ) {
@@ -2651,8 +2590,6 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 
 	VkDescriptorSetLayoutBinding setLayoutBindings[MAX_TEXTURE_SAMPLERS];
 	VkDescriptorSetLayoutCreateInfo setLayoutCreateInfo;
-	VkDescriptorSetLayoutBindingFlagsCreateInfoEXT setLayoutBindingFlagsCreateInfo;
-	VkDescriptorBindingFlagsEXT bindingFlags[MAX_TEXTURE_SAMPLERS];
 
 	uint32_t samplerCount = MOJOSHADER_vkGetShaderParseData(shader)->sampler_count;
 	MOJOSHADER_sampler *samplerInfos = MOJOSHADER_vkGetShaderParseData(shader)->samplers;
@@ -2678,8 +2615,6 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 		setLayoutBindings[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 		setLayoutBindings[0].stageFlags = stageFlag;
 		setLayoutBindings[0].pImmutableSamplers = NULL;
-
-		bindingFlags[0] = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT;
 	}
 	else
 	{
@@ -2690,19 +2625,12 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 			setLayoutBindings[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 			setLayoutBindings[i].stageFlags = stageFlag;
 			setLayoutBindings[i].pImmutableSamplers = NULL;
-
-			bindingFlags[i] = VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT_EXT;
 		}
 	}
 
-	setLayoutBindingFlagsCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO_EXT;
-	setLayoutBindingFlagsCreateInfo.pNext = NULL;
-	setLayoutBindingFlagsCreateInfo.bindingCount = SDL_max(samplerCount, 1);
-	setLayoutBindingFlagsCreateInfo.pBindingFlags = bindingFlags;
-
 	setLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	setLayoutCreateInfo.pNext = &setLayoutBindingFlagsCreateInfo;
-	setLayoutCreateInfo.flags = VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT_EXT;
+	setLayoutCreateInfo.pNext = NULL;
+	setLayoutCreateInfo.flags = 0;
 	setLayoutCreateInfo.bindingCount = SDL_max(samplerCount, 1);
 	setLayoutCreateInfo.pBindings = setLayoutBindings;
 
@@ -2735,6 +2663,7 @@ static ShaderResources *ShaderResources_Init(
 ) {
 	uint32_t i;
 	VkBuffer vUniform, fUniform;
+	VkWriteDescriptorSet writeDescriptorSet;
 	unsigned long long vOff, fOff, vSize, fSize;
 	ShaderResources *shaderResources = SDL_malloc(sizeof(ShaderResources));
 
@@ -2817,12 +2746,21 @@ static ShaderResources *ShaderResources_Init(
 
 	if (shaderResources->uniformBufferInfo.buffer != VK_NULL_HANDLE)
 	{
-		VULKAN_INTERNAL_PrepareDescriptorSetWrite(
-			renderer,
-			VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
+		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSet.pNext = NULL;
+		writeDescriptorSet.descriptorCount = 1;
+		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC;
+		writeDescriptorSet.dstArrayElement = 0;
+		writeDescriptorSet.dstBinding = 0;
+		writeDescriptorSet.dstSet = shaderResources->uniformDescriptorSet;
+		writeDescriptorSet.pBufferInfo = &shaderResources->uniformBufferInfo;
+		writeDescriptorSet.pImageInfo = NULL;
+
+		renderer->vkUpdateDescriptorSets(
+			renderer->logicalDevice,
+			1,
+			&writeDescriptorSet,
 			0,
-			shaderResources->uniformDescriptorSet,
-			&shaderResources->uniformBufferInfo,
 			NULL
 		);
 	}
@@ -2874,6 +2812,7 @@ static VkDescriptorSet ShaderResources_FetchDescriptorSet(
 ) {
 	uint32_t i;
 	VkDescriptorSet newDescriptorSet;
+	VkWriteDescriptorSet writeDescriptorSets[MAX_TEXTURE_SAMPLERS];
 	SamplerDescriptorSetHashMap *map;
 	uint64_t hashcode = SamplerDescriptorSetHashTable_GetHashCode(value, SDL_max(shaderResources->samplerCount, 1));
 	SamplerDescriptorSetHashArray *arr = &shaderResources->buckets[hashcode % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
@@ -2932,15 +2871,24 @@ static VkDescriptorSet ShaderResources_FetchDescriptorSet(
 
 	for (i = 0; i < shaderResources->samplerCount; i += 1)
 	{
-		VULKAN_INTERNAL_PrepareDescriptorSetWrite(
-			renderer,
-			VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-			shaderResources->samplerBindingIndices[i],
-			newDescriptorSet,
-			NULL,
-			&value->descriptorImageInfo[i]
-		);
+		writeDescriptorSets[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSets[i].pNext = NULL;
+		writeDescriptorSets[i].descriptorCount = 1;
+		writeDescriptorSets[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		writeDescriptorSets[i].dstArrayElement = 0;
+		writeDescriptorSets[i].dstBinding = shaderResources->samplerBindingIndices[i];
+		writeDescriptorSets[i].dstSet = newDescriptorSet;
+		writeDescriptorSets[i].pBufferInfo = NULL;
+		writeDescriptorSets[i].pImageInfo = &value->descriptorImageInfo[i];
 	}
+
+	renderer->vkUpdateDescriptorSets(
+		renderer->logicalDevice,
+		shaderResources->samplerCount,
+		writeDescriptorSets,
+		0,
+		NULL
+	);
 
 	EXPAND_ARRAY_IF_NEEDED(arr, 2, uint32_t)
 	arr->elements[arr->count] = shaderResources->count;
@@ -3172,32 +3120,6 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 
 	dynamicOffsets[0] = vOff;
 	dynamicOffsets[1] = fOff;
-}
-
-static void VULKAN_INTERNAL_UpdateDescriptorSets(VulkanRenderer *renderer)
-{
-	uint32_t i;
-	for (i = 0; i < renderer->writeDescriptorSetCount; i += 1)
-	{
-		if (renderer->writeDescriptorSets[i].pImageInfo != NULL)
-		{
-			/* We have to assign this at the end, otherwise realloc
-			 * will cause half the pointers to get outdated on a
-			 * resize!
-			 */
-			renderer->writeDescriptorSets[i].pImageInfo =
-				&renderer->writeDescriptorImageInfos[i];
-		}
-	}
-	renderer->vkUpdateDescriptorSets(
-		renderer->logicalDevice,
-		renderer->writeDescriptorSetCount,
-		renderer->writeDescriptorSets,
-		0,
-		NULL
-	);
-
-	renderer->writeDescriptorSetCount = 0;
 }
 
 /* Must take an array of descriptor sets of size 4 */
@@ -3518,9 +3440,6 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	}
 
 	VULKAN_INTERNAL_EndCommandBuffer(renderer, 0, 0);
-
-	/* Batch descriptor set updates */
-	VULKAN_INTERNAL_UpdateDescriptorSets(renderer);
 
 	/* Reset descriptor set data */
 	VULKAN_INTERNAL_ResetDescriptorSetData(renderer);
@@ -6979,8 +6898,6 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	renderer->vkDestroyDevice(renderer->logicalDevice, NULL);
 	renderer->vkDestroyInstance(renderer->instance, NULL);
 
-	SDL_free(renderer->writeDescriptorSets);
-	SDL_free(renderer->writeDescriptorImageInfos);
 	SDL_free(renderer->shaderResourcesHashTable.elements);
 	SDL_free(renderer->renderPassArray.elements);
 	SDL_free(renderer->samplerStateArray.elements);
@@ -9336,12 +9253,10 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	{
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
 		VK_KHR_MAINTENANCE1_EXTENSION_NAME,
-		VK_KHR_MAINTENANCE3_EXTENSION_NAME,
 		VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,
 		VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,
 		VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
 		VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
-		VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
 		"VK_GGP_frame_token"
 	};
 	uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
@@ -10101,7 +10016,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	descriptorPoolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	descriptorPoolInfo.pNext = NULL;
-	descriptorPoolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT;
+	descriptorPoolInfo.flags = 0;
 	descriptorPoolInfo.maxSets = MAX_UNIFORM_DESCRIPTOR_SETS;
 	descriptorPoolInfo.poolSizeCount = 1;
 	descriptorPoolInfo.pPoolSizes = &descriptorPoolSize;
@@ -10188,11 +10103,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		0,
 		NULL
 	);
-
-	renderer->writeDescriptorSets = SDL_malloc(sizeof(VkWriteDescriptorSet) * 16);
-	renderer->writeDescriptorImageInfos = SDL_malloc(sizeof(VkDescriptorImageInfo) * 16);
-	renderer->writeDescriptorSetCount = 0;
-	renderer->writeDescriptorSetCapacity = 16;
 
 	/* init texture storage */
 
