@@ -3436,7 +3436,6 @@ static void VULKAN_INTERNAL_SubmitCommands(
 			destinationRectangle,
 			swapChainImageIndex
 		);
-
 	}
 
 	VULKAN_INTERNAL_EndCommandBuffer(renderer, 0, 0);
@@ -3554,6 +3553,20 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
 	MOJOSHADER_vkEndFrame();
 
+	/* Reset the command buffers */
+	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
+	{
+		result = renderer->vkResetCommandBuffer(
+			renderer->submittedCommandBuffers[i],
+			VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+		);
+
+		if (result != VK_SUCCESS)
+		{
+			LogVulkanResult("vkResetCommandBuffer", result);
+		}
+	}
+
 	/* Mark command buffers as inactive */
 	/* FIXME: this needs a mutex */
 	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
@@ -3574,19 +3587,6 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		}
 	}
 	renderer->numBuffersInUse = 0;
-
-	/* Reset the command buffers */
-	/* TODO: should probably reset these individually to not wreck other CBs */
-	result = renderer->vkResetCommandPool(
-		renderer->logicalDevice,
-		renderer->commandPool,
-		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
-	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResult("vkResetCommandPool", result);
-	}
 
 	VULKAN_INTERNAL_BeginCommandBuffer(renderer);
 
