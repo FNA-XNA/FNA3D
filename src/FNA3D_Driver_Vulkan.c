@@ -1653,7 +1653,7 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	VulkanResourceAccessType *resourceAccessType
 );
 
-static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer);
+static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer, uint8_t flush);
 
 static void VULKAN_INTERNAL_MaybeEndRenderPass(VulkanRenderer *renderer, uint8_t forceBreak);
 
@@ -3409,7 +3409,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 		while (result == VK_ERROR_OUT_OF_DATE_KHR)
 		{
-			VULKAN_INTERNAL_RecreateSwapchain(renderer);
+			VULKAN_INTERNAL_RecreateSwapchain(renderer, 0);
 
 			result = renderer->vkAcquireNextImageKHR(
 				renderer->logicalDevice,
@@ -3464,6 +3464,62 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		submitInfo.signalSemaphoreCount = 0;
 		submitInfo.pSignalSemaphores = NULL;
 	}
+
+	/* Wait for the previous submission to complete */
+	result = renderer->vkWaitForFences(
+		renderer->logicalDevice,
+		1,
+		&renderer->inFlightFence,
+		VK_TRUE,
+		UINT64_MAX
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkWaitForFences", result);
+		return;
+	}
+
+	/* Reset the submitted command buffers */
+	/* FIXME: this needs a mutex if we do threading */
+	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
+	{
+		result = renderer->vkResetCommandBuffer(
+			renderer->submittedCommandBuffers[i],
+			VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+		);
+
+		if (result != VK_SUCCESS)
+		{
+			LogVulkanResult("vkResetCommandBuffer", result);
+		}
+	}
+
+	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
+	{
+		renderer->inactiveCommandBuffers[renderer->inactiveCommandBufferCount] = renderer->submittedCommandBuffers[i];
+		renderer->inactiveCommandBufferCount += 1;
+		renderer->submittedCommandBufferCount -= 1;
+	}
+
+	/* Cleanup */
+	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
+	MOJOSHADER_vkEndFrame();
+
+	/* Reset buffer and subbuffer binding info */
+	for (i = 0; i < renderer->numBuffersInUse; i += 1)
+	{
+		if (renderer->buffersInUse[i] != NULL)
+		{
+			renderer->buffersInUse[i]->bound = 0;
+			renderer->buffersInUse[i]->currentSubBufferIndex = 0;
+			renderer->buffersInUse[i] = NULL;
+		}
+	}
+	renderer->numBuffersInUse = 0;
+
+	/* FIXME: need a mutex */
+	renderer->gpuIdle = 1;
 
 	/* Prepare the command buffer fence for submission */
 	renderer->vkResetFences(
@@ -3531,63 +3587,6 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		);
 	}
 
-	/* Wait for the submission to complete */
-	result = renderer->vkWaitForFences(
-		renderer->logicalDevice,
-		1,
-		&renderer->inFlightFence,
-		VK_TRUE,
-		UINT64_MAX
-	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResult("vkWaitForFences", result);
-		return;
-	}
-
-	/* FIXME: need a mutex */
-	renderer->gpuIdle = 1;
-
-	/* Cleanup */
-	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
-	MOJOSHADER_vkEndFrame();
-
-	/* Reset the command buffers */
-	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
-	{
-		result = renderer->vkResetCommandBuffer(
-			renderer->submittedCommandBuffers[i],
-			VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
-		);
-
-		if (result != VK_SUCCESS)
-		{
-			LogVulkanResult("vkResetCommandBuffer", result);
-		}
-	}
-
-	/* Mark command buffers as inactive */
-	/* FIXME: this needs a mutex */
-	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
-	{
-		renderer->inactiveCommandBuffers[renderer->inactiveCommandBufferCount] = renderer->submittedCommandBuffers[i];
-		renderer->inactiveCommandBufferCount += 1;
-		renderer->submittedCommandBufferCount -= 1;
-	}
-
-	/* Reset buffer and subbuffer binding info */
-	for (i = 0; i < renderer->numBuffersInUse; i += 1)
-	{
-		if (renderer->buffersInUse[i] != NULL)
-		{
-			renderer->buffersInUse[i]->bound = 0;
-			renderer->buffersInUse[i]->currentSubBufferIndex = 0;
-			renderer->buffersInUse[i] = NULL;
-		}
-	}
-	renderer->numBuffersInUse = 0;
-
 	VULKAN_INTERNAL_BeginCommandBuffer(renderer);
 
 	/* Now that commands are totally done, check for present errors */
@@ -3596,7 +3595,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		if (	presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
 			presentResult == VK_SUBOPTIMAL_KHR	)
 		{
-			VULKAN_INTERNAL_RecreateSwapchain(renderer);
+			VULKAN_INTERNAL_RecreateSwapchain(renderer, 0);
 		}
 		else if (presentResult != VK_SUCCESS)
 		{
@@ -4064,14 +4063,17 @@ static void VULKAN_INTERNAL_DestroySwapchain(VulkanRenderer *renderer)
 	);
 }
 
-static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer)
+static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer, uint8_t flush)
 {
 	CreateSwapchainResult createSwapchainResult;
 	SwapChainSupportDetails swapChainSupportDetails;
 	VkExtent2D extent;
 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
-	VULKAN_INTERNAL_FlushCommands(renderer);
+	if (flush)
+	{
+		VULKAN_INTERNAL_FlushCommands(renderer);
+	}
 
 	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
 
@@ -7796,7 +7798,7 @@ static void VULKAN_ResetBackbuffer(
 	renderer->presentInterval = presentationParameters->presentationInterval;
 	renderer->deviceWindowHandle = presentationParameters->deviceWindowHandle;
 
-	VULKAN_INTERNAL_RecreateSwapchain(renderer);
+	VULKAN_INTERNAL_RecreateSwapchain(renderer, 1);
 	VULKAN_INTERNAL_DestroyFauxBackbuffer(renderer);
 	VULKAN_INTERNAL_CreateFauxBackbuffer(
 		renderer,
