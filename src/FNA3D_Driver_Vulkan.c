@@ -1657,7 +1657,7 @@ static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer, uint8_t 
 
 static void VULKAN_INTERNAL_MaybeEndRenderPass(VulkanRenderer *renderer, uint8_t forceBreak);
 
-static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer);
+static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync);
 
 static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer *renderer);
 
@@ -3237,7 +3237,7 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 
 	if (allowFlush && renderer->gpuIdle)
 	{
-		VULKAN_INTERNAL_FlushCommands(renderer);
+		VULKAN_INTERNAL_FlushCommands(renderer, 0);
 	}
 
 	if (startNext)
@@ -3480,6 +3480,9 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		return;
 	}
 
+	/* Cleanup */
+	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
+
 	/* Reset the submitted command buffers */
 	/* FIXME: this needs a mutex if we do threading */
 	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
@@ -3501,22 +3504,6 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		renderer->inactiveCommandBufferCount += 1;
 		renderer->submittedCommandBufferCount -= 1;
 	}
-
-	/* Cleanup */
-	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
-	MOJOSHADER_vkEndFrame();
-
-	/* Reset buffer and subbuffer binding info */
-	for (i = 0; i < renderer->numBuffersInUse; i += 1)
-	{
-		if (renderer->buffersInUse[i] != NULL)
-		{
-			renderer->buffersInUse[i]->bound = 0;
-			renderer->buffersInUse[i]->currentSubBufferIndex = 0;
-			renderer->buffersInUse[i] = NULL;
-		}
-	}
-	renderer->numBuffersInUse = 0;
 
 	/* FIXME: need a mutex */
 	renderer->gpuIdle = 1;
@@ -3540,6 +3527,9 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		LogVulkanResult("vkQueueSubmit", result);
 		return;
 	}
+
+	/* Rotate the UBOs */
+	MOJOSHADER_vkEndFrame();
 
 	/* TODO: Need a mutex */
 	renderer->gpuIdle = 0;
@@ -3604,9 +3594,35 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	}
 }
 
-static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer)
+static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync)
 {
+	uint32_t i;
+
 	VULKAN_INTERNAL_SubmitCommands(renderer, 0);
+
+	if (sync)
+	{
+		renderer->vkWaitForFences(
+			renderer->logicalDevice,
+			1,
+			&renderer->inFlightFence,
+			VK_TRUE,
+			UINT64_MAX
+		);
+
+		/* Reset buffer and subbuffer binding info */
+		for (i = 0; i < renderer->numBuffersInUse; i += 1)
+		{
+			if (renderer->buffersInUse[i] != NULL)
+			{
+				renderer->buffersInUse[i]->bound = 0;
+				renderer->buffersInUse[i]->currentSubBufferIndex = 0;
+				renderer->buffersInUse[i] = NULL;
+			}
+		}
+
+		renderer->numBuffersInUse = 0;
+	}
 }
 
 static void VULKAN_INTERNAL_FlushCommandsAndPresent(
@@ -4072,7 +4088,7 @@ static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer, uint8_t 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
 	if (flush)
 	{
-		VULKAN_INTERNAL_FlushCommands(renderer);
+		VULKAN_INTERNAL_FlushCommands(renderer, 1);
 	}
 
 	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
@@ -4270,7 +4286,7 @@ static VulkanPhysicalBuffer *VULKAN_INTERNAL_NewPhysicalBuffer(
 }
 
 /* Modified from the allocation strategy utilized by the Metal driver */
-static void VULKAN_INTERNAL_AllocateSubBuffer(
+static uint32_t VULKAN_INTERNAL_AllocateSubBuffer(
 	VulkanRenderer *renderer,
 	VulkanBuffer *buffer
 ) {
@@ -4313,8 +4329,8 @@ static void VULKAN_INTERNAL_AllocateSubBuffer(
 	}
 	if (i == PHYSICAL_BUFFER_MAX_COUNT)
 	{
-		FNA3D_LogError("Oh crap, out of buffer room!!");
-		return;
+		FNA3D_LogInfo("Oh crap, out of buffer room!!");
+		return 1;
 	}
 
 	/* Create physical buffer */
@@ -4361,6 +4377,8 @@ static void VULKAN_INTERNAL_AllocateSubBuffer(
 		buffer,
 		subBuffer
 	);
+
+	return 0;
 }
 
 static void VULKAN_INTERNAL_MarkAsBound(
@@ -4406,7 +4424,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 	{
 		if (options == FNA3D_SETDATAOPTIONS_NONE)
 		{
-			VULKAN_INTERNAL_FlushCommands(renderer);
+			VULKAN_INTERNAL_FlushCommands(renderer, 1);
 			vulkanBuffer->bound = 1;
 		}
 		else if (options == FNA3D_SETDATAOPTIONS_DISCARD)
@@ -4418,7 +4436,11 @@ static void VULKAN_INTERNAL_SetBufferData(
 	/* Create a new SubBuffer if needed */
 	if (CURIDX == vulkanBuffer->subBufferCount)
 	{
-		VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer);
+		if (VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer) == 1)
+		{
+			FNA3D_LogInfo("Flushing...");
+			VULKAN_INTERNAL_FlushCommands(renderer, 1);
+		}
 	}
 
 	/* Copy over previous contents when needed */
@@ -4832,7 +4854,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 		&vulkanTexture->resourceAccessType
 	);
 
-	VULKAN_INTERNAL_FlushCommands(renderer);
+	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 
 	/* Read from staging buffer */
 
@@ -6656,7 +6678,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	uint32_t i, j;
 	VkResult waitResult;
 
-	VULKAN_INTERNAL_FlushCommands(renderer);
+	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 
 	waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
 
@@ -8097,7 +8119,7 @@ static void VULKAN_SetTextureData2D(
 
 	renderer->numActiveCommands += 1;
 
-	VULKAN_INTERNAL_FlushCommands(renderer);
+	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 }
 
 static void VULKAN_SetTextureData3D(
@@ -8159,7 +8181,7 @@ static void VULKAN_SetTextureData3D(
 
 	renderer->numActiveCommands += 1;
 
-	VULKAN_INTERNAL_FlushCommands(renderer);
+	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 }
 
 static void VULKAN_SetTextureDataCube(
@@ -8220,7 +8242,7 @@ static void VULKAN_SetTextureDataCube(
 
 	renderer->numActiveCommands += 1;
 
-	VULKAN_INTERNAL_FlushCommands(renderer);
+	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 }
 
 static void VULKAN_SetTextureDataYUV(
@@ -8374,7 +8396,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	renderer->numActiveCommands += 1;
 
-	VULKAN_INTERNAL_FlushCommands(renderer);
+	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 }
 
 static void VULKAN_GetTextureData2D(
@@ -9483,7 +9505,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		&renderer->instance,
 		&renderer->physicalDevice,
 		&renderer->logicalDevice,
-		1,
 		(PFN_MOJOSHADER_vkGetInstanceProcAddr) vkGetInstanceProcAddr,
 		(PFN_MOJOSHADER_vkGetDeviceProcAddr) renderer->vkGetDeviceProcAddr,
 		renderer->queueFamilyIndices.graphicsFamily,
