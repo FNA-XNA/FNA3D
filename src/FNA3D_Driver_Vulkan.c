@@ -3162,7 +3162,7 @@ static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer) {
 	beginInfo.pInheritanceInfo = NULL;
 
 	/* If we are out of unused command buffers, allocate some more */
-	if (renderer->inactiveCommandBuffers == 0)
+	if (renderer->inactiveCommandBufferCount == 0)
 	{
 		renderer->activeCommandBuffers = SDL_realloc(
 			renderer->activeCommandBuffers,
