@@ -3438,6 +3438,12 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		);
 	}
 
+	if (renderer->activeCommandBufferCount <= 1 && renderer->numActiveCommands == 0)
+	{
+		FNA3D_LogInfo("no commands recorded, bailing out");
+		return;
+	}
+
 	VULKAN_INTERNAL_EndCommandBuffer(renderer, 0, 0);
 
 	/* Reset descriptor set data */
@@ -3502,8 +3508,9 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	{
 		renderer->inactiveCommandBuffers[renderer->inactiveCommandBufferCount] = renderer->submittedCommandBuffers[i];
 		renderer->inactiveCommandBufferCount += 1;
-		renderer->submittedCommandBufferCount -= 1;
 	}
+
+	renderer->submittedCommandBufferCount = 0;
 
 	/* FIXME: need a mutex */
 	renderer->gpuIdle = 1;
@@ -3540,8 +3547,9 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	{
 		renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = renderer->activeCommandBuffers[i];
 		renderer->submittedCommandBufferCount += 1;
-		renderer->activeCommandBufferCount -= 1;
 	}
+
+	renderer->activeCommandBufferCount = 0;
 
 	/* Present, if applicable */
 	if (present)
