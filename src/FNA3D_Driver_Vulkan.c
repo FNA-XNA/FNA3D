@@ -3465,6 +3465,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	}
 
 	/* Cleanup */
+	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
 
 	/* Reset buffer and subbuffer binding info */
 	for (i = 0; i < renderer->numBuffersInUse; i += 1)
@@ -3597,9 +3598,6 @@ static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync
 			VK_TRUE,
 			UINT64_MAX
 		);
-
-		/* Use sync point opportunity to destroy resources */
-		VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
 	}
 }
 
@@ -4393,6 +4391,15 @@ static void VULKAN_INTERNAL_SetBufferData(
 
 	#define CURIDX vulkanBuffer->currentSubBufferIndex
 	#define SUBBUF vulkanBuffer->subBuffers[CURIDX]
+
+	/* We don't want to clobber buffer data that is in-flight, so wait */
+	renderer->vkWaitForFences(
+		renderer->logicalDevice,
+		1,
+		&renderer->inFlightFence,
+		VK_TRUE,
+		UINT64_MAX
+	);
 
 	prevIndex = CURIDX;
 
