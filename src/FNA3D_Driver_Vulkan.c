@@ -1245,7 +1245,6 @@ typedef struct VulkanRenderer
 	uint8_t debugMode;
 
 	/* Submission */
-	uint8_t gpuIdle;
 	FNA3D_Rect *presentSourceRectangle;
 	FNA3D_Rect *presentDestinationRectangle;
 	void *presentOverrideWindowHandle;
@@ -3150,7 +3149,6 @@ static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer *renderer)
 
 /* Vulkan: Command Buffers */
 
-/* FIXME: this needs a mutex */
 static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer) {
 	VkCommandBufferAllocateInfo allocateInfo;
 	VkCommandBufferBeginInfo beginInfo;
@@ -3240,7 +3238,7 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 	renderer->currentCommandBuffer = NULL;
 	renderer->numActiveCommands = 0;
 
-	if (allowFlush && renderer->gpuIdle)
+	if (allowFlush)
 	{
 		VULKAN_INTERNAL_FlushCommands(renderer, 0);
 	}
@@ -3396,7 +3394,6 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		uint64_t frameToken;
 	} presentInfoGGP;
 
-	/* FIXME: need a mutex here */
 	sourceRectangle = renderer->presentSourceRectangle;
 	destinationRectangle = renderer->presentDestinationRectangle;
 
@@ -3507,7 +3504,6 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	renderer->numBuffersInUse = 0;
 
 	/* Reset the submitted command buffers */
-	/* FIXME: this needs a mutex if we do threading */
 	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
 	{
 		result = renderer->vkResetCommandBuffer(
@@ -3528,9 +3524,6 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	}
 
 	renderer->submittedCommandBufferCount = 0;
-
-	/* FIXME: need a mutex */
-	renderer->gpuIdle = 1;
 
 	/* Prepare the command buffer fence for submission */
 	renderer->vkResetFences(
@@ -3555,11 +3548,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	/* Rotate the UBOs */
 	MOJOSHADER_vkEndFrame();
 
-	/* TODO: Need a mutex */
-	renderer->gpuIdle = 0;
-
 	/* Mark command buffers as submitted */
-	/* FIXME: this needs a mutex */
 	for (i = 0; i < renderer->activeCommandBufferCount; i += 1)
 	{
 		renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = renderer->activeCommandBuffers[i];
