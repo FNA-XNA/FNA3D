@@ -3174,6 +3174,11 @@ static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer) {
 			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
 		);
 
+		renderer->submittedCommandBuffers = SDL_realloc(
+			renderer->submittedCommandBuffers,
+			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
+		);
+
 		allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 		allocateInfo.pNext = NULL;
 		allocateInfo.commandPool = renderer->commandPool;
@@ -3487,7 +3492,19 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	}
 
 	/* Cleanup */
-	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
+
+	/* Reset buffer and subbuffer binding info */
+	for (i = 0; i < renderer->numBuffersInUse; i += 1)
+	{
+		if (renderer->buffersInUse[i] != NULL)
+		{
+			renderer->buffersInUse[i]->bound = 0;
+			renderer->buffersInUse[i]->currentSubBufferIndex = 0;
+			renderer->buffersInUse[i] = NULL;
+		}
+	}
+
+	renderer->numBuffersInUse = 0;
 
 	/* Reset the submitted command buffers */
 	/* FIXME: this needs a mutex if we do threading */
@@ -3604,8 +3621,6 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync)
 {
-	uint32_t i;
-
 	VULKAN_INTERNAL_SubmitCommands(renderer, 0);
 
 	if (sync)
@@ -3618,18 +3633,8 @@ static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync
 			UINT64_MAX
 		);
 
-		/* Reset buffer and subbuffer binding info */
-		for (i = 0; i < renderer->numBuffersInUse; i += 1)
-		{
-			if (renderer->buffersInUse[i] != NULL)
-			{
-				renderer->buffersInUse[i]->bound = 0;
-				renderer->buffersInUse[i]->currentSubBufferIndex = 0;
-				renderer->buffersInUse[i] = NULL;
-			}
-		}
-
-		renderer->numBuffersInUse = 0;
+		/* Use sync point opportunity to destroy resources */
+		VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
 	}
 }
 
@@ -4294,7 +4299,7 @@ static VulkanPhysicalBuffer *VULKAN_INTERNAL_NewPhysicalBuffer(
 }
 
 /* Modified from the allocation strategy utilized by the Metal driver */
-static uint32_t VULKAN_INTERNAL_AllocateSubBuffer(
+static void VULKAN_INTERNAL_AllocateSubBuffer(
 	VulkanRenderer *renderer,
 	VulkanBuffer *buffer
 ) {
@@ -4338,7 +4343,7 @@ static uint32_t VULKAN_INTERNAL_AllocateSubBuffer(
 	if (i == PHYSICAL_BUFFER_MAX_COUNT)
 	{
 		FNA3D_LogInfo("Oh crap, out of buffer room!!");
-		return 1;
+		return;
 	}
 
 	/* Create physical buffer */
@@ -4385,8 +4390,6 @@ static uint32_t VULKAN_INTERNAL_AllocateSubBuffer(
 		buffer,
 		subBuffer
 	);
-
-	return 0;
 }
 
 static void VULKAN_INTERNAL_MarkAsBound(
@@ -4444,11 +4447,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 	/* Create a new SubBuffer if needed */
 	if (CURIDX == vulkanBuffer->subBufferCount)
 	{
-		if (VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer) == 1)
-		{
-			FNA3D_LogInfo("Flushing...");
-			VULKAN_INTERNAL_FlushCommands(renderer, 1);
-		}
+		VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer);
 	}
 
 	/* Copy over previous contents when needed */
