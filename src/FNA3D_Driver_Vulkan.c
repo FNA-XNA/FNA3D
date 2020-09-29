@@ -458,16 +458,6 @@ static inline void ShaderResourcesHashTable_Insert(
 	table->count += 1;
 }
 
-/* Command Encoding */
-
-typedef struct DescriptorSetDrawInfo
-{
-	VkDescriptorSet vertexSamplerDescriptorSet;
-	VkDescriptorSet fragSamplerDescriptorSet;
-	VkDescriptorSet vertexUniformDescriptorSet;
-	VkDescriptorSet fragUniformDescriptorSet;
-} DescriptorSetDrawInfo;
-
 /* Internal Structures */
 
 typedef struct QueueFamilyIndices
@@ -2978,12 +2968,13 @@ static void ShaderResources_DeactivateUnusedDescriptorSets(
 	}
 }
 
+/* Must take an array of descriptor sets of size 4 */
 static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 	VulkanRenderer *renderer,
-	DescriptorSetDrawInfo *descriptorSetDrawInfo,
-	uint32_t *dynamicOffsets,
 	ShaderResources *vertShaderResources,
-	ShaderResources *fragShaderResources
+	ShaderResources *fragShaderResources,
+	VkDescriptorSet *descriptorSets,
+	uint32_t *dynamicOffsets
 ) {
 	VkBuffer vUniform, fUniform;
 	unsigned long long vOff, fOff, vSize, fSize; /* MojoShader type */
@@ -3100,36 +3091,18 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 		);
 	}
 
-	descriptorSetDrawInfo->vertexSamplerDescriptorSet =
-		renderer->currentVertexSamplerDescriptorSet;
-
-	descriptorSetDrawInfo->fragSamplerDescriptorSet =
-		renderer->currentFragSamplerDescriptorSet;
-
-	descriptorSetDrawInfo->vertexUniformDescriptorSet =
-		vertShaderResources->uniformDescriptorSet;
-
-	descriptorSetDrawInfo->fragUniformDescriptorSet =
-		fragShaderResources->uniformDescriptorSet;
-
 	renderer->vertexSamplerDescriptorSetDataNeedsUpdate = 0;
 	renderer->fragSamplerDescriptorSetDataNeedsUpdate = 0;
+
+	descriptorSets[0] = renderer->currentVertexSamplerDescriptorSet;
+	descriptorSets[1] = renderer->currentFragSamplerDescriptorSet;
+	descriptorSets[2] = vertShaderResources->uniformDescriptorSet;
+	descriptorSets[3] = fragShaderResources->uniformDescriptorSet;
 
 	MOJOSHADER_vkGetUniformBuffers(&vUniform, &vOff, &vSize, &fUniform, &fOff, &fSize);
 
 	dynamicOffsets[0] = vOff;
 	dynamicOffsets[1] = fOff;
-}
-
-/* Must take an array of descriptor sets of size 4 */
-static void VULKAN_INTERNAL_FetchDescriptorSets(
-	DescriptorSetDrawInfo *descriptorSetDrawInfo,
-	VkDescriptorSet *descriptorSets
-) {
-	descriptorSets[0] = descriptorSetDrawInfo->vertexSamplerDescriptorSet;
-	descriptorSets[1] = descriptorSetDrawInfo->fragSamplerDescriptorSet;
-	descriptorSets[2] = descriptorSetDrawInfo->vertexUniformDescriptorSet;
-	descriptorSets[3] = descriptorSetDrawInfo->fragUniformDescriptorSet;
 }
 
 static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer *renderer)
@@ -3240,7 +3213,7 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 
 	if (allowFlush)
 	{
-		VULKAN_INTERNAL_FlushCommands(renderer, 0);
+		/* TODO: Figure out how to properly submit commands mid-frame */
 	}
 
 	if (startNext)
@@ -3446,7 +3419,10 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		return;
 	}
 
-	VULKAN_INTERNAL_EndCommandBuffer(renderer, 0, 0);
+	if (renderer->currentCommandBuffer != NULL)
+	{
+		VULKAN_INTERNAL_EndCommandBuffer(renderer, 0, 0);
+	}
 
 	/* Reset descriptor set data */
 	VULKAN_INTERNAL_ResetDescriptorSetData(renderer);
@@ -7008,7 +6984,6 @@ static void VULKAN_DrawInstancedPrimitives(
 	VulkanSubBuffer subbuf = indexBuffer->subBuffers[
 		indexBuffer->currentSubBufferIndex
 	];
-	DescriptorSetDrawInfo descriptorSetDrawInfo;
 	VkDescriptorSet descriptorSets[4];
 	MOJOSHADER_vkShader *vertShader, *fragShader;
 	ShaderResources *vertShaderResources, *fragShaderResources;
@@ -7061,16 +7036,13 @@ static void VULKAN_DrawInstancedPrimitives(
 		VK_SHADER_STAGE_FRAGMENT_BIT
 	);
 
-	/* FIXME: now that we are using update after bind extension we can collapse these next two functions */
 	VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 		renderer,
-		&descriptorSetDrawInfo,
-		dynamicOffsets,
 		vertShaderResources,
-		fragShaderResources
+		fragShaderResources,
+		descriptorSets,
+		dynamicOffsets
 	);
-
-	VULKAN_INTERNAL_FetchDescriptorSets(&descriptorSetDrawInfo, descriptorSets);
 
 	renderer->vkCmdBindDescriptorSets(
 		renderer->currentCommandBuffer,
@@ -7131,7 +7103,6 @@ static void VULKAN_DrawPrimitives(
 	int32_t primitiveCount
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	DescriptorSetDrawInfo descriptorSetDrawInfo;
 	VkDescriptorSet descriptorSets[4];
 	MOJOSHADER_vkShader *vertShader, *fragShader;
 	ShaderResources *vertShaderResources, *fragShaderResources;
@@ -7171,16 +7142,13 @@ static void VULKAN_DrawPrimitives(
 		VK_SHADER_STAGE_FRAGMENT_BIT
 	);
 
-	/* FIXME: now that we are using update after bind extension we can collapse these next two functions */
 	VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 		renderer,
-		&descriptorSetDrawInfo,
-		dynamicOffsets,
 		vertShaderResources,
-		fragShaderResources
+		fragShaderResources,
+		descriptorSets,
+		dynamicOffsets
 	);
-
-	VULKAN_INTERNAL_FetchDescriptorSets(&descriptorSetDrawInfo, descriptorSets);
 
 	renderer->vkCmdBindDescriptorSets(
 		renderer->currentCommandBuffer,
@@ -10136,8 +10104,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer->textures[MAX_TEXTURE_SAMPLERS + i] = &NullTexture;
 		renderer->samplers[MAX_TEXTURE_SAMPLERS + i] = renderer->dummyVertSamplerState;
 	}
-
-	renderer->gpuIdle = 1;
 
 	return result;
 }
