@@ -1215,6 +1215,22 @@ typedef struct VulkanRenderer
 	uint32_t texturesToDestroyCount;
 	uint32_t texturesToDestroyCapacity;
 
+	VulkanRenderbuffer **submittedRenderbuffersToDestroy;
+	uint32_t submittedRenderbuffersToDestroyCount;
+	uint32_t submittedRenderbuffersToDestroyCapacity;
+
+	VulkanBuffer **submittedBuffersToDestroy;
+	uint32_t submittedBuffersToDestroyCount;
+	uint32_t submittedBuffersToDestroyCapacity;
+
+	VulkanEffect **submittedEffectsToDestroy;
+	uint32_t submittedEffectsToDestroyCount;
+	uint32_t submittedEffectsToDestroyCapacity;
+
+	VulkanTexture **submittedTexturesToDestroy;
+	uint32_t submittedTexturesToDestroyCount;
+	uint32_t submittedTexturesToDestroyCapacity;
+
 	uint8_t renderPassInProgress;
 	uint8_t needNewRenderPass;
 	uint8_t renderTargetBound;
@@ -3206,6 +3222,12 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 	uint8_t allowFlush
 ) {
 	VkResult result;
+
+	if (renderer->renderPassInProgress)
+	{
+		VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
+		renderer->needNewRenderPass = 1;
+	}
 
 	result = renderer->vkEndCommandBuffer(
 		renderer->currentCommandBuffer
@@ -5698,40 +5720,114 @@ static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer *renderer)
 {
 	uint32_t i;
 
-	for (i = 0; i < renderer->renderbuffersToDestroyCount; i += 1)
+	/* Destroy submitted resources */
+
+	for (i = 0; i < renderer->submittedRenderbuffersToDestroyCount; i += 1)
 	{
 		VULKAN_INTERNAL_DestroyRenderbuffer(
 			renderer,
-			renderer->renderbuffersToDestroy[i]
+			renderer->submittedRenderbuffersToDestroy[i]
 		);
 	}
+	renderer->submittedRenderbuffersToDestroyCount = 0;
+
+	for (i = 0; i < renderer->submittedBuffersToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyBuffer(
+			renderer,
+			renderer->submittedBuffersToDestroy[i]
+		);
+	}
+	renderer->submittedBuffersToDestroyCount = 0;
+
+	for (i = 0; i < renderer->submittedEffectsToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyEffect(
+			renderer,
+			renderer->submittedEffectsToDestroy[i]
+		);
+	}
+	renderer->submittedEffectsToDestroyCount = 0;
+
+	for (i = 0; i < renderer->submittedTexturesToDestroyCount; i += 1)
+	{
+		VULKAN_INTERNAL_DestroyTexture(
+			renderer,
+			renderer->submittedTexturesToDestroy[i]
+		);
+	}
+	renderer->submittedTexturesToDestroyCount = 0;
+
+	/* Re-size submitted destroy lists */
+
+	if (renderer->submittedRenderbuffersToDestroyCapacity < renderer->renderbuffersToDestroyCount)
+	{
+		renderer->submittedRenderbuffersToDestroy = SDL_realloc(
+			renderer->submittedRenderbuffersToDestroy,
+			sizeof(VulkanRenderbuffer*) * renderer->renderbuffersToDestroyCount
+		);
+
+		renderer->submittedRenderbuffersToDestroyCapacity = renderer->renderbuffersToDestroyCount;
+	}
+
+	if (renderer->submittedBuffersToDestroyCapacity < renderer->buffersToDestroyCount)
+	{
+		renderer->submittedBuffersToDestroy = SDL_realloc(
+			renderer->submittedBuffersToDestroy,
+			sizeof(VulkanBuffer*) * renderer->buffersToDestroyCount
+		);
+
+		renderer->submittedBuffersToDestroyCapacity = renderer->buffersToDestroyCount;
+	}
+
+	if (renderer->submittedEffectsToDestroyCapacity < renderer->effectsToDestroyCount)
+	{
+		renderer->submittedEffectsToDestroy = SDL_realloc(
+			renderer->submittedEffectsToDestroy,
+			sizeof(VulkanEffect*) * renderer->effectsToDestroyCount
+		);
+
+		renderer->submittedEffectsToDestroyCapacity = renderer->effectsToDestroyCount;
+	}
+
+	if (renderer->submittedTexturesToDestroyCapacity < renderer->texturesToDestroyCount)
+	{
+		renderer->submittedTexturesToDestroy = SDL_realloc(
+			renderer->submittedTexturesToDestroy,
+			sizeof(VulkanTexture*) * renderer->texturesToDestroyCount
+		);
+
+		renderer->submittedTexturesToDestroyCapacity = renderer->texturesToDestroyCount;
+	}
+
+	/* Rotate destroy lists */
+
+	for (i = 0; i < renderer->renderbuffersToDestroyCount; i += 1)
+	{
+		renderer->submittedRenderbuffersToDestroy[i] = renderer->renderbuffersToDestroy[i];
+	}
+	renderer->submittedBuffersToDestroyCount = renderer->renderbuffersToDestroyCount;
 	renderer->renderbuffersToDestroyCount = 0;
 
 	for (i = 0; i < renderer->buffersToDestroyCount; i += 1)
 	{
-		VULKAN_INTERNAL_DestroyBuffer(
-			renderer,
-			renderer->buffersToDestroy[i]
-		);
+		renderer->submittedBuffersToDestroy[i] = renderer->buffersToDestroy[i];
 	}
+	renderer->submittedBuffersToDestroyCount = renderer->buffersToDestroyCount;
 	renderer->buffersToDestroyCount = 0;
 
 	for (i = 0; i < renderer->effectsToDestroyCount; i += 1)
 	{
-		VULKAN_INTERNAL_DestroyEffect(
-			renderer,
-			renderer->effectsToDestroy[i]
-		);
+		renderer->submittedEffectsToDestroy[i] = renderer->effectsToDestroy[i];
 	}
+	renderer->submittedEffectsToDestroyCount = renderer->effectsToDestroyCount;
 	renderer->effectsToDestroyCount = 0;
 
 	for (i = 0; i < renderer->texturesToDestroyCount; i += 1)
 	{
-		VULKAN_INTERNAL_DestroyTexture(
-			renderer,
-			renderer->texturesToDestroy[i]
-		);
+		renderer->submittedTexturesToDestroy[i] = renderer->texturesToDestroy[i];
 	}
+	renderer->submittedTexturesToDestroyCount = renderer->texturesToDestroyCount;
 	renderer->texturesToDestroyCount = 0;
 }
 
@@ -6743,6 +6839,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	VULKAN_INTERNAL_DestroyTexture(renderer, renderer->dummyFragTexture3D);
 	VULKAN_INTERNAL_DestroyTexture(renderer, renderer->dummyFragTextureCube);
 
+	/* We have to do this twice so the rotation happens correctly */
 	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
 
 	VULKAN_INTERNAL_DestroyTextureStagingBuffer(renderer);
@@ -9516,12 +9613,28 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer->renderbuffersToDestroyCapacity
 	);
 
+	renderer->submittedRenderbuffersToDestroyCapacity = 16;
+	renderer->submittedRenderbuffersToDestroyCount = 0;
+
+	renderer->submittedRenderbuffersToDestroy = (VulkanRenderbuffer**) SDL_malloc(
+		sizeof(VulkanRenderbuffer*) *
+		renderer->submittedRenderbuffersToDestroyCapacity
+	);
+
 	renderer->buffersToDestroyCapacity = 16;
 	renderer->buffersToDestroyCount = 0;
 
 	renderer->buffersToDestroy = (VulkanBuffer**) SDL_malloc(
 		sizeof(VulkanBuffer*) *
 		renderer->buffersToDestroyCapacity
+	);
+
+	renderer->submittedBuffersToDestroyCapacity = 16;
+	renderer->submittedBuffersToDestroyCount = 0;
+
+	renderer->submittedBuffersToDestroy = (VulkanBuffer**) SDL_malloc(
+		sizeof(VulkanBuffer*) *
+		renderer->submittedBuffersToDestroyCapacity
 	);
 
 	renderer->effectsToDestroyCapacity = 16;
@@ -9532,12 +9645,28 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer->effectsToDestroyCapacity
 	);
 
+	renderer->submittedEffectsToDestroyCapacity = 16;
+	renderer->submittedEffectsToDestroyCount = 0;
+
+	renderer->submittedEffectsToDestroy = (VulkanEffect**) SDL_malloc(
+		sizeof(VulkanEffect*) *
+		renderer->submittedEffectsToDestroyCapacity
+	);
+
 	renderer->texturesToDestroyCapacity = 16;
 	renderer->texturesToDestroyCount = 0;
 
 	renderer->texturesToDestroy = (VulkanTexture**) SDL_malloc(
 		sizeof(VulkanTexture*) *
 		renderer->texturesToDestroyCapacity
+	);
+
+	renderer->submittedTexturesToDestroyCapacity = 16;
+	renderer->submittedTexturesToDestroyCount = 0;
+
+	renderer->submittedTexturesToDestroy = (VulkanTexture**) SDL_malloc(
+		sizeof(VulkanTexture*) *
+		renderer->submittedTexturesToDestroyCapacity
 	);
 
 	/*
