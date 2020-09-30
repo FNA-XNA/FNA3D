@@ -975,6 +975,7 @@ typedef struct VulkanSubBuffer
 	uint8_t *ptr;
 	VkDeviceSize offset;
 	VulkanResourceAccessType resourceAccessType;
+	int8_t bound; /* -1 if unbound, otherwise refers to the submit counter on which it was bound */
 } VulkanSubBuffer;
 
 struct VulkanBuffer /* cast from FNA3D_Buffer */
@@ -983,9 +984,9 @@ struct VulkanBuffer /* cast from FNA3D_Buffer */
 	int32_t subBufferCount;
 	int32_t subBufferCapacity;
 	int32_t currentSubBufferIndex;
-	uint8_t bound;
 	VulkanResourceAccessType resourceAccessType;
 	VulkanSubBuffer *subBuffers;
+	int8_t bound; /* 0 if unbound, otherwise bound */
 };
 
 typedef struct VulkanBufferAllocator
@@ -1238,6 +1239,8 @@ typedef struct VulkanRenderer
 	FNA3D_Rect *presentSourceRectangle;
 	FNA3D_Rect *presentDestinationRectangle;
 	void *presentOverrideWindowHandle;
+
+	uint8_t submitCounter; /* used so we don't clobber data being used by GPU */
 
 	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
@@ -3352,7 +3355,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	uint8_t present
 ) {
 	VkSubmitInfo submitInfo;
-	uint32_t i;
+	uint32_t i, j;
 	VkResult result, presentResult = VK_SUCCESS;
 	uint32_t swapChainImageIndex;
 
@@ -3472,13 +3475,25 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	{
 		if (renderer->buffersInUse[i] != NULL)
 		{
-			renderer->buffersInUse[i]->bound = 0;
+			uint8_t allUnbound = 0;
+			for (j = 0; j < renderer->buffersInUse[i]->subBufferCount; j += 1)
+			{
+				if (renderer->submitCounter == renderer->buffersInUse[i]->subBuffers[j].bound)
+				{
+					renderer->buffersInUse[i]->subBuffers[j].bound = -1;
+				}
+			}
+
 			renderer->buffersInUse[i]->currentSubBufferIndex = 0;
-			renderer->buffersInUse[i] = NULL;
+
+			if (allUnBound)
+			{
+				renderer->buffersInUse[i] = NULL;
+			}
 		}
 	}
 
-	renderer->numBuffersInUse = 0;
+	renderer->submitCounter = (renderer->submitCounter + 1) % 2;
 
 	/* Reset the submitted command buffers */
 	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
@@ -3587,6 +3602,8 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync)
 {
+	uint32_t i, j;
+
 	VULKAN_INTERNAL_SubmitCommands(renderer, 0);
 
 	if (sync)
@@ -3598,6 +3615,24 @@ static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync
 			VK_TRUE,
 			UINT64_MAX
 		);
+
+		/* Hard sync point, so we can reset all buffer and subbuffer binding info */
+		for (i = 0; i < renderer->numBuffersInUse; i += 1)
+		{
+			if (renderer->buffersInUse[i] != NULL)
+			{
+				for (j = 0; j < renderer->buffersInUse[i]->subBufferCount; j += 1)
+				{
+					renderer->buffersInUse[i]->subBuffers[j].bound = -1;
+				}
+
+				renderer->buffersInUse[i]->currentSubBufferIndex = 0;
+				renderer->buffersInUse[i]->bound = 0;
+				renderer->buffersInUse[i] = NULL;
+			}
+		}
+
+		renderer->numBuffersInUse = 0;
 	}
 }
 
@@ -4262,7 +4297,7 @@ static VulkanPhysicalBuffer *VULKAN_INTERNAL_NewPhysicalBuffer(
 }
 
 /* Modified from the allocation strategy utilized by the Metal driver */
-static void VULKAN_INTERNAL_AllocateSubBuffer(
+static int8_t VULKAN_INTERNAL_AllocateSubBuffer(
 	VulkanRenderer *renderer,
 	VulkanBuffer *buffer
 ) {
@@ -4306,7 +4341,7 @@ static void VULKAN_INTERNAL_AllocateSubBuffer(
 	if (i == PHYSICAL_BUFFER_MAX_COUNT)
 	{
 		FNA3D_LogInfo("Oh crap, out of buffer room!!");
-		return;
+		return -1;
 	}
 
 	/* Create physical buffer */
@@ -4342,6 +4377,7 @@ static void VULKAN_INTERNAL_AllocateSubBuffer(
 		subBuffer->physicalBuffer->mapPointer +
 		subBuffer->offset
 	);
+	subBuffer->bound = -1;
 
 	/* Mark how much we've just allocated, rounding up for alignment */
 	renderer->bufferAllocator->totalAllocated[i] = alignedAlloc;
@@ -4353,6 +4389,8 @@ static void VULKAN_INTERNAL_AllocateSubBuffer(
 		buffer,
 		subBuffer
 	);
+
+	return 0;
 }
 
 static void VULKAN_INTERNAL_MarkAsBound(
@@ -4392,15 +4430,6 @@ static void VULKAN_INTERNAL_SetBufferData(
 	#define CURIDX vulkanBuffer->currentSubBufferIndex
 	#define SUBBUF vulkanBuffer->subBuffers[CURIDX]
 
-	/* We don't want to clobber buffer data that is in-flight, so wait */
-	renderer->vkWaitForFences(
-		renderer->logicalDevice,
-		1,
-		&renderer->inFlightFence,
-		VK_TRUE,
-		UINT64_MAX
-	);
-
 	prevIndex = CURIDX;
 
 	if (vulkanBuffer->bound)
@@ -4409,10 +4438,36 @@ static void VULKAN_INTERNAL_SetBufferData(
 		{
 			VULKAN_INTERNAL_FlushCommands(renderer, 1);
 			vulkanBuffer->bound = 1;
+			SUBBUF.bound = renderer->submitCounter;
 		}
 		else if (options == FNA3D_SETDATAOPTIONS_DISCARD)
 		{
-			CURIDX += 1;
+			/* Create a new SubBuffer if needed */
+			if (CURIDX == vulkanBuffer->subBufferCount)
+			{
+				if (VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer) == -1)
+				{
+					VULKAN_INTERNAL_FlushCommands(renderer, 1);
+					SUBBUF.bound = renderer->submitCounter;
+				}
+			}
+
+			while (SUBBUF.bound != -1)
+			{
+				/* Create a new SubBuffer if needed */
+				if (CURIDX == vulkanBuffer->subBufferCount)
+				{
+					if (VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer) == -1)
+					{
+						VULKAN_INTERNAL_FlushCommands(renderer, 1);
+						SUBBUF.bound = renderer->submitCounter;
+					}
+				}
+				else
+				{
+					CURIDX += 1;
+				}
+			}
 		}
 	}
 
@@ -4440,6 +4495,8 @@ static void VULKAN_INTERNAL_SetBufferData(
 		data,
 		dataLength
 	);
+
+	SUBBUF.bound = renderer->submitCounter;
 
 	#undef SUBBUF
 	#undef CURIDX
@@ -10111,6 +10168,8 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer->textures[MAX_TEXTURE_SAMPLERS + i] = &NullTexture;
 		renderer->samplers[MAX_TEXTURE_SAMPLERS + i] = renderer->dummyVertSamplerState;
 	}
+
+	renderer->submitCounter = 0;
 
 	return result;
 }
