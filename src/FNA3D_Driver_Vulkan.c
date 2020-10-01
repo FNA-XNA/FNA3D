@@ -3446,7 +3446,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 	if (renderer->activeCommandBufferCount <= 1 && renderer->numActiveCommands == 0)
 	{
-		FNA3D_LogInfo("no commands recorded, bailing out");
+		/* No commands recorded, bailing out */
 		return;
 	}
 
