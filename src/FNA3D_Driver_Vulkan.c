@@ -3146,7 +3146,8 @@ static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer *renderer)
 
 /* Vulkan: Command Buffers */
 
-static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer) {
+static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer)
+{
 	VkCommandBufferAllocateInfo allocateInfo;
 	VkCommandBufferBeginInfo beginInfo;
 	VkResult result;
@@ -3212,7 +3213,6 @@ static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer) {
 	if (result != VK_SUCCESS)
 	{
 		LogVulkanResult("vkBeginCommandBuffer", result);
-		return;
 	}
 }
 
@@ -3252,7 +3252,8 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 	}
 }
 
-static void VULKAN_INTERNAL_SwapChainBlit(VulkanRenderer *renderer,
+static void VULKAN_INTERNAL_SwapChainBlit(
+	VulkanRenderer *renderer,
 	FNA3D_Rect *sourceRectangle,
 	FNA3D_Rect *destinationRectangle,
 	uint32_t swapChainImageIndex
