@@ -4472,7 +4472,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 		VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer);
 	}
 
-	if (SUBBUF.bound != -1)
+	if (vulkanBuffer->bound || vulkanBuffer->boundSubmitted)
 	{
 		if (options == FNA3D_SETDATAOPTIONS_NONE)
 		{
