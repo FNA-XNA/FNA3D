@@ -78,9 +78,9 @@ static void FNA3D_Default_LogError(const char *msg)
 	);
 }
 
-FNA3D_LogFunc FNA3D_LogInfoFunc = FNA3D_Default_LogInfo;
-FNA3D_LogFunc FNA3D_LogWarnFunc = FNA3D_Default_LogWarn;
-FNA3D_LogFunc FNA3D_LogErrorFunc = FNA3D_Default_LogError;
+static FNA3D_LogFunc FNA3D_LogInfoFunc = FNA3D_Default_LogInfo;
+static FNA3D_LogFunc FNA3D_LogWarnFunc = FNA3D_Default_LogWarn;
+static FNA3D_LogFunc FNA3D_LogErrorFunc = FNA3D_Default_LogError;
 
 #define MAX_MESSAGE_SIZE 1024
 
