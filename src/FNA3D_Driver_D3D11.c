@@ -123,7 +123,8 @@ static D3D11Texture NullTexture =
 	0,
 	{
 		{ 0, 0 }
-	}
+	},
+	NULL
 };
 
 typedef struct D3D11Renderbuffer /* Cast FNA3D_Renderbuffer* to this! */
