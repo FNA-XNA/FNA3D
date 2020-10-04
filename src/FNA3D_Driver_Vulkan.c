@@ -2195,6 +2195,7 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 		goto create_instance_fail;
 	}
 
+	/* Core since 1.1 */
 	instanceExtensionNames[instanceExtensionCount++] =
 		VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME;
 
@@ -9410,12 +9411,17 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	/* Variables: Choose/Create vkDevice */
 	static const char* deviceExtensionNames[] =
 	{
+		/* Globally supported */
 		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+		/* Core since 1.1 */
 		VK_KHR_MAINTENANCE1_EXTENSION_NAME,
-		VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,
-		VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,
-		VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
 		VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
+		VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
+		/* Core since 1.2 */
+		VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,
+		/* EXT, probably not going to be Core */
+		VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,
+		/* Vendor-specific extensions */
 		"VK_GGP_frame_token"
 	};
 	uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
