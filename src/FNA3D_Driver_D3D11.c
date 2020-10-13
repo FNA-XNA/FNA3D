@@ -2081,6 +2081,69 @@ static void D3D11_ApplyVertexBufferBindings(
 
 /* Render Targets */
 
+static void D3D11_INTERNAL_RestoreTargetTextures(D3D11Renderer *renderer)
+{
+	/* For textures that were bound while this target was active, rebind.
+	 * D3D11 implicitly unsets these to prevent simultaneous read/write.
+	 * -flibit
+	 */
+	int32_t i, j;
+	ID3D11RenderTargetView *view;
+	for (i = 0; i < renderer->numRenderTargets; i += 1)
+	{
+		for (j = 0; j < MAX_TOTAL_SAMPLERS; j += 1)
+		{
+			const D3D11Texture *texture = renderer->textures[j];
+			if (!texture->isRenderTarget)
+			{
+				continue;
+			}
+			if (texture->rtType == FNA3D_RENDERTARGET_TYPE_2D)
+			{
+				view = texture->twod.rtView;
+			}
+			else
+			{
+				/* FIXME: Do we store cube target face? -flibit */
+				continue;
+			}
+			if (view == renderer->renderTargetViews[i])
+			{
+				if (j < MAX_TEXTURE_SAMPLERS)
+				{
+					ID3D11DeviceContext_PSSetShaderResources(
+						renderer->context,
+						j,
+						1,
+						&texture->shaderView
+					);
+					ID3D11DeviceContext_PSSetSamplers(
+						renderer->context,
+						j,
+						1,
+						&renderer->samplers[j]
+					);
+				}
+				else
+				{
+					ID3D11DeviceContext_VSSetShaderResources(
+						renderer->context,
+						j - MAX_TEXTURE_SAMPLERS,
+						1,
+						&texture->shaderView
+					);
+					ID3D11DeviceContext_VSSetSamplers(
+						renderer->context,
+						j - MAX_TEXTURE_SAMPLERS,
+						1,
+						&renderer->samplers[j]
+					);
+				}
+			}
+		}
+	}
+}
+
 static void D3D11_SetRenderTargets(
 	FNA3D_Renderer *driverData,
 	FNA3D_RenderTargetBinding *renderTargets,
@@ -2092,36 +2155,34 @@ static void D3D11_SetRenderTargets(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *tex;
 	D3D11Renderbuffer *rb;
-	int32_t i, j;
-
-	/* Reset attachments */
-	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
-	{
-		renderer->renderTargetViews[i] = NULL;
-	}
-	renderer->depthStencilView = NULL;
-	renderer->currentDepthFormat = FNA3D_DEPTHFORMAT_NONE;
+	ID3D11RenderTargetView *views[MAX_RENDERTARGET_BINDINGS];
+	int32_t i;
 
 	/* Bind the backbuffer, if applicable */
 	if (renderTargets == NULL)
 	{
-		renderer->renderTargetViews[0] = renderer->backbuffer.colorView;
+		views[0] = renderer->backbuffer.colorView;
 		renderer->currentDepthFormat = renderer->backbuffer.depthFormat;
 		renderer->depthStencilView = renderer->backbuffer.depthStencilView;
-		renderer->numRenderTargets = 1;
+
 		SDL_LockMutex(renderer->ctxLock);
 		ID3D11DeviceContext_OMSetRenderTargets(
 			renderer->context,
 			1,
-			renderer->renderTargetViews,
+			views,
 			renderer->depthStencilView
 		);
+		D3D11_INTERNAL_RestoreTargetTextures(renderer);
 		SDL_UnlockMutex(renderer->ctxLock);
+
+		renderer->renderTargetViews[0] = views[0];
+		for (i = 1; i < MAX_RENDERTARGET_BINDINGS; i += 1)
+		{
+			renderer->renderTargetViews[i] = NULL;
+		}
+		renderer->numRenderTargets = 1;
 		return;
 	}
-
-	/* Remember the number of bound render targets */
-	renderer->numRenderTargets = numRenderTargets;
 
 	/* Update color buffers */
 	for (i = 0; i < numRenderTargets; i += 1)
@@ -2129,22 +2190,26 @@ static void D3D11_SetRenderTargets(
 		if (renderTargets[i].colorBuffer != NULL)
 		{
 			rb = (D3D11Renderbuffer*) renderTargets[i].colorBuffer;
-			renderer->renderTargetViews[i] = rb->color.rtView;
+			views[i] = rb->color.rtView;
 		}
 		else
 		{
 			tex = (D3D11Texture*) renderTargets[i].texture;
 			if (tex->rtType == FNA3D_RENDERTARGET_TYPE_2D)
 			{
-				renderer->renderTargetViews[i] = tex->twod.rtView;
+				views[i] = tex->twod.rtView;
 			}
 			else if (tex->rtType == FNA3D_RENDERTARGET_TYPE_CUBE)
 			{
-				renderer->renderTargetViews[i] = tex->cube.rtViews[
+				views[i] = tex->cube.rtViews[
 					renderTargets[i].cube.face
 				];
 			}
 		}
+	}
+	while (i < MAX_RENDERTARGET_BINDINGS)
+	{
+		views[i++] = NULL;
 	}
 
 	/* Update depth stencil buffer */
@@ -2159,42 +2224,20 @@ static void D3D11_SetRenderTargets(
 			depthFormat
 	);
 
+	/* Actually set the render targets, finally. */
 	SDL_LockMutex(renderer->ctxLock);
-
-	/* Unbind any render targets from pixel shader input */
-	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
-	{
-		for (j = 0; j < numRenderTargets; j += 1)
-		{
-			if (renderer->textures[i] == (D3D11Texture*) renderTargets[j].texture)
-			{
-				renderer->textures[i] = &NullTexture;
-				renderer->samplers[i] = NULL;
-				ID3D11DeviceContext_PSSetShaderResources(
-					renderer->context,
-					i,
-					1,
-					&NullTexture.shaderView
-				);
-				ID3D11DeviceContext_PSSetSamplers(
-					renderer->context,
-					i,
-					1,
-					&renderer->samplers[i]
-				);
-			}
-		}
-	}
-
-	/* Actually set the render targets! */
 	ID3D11DeviceContext_OMSetRenderTargets(
 		renderer->context,
 		numRenderTargets,
-		renderer->renderTargetViews,
+		views,
 		renderer->depthStencilView
 	);
-
+	D3D11_INTERNAL_RestoreTargetTextures(renderer);
 	SDL_UnlockMutex(renderer->ctxLock);
+
+	/* Remember color attachments */
+	SDL_memcpy(renderer->renderTargetViews, views, sizeof(views));
+	renderer->numRenderTargets = numRenderTargets;
 }
 
 static void D3D11_ResolveTarget(
