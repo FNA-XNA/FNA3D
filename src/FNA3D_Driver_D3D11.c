@@ -2087,10 +2087,11 @@ static void D3D11_INTERNAL_RestoreTargetTextures(D3D11Renderer *renderer)
 	 * D3D11 implicitly unsets these to prevent simultaneous read/write.
 	 * -flibit
 	 */
-	int32_t i, j;
-	ID3D11RenderTargetView *view;
+	int32_t i, j, k;
+	uint8_t bound;
 	for (i = 0; i < renderer->numRenderTargets; i += 1)
 	{
+		const ID3D11RenderTargetView *view = renderer->renderTargetViews[i];
 		for (j = 0; j < MAX_TOTAL_SAMPLERS; j += 1)
 		{
 			const D3D11Texture *texture = renderer->textures[j];
@@ -2100,14 +2101,21 @@ static void D3D11_INTERNAL_RestoreTargetTextures(D3D11Renderer *renderer)
 			}
 			if (texture->rtType == FNA3D_RENDERTARGET_TYPE_2D)
 			{
-				view = texture->twod.rtView;
+				bound = (texture->twod.rtView == view);
 			}
 			else
 			{
-				/* FIXME: Do we store cube target face? -flibit */
-				continue;
+				bound = 0;
+				for (k = 0; k < 6; k += 1)
+				{
+					if (texture->cube.rtViews[k] == view)
+					{
+						bound = 1;
+						break;
+					}
+				}
 			}
-			if (view == renderer->renderTargetViews[i])
+			if (bound)
 			{
 				if (j < MAX_TEXTURE_SAMPLERS)
 				{
