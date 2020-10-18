@@ -1270,6 +1270,16 @@ typedef struct VulkanRenderer
 	#include "FNA3D_Driver_Vulkan_vkfuncs.h"
 } VulkanRenderer;
 
+/* Command Buffer Recording Macro */
+
+#define RECORD_CMD(cmdCall)					\
+	if (renderer->currentCommandBuffer == NULL)		\
+	{							\
+		VULKAN_INTERNAL_BeginCommandBuffer(renderer);	\
+	}							\
+	cmdCall;						\
+	renderer->numActiveCommands += 1;
+
 /* XNA->Vulkan Translation Arrays */
 
 static VkIndexType XNAToVK_IndexType[] =
@@ -3339,7 +3349,7 @@ static void VULKAN_INTERNAL_SwapChainBlit(
 	blit.dstSubresource.layerCount = 1;
 	blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 
-	renderer->vkCmdBlitImage(
+	RECORD_CMD(renderer->vkCmdBlitImage(
 		renderer->currentCommandBuffer,
 		renderer->fauxBackbufferColor.handle->image,
 		VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -3348,9 +3358,7 @@ static void VULKAN_INTERNAL_SwapChainBlit(
 		1,
 		&blit,
 		VK_FILTER_LINEAR
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -3746,7 +3754,7 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
 	renderer->needNewRenderPass = 1;
 
-	renderer->vkCmdPipelineBarrier(
+	RECORD_CMD(renderer->vkCmdPipelineBarrier(
 		renderer->currentCommandBuffer,
 		srcStages,
 		dstStages,
@@ -3757,9 +3765,7 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 		&memoryBarrier,
 		0,
 		NULL
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 
 	subBuffer->resourceAccessType = nextResourceAccessType;
 }
@@ -3840,7 +3846,7 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
 	renderer->needNewRenderPass = 1;
 
-	renderer->vkCmdPipelineBarrier(
+	RECORD_CMD(renderer->vkCmdPipelineBarrier(
 		renderer->currentCommandBuffer,
 		srcStages,
 		dstStages,
@@ -3851,9 +3857,7 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 		NULL,
 		1,
 		&memoryBarrier
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 
 	*resourceAccessType = nextAccess;
 }
@@ -4886,16 +4890,14 @@ static void VULKAN_INTERNAL_GetTextureData(
 	imageCopy.imageSubresource.mipLevel = level;
 	imageCopy.bufferOffset = 0;
 
-	renderer->vkCmdCopyImageToBuffer(
+	RECORD_CMD(renderer->vkCmdCopyImageToBuffer(
 		renderer->currentCommandBuffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
 		renderer->textureStagingBuffer->buffer,
 		1,
 		&imageCopy
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 
 	/* Restore the image layout and wait for completion of the render pass */
 
@@ -4937,14 +4939,12 @@ static void VULKAN_INTERNAL_SetViewportCommand(VulkanRenderer *renderer)
 	vulkanViewport.minDepth = renderer->viewport.minDepth;
 	vulkanViewport.maxDepth = renderer->viewport.maxDepth;
 
-	renderer->vkCmdSetViewport(
+	RECORD_CMD(renderer->vkCmdSetViewport(
 		renderer->currentCommandBuffer,
 		0,
 		1,
 		&vulkanViewport
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 }
 
 static void VULKAN_INTERNAL_SetScissorRectCommand(VulkanRenderer *renderer)
@@ -4972,14 +4972,12 @@ static void VULKAN_INTERNAL_SetScissorRectCommand(VulkanRenderer *renderer)
 		vulkanScissorRect.offset = offset;
 		vulkanScissorRect.extent = extent;
 
-		renderer->vkCmdSetScissor(
+		RECORD_CMD(renderer->vkCmdSetScissor(
 			renderer->currentCommandBuffer,
 			0,
 			1,
 			&vulkanScissorRect
-		);
-
-		renderer->numActiveCommands += 1;
+		));
 	}
 }
 
@@ -4988,13 +4986,11 @@ static void VULKAN_INTERNAL_SetStencilReferenceValueCommand(
 ) {
 	if (renderer->renderPassInProgress)
 	{
-		renderer->vkCmdSetStencilReference(
+		RECORD_CMD(renderer->vkCmdSetStencilReference(
 			renderer->currentCommandBuffer,
 			VK_STENCIL_FRONT_AND_BACK,
 			renderer->stencilRef
-		);
-
-		renderer->numActiveCommands += 1;
+		));
 	}
 }
 
@@ -5002,14 +4998,12 @@ static void VULKAN_INTERNAL_SetDepthBiasCommand(VulkanRenderer *renderer)
 {
 	if (renderer->renderPassInProgress)
 	{
-		renderer->vkCmdSetDepthBias(
+		RECORD_CMD(renderer->vkCmdSetDepthBias(
 			renderer->currentCommandBuffer,
 			renderer->rasterizerState.depthBias,
 			0.0f, /* no clamp */
 			renderer->rasterizerState.slopeScaleDepthBias
-		);
-
-		renderer->numActiveCommands += 1;
+		));
 	}
 }
 
@@ -5566,14 +5560,12 @@ static void VULKAN_INTERNAL_BindPipeline(VulkanRenderer *renderer)
 
 		if (pipeline != renderer->currentPipeline)
 		{
-			renderer->vkCmdBindPipeline(
+			RECORD_CMD(renderer->vkCmdBindPipeline(
 				renderer->currentCommandBuffer,
 				VK_PIPELINE_BIND_POINT_GRAPHICS,
 				pipeline
-			);
-
+			));
 			renderer->currentPipeline = pipeline;
-			renderer->numActiveCommands += 1;
 		}
 
 		renderer->needNewPipeline = 0;
@@ -6408,9 +6400,8 @@ static void VULKAN_INTERNAL_MaybeEndRenderPass(
 ) {
 	if (renderer->renderPassInProgress)
 	{
-		renderer->vkCmdEndRenderPass(renderer->currentCommandBuffer);
+		RECORD_CMD(renderer->vkCmdEndRenderPass(renderer->currentCommandBuffer));
 
-		renderer->numActiveCommands += 1;
 		renderer->renderPassInProgress = 0;
 		renderer->drawCallMadeThisPass = 0;
 
@@ -6528,13 +6519,11 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	renderPassBeginInfo.clearValueCount = clearValueCount;
 	renderPassBeginInfo.pClearValues = clearValues;
 
-	renderer->vkCmdBeginRenderPass(
+	RECORD_CMD(renderer->vkCmdBeginRenderPass(
 		renderer->currentCommandBuffer,
 		&renderPassBeginInfo,
 		VK_SUBPASS_CONTENTS_INLINE
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 
 	renderer->renderPassInProgress = 1;
 
@@ -6548,12 +6537,10 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	blendConstants[2] = renderer->blendState.blendFactor.b / 255.0f;
 	blendConstants[3] = renderer->blendState.blendFactor.a / 255.0f;
 
-	renderer->vkCmdSetBlendConstants(
+	RECORD_CMD(renderer->vkCmdSetBlendConstants(
 		renderer->currentCommandBuffer,
 		blendConstants
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 
 	/* Reset bindings for the current frame in flight */
 
@@ -6728,15 +6715,13 @@ static void VULKAN_INTERNAL_MidRenderPassClear(
 		attachmentCount += 1;
 	}
 
-	renderer->vkCmdClearAttachments(
+	RECORD_CMD(renderer->vkCmdClearAttachments(
 		renderer->currentCommandBuffer,
 		attachmentCount,
 		clearAttachments,
 		1,
 		&clearRect
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 }
 
 /* Vulkan: Sampler State */
@@ -7176,25 +7161,21 @@ static void VULKAN_DrawInstancedPrimitives(
 	if (renderer->bufferCount > 0)
 	{
 		/* FIXME: State shadowing for vertex buffers? -flibit */
-		renderer->vkCmdBindVertexBuffers(
+		RECORD_CMD(renderer->vkCmdBindVertexBuffers(
 			renderer->currentCommandBuffer,
 			0,
 			renderer->bufferCount,
 			renderer->buffers,
 			renderer->offsets
-		);
-
-		renderer->numActiveCommands += 1;
+		));
 	}
 	/* FIXME: State shadowing for index buffers? -flibit */
-	renderer->vkCmdBindIndexBuffer(
+	RECORD_CMD(renderer->vkCmdBindIndexBuffer(
 		renderer->currentCommandBuffer,
 		subbuf.physicalBuffer->buffer,
 		subbuf.offset,
 		XNAToVK_IndexType[indexElementSize]
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 
 	MOJOSHADER_vkGetBoundShaders(&vertShader, &fragShader);
 	vertShaderResources = VULKAN_INTERNAL_FetchShaderResources(
@@ -7216,7 +7197,7 @@ static void VULKAN_DrawInstancedPrimitives(
 		dynamicOffsets
 	);
 
-	renderer->vkCmdBindDescriptorSets(
+	RECORD_CMD(renderer->vkCmdBindDescriptorSets(
 		renderer->currentCommandBuffer,
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
 		renderer->currentPipelineLayout,
@@ -7225,20 +7206,16 @@ static void VULKAN_DrawInstancedPrimitives(
 		descriptorSets,
 		2,
 		dynamicOffsets
-	);
+	));
 
-	renderer->numActiveCommands += 1;
-
-	renderer->vkCmdDrawIndexed(
+	RECORD_CMD(renderer->vkCmdDrawIndexed(
 		renderer->currentCommandBuffer,
 		PrimitiveVerts(primitiveType, primitiveCount),
 		instanceCount,
 		startIndex,
 		baseVertex,
 		0
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 
 	renderer->drawCallMadeThisPass = 1;
 }
@@ -7291,15 +7268,13 @@ static void VULKAN_DrawPrimitives(
 	if (renderer->bufferCount > 0)
 	{
 		/* FIXME: State shadowing for vertex buffers? -flibit */
-		renderer->vkCmdBindVertexBuffers(
+		RECORD_CMD(renderer->vkCmdBindVertexBuffers(
 			renderer->currentCommandBuffer,
 			0,
 			renderer->bufferCount,
 			renderer->buffers,
 			renderer->offsets
-		);
-
-		renderer->numActiveCommands += 1;
+		));
 	}
 
 	MOJOSHADER_vkGetBoundShaders(&vertShader, &fragShader);
@@ -7322,7 +7297,7 @@ static void VULKAN_DrawPrimitives(
 		dynamicOffsets
 	);
 
-	renderer->vkCmdBindDescriptorSets(
+	RECORD_CMD(renderer->vkCmdBindDescriptorSets(
 		renderer->currentCommandBuffer,
 		VK_PIPELINE_BIND_POINT_GRAPHICS,
 		renderer->currentPipelineLayout,
@@ -7331,19 +7306,15 @@ static void VULKAN_DrawPrimitives(
 		descriptorSets,
 		2,
 		dynamicOffsets
-	);
+	));
 
-	renderer->numActiveCommands += 1;
-
-	renderer->vkCmdDraw(
+	RECORD_CMD(renderer->vkCmdDraw(
 		renderer->currentCommandBuffer,
 		PrimitiveVerts(primitiveType, primitiveCount),
 		1,
 		vertexStart,
 		0
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 
 	renderer->drawCallMadeThisPass = 1;
 }
@@ -7417,12 +7388,10 @@ static void VULKAN_SetBlendFactor(
 		renderer->blendState.blendFactor = *blendFactor;
 		renderer->needNewPipeline = 1;
 
-		renderer->vkCmdSetBlendConstants(
+		RECORD_CMD(renderer->vkCmdSetBlendConstants(
 			renderer->currentCommandBuffer,
 			blendConstants
-		);
-
-		renderer->numActiveCommands += 1;
+		));
 	}
 }
 
@@ -7901,7 +7870,7 @@ static void VULKAN_ResolveTarget(
 			blit.dstSubresource.layerCount = layerCount;
 			blit.dstSubresource.mipLevel = level;
 
-			renderer->vkCmdBlitImage(
+			RECORD_CMD(renderer->vkCmdBlitImage(
 				renderer->currentCommandBuffer,
 				vulkanTexture->image,
 				VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
@@ -7910,9 +7879,7 @@ static void VULKAN_ResolveTarget(
 				1,
 				&blit,
 				VK_FILTER_LINEAR
-			);
-
-			renderer->numActiveCommands += 1;
+			));
 		}
 
 		/* Transition level >= 1 back to the original access type */
@@ -8244,16 +8211,14 @@ static void VULKAN_SetTextureData2D(
 	imageCopy.bufferRowLength = 0;
 	imageCopy.bufferImageHeight = 0;
 
-	renderer->vkCmdCopyBufferToImage(
+	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
 		renderer->currentCommandBuffer,
 		renderer->textureStagingBuffer->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 }
@@ -8306,16 +8271,14 @@ static void VULKAN_SetTextureData3D(
 	imageCopy.bufferRowLength = 0;
 	imageCopy.bufferImageHeight = 0;
 
-	renderer->vkCmdCopyBufferToImage(
+	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
 		renderer->currentCommandBuffer,
 		renderer->textureStagingBuffer->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 }
@@ -8367,16 +8330,14 @@ static void VULKAN_SetTextureDataCube(
 	imageCopy.bufferRowLength = 0; /* assumes tightly packed data */
 	imageCopy.bufferImageHeight = 0; /* assumes tightly packed data */
 
-	renderer->vkCmdCopyBufferToImage(
+	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
 		renderer->currentCommandBuffer,
 		renderer->textureStagingBuffer->buffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 }
@@ -8442,16 +8403,14 @@ static void VULKAN_SetTextureDataYUV(
 	imageCopy.bufferRowLength = yWidth;
 	imageCopy.bufferImageHeight = yHeight;
 
-	renderer->vkCmdCopyBufferToImage(
+	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
 		renderer->currentCommandBuffer,
 		renderer->textureStagingBuffer->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 
 	/* These apply to both U and V */
 
@@ -8485,16 +8444,14 @@ static void VULKAN_SetTextureDataYUV(
 		&tex->resourceAccessType
 	);
 
-	renderer->vkCmdCopyBufferToImage(
+	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
 		renderer->currentCommandBuffer,
 		renderer->textureStagingBuffer->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 
 	/* V */
 
@@ -8521,16 +8478,14 @@ static void VULKAN_SetTextureDataYUV(
 		&tex->resourceAccessType
 	);
 
-	renderer->vkCmdCopyBufferToImage(
+	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
 		renderer->currentCommandBuffer,
 		renderer->textureStagingBuffer->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 }
@@ -9174,23 +9129,19 @@ static void VULKAN_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 	/* Need to do this between passes */
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
 
-	renderer->vkCmdResetQueryPool(
+	RECORD_CMD(renderer->vkCmdResetQueryPool(
 		renderer->currentCommandBuffer,
 		renderer->queryPool,
 		vulkanQuery->index,
 		1
-	);
+	));
 
-	renderer->numActiveCommands += 1;
-
-	renderer->vkCmdBeginQuery(
+	RECORD_CMD(renderer->vkCmdBeginQuery(
 		renderer->currentCommandBuffer,
 		renderer->queryPool,
 		vulkanQuery->index,
 		VK_QUERY_CONTROL_PRECISE_BIT
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 }
 
 static void VULKAN_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
@@ -9202,13 +9153,11 @@ static void VULKAN_QueryEnd(FNA3D_Renderer *driverData, FNA3D_Query *query)
 	 * the same pass as they started it
 	 */
 
-	renderer->vkCmdEndQuery(
+	RECORD_CMD(renderer->vkCmdEndQuery(
 		renderer->currentCommandBuffer,
 		renderer->queryPool,
 		vulkanQuery->index
-	);
-
-	renderer->numActiveCommands += 1;
+	));
 }
 
 static uint8_t VULKAN_QueryComplete(
@@ -9347,12 +9296,10 @@ static void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 		labelInfo.pNext = NULL;
 		labelInfo.pLabelName = text;
 
-		renderer->vkCmdInsertDebugUtilsLabelEXT(
+		RECORD_CMD(renderer->vkCmdInsertDebugUtilsLabelEXT(
 			renderer->currentCommandBuffer,
 			&labelInfo
-		);
-
-		renderer->numActiveCommands += 1;
+		));
 	}
 }
 
