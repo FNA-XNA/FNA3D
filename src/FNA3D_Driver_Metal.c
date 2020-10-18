@@ -38,6 +38,7 @@ typedef struct MetalTexture /* Cast from FNA3D_Texture* */
 	int32_t width;
 	int32_t height;
 	uint8_t isPrivate;
+	uint8_t bound;
 	FNA3D_SurfaceFormat format;
 	struct MetalTexture *next; /* FIXME: Remove this */
 } MetalTexture;
@@ -45,6 +46,7 @@ typedef struct MetalTexture /* Cast from FNA3D_Texture* */
 static MetalTexture NullTexture =
 {
 	NULL,
+	0,
 	0,
 	0,
 	0,
@@ -202,6 +204,9 @@ typedef struct MetalRenderer /* Cast from FNA3D_Renderer* */
 	uint8_t textureNeedsUpdate[MAX_TOTAL_SAMPLERS];
 	uint8_t samplerNeedsUpdate[MAX_TOTAL_SAMPLERS];
 	MetalTexture *transientTextures;
+	MetalTexture **texturesInUse;
+	int32_t numTexturesInUse;
+	int32_t maxTexturesInUse;
 
 	/* Depth Stencil State */
 	FNA3D_DepthStencilState depthStencilState;
@@ -551,6 +556,7 @@ static MetalTexture* CreateTexture(
 	result->format = format;
 	result->hasMipmaps = levelCount > 1;
 	result->isPrivate = isRenderTarget;
+	result->bound = 0;
 	result->next = NULL;
 	return result;
 }
@@ -948,7 +954,27 @@ static void METAL_INTERNAL_UpdateRenderPass(MetalRenderer *renderer)
 	}
 }
 
-/* Pipeline Stall Functions */
+/* Pipeline Flush Functions */
+
+static void METAL_INTERNAL_MarkBufferAsBound(
+	MetalRenderer *renderer,
+	MetalBuffer *buf
+) {
+	if (buf->bound) return;
+	buf->bound = 1;
+
+	if (renderer->numBuffersInUse == renderer->maxBuffersInUse)
+	{
+		renderer->maxBuffersInUse *= 2;
+		renderer->buffersInUse = SDL_realloc(
+			renderer->buffersInUse,
+			sizeof(MetalBuffer*) * renderer->maxBuffersInUse
+		);
+	}
+
+	renderer->buffersInUse[renderer->numBuffersInUse] = buf;
+	renderer->numBuffersInUse += 1;
+}
 
 static inline void METAL_INTERNAL_ResetBuffers(MetalRenderer *renderer)
 {
@@ -965,7 +991,41 @@ static inline void METAL_INTERNAL_ResetBuffers(MetalRenderer *renderer)
 	renderer->numBuffersInUse = 0;
 }
 
-static void METAL_INTERNAL_Stall(MetalRenderer *renderer)
+static void METAL_INTERNAL_MarkTextureAsBound(
+	MetalRenderer *renderer,
+	MetalTexture *tex
+) {
+	if (tex->bound) return;
+	tex->bound = 1;
+
+	if (renderer->numTexturesInUse == renderer->maxTexturesInUse)
+	{
+		renderer->maxTexturesInUse *= 2;
+		renderer->texturesInUse = SDL_realloc(
+			renderer->texturesInUse,
+			sizeof(MetalTexture*) * renderer->maxTexturesInUse
+		);
+	}
+
+	renderer->texturesInUse[renderer->numTexturesInUse] = tex;
+	renderer->numTexturesInUse += 1;
+}
+
+static inline void METAL_INTERNAL_ResetTextures(MetalRenderer *renderer)
+{
+	int32_t i;
+	for (i = 0; i < renderer->numTexturesInUse; i += 1)
+	{
+		if (renderer->texturesInUse[i] != NULL)
+		{
+			renderer->texturesInUse[i]->bound = 0;
+			renderer->texturesInUse[i] = NULL;
+		}
+	}
+	renderer->numTexturesInUse = 0;
+}
+
+static void METAL_INTERNAL_Flush(MetalRenderer *renderer)
 {
 	METAL_INTERNAL_EndPass(renderer);
 	mtlCommitCommandBuffer(renderer->commandBuffer);
@@ -975,6 +1035,7 @@ static void METAL_INTERNAL_Stall(MetalRenderer *renderer)
 	renderer->needNewRenderPass = 1;
 
 	METAL_INTERNAL_ResetBuffers(renderer);
+	METAL_INTERNAL_ResetTextures(renderer);
 }
 
 /* Buffer Helper Functions */
@@ -1135,7 +1196,7 @@ static void METAL_INTERNAL_SetBufferData(
 	{
 		if (options == FNA3D_SETDATAOPTIONS_NONE)
 		{
-			METAL_INTERNAL_Stall(renderer);
+			METAL_INTERNAL_Flush(renderer);
 			mtlBuffer->bound = 1;
 		}
 		else if (options == FNA3D_SETDATAOPTIONS_DISCARD)
@@ -1171,28 +1232,6 @@ static void METAL_INTERNAL_SetBufferData(
 
 	#undef SUBBUF
 	#undef CURIDX
-}
-
-static void METAL_INTERNAL_MarkAsBound(
-	MetalRenderer *renderer,
-	MetalBuffer *buf
-) {
-	/* Don't re-bind a bound buffer */
-	if (buf->bound) return;
-
-	buf->bound = 1;
-
-	if (renderer->numBuffersInUse == renderer->maxBuffersInUse)
-	{
-		renderer->maxBuffersInUse *= 2;
-		renderer->buffersInUse = SDL_realloc(
-			renderer->buffersInUse,
-			sizeof(MetalBuffer*) * renderer->maxBuffersInUse
-		);
-	}
-
-	renderer->buffersInUse[renderer->numBuffersInUse] = buf;
-	renderer->numBuffersInUse += 1;
 }
 
 /* Pipeline State Object Creation / Retrieval */
@@ -2181,8 +2220,9 @@ static void METAL_SwapBuffers(
 	/* Release allocations from the past frame */
 	objc_autoreleasePoolPop(renderer->pool);
 
-	/* Reset buffer state */
+	/* Reset buffer and texture internal states */
 	METAL_INTERNAL_ResetBuffers(renderer);
+	METAL_INTERNAL_ResetTextures(renderer);
 	MOJOSHADER_mtlEndFrame();
 
 	/* We're done here. */
@@ -2241,7 +2281,7 @@ static void METAL_DrawInstancedPrimitives(
 	];
 	int32_t totalIndexOffset;
 
-	METAL_INTERNAL_MarkAsBound(renderer, indexBuffer);
+	METAL_INTERNAL_MarkBufferAsBound(renderer, indexBuffer);
 	totalIndexOffset = (
 		(startIndex * IndexSize(indexElementSize)) +
 		subbuf.offset
@@ -2500,6 +2540,7 @@ static void METAL_VerifySampler(
 		renderer->textures[index] = mtlTexture;
 		renderer->textureNeedsUpdate[index] = 1;
 	}
+	METAL_INTERNAL_MarkTextureAsBound(renderer, mtlTexture);
 
 	/* Update the sampler state, if needed */
 	mtlSamplerState = METAL_INTERNAL_FetchSamplerState(
@@ -2691,7 +2732,7 @@ static void METAL_ApplyVertexBufferBindings(
 			bindings[i].vertexDeclaration.vertexStride
 		);
 
-		METAL_INTERNAL_MarkAsBound(renderer, vertexBuffer);
+		METAL_INTERNAL_MarkBufferAsBound(renderer, vertexBuffer);
 		if (renderer->ldVertexBuffers[i] != subbuf.buffer)
 		{
 			mtlSetVertexBuffer(
@@ -3221,6 +3262,11 @@ static void METAL_SetTextureData2D(
 	MTLSize size = {w, h, 1};
 	MTLRegion region = {origin, size};
 
+	if (mtlTexture->bound)
+	{
+		METAL_INTERNAL_Flush(renderer);
+	}
+
 	if (mtlTexture->isPrivate)
 	{
 		/* We need an active command buffer */
@@ -3267,7 +3313,7 @@ static void METAL_SetTextureData2D(
 
 		/* Submit the blit command to the GPU and wait... */
 		mtlEndEncoding(blit);
-		METAL_INTERNAL_Stall(renderer);
+		METAL_INTERNAL_Flush(renderer);
 
 		/* We're done with the temp texture */
 		mtlSetPurgeableState(
@@ -3290,10 +3336,16 @@ static void METAL_SetTextureData3D(
 	void* data,
 	int32_t dataLength
 ) {
+	MetalRenderer *renderer = (MetalRenderer*) driverData;
 	MetalTexture *mtlTexture = (MetalTexture*) texture;
 	MTLOrigin origin = {x, y, z};
 	MTLSize size = {w, h, d};
 	MTLRegion region = {origin, size};
+
+	if (mtlTexture->bound)
+	{
+		METAL_INTERNAL_Flush(renderer);
+	}
 
 	mtlReplaceRegion(
 		mtlTexture->handle,
@@ -3327,6 +3379,11 @@ static void METAL_SetTextureDataCube(
 	MTLSize size = {w, h, 1};
 	MTLRegion region = {origin, size};
 	int32_t slice = cubeMapFace;
+
+	if (mtlTexture->bound)
+	{
+		METAL_INTERNAL_Flush(renderer);
+	}
 
 	if (mtlTexture->isPrivate)
 	{
@@ -3377,7 +3434,7 @@ static void METAL_SetTextureDataCube(
 
 		/* Submit the blit command to the GPU and wait... */
 		mtlEndEncoding(blit);
-		METAL_INTERNAL_Stall(renderer);
+		METAL_INTERNAL_Flush(renderer);
 
 		/* We're done with the temp texture */
 		mtlSetPurgeableState(
@@ -3496,7 +3553,7 @@ static void METAL_GetTextureData2D(
 
 		/* Submit the blit command to the GPU and wait... */
 		mtlEndEncoding(blit);
-		METAL_INTERNAL_Stall(renderer);
+		METAL_INTERNAL_Flush(renderer);
 	}
 
 	mtlGetTextureBytes(
@@ -3610,7 +3667,7 @@ static void METAL_GetTextureDataCube(
 
 		/* Submit the blit command to the GPU and wait... */
 		mtlEndEncoding(blit);
-		METAL_INTERNAL_Stall(renderer);
+		METAL_INTERNAL_Flush(renderer);
 	}
 
 	mtlGetTextureBytes(
@@ -4538,10 +4595,15 @@ FNA3D_Device* METAL_CreateDevice(
 	);
 	SDL_memset(renderer->bufferAllocator, '\0', sizeof(MetalBufferAllocator));
 
-	/* Initialize buffers-in-use array */
+	/* Initialize buffers/textures-in-use arrays */
 	renderer->maxBuffersInUse = 8; /* arbitrary! */
 	renderer->buffersInUse = (MetalBuffer**) SDL_malloc(
 		sizeof(MetalBuffer*) * renderer->maxBuffersInUse
+	);
+
+	renderer->maxTexturesInUse = 8; /* arbitrary! */
+	renderer->texturesInUse = (MetalTexture**) SDL_malloc(
+		sizeof(MetalTexture*) * renderer->maxTexturesInUse
 	);
 
 	/* Initialize renderer members not covered by SDL_memset('\0') */
