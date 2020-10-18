@@ -1678,7 +1678,7 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 
 static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer, uint8_t flush);
 
-static void VULKAN_INTERNAL_MaybeEndRenderPass(VulkanRenderer *renderer, uint8_t forceBreak);
+static void VULKAN_INTERNAL_MaybeEndRenderPass(VulkanRenderer *renderer, uint8_t allowBreak);
 
 static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync);
 
@@ -3236,7 +3236,7 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 
 	if (renderer->renderPassInProgress)
 	{
-		VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
+		VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
 		renderer->needNewRenderPass = 1;
 	}
 
@@ -3443,7 +3443,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		}
 
 		/* Must end render pass before blitting */
-		VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
+		VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
 
 		VULKAN_INTERNAL_SwapChainBlit(
 			renderer,
@@ -3751,7 +3751,7 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 		dstStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	}
 
-	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
 	renderer->needNewRenderPass = 1;
 
 	RECORD_CMD(renderer->vkCmdPipelineBarrier(
@@ -3843,7 +3843,7 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 		dstStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
 	}
 
-	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
 	renderer->needNewRenderPass = 1;
 
 	RECORD_CMD(renderer->vkCmdPipelineBarrier(
@@ -4136,7 +4136,7 @@ static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer, uint8_t 
 	SwapChainSupportDetails swapChainSupportDetails;
 	VkExtent2D extent;
 
-	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
 	if (flush)
 	{
 		VULKAN_INTERNAL_FlushCommands(renderer, 1);
@@ -6396,7 +6396,7 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 
 static void VULKAN_INTERNAL_MaybeEndRenderPass(
 	VulkanRenderer *renderer,
-	uint8_t noBreak
+	uint8_t allowBreak
 ) {
 	if (renderer->renderPassInProgress)
 	{
@@ -6405,7 +6405,7 @@ static void VULKAN_INTERNAL_MaybeEndRenderPass(
 		renderer->renderPassInProgress = 0;
 		renderer->drawCallMadeThisPass = 0;
 
-		if (!noBreak && (renderer->numActiveCommands >= COMMAND_LIMIT))
+		if (allowBreak && (renderer->numActiveCommands >= COMMAND_LIMIT))
 		{
 			VULKAN_INTERNAL_EndCommandBuffer(renderer, 1, 1);
 		}
@@ -6428,7 +6428,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 		return;
 	}
 
-	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
 
 	renderer->renderPass = VULKAN_INTERNAL_FetchRenderPass(renderer);
 	framebuffer = VULKAN_INTERNAL_FetchFramebuffer(
@@ -7812,7 +7812,7 @@ static void VULKAN_ResolveTarget(
 	/* If the target has mipmaps, regenerate them now */
 	if (target->levelCount > 1)
 	{
-		VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
+		VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
 
 		origAccessType = vulkanTexture->resourceAccessType;
 
@@ -9127,7 +9127,7 @@ static void VULKAN_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 	VulkanQuery *vulkanQuery = (VulkanQuery*) query;
 
 	/* Need to do this between passes */
-	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
 
 	RECORD_CMD(renderer->vkCmdResetQueryPool(
 		renderer->currentCommandBuffer,
