@@ -24,6 +24,7 @@
  *
  */
 
+#include <SDL_mutex.h>
 #if FNA3D_DRIVER_VULKAN
 
 #define VK_NO_PROTOTYPES
@@ -1263,6 +1264,11 @@ typedef struct VulkanRenderer
 
 	uint8_t submitCounter; /* used so we don't clobber data being used by GPU */
 
+	/* Threading */
+	SDL_mutex *commandLock;
+	SDL_mutex *passLock;
+	SDL_mutex *textureDisposeLock;
+
 	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
 	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
@@ -1273,12 +1279,14 @@ typedef struct VulkanRenderer
 /* Command Buffer Recording Macro */
 
 #define RECORD_CMD(cmdCall)					\
+	SDL_LockMutex(renderer->commandLock);    \
 	if (renderer->currentCommandBuffer == NULL)		\
 	{							\
 		VULKAN_INTERNAL_BeginCommandBuffer(renderer);	\
 	}							\
 	cmdCall;						\
-	renderer->numActiveCommands += 1;
+	renderer->numActiveCommands += 1;			\
+	SDL_UnlockMutex(renderer->commandLock);
 
 /* XNA->Vulkan Translation Arrays */
 
@@ -3666,18 +3674,18 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync)
 {
-	VULKAN_INTERNAL_SubmitCommands(renderer, 0);
+  SDL_LockMutex(renderer->passLock);
+  SDL_LockMutex(renderer->commandLock);
 
-	if (sync)
-	{
-		renderer->vkWaitForFences(
-			renderer->logicalDevice,
-			1,
-			&renderer->inFlightFence,
-			VK_TRUE,
-			UINT64_MAX
-		);
+  VULKAN_INTERNAL_SubmitCommands(renderer, 0);
+
+  if (sync) {
+    renderer->vkWaitForFences(renderer->logicalDevice, 1,
+                              &renderer->inFlightFence, VK_TRUE, UINT64_MAX);
 	}
+
+        SDL_UnlockMutex(renderer->passLock);
+        SDL_UnlockMutex(renderer->commandLock);
 }
 
 static void VULKAN_INTERNAL_FlushCommandsAndPresent(
@@ -3686,11 +3694,17 @@ static void VULKAN_INTERNAL_FlushCommandsAndPresent(
 	FNA3D_Rect *destinationRectangle,
 	void* overrideWindowHandle
 ) {
-	renderer->presentSourceRectangle = sourceRectangle;
-	renderer->presentDestinationRectangle = destinationRectangle;
-	renderer->presentOverrideWindowHandle = overrideWindowHandle;
+  SDL_LockMutex(renderer->passLock);
+  SDL_LockMutex(renderer->commandLock);
 
-	VULKAN_INTERNAL_SubmitCommands(renderer, 1);
+  renderer->presentSourceRectangle = sourceRectangle;
+  renderer->presentDestinationRectangle = destinationRectangle;
+  renderer->presentOverrideWindowHandle = overrideWindowHandle;
+
+  VULKAN_INTERNAL_SubmitCommands(renderer, 1);
+
+  SDL_UnlockMutex(renderer->passLock);
+  SDL_UnlockMutex(renderer->commandLock);
 }
 
 /* Vulkan: Memory Barriers */
@@ -3712,7 +3726,9 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 		return;
 	}
 
-	memoryBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+        SDL_LockMutex(renderer->passLock);
+
+        memoryBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
 	memoryBarrier.pNext = NULL;
 	memoryBarrier.srcAccessMask = 0;
 	memoryBarrier.dstAccessMask = 0;
@@ -3768,6 +3784,8 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 	));
 
 	subBuffer->resourceAccessType = nextResourceAccessType;
+
+        SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_INTERNAL_ImageMemoryBarrier(
@@ -3793,7 +3811,9 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 		return;
 	}
 
-	memoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+        SDL_LockMutex(renderer->passLock);
+
+        memoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
 	memoryBarrier.pNext = NULL;
 	memoryBarrier.srcAccessMask = 0;
 	memoryBarrier.dstAccessMask = 0;
@@ -3860,6 +3880,8 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	));
 
 	*resourceAccessType = nextAccess;
+
+        SDL_UnlockMutex(renderer->passLock);
 }
 
 /* Vulkan: Swapchain */
@@ -5716,6 +5738,8 @@ static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer *renderer)
 
 	/* Destroy submitted resources */
 
+	SDL_LockMutex(renderer->textureDisposeLock);
+
 	for (i = 0; i < renderer->submittedRenderbuffersToDestroyCount; i += 1)
 	{
 		VULKAN_INTERNAL_DestroyRenderbuffer(
@@ -5823,6 +5847,8 @@ static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer *renderer)
 	}
 	renderer->submittedTexturesToDestroyCount = renderer->texturesToDestroyCount;
 	renderer->texturesToDestroyCount = 0;
+
+	SDL_UnlockMutex(renderer->textureDisposeLock);
 }
 
 /* Vulkan: The Faux-Backbuffer */
@@ -6398,18 +6424,23 @@ static void VULKAN_INTERNAL_MaybeEndRenderPass(
 	VulkanRenderer *renderer,
 	uint8_t allowBreak
 ) {
-	if (renderer->renderPassInProgress)
-	{
-		RECORD_CMD(renderer->vkCmdEndRenderPass(renderer->currentCommandBuffer));
+  SDL_LockMutex(renderer->passLock);
 
-		renderer->renderPassInProgress = 0;
-		renderer->drawCallMadeThisPass = 0;
+  if (renderer->renderPassInProgress) {
+    RECORD_CMD(renderer->vkCmdEndRenderPass(renderer->currentCommandBuffer));
 
-		if (allowBreak && (renderer->numActiveCommands >= COMMAND_LIMIT))
-		{
-			VULKAN_INTERNAL_EndCommandBuffer(renderer, 1, 1);
-		}
+    renderer->renderPassInProgress = 0;
+    renderer->drawCallMadeThisPass = 0;
+
+    /* Unlocking long-term lock */
+    SDL_UnlockMutex(renderer->passLock);
+
+    if (allowBreak && (renderer->numActiveCommands >= COMMAND_LIMIT)) {
+      VULKAN_INTERNAL_EndCommandBuffer(renderer, 1, 1);
+    }
 	}
+
+        SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_INTERNAL_BeginRenderPass(
@@ -6430,7 +6461,9 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
 
-	renderer->renderPass = VULKAN_INTERNAL_FetchRenderPass(renderer);
+        SDL_LockMutex(renderer->passLock);
+
+        renderer->renderPass = VULKAN_INTERNAL_FetchRenderPass(renderer);
 	framebuffer = VULKAN_INTERNAL_FetchFramebuffer(
 		renderer,
 		renderer->renderPass
@@ -6826,7 +6859,8 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	VULKAN_INTERNAL_DestroyTexture(renderer, renderer->dummyFragTexture3D);
 	VULKAN_INTERNAL_DestroyTexture(renderer, renderer->dummyFragTextureCube);
 
-	/* We have to do this again even though we flushed so the rotation happens correctly */
+	/* We have to do this twice so the rotation happens correctly */
+	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
 	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
 
 	VULKAN_INTERNAL_DestroyTextureStagingBuffer(renderer);
@@ -7041,7 +7075,10 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		}
 	}
 
-	SDL_free(renderer->bufferAllocator);
+	SDL_DestroyMutex(renderer->commandLock);
+        SDL_DestroyMutex(renderer->passLock);
+
+        SDL_free(renderer->bufferAllocator);
 	SDL_free(renderer->buffersInUse);
 
 	SDL_free(renderer->inactiveCommandBuffers);
@@ -8152,6 +8189,7 @@ static void VULKAN_AddDisposeTexture(
 	}
 
 	/* Queue texture for destruction */
+	SDL_LockMutex(renderer->textureDisposeLock);
 	if (renderer->texturesToDestroyCount + 1 >= renderer->texturesToDestroyCapacity)
 	{
 		renderer->texturesToDestroyCapacity *= 2;
@@ -8163,6 +8201,7 @@ static void VULKAN_AddDisposeTexture(
 	}
 	renderer->texturesToDestroy[renderer->texturesToDestroyCount] = vulkanTexture;
 	renderer->texturesToDestroyCount += 1;
+	SDL_UnlockMutex(renderer->textureDisposeLock);
 }
 
 static void VULKAN_SetTextureData2D(
@@ -8180,7 +8219,9 @@ static void VULKAN_SetTextureData2D(
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
 
-	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
+        SDL_LockMutex(renderer->passLock);
+
+        VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
 	SDL_memcpy(renderer->textureStagingBuffer->mapPointer, data, dataLength);
 
@@ -8221,6 +8262,8 @@ static void VULKAN_SetTextureData2D(
 	));
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
+
+        SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_SetTextureData3D(
@@ -8240,7 +8283,9 @@ static void VULKAN_SetTextureData3D(
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
 
-	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
+        SDL_LockMutex(renderer->passLock);
+
+        VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
 	SDL_memcpy(renderer->textureStagingBuffer->mapPointer, data, dataLength);
 
@@ -8281,6 +8326,8 @@ static void VULKAN_SetTextureData3D(
 	));
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
+
+        SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_SetTextureDataCube(
@@ -8299,7 +8346,9 @@ static void VULKAN_SetTextureDataCube(
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
 
-	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
+        SDL_LockMutex(renderer->passLock);
+
+        VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
 	SDL_memcpy(renderer->textureStagingBuffer->mapPointer, data, dataLength);
 
@@ -8340,6 +8389,8 @@ static void VULKAN_SetTextureDataCube(
 	));
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
+
+        SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_SetTextureDataYUV(
@@ -8361,7 +8412,9 @@ static void VULKAN_SetTextureDataYUV(
 	int32_t uvDataLength = BytesPerImage(uvWidth, uvHeight, FNA3D_SURFACEFORMAT_ALPHA8);
 	VkBufferImageCopy imageCopy;
 
-	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, yDataLength + uvDataLength);
+        SDL_LockMutex(renderer->passLock);
+
+        VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, yDataLength + uvDataLength);
 
 	/* Initialize values that are the same for Y, U, and V */
 
@@ -8488,6 +8541,8 @@ static void VULKAN_SetTextureDataYUV(
 	));
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
+
+        SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_GetTextureData2D(
@@ -10268,6 +10323,10 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	}
 
 	renderer->submitCounter = 0;
+
+	renderer->commandLock = SDL_CreateMutex();
+	renderer->passLock = SDL_CreateMutex();
+	renderer->textureDisposeLock = SDL_CreateMutex();
 
 	return result;
 }
