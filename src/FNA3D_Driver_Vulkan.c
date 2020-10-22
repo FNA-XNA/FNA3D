@@ -24,7 +24,6 @@
  *
  */
 
-#include <SDL_mutex.h>
 #if FNA3D_DRIVER_VULKAN
 
 #define VK_NO_PROTOTYPES
