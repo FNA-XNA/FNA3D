@@ -1278,7 +1278,7 @@ typedef struct VulkanRenderer
 /* Command Buffer Recording Macro */
 
 #define RECORD_CMD(cmdCall)					\
-	SDL_LockMutex(renderer->commandLock);    \
+	SDL_LockMutex(renderer->commandLock);			\
 	if (renderer->currentCommandBuffer == NULL)		\
 	{							\
 		VULKAN_INTERNAL_BeginCommandBuffer(renderer);	\
