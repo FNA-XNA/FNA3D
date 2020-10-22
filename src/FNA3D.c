@@ -660,7 +660,7 @@ void FNA3D_AddDisposeTexture(
 	FNA3D_Device *device,
 	FNA3D_Texture *texture
 ) {
-	if (device == NULL)
+	if (device == NULL || texture == NULL)
 	{
 		return;
 	}
@@ -925,7 +925,7 @@ void FNA3D_AddDisposeRenderbuffer(
 	FNA3D_Device *device,
 	FNA3D_Renderbuffer *renderbuffer
 ) {
-	if (device == NULL)
+	if (device == NULL || renderbuffer == NULL)
 	{
 		return;
 	}
@@ -959,7 +959,7 @@ void FNA3D_AddDisposeVertexBuffer(
 	FNA3D_Device *device,
 	FNA3D_Buffer *buffer
 ) {
-	if (device == NULL)
+	if (device == NULL || buffer == NULL)
 	{
 		return;
 	}
@@ -1040,7 +1040,7 @@ void FNA3D_AddDisposeIndexBuffer(
 	FNA3D_Device *device,
 	FNA3D_Buffer *buffer
 ) {
-	if (device == NULL)
+	if (device == NULL || buffer == NULL)
 	{
 		return;
 	}
@@ -1137,7 +1137,7 @@ void FNA3D_AddDisposeEffect(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect
 ) {
-	if (device == NULL)
+	if (device == NULL || effect == NULL)
 	{
 		return;
 	}
@@ -1214,7 +1214,7 @@ FNA3D_Query* FNA3D_CreateQuery(FNA3D_Device *device)
 
 void FNA3D_AddDisposeQuery(FNA3D_Device *device, FNA3D_Query *query)
 {
-	if (device == NULL)
+	if (device == NULL || query == NULL)
 	{
 		return;
 	}
