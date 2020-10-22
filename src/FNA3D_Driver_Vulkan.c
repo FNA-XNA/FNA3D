@@ -3678,9 +3678,15 @@ static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync
 
 	VULKAN_INTERNAL_SubmitCommands(renderer, 0);
 
-	if (sync) {
-		renderer->vkWaitForFences(renderer->logicalDevice, 1,
-								  &renderer->inFlightFence, VK_TRUE, UINT64_MAX);
+	if (sync)
+	{
+		renderer->vkWaitForFences(
+			renderer->logicalDevice,
+			1,
+			&renderer->inFlightFence,
+			VK_TRUE,
+			UINT64_MAX
+		);
 	}
 
 	SDL_UnlockMutex(renderer->passLock);
@@ -4204,6 +4210,7 @@ static void VULKAN_INTERNAL_RemoveBuffer(
 	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
 
 	SDL_LockMutex(renderer->disposeLock);
+
 	/* Queue buffer for destruction */
 	if (renderer->buffersToDestroyCount + 1 >= renderer->buffersToDestroyCapacity)
 	{
@@ -4219,6 +4226,7 @@ static void VULKAN_INTERNAL_RemoveBuffer(
 		renderer->buffersToDestroyCount
 	] = vulkanBuffer;
 	renderer->buffersToDestroyCount += 1;
+
 	SDL_UnlockMutex(renderer->disposeLock);
 }
 
@@ -6427,7 +6435,8 @@ static void VULKAN_INTERNAL_MaybeEndRenderPass(
 ) {
 	SDL_LockMutex(renderer->passLock);
 
-	if (renderer->renderPassInProgress) {
+	if (renderer->renderPassInProgress)
+	{
 		RECORD_CMD(renderer->vkCmdEndRenderPass(renderer->currentCommandBuffer));
 
 		renderer->renderPassInProgress = 0;
@@ -6436,7 +6445,8 @@ static void VULKAN_INTERNAL_MaybeEndRenderPass(
 		/* Unlocking long-term lock */
 		SDL_UnlockMutex(renderer->passLock);
 
-		if (allowBreak && (renderer->numActiveCommands >= COMMAND_LIMIT)) {
+		if (allowBreak && (renderer->numActiveCommands >= COMMAND_LIMIT))
+		{
 			VULKAN_INTERNAL_EndCommandBuffer(renderer, 1, 1);
 		}
 	}
