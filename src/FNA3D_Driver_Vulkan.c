@@ -2698,6 +2698,12 @@ static ShaderResources *ShaderResources_Init(
 	unsigned long long vOff, fOff, vSize, fSize;
 	ShaderResources *shaderResources = SDL_malloc(sizeof(ShaderResources));
 
+	/*
+	 * Lock to prevent mojoshader resources
+	 * from being overwritten during initialization
+	 */
+	SDL_LockMutex(renderer->passLock);
+
 	shaderResources->elements = SDL_malloc(sizeof(SamplerDescriptorSetHashMap) * 16);
 	shaderResources->count = 0;
 	shaderResources->capacity = 16;
@@ -2795,6 +2801,8 @@ static ShaderResources *ShaderResources_Init(
 			NULL
 		);
 	}
+
+	SDL_UnlockMutex(renderer->passLock);
 
 	return shaderResources;
 }
@@ -9092,6 +9100,12 @@ static void VULKAN_ApplyEffect(
 	const MOJOSHADER_effectTechnique *technique = fnaEffect->effect->current_technique;
 	uint32_t numPasses;
 
+	/*
+	 * Lock to prevent mojoshader from overwriting resource data
+	 * while resources are initialized
+	 */
+	SDL_LockMutex(renderer->passLock);
+
 	renderer->vertexSamplerDescriptorSetDataNeedsUpdate = 1;
 	renderer->fragSamplerDescriptorSetDataNeedsUpdate = 1;
 	renderer->needNewPipeline = 1;
@@ -9104,12 +9118,16 @@ static void VULKAN_ApplyEffect(
 			MOJOSHADER_effectCommitChanges(
 				renderer->currentEffect
 			);
+
+			SDL_UnlockMutex(renderer->passLock);
 			return;
 		}
 		MOJOSHADER_effectEndPass(renderer->currentEffect);
 		MOJOSHADER_effectBeginPass(renderer->currentEffect, pass);
 		renderer->currentTechnique = technique;
 		renderer->currentPass = pass;
+
+		SDL_UnlockMutex(renderer->passLock);
 		return;
 	}
 	else if (renderer->currentEffect != NULL)
@@ -9129,6 +9147,8 @@ static void VULKAN_ApplyEffect(
 	renderer->currentEffect = effectData;
 	renderer->currentTechnique = technique;
 	renderer->currentPass = pass;
+
+	SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_BeginPassRestore(
