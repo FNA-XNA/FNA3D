@@ -7074,6 +7074,14 @@ static void VULKAN_SwapBuffers(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 
+	/* Perform any pending clears before presenting */
+	if (	renderer->shouldClearColorOnBeginPass ||
+		renderer->shouldClearDepthOnBeginPass ||
+		renderer->shouldClearStencilOnBeginPass	)
+	{
+		VULKAN_INTERNAL_BeginRenderPass(renderer);
+	}
+
 	VULKAN_INTERNAL_FlushCommandsAndPresent(
 		renderer,
 		sourceRectangle,
