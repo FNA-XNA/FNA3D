@@ -939,8 +939,9 @@ typedef struct VulkanTextureBuffer
 {
 	VkDeviceMemory memory;
 	VkDeviceSize size;
-	VulkanFreeTextureRegion *freeRegions;
+	VulkanFreeTextureRegion **freeRegions;
 	uint32_t freeRegionCount;
+	uint32_t freeRegionCapacity;
 	uint8_t dedicated;
 } VulkanTextureBuffer;
 
@@ -948,7 +949,7 @@ typedef struct VulkanTextureBuffer
 typedef struct VulkanTextureAllocator
 {
 	VkDeviceSize nextAllocationSize;
-	VulkanTextureBuffer *textureBuffers;
+	VulkanTextureBuffer **textureBuffers;
 	uint32_t textureBufferCount;
 } VulkanTextureAllocator;
 
@@ -4669,6 +4670,8 @@ static uint8_t VULKAN_INTERNAL_AllocateTextureMemory(
 	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	allocInfo.memoryTypeIndex = memoryTypeIndex;
 
+	textureBuffer = SDL_malloc(sizeof(VulkanTextureBuffer));
+
 	if (dedicated)
 	{
 		dedicatedInfo.sType =
@@ -4681,7 +4684,6 @@ static uint8_t VULKAN_INTERNAL_AllocateTextureMemory(
 		allocInfo.pNext = &dedicatedInfo;
 
 		/* allocate a dedicated texture buffer */
-		textureBuffer = SDL_malloc(sizeof(VulkanTextureBuffer));
 		textureBuffer->size = requiredSize;
 		textureBuffer->dedicated = 1;
 	}
@@ -4699,23 +4701,26 @@ static uint8_t VULKAN_INTERNAL_AllocateTextureMemory(
 		renderer->textureAllocator->textureBufferCount += 1;
 		renderer->textureAllocator->textureBuffers = SDL_realloc(
 			renderer->textureAllocator->textureBuffers,
-			sizeof(VulkanTextureBuffer) * renderer->textureAllocator->textureBufferCount
+			sizeof(VulkanTextureBuffer*) * renderer->textureAllocator->textureBufferCount
 		);
 
-		textureBuffer = &renderer->textureAllocator->textureBuffers[
+		renderer->textureAllocator->textureBuffers[
 			renderer->textureAllocator->textureBufferCount - 1
-		];
+		] = textureBuffer;
+
 		textureBuffer->size = renderer->textureAllocator->nextAllocationSize;
 		textureBuffer->dedicated = 0;
 
 		renderer->textureAllocator->nextAllocationSize *= 2;
 	}
 
-	textureBuffer->freeRegions = SDL_malloc(sizeof(VulkanFreeTextureRegion));
+	textureBuffer->freeRegions = SDL_malloc(sizeof(VulkanFreeTextureRegion*));
 	textureBuffer->freeRegionCount = 1;
+	textureBuffer->freeRegionCapacity = 1;
 
-	textureBuffer->freeRegions[0].offset = 0;
-	textureBuffer->freeRegions[0].size = textureBuffer->size;
+	textureBuffer->freeRegions[0] = SDL_malloc(sizeof(VulkanFreeTextureRegion));
+	textureBuffer->freeRegions[0]->offset = 0;
+	textureBuffer->freeRegions[0]->size = textureBuffer->size;
 
 	result = renderer->vkAllocateMemory(
 		renderer->logicalDevice,
@@ -4740,11 +4745,39 @@ static uint8_t VULKAN_INTERNAL_AllocateTextureMemory(
 	return 1;
 }
 
+static void VULKAN_INTERNAL_NewFreeTextureRegion(
+	VulkanTextureBuffer *textureBuffer,
+	VkDeviceSize offset,
+	VkDeviceSize size
+) {
+	uint32_t i = 0;
+
+	/* TODO: an improvement here could be to merge contiguous free regions */
+	textureBuffer->freeRegionCount += 1;
+	if (textureBuffer->freeRegionCount > textureBuffer->freeRegionCapacity)
+	{
+		textureBuffer->freeRegionCapacity *= 2;
+		textureBuffer->freeRegions = SDL_realloc(
+			textureBuffer->freeRegions,
+			sizeof(VulkanFreeTextureRegion*) * textureBuffer->freeRegionCapacity
+		);
+
+		for (i = textureBuffer->freeRegionCount - 1; i < textureBuffer->freeRegionCapacity; i += 1)
+		{
+			textureBuffer->freeRegions[i] = SDL_malloc(sizeof(VulkanFreeTextureRegion));
+		}
+	}
+
+	textureBuffer->freeRegions[textureBuffer->freeRegionCount - 1]->offset = offset;
+	textureBuffer->freeRegions[textureBuffer->freeRegionCount - 1]->size = size;
+}
+
 static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 	VulkanRenderer *renderer,
 	VkImage image,
 	VulkanTextureBuffer **pTextureBuffer,
-	VkDeviceSize *pOffset
+	VkDeviceSize *pOffset,
+	VkDeviceSize *pSize
 ) {
 	VulkanTextureBuffer *textureBuffer;
 	VulkanFreeTextureRegion *region;
@@ -4759,7 +4792,8 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
 		&dedicatedRequirements
 	};
-	VkDeviceSize alignedMemorySize;
+	VkDeviceSize requiredSize;
+	VkDeviceSize alignedOffset;
 	uint32_t memoryTypeIndex;
 	uint32_t i, j;
 	uint8_t allocationResult;
@@ -4787,26 +4821,40 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 		return 0;
 	}
 
-	alignedMemorySize = VULKAN_INTERNAL_NextHighestAlignment(
-		memoryRequirements.memoryRequirements.size,
-		memoryRequirements.memoryRequirements.alignment
-	);
+	requiredSize = memoryRequirements.memoryRequirements.size;
 
 	for (i = 0; i < renderer->textureAllocator->textureBufferCount; i += 1)
 	{
-		textureBuffer = &renderer->textureAllocator->textureBuffers[i];
+		textureBuffer = renderer->textureAllocator->textureBuffers[i];
 
 		for (j = 0; j < textureBuffer->freeRegionCount; j += 1)
 		{
-			region = &textureBuffer->freeRegions[j];
+			region = textureBuffer->freeRegions[j];
 
-			if (region->size <= alignedMemorySize)
+			alignedOffset = VULKAN_INTERNAL_NextHighestAlignment(
+				region->offset,
+				memoryRequirements.memoryRequirements.alignment
+			);
+
+			if (alignedOffset + requiredSize <= region->offset + region->size)
 			{
 				*pTextureBuffer = textureBuffer;
-				*pOffset = region->offset;
 
-				region->offset += alignedMemorySize;
-				region->size -= alignedMemorySize;
+				/* not aligned - create a new free region */
+				if (region->offset != alignedOffset)
+				{
+					VULKAN_INTERNAL_NewFreeTextureRegion(
+						textureBuffer,
+						region->offset,
+						alignedOffset - region->offset
+					);
+				}
+
+				region->size -= (alignedOffset - region->offset) + requiredSize;
+				region->offset = alignedOffset + requiredSize;
+
+				*pOffset = alignedOffset;
+				*pSize = requiredSize;
 
 				/* If we completely used the region, remove it */
 				if (region->size == 0)
@@ -4833,7 +4881,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 			renderer,
 			memoryTypeIndex,
 			image,
-			alignedMemorySize,
+			requiredSize,
 			dedicatedRequirements.prefersDedicatedAllocation,
 			&textureBuffer
 		);
@@ -4847,9 +4895,16 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 
 	*pTextureBuffer = textureBuffer;
 	*pOffset = 0;
-	region = &textureBuffer->freeRegions[0];
-	region->offset += alignedMemorySize;
-	region->size -= alignedMemorySize;
+	*pSize = requiredSize;
+
+	region = textureBuffer->freeRegions[0];
+	region->offset += requiredSize;
+	region->size -= requiredSize;
+
+	if (region->size == 0)
+	{
+		textureBuffer->freeRegionCount -= 1;
+	}
 
 	return 1;
 }
@@ -4872,8 +4927,6 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	VulkanTexture *texture
 ) {
 	VkResult result;
-	VulkanTextureBuffer *textureBuffer;
-	VkDeviceSize offset;
 	VkImageCreateInfo imageCreateInfo;
 	VkImageViewCreateInfo imageViewCreateInfo;
 	uint8_t layerCount = isCube ? 6 : 1;
@@ -4914,15 +4967,16 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	VULKAN_INTERNAL_FindAvailableTextureMemory(
 		renderer,
 		texture->image,
-		&textureBuffer,
-		&offset
+		&texture->textureBuffer,
+		&texture->offset,
+		&texture->memorySize
 	);
 
 	result = renderer->vkBindImageMemory(
 		renderer->logicalDevice,
 		texture->image,
-		textureBuffer->memory,
-		offset
+		texture->textureBuffer->memory,
+		texture->offset
 	);
 
 	if (result != VK_SUCCESS)
@@ -5037,7 +5091,6 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 		}
 	}
 
-	texture->textureBuffer = textureBuffer;
 	texture->dimensions.width = width;
 	texture->dimensions.height = height;
 	texture->depth = depth;
@@ -5827,14 +5880,7 @@ static void VULKAN_INTERNAL_DestroyTexture(
 ) {
 	int32_t i;
 
-	/* TODO: an improvement here could be to merge contiguous free regions */
-	texture->textureBuffer->freeRegionCount += 1;
-	texture->textureBuffer->freeRegions = SDL_realloc(
-		texture->textureBuffer->freeRegions,
-		sizeof(VulkanFreeTextureRegion) * texture->textureBuffer->freeRegionCount
-	);
-	texture->textureBuffer->freeRegions[texture->textureBuffer->freeRegionCount - 1].size = texture->memorySize;
-	texture->textureBuffer->freeRegions[texture->textureBuffer->freeRegionCount - 1].offset = texture->offset;
+	VULKAN_INTERNAL_NewFreeTextureRegion(texture->textureBuffer, texture->offset, texture->memorySize);
 
 	renderer->vkDestroyImageView(
 		renderer->logicalDevice,
