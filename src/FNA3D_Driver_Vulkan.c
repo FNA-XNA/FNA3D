@@ -7293,6 +7293,24 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		NULL
 	);
 
+	for (i = 0; i < renderer->textureAllocator->textureBufferCount; i += 1)
+	{
+		for (j = 0; j < renderer->textureAllocator->textureBuffers[i]->freeRegionCount; j += 1)
+		{
+			SDL_free(renderer->textureAllocator->textureBuffers[i]->freeRegions[j]);
+		}
+
+		renderer->vkFreeMemory(
+			renderer->logicalDevice,
+			renderer->textureAllocator->textureBuffers[i]->memory,
+			NULL
+		);
+
+		SDL_free(renderer->textureAllocator->textureBuffers[i]);
+	}
+
+	SDL_free(renderer->textureAllocator);
+
 	for (i = 0; i < PHYSICAL_BUFFER_MAX_COUNT; i += 1)
 	{
 		if (renderer->bufferAllocator->physicalBuffers[i] != NULL)
