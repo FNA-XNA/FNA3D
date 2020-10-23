@@ -1297,6 +1297,7 @@ typedef struct VulkanRenderer
 	SDL_mutex *commandLock;
 	SDL_mutex *passLock;
 	SDL_mutex *disposeLock;
+	SDL_mutex *textureAllocatorLock;
 
 	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
@@ -4823,6 +4824,8 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 
 	requiredSize = memoryRequirements.memoryRequirements.size;
 
+	SDL_LockMutex(renderer->textureAllocatorLock);
+
 	for (i = 0; i < renderer->textureAllocator->textureBufferCount; i += 1)
 	{
 		textureBuffer = renderer->textureAllocator->textureBuffers[i];
@@ -4867,6 +4870,8 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 					textureBuffer->freeRegionCount -= 1;
 				}
 
+				SDL_UnlockMutex(renderer->textureAllocatorLock);
+
 				return 1;
 			}
 		}
@@ -4905,6 +4910,8 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 	{
 		textureBuffer->freeRegionCount -= 1;
 	}
+
+	SDL_UnlockMutex(renderer->textureAllocatorLock);
 
 	return 1;
 }
@@ -5880,7 +5887,15 @@ static void VULKAN_INTERNAL_DestroyTexture(
 ) {
 	int32_t i;
 
-	VULKAN_INTERNAL_NewFreeTextureRegion(texture->textureBuffer, texture->offset, texture->memorySize);
+	SDL_LockMutex(renderer->textureAllocatorLock);
+
+	VULKAN_INTERNAL_NewFreeTextureRegion(
+		texture->textureBuffer,
+		texture->offset,
+		texture->memorySize
+	);
+
+	SDL_UnlockMutex(renderer->textureAllocatorLock);
 
 	renderer->vkDestroyImageView(
 		renderer->logicalDevice,
@@ -7333,6 +7348,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	SDL_DestroyMutex(renderer->commandLock);
 	SDL_DestroyMutex(renderer->passLock);
 	SDL_DestroyMutex(renderer->disposeLock);
+	SDL_DestroyMutex(renderer->textureAllocatorLock);
 
 	SDL_free(renderer->bufferAllocator);
 	SDL_free(renderer->buffersInUse);
@@ -10615,6 +10631,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->commandLock = SDL_CreateMutex();
 	renderer->passLock = SDL_CreateMutex();
 	renderer->disposeLock = SDL_CreateMutex();
+	renderer->textureAllocatorLock = SDL_CreateMutex();
 
 	return result;
 }
