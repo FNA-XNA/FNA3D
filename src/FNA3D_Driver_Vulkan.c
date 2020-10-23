@@ -4711,8 +4711,6 @@ static uint8_t VULKAN_INTERNAL_AllocateTextureMemory(
 
 		textureBuffer->size = renderer->textureAllocator->nextAllocationSize;
 		textureBuffer->dedicated = 0;
-
-		renderer->textureAllocator->nextAllocationSize *= 2;
 	}
 
 	textureBuffer->freeRegions = SDL_malloc(sizeof(VulkanFreeTextureRegion*));
@@ -9863,7 +9861,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	);
 	renderer->textureAllocator->textureBuffers = NULL;
 	renderer->textureAllocator->textureBufferCount = 0;
-	renderer->textureAllocator->nextAllocationSize = 0;
+	renderer->textureAllocator->nextAllocationSize = 100000000; /* 100MB */
 
 	/*
 	 * Choose depth formats
