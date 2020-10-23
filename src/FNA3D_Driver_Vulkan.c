@@ -927,12 +927,40 @@ typedef struct BufferMemoryWrapper
 
 typedef struct VulkanBuffer VulkanBuffer;
 
+/* Info about free regions of data within a VulkanTextureBuffer */
+typedef struct VulkanFreeTextureRegion
+{
+	VkDeviceSize offset;
+	VkDeviceSize size;
+} VulkanFreeTextureRegion;
+
+/* Manages memory for a single region of allocated texture memory */
+typedef struct VulkanTextureBuffer
+{
+	VkDeviceMemory memory;
+	VkDeviceSize size;
+	VulkanFreeTextureRegion **freeRegions;
+	uint32_t freeRegionCount;
+	uint32_t freeRegionCapacity;
+	uint8_t dedicated;
+} VulkanTextureBuffer;
+
+/* Manages all texture memory */
+typedef struct VulkanTextureAllocator
+{
+	VkDeviceSize nextAllocationSize;
+	VulkanTextureBuffer **textureBuffers;
+	uint32_t textureBufferCount;
+} VulkanTextureAllocator;
+
 typedef struct VulkanTexture /* Cast from FNA3D_Texture* */
 {
+	VulkanTextureBuffer *textureBuffer;
+	VkDeviceSize offset;
+
 	VkImage image;
 	VkImageView view;
 	VkImageView rtViews[6];
-	VkDeviceMemory memory;
 	VkExtent2D dimensions;
 	uint32_t depth;
 	VkDeviceSize memorySize;
@@ -949,10 +977,11 @@ typedef struct VulkanTexture /* Cast from FNA3D_Texture* */
 
 static VulkanTexture NullTexture =
 {
+	(VulkanTextureBuffer*) 0,
+	(VkDeviceSize) 0,
 	(VkImage) 0,
 	(VkImageView) 0,
 	{ 0, 0, 0, 0, 0, 0 },
-	(VkDeviceMemory) 0,
 	{0, 0},
 	0,
 	0,
@@ -1140,6 +1169,7 @@ typedef struct VulkanRenderer
 	int32_t numTextureSlots;
 	int32_t numVertexTextureSlots;
 
+	VulkanTextureAllocator *textureAllocator;
 	VulkanTexture *textures[TEXTURE_COUNT];
 	VkSampler samplers[TEXTURE_COUNT];
 	uint8_t textureNeedsUpdate[TEXTURE_COUNT];
@@ -1267,6 +1297,7 @@ typedef struct VulkanRenderer
 	SDL_mutex *commandLock;
 	SDL_mutex *passLock;
 	SDL_mutex *disposeLock;
+	SDL_mutex *textureAllocatorLock;
 
 	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
 		vkfntype_##func func;
@@ -4624,6 +4655,261 @@ static void VULKAN_INTERNAL_MaybeExpandStagingBuffer(
 
 /* Vulkan: Texture Objects */
 
+static uint8_t VULKAN_INTERNAL_AllocateTextureMemory(
+	VulkanRenderer *renderer,
+	uint32_t memoryTypeIndex,
+	VkImage image,
+	VkDeviceSize requiredSize,
+	VkBool32 dedicated,
+	VulkanTextureBuffer **pTextureBuffer
+) {
+	VulkanTextureBuffer *textureBuffer;
+	VkMemoryAllocateInfo allocInfo;
+	VkMemoryDedicatedAllocateInfoKHR dedicatedInfo;
+	VkResult result;
+
+	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	allocInfo.memoryTypeIndex = memoryTypeIndex;
+
+	textureBuffer = SDL_malloc(sizeof(VulkanTextureBuffer));
+
+	if (dedicated)
+	{
+		dedicatedInfo.sType =
+			VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR;
+		dedicatedInfo.pNext = NULL;
+		dedicatedInfo.image = image;
+		dedicatedInfo.buffer = VK_NULL_HANDLE;
+
+		allocInfo.allocationSize = requiredSize;
+		allocInfo.pNext = &dedicatedInfo;
+
+		/* allocate a dedicated texture buffer */
+		textureBuffer->size = requiredSize;
+		textureBuffer->dedicated = 1;
+	}
+	else
+	{
+		if (renderer->textureAllocator->nextAllocationSize == 0)
+		{
+			renderer->textureAllocator->nextAllocationSize = requiredSize * 2;
+		}
+
+		allocInfo.allocationSize = renderer->textureAllocator->nextAllocationSize;
+		allocInfo.pNext = NULL;
+
+		/* allocate a non-dedicated texture buffer */
+		renderer->textureAllocator->textureBufferCount += 1;
+		renderer->textureAllocator->textureBuffers = SDL_realloc(
+			renderer->textureAllocator->textureBuffers,
+			sizeof(VulkanTextureBuffer*) * renderer->textureAllocator->textureBufferCount
+		);
+
+		renderer->textureAllocator->textureBuffers[
+			renderer->textureAllocator->textureBufferCount - 1
+		] = textureBuffer;
+
+		textureBuffer->size = renderer->textureAllocator->nextAllocationSize;
+		textureBuffer->dedicated = 0;
+	}
+
+	textureBuffer->freeRegions = SDL_malloc(sizeof(VulkanFreeTextureRegion*));
+	textureBuffer->freeRegionCount = 1;
+	textureBuffer->freeRegionCapacity = 1;
+
+	textureBuffer->freeRegions[0] = SDL_malloc(sizeof(VulkanFreeTextureRegion));
+	textureBuffer->freeRegions[0]->offset = 0;
+	textureBuffer->freeRegions[0]->size = textureBuffer->size;
+
+	result = renderer->vkAllocateMemory(
+		renderer->logicalDevice,
+		&allocInfo,
+		NULL,
+		&textureBuffer->memory
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResult("vkAllocateMemory", result);
+		return 0;
+	}
+
+	/* Need to allocate again because the allocation was too small */
+	if (allocInfo.allocationSize < requiredSize)
+	{
+		return 2;
+	}
+
+	*pTextureBuffer = textureBuffer;
+	return 1;
+}
+
+static void VULKAN_INTERNAL_NewFreeTextureRegion(
+	VulkanTextureBuffer *textureBuffer,
+	VkDeviceSize offset,
+	VkDeviceSize size
+) {
+	/* TODO: an improvement here could be to merge contiguous free regions */
+	textureBuffer->freeRegionCount += 1;
+	if (textureBuffer->freeRegionCount > textureBuffer->freeRegionCapacity)
+	{
+		textureBuffer->freeRegionCapacity *= 2;
+		textureBuffer->freeRegions = SDL_realloc(
+			textureBuffer->freeRegions,
+			sizeof(VulkanFreeTextureRegion*) * textureBuffer->freeRegionCapacity
+		);
+	}
+
+	textureBuffer->freeRegions[textureBuffer->freeRegionCount - 1] = SDL_malloc(sizeof(VulkanFreeTextureRegion));
+	textureBuffer->freeRegions[textureBuffer->freeRegionCount - 1]->offset = offset;
+	textureBuffer->freeRegions[textureBuffer->freeRegionCount - 1]->size = size;
+}
+
+static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
+	VulkanRenderer *renderer,
+	VkImage image,
+	VulkanTextureBuffer **pTextureBuffer,
+	VkDeviceSize *pOffset,
+	VkDeviceSize *pSize
+) {
+	VulkanTextureBuffer *textureBuffer;
+	VulkanFreeTextureRegion *region;
+	VkImageMemoryRequirementsInfo2KHR imageRequirementsInfo;
+	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
+		NULL
+	};
+	VkMemoryRequirements2KHR memoryRequirements =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
+		&dedicatedRequirements
+	};
+	VkDeviceSize requiredSize;
+	VkDeviceSize alignedOffset;
+	uint32_t memoryTypeIndex;
+	uint32_t i, j;
+	uint8_t allocationResult;
+
+	imageRequirementsInfo.sType =
+		VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR;
+	imageRequirementsInfo.pNext = NULL;
+	imageRequirementsInfo.image = image;
+
+	renderer->vkGetImageMemoryRequirements2KHR(
+		renderer->logicalDevice,
+		&imageRequirementsInfo,
+		&memoryRequirements
+	);
+
+	if (!VULKAN_INTERNAL_FindMemoryType(
+		renderer,
+		memoryRequirements.memoryRequirements.memoryTypeBits,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		&memoryTypeIndex
+	)) {
+		FNA3D_LogError(
+			"Could not find valid memory type for image creation"
+		);
+		return 0;
+	}
+
+	requiredSize = memoryRequirements.memoryRequirements.size;
+
+	SDL_LockMutex(renderer->textureAllocatorLock);
+
+	for (i = 0; i < renderer->textureAllocator->textureBufferCount; i += 1)
+	{
+		textureBuffer = renderer->textureAllocator->textureBuffers[i];
+
+		for (j = 0; j < textureBuffer->freeRegionCount; j += 1)
+		{
+			region = textureBuffer->freeRegions[j];
+
+			alignedOffset = VULKAN_INTERNAL_NextHighestAlignment(
+				region->offset,
+				memoryRequirements.memoryRequirements.alignment
+			);
+
+			if (alignedOffset + requiredSize <= region->offset + region->size)
+			{
+				*pTextureBuffer = textureBuffer;
+
+				/* not aligned - create a new free region */
+				if (region->offset != alignedOffset)
+				{
+					VULKAN_INTERNAL_NewFreeTextureRegion(
+						textureBuffer,
+						region->offset,
+						alignedOffset - region->offset
+					);
+				}
+
+				region->size -= (alignedOffset - region->offset) + requiredSize;
+				region->offset = alignedOffset + requiredSize;
+
+				*pOffset = alignedOffset;
+				*pSize = requiredSize;
+
+				/* If we completely used the region, remove it */
+				if (region->size == 0)
+				{
+					SDL_free(textureBuffer->freeRegions[j]);
+
+					if (textureBuffer->freeRegionCount > 1)
+					{
+						textureBuffer->freeRegions[j] =
+							textureBuffer->freeRegions[textureBuffer->freeRegionCount - 1];
+					}
+					textureBuffer->freeRegionCount -= 1;
+				}
+
+				SDL_UnlockMutex(renderer->textureAllocatorLock);
+
+				return 1;
+			}
+		}
+	}
+
+	/* No suitable free regions exist, allocate a new memory region */
+
+	allocationResult = 2;
+	while (allocationResult == 2)
+	{
+		allocationResult = VULKAN_INTERNAL_AllocateTextureMemory(
+			renderer,
+			memoryTypeIndex,
+			image,
+			requiredSize,
+			dedicatedRequirements.prefersDedicatedAllocation,
+			&textureBuffer
+		);
+	}
+
+	if (allocationResult == 0)
+	{
+		FNA3D_LogError("Failed to allocate texture memory");
+		return 0;
+	}
+
+	*pTextureBuffer = textureBuffer;
+	*pOffset = 0;
+	*pSize = requiredSize;
+
+	region = textureBuffer->freeRegions[0];
+	region->offset += requiredSize;
+	region->size -= requiredSize;
+
+	if (region->size == 0)
+	{
+		textureBuffer->freeRegionCount -= 1;
+	}
+
+	SDL_UnlockMutex(renderer->textureAllocatorLock);
+
+	return 1;
+}
+
 static uint8_t VULKAN_INTERNAL_CreateTexture(
 	VulkanRenderer *renderer,
 	uint32_t width,
@@ -4639,24 +4925,10 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	VkImageTiling tiling,
 	VkImageType imageType,
 	VkImageUsageFlags usage,
-	VkMemoryPropertyFlags memoryProperties,
 	VulkanTexture *texture
 ) {
 	VkResult result;
 	VkImageCreateInfo imageCreateInfo;
-	VkMemoryDedicatedAllocateInfoKHR dedicatedInfo;
-	VkMemoryAllocateInfo allocInfo;
-	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
-	{
-		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
-		NULL
-	};
-	VkMemoryRequirements2KHR memoryRequirements =
-	{
-		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
-		&dedicatedRequirements
-	};
-	VkImageMemoryRequirementsInfo2KHR imageRequirementsInfo;
 	VkImageViewCreateInfo imageViewCreateInfo;
 	uint8_t layerCount = isCube ? 6 : 1;
 	uint32_t i;
@@ -4693,65 +4965,19 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 		return 0;
 	}
 
-	imageRequirementsInfo.sType =
-		VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR;
-	imageRequirementsInfo.pNext = NULL;
-	imageRequirementsInfo.image = texture->image;
-
-	renderer->vkGetImageMemoryRequirements2KHR(
-		renderer->logicalDevice,
-		&imageRequirementsInfo,
-		&memoryRequirements
-	);
-
-	texture->memorySize = memoryRequirements.memoryRequirements.size;
-	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	allocInfo.allocationSize = memoryRequirements.memoryRequirements.size;
-
-	if (!VULKAN_INTERNAL_FindMemoryType(
+	VULKAN_INTERNAL_FindAvailableTextureMemory(
 		renderer,
-		memoryRequirements.memoryRequirements.memoryTypeBits,
-		memoryProperties,
-		&allocInfo.memoryTypeIndex
-	)) {
-		FNA3D_LogError(
-			"Could not find valid memory type for image creation"
-		);
-		return 0;
-	}
-
-	if (dedicatedRequirements.prefersDedicatedAllocation)
-	{
-		dedicatedInfo.sType =
-			VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO_KHR;
-		dedicatedInfo.pNext = NULL;
-		dedicatedInfo.image = texture->image;
-		dedicatedInfo.buffer = VK_NULL_HANDLE;
-		allocInfo.pNext = &dedicatedInfo;
-	}
-	else
-	{
-		allocInfo.pNext = NULL;
-	}
-
-	result = renderer->vkAllocateMemory(
-		renderer->logicalDevice,
-		&allocInfo,
-		NULL,
-		&texture->memory
+		texture->image,
+		&texture->textureBuffer,
+		&texture->offset,
+		&texture->memorySize
 	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResult("vkAllocateMemory", result);
-		return 0;
-	}
 
 	result = renderer->vkBindImageMemory(
 		renderer->logicalDevice,
 		texture->image,
-		texture->memory,
-		0
+		texture->textureBuffer->memory,
+		texture->offset
 	);
 
 	if (result != VK_SUCCESS)
@@ -5655,11 +5881,30 @@ static void VULKAN_INTERNAL_DestroyTexture(
 ) {
 	int32_t i;
 
-	renderer->vkFreeMemory(
-		renderer->logicalDevice,
-		texture->memory,
-		NULL
-	);
+	if (texture->textureBuffer->dedicated)
+	{
+		renderer->vkFreeMemory(
+			renderer->logicalDevice,
+			texture->textureBuffer->memory,
+			NULL
+		);
+
+		SDL_free(texture->textureBuffer->freeRegions[0]);
+		SDL_free(texture->textureBuffer->freeRegions);
+		SDL_free(texture->textureBuffer);
+	}
+	else
+	{
+		SDL_LockMutex(renderer->textureAllocatorLock);
+
+		VULKAN_INTERNAL_NewFreeTextureRegion(
+			texture->textureBuffer,
+			texture->offset,
+			texture->memorySize
+		);
+
+		SDL_UnlockMutex(renderer->textureAllocatorLock);
+	}
 
 	renderer->vkDestroyImageView(
 		renderer->logicalDevice,
@@ -5899,7 +6144,6 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 			VK_IMAGE_USAGE_TRANSFER_SRC_BIT |
 			VK_IMAGE_USAGE_TRANSFER_DST_BIT
 		),
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		renderer->fauxBackbufferColor.handle
 	)) {
 		FNA3D_LogError("Failed to create faux backbuffer colorbuffer");
@@ -5949,7 +6193,6 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_TYPE_2D,
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			renderer->fauxBackbufferMultiSampleColor
 		);
 		/* FIXME: Swapchain format may not be an FNA3D_SurfaceFormat! */
@@ -6008,7 +6251,6 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 				VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
 				VK_IMAGE_USAGE_TRANSFER_DST_BIT
 			),
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			renderer->fauxBackbufferDepthStencil.handle
 		)) {
 			FNA3D_LogError("Failed to create depth stencil image");
@@ -7075,6 +7317,26 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		NULL
 	);
 
+	for (i = 0; i < renderer->textureAllocator->textureBufferCount; i += 1)
+	{
+		for (j = 0; j < renderer->textureAllocator->textureBuffers[i]->freeRegionCount; j += 1)
+		{
+			SDL_free(renderer->textureAllocator->textureBuffers[i]->freeRegions[j]);
+		}
+		SDL_free(renderer->textureAllocator->textureBuffers[i]->freeRegions);
+
+		renderer->vkFreeMemory(
+			renderer->logicalDevice,
+			renderer->textureAllocator->textureBuffers[i]->memory,
+			NULL
+		);
+
+		SDL_free(renderer->textureAllocator->textureBuffers[i]);
+	}
+
+	SDL_free(renderer->textureAllocator->textureBuffers);
+	SDL_free(renderer->textureAllocator);
+
 	for (i = 0; i < PHYSICAL_BUFFER_MAX_COUNT; i += 1)
 	{
 		if (renderer->bufferAllocator->physicalBuffers[i] != NULL)
@@ -7097,6 +7359,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	SDL_DestroyMutex(renderer->commandLock);
 	SDL_DestroyMutex(renderer->passLock);
 	SDL_DestroyMutex(renderer->disposeLock);
+	SDL_DestroyMutex(renderer->textureAllocatorLock);
 
 	SDL_free(renderer->bufferAllocator);
 	SDL_free(renderer->buffersInUse);
@@ -8094,7 +8357,6 @@ static FNA3D_Texture* VULKAN_CreateTexture2D(
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_TYPE_2D,
 		usageFlags,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		result
 	);
 	result->colorFormat = format;
@@ -8135,7 +8397,6 @@ static FNA3D_Texture* VULKAN_CreateTexture3D(
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_TYPE_3D,
 		usageFlags,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		result
 	);
 	result->colorFormat = format;
@@ -8180,7 +8441,6 @@ static FNA3D_Texture* VULKAN_CreateTextureCube(
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_TYPE_2D,
 		usageFlags,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		result
 	);
 	result->colorFormat = format;
@@ -8685,7 +8945,6 @@ static FNA3D_Renderbuffer* VULKAN_GenColorRenderbuffer(
 			VK_IMAGE_TILING_OPTIMAL,
 			VK_IMAGE_TYPE_2D,
 			VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 			renderbuffer->colorBuffer->multiSampleTexture
 		);
 		renderbuffer->colorBuffer->multiSampleTexture->colorFormat = format;
@@ -8752,7 +9011,6 @@ static FNA3D_Renderbuffer* VULKAN_GenDepthStencilRenderbuffer(
 		VK_IMAGE_TILING_OPTIMAL,
 		VK_IMAGE_TYPE_2D,
 		VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		renderbuffer->depthBuffer->handle
 	)) {
 		FNA3D_LogError("Failed to create depth stencil image");
@@ -9612,6 +9870,17 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	);
 
 	/*
+	 * Initialize texture allocator
+	 */
+
+	renderer->textureAllocator = (VulkanTextureAllocator*) SDL_malloc(
+		sizeof(VulkanTextureAllocator)
+	);
+	renderer->textureAllocator->textureBuffers = NULL;
+	renderer->textureAllocator->textureBufferCount = 0;
+	renderer->textureAllocator->nextAllocationSize = 100000000; /* 100MB */
+
+	/*
 	 * Choose depth formats
 	 */
 
@@ -10373,6 +10642,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->commandLock = SDL_CreateMutex();
 	renderer->passLock = SDL_CreateMutex();
 	renderer->disposeLock = SDL_CreateMutex();
+	renderer->textureAllocatorLock = SDL_CreateMutex();
 
 	return result;
 }
