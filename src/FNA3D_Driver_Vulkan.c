@@ -5881,15 +5881,30 @@ static void VULKAN_INTERNAL_DestroyTexture(
 ) {
 	int32_t i;
 
-	SDL_LockMutex(renderer->textureAllocatorLock);
+	if (texture->textureBuffer->dedicated)
+	{
+		renderer->vkFreeMemory(
+			renderer->logicalDevice,
+			texture->textureBuffer->memory,
+			NULL
+		);
 
-	VULKAN_INTERNAL_NewFreeTextureRegion(
-		texture->textureBuffer,
-		texture->offset,
-		texture->memorySize
-	);
+		SDL_free(texture->textureBuffer->freeRegions[0]);
+		SDL_free(texture->textureBuffer->freeRegions);
+		SDL_free(texture->textureBuffer);
+	}
+	else
+	{
+		SDL_LockMutex(renderer->textureAllocatorLock);
 
-	SDL_UnlockMutex(renderer->textureAllocatorLock);
+		VULKAN_INTERNAL_NewFreeTextureRegion(
+			texture->textureBuffer,
+			texture->offset,
+			texture->memorySize
+		);
+
+		SDL_UnlockMutex(renderer->textureAllocatorLock);
+	}
 
 	renderer->vkDestroyImageView(
 		renderer->logicalDevice,
@@ -7308,6 +7323,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		{
 			SDL_free(renderer->textureAllocator->textureBuffers[i]->freeRegions[j]);
 		}
+		SDL_free(renderer->textureAllocator->textureBuffers[i]->freeRegions);
 
 		renderer->vkFreeMemory(
 			renderer->logicalDevice,
@@ -7318,6 +7334,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		SDL_free(renderer->textureAllocator->textureBuffers[i]);
 	}
 
+	SDL_free(renderer->textureAllocator->textureBuffers);
 	SDL_free(renderer->textureAllocator);
 
 	for (i = 0; i < PHYSICAL_BUFFER_MAX_COUNT; i += 1)
