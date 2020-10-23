@@ -77,6 +77,7 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 #define MAX_QUERIES 16
 #define MAX_UNIFORM_DESCRIPTOR_SETS 1024
 #define COMMAND_LIMIT 100
+#define TEXTURE_ALLOCATION_SIZE 100000000 /* 100MB */
 
 /* Should be equivalent to the number of values in FNA3D_PrimitiveType */
 #define PRIMITIVE_TYPES_COUNT 5
@@ -963,12 +964,18 @@ typedef struct VulkanTextureBuffer
 	uint8_t dedicated;
 } VulkanTextureBuffer;
 
-/* Manages all texture memory */
-typedef struct VulkanTextureAllocator
+/* Manages texture memory per memory type */
+typedef struct VulkanTextureSubAllocator
 {
 	VkDeviceSize nextAllocationSize;
 	VulkanTextureBuffer **textureBuffers;
 	uint32_t textureBufferCount;
+} VulkanTextureSubAllocator;
+
+/* Manages all texture memory */
+typedef struct VulkanTextureAllocator
+{
+	VulkanTextureSubAllocator subAllocators[VK_MAX_MEMORY_TYPES];
 } VulkanTextureAllocator;
 
 typedef struct VulkanTexture /* Cast from FNA3D_Texture* */
@@ -4660,6 +4667,7 @@ static uint8_t VULKAN_INTERNAL_AllocateTextureMemory(
 	VulkanTextureBuffer **pTextureBuffer
 ) {
 	VulkanTextureBuffer *textureBuffer;
+	VulkanTextureSubAllocator *allocator = &renderer->textureAllocator->subAllocators[memoryTypeIndex];
 	VkMemoryAllocateInfo allocInfo;
 	VkMemoryDedicatedAllocateInfoKHR dedicatedInfo;
 	VkResult result;
@@ -4686,26 +4694,21 @@ static uint8_t VULKAN_INTERNAL_AllocateTextureMemory(
 	}
 	else
 	{
-		if (renderer->textureAllocator->nextAllocationSize == 0)
-		{
-			renderer->textureAllocator->nextAllocationSize = requiredSize * 2;
-		}
-
-		allocInfo.allocationSize = renderer->textureAllocator->nextAllocationSize;
+		allocInfo.allocationSize = allocator->nextAllocationSize;
 		allocInfo.pNext = NULL;
 
 		/* allocate a non-dedicated texture buffer */
-		renderer->textureAllocator->textureBufferCount += 1;
-		renderer->textureAllocator->textureBuffers = SDL_realloc(
-			renderer->textureAllocator->textureBuffers,
-			sizeof(VulkanTextureBuffer*) * renderer->textureAllocator->textureBufferCount
+		allocator->textureBufferCount += 1;
+		allocator->textureBuffers = SDL_realloc(
+			allocator->textureBuffers,
+			sizeof(VulkanTextureBuffer*) * allocator->textureBufferCount
 		);
 
-		renderer->textureAllocator->textureBuffers[
-			renderer->textureAllocator->textureBufferCount - 1
+		allocator->textureBuffers[
+			allocator->textureBufferCount - 1
 		] = textureBuffer;
 
-		textureBuffer->size = renderer->textureAllocator->nextAllocationSize;
+		textureBuffer->size = allocator->nextAllocationSize;
 		textureBuffer->dedicated = 0;
 	}
 
@@ -4724,16 +4727,14 @@ static uint8_t VULKAN_INTERNAL_AllocateTextureMemory(
 		&textureBuffer->memory
 	);
 
-	if (result != VK_SUCCESS)
+	if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY || result == VK_ERROR_OUT_OF_HOST_MEMORY)
+	{
+		return 2;
+	}
+	else if (result != VK_SUCCESS)
 	{
 		LogVulkanResult("vkAllocateMemory", result);
 		return 0;
-	}
-
-	/* Need to allocate again because the allocation was too small */
-	if (allocInfo.allocationSize < requiredSize)
-	{
-		return 2;
 	}
 
 	*pTextureBuffer = textureBuffer;
@@ -4769,6 +4770,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 	VkDeviceSize *pSize
 ) {
 	VulkanTextureBuffer *textureBuffer;
+	VulkanTextureSubAllocator *allocator;
 	VulkanFreeTextureRegion *region;
 	VkImageMemoryRequirementsInfo2KHR imageRequirementsInfo;
 	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
@@ -4810,13 +4812,15 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 		return 0;
 	}
 
+	allocator = &renderer->textureAllocator->subAllocators[memoryTypeIndex];
+
 	requiredSize = memoryRequirements.memoryRequirements.size;
 
 	SDL_LockMutex(renderer->textureAllocatorLock);
 
-	for (i = 0; i < renderer->textureAllocator->textureBufferCount; i += 1)
+	for (i = 0; i < allocator->textureBufferCount; i += 1)
 	{
-		textureBuffer = renderer->textureAllocator->textureBuffers[i];
+		textureBuffer = allocator->textureBuffers[i];
 
 		for (j = 0; j < textureBuffer->freeRegionCount; j += 1)
 		{
@@ -4869,9 +4873,47 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 
 	/* No suitable free regions exist, allocate a new memory region */
 
-	allocationResult = 2;
-	while (allocationResult == 2)
+	if (requiredSize > allocator->nextAllocationSize)
 	{
+		/* allocate a page of required size aligned to 100MB increments */
+		allocator->nextAllocationSize =
+			VULKAN_INTERNAL_NextHighestAlignment(requiredSize, TEXTURE_ALLOCATION_SIZE);
+	}
+
+	allocationResult = VULKAN_INTERNAL_AllocateTextureMemory(
+		renderer,
+		memoryTypeIndex,
+		image,
+		requiredSize,
+		dedicatedRequirements.prefersDedicatedAllocation,
+		&textureBuffer
+	);
+
+	/* We're out of device memory, try host memory */
+	if (allocationResult == 2)
+	{
+		allocator->nextAllocationSize = TEXTURE_ALLOCATION_SIZE;
+
+		if (!VULKAN_INTERNAL_FindMemoryType(
+			renderer,
+			memoryRequirements.memoryRequirements.memoryTypeBits,
+			VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+			&memoryTypeIndex
+		)) {
+			FNA3D_LogError(
+				"Could not find valid memory type for image creation"
+			);
+			return 0;
+		}
+
+		allocator = &renderer->textureAllocator->subAllocators[memoryTypeIndex];
+		if (requiredSize > allocator->nextAllocationSize)
+		{
+			/* allocate a page of required size aligned to 100MB increments */
+			allocator->nextAllocationSize =
+				VULKAN_INTERNAL_NextHighestAlignment(requiredSize, TEXTURE_ALLOCATION_SIZE);
+		}
+
 		allocationResult = VULKAN_INTERNAL_AllocateTextureMemory(
 			renderer,
 			memoryTypeIndex,
@@ -4880,9 +4922,16 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 			dedicatedRequirements.prefersDedicatedAllocation,
 			&textureBuffer
 		);
-	}
 
-	if (allocationResult == 0)
+		if (allocationResult == 0 || allocationResult == 2)
+		{
+			FNA3D_LogError(
+				"Failed to allocate texture memory"
+			);
+			return 0;
+		}
+	}
+	else if (allocationResult == 0)
 	{
 		FNA3D_LogError("Failed to allocate texture memory");
 		return 0;
@@ -4900,6 +4949,8 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 	{
 		textureBuffer->freeRegionCount -= 1;
 	}
+
+	allocator->nextAllocationSize = TEXTURE_ALLOCATION_SIZE;
 
 	SDL_UnlockMutex(renderer->textureAllocatorLock);
 
@@ -7093,7 +7144,8 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	VulkanRenderer *renderer = (VulkanRenderer*) device->driverData;
 	ShaderResources *shaderResources;
 	PipelineHashArray hashArray;
-	uint32_t i, j;
+	VulkanTextureSubAllocator *allocator;
+	uint32_t i, j, k;
 	VkResult waitResult;
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
@@ -7313,24 +7365,28 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		NULL
 	);
 
-	for (i = 0; i < renderer->textureAllocator->textureBufferCount; i += 1)
+	for (i = 0; i < VK_MAX_MEMORY_TYPES; i++)
 	{
-		for (j = 0; j < renderer->textureAllocator->textureBuffers[i]->freeRegionCount; j += 1)
+		allocator = &renderer->textureAllocator->subAllocators[i];
+
+		for (j = 0; j < allocator->textureBufferCount; j += 1)
 		{
-			SDL_free(renderer->textureAllocator->textureBuffers[i]->freeRegions[j]);
+			for (k = 0; k < allocator->textureBuffers[j]->freeRegionCount; k += 1)
+			{
+				SDL_free(allocator->textureBuffers[j]->freeRegions[k]);
+			}
+			SDL_free(allocator->textureBuffers[j]->freeRegions);
+
+			renderer->vkFreeMemory(
+				renderer->logicalDevice,
+				allocator->textureBuffers[j]->memory,
+				NULL
+			);
+
+			SDL_free(allocator->textureBuffers[j]);
 		}
-		SDL_free(renderer->textureAllocator->textureBuffers[i]->freeRegions);
-
-		renderer->vkFreeMemory(
-			renderer->logicalDevice,
-			renderer->textureAllocator->textureBuffers[i]->memory,
-			NULL
-		);
-
-		SDL_free(renderer->textureAllocator->textureBuffers[i]);
+		SDL_free(allocator->textureBuffers);
 	}
-
-	SDL_free(renderer->textureAllocator->textureBuffers);
 	SDL_free(renderer->textureAllocator);
 
 	for (i = 0; i < PHYSICAL_BUFFER_MAX_COUNT; i += 1)
@@ -9948,9 +10004,13 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->textureAllocator = (VulkanTextureAllocator*) SDL_malloc(
 		sizeof(VulkanTextureAllocator)
 	);
-	renderer->textureAllocator->textureBuffers = NULL;
-	renderer->textureAllocator->textureBufferCount = 0;
-	renderer->textureAllocator->nextAllocationSize = 100000000; /* 100MB */
+
+	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
+	{
+		renderer->textureAllocator->subAllocators[i].textureBuffers = NULL;
+		renderer->textureAllocator->subAllocators[i].textureBufferCount = 0;
+		renderer->textureAllocator->subAllocators[i].nextAllocationSize = TEXTURE_ALLOCATION_SIZE;
+	}
 
 	/*
 	 * Choose depth formats
