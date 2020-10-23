@@ -4751,8 +4751,6 @@ static void VULKAN_INTERNAL_NewFreeTextureRegion(
 	VkDeviceSize offset,
 	VkDeviceSize size
 ) {
-	uint32_t i = 0;
-
 	/* TODO: an improvement here could be to merge contiguous free regions */
 	textureBuffer->freeRegionCount += 1;
 	if (textureBuffer->freeRegionCount > textureBuffer->freeRegionCapacity)
@@ -4762,13 +4760,9 @@ static void VULKAN_INTERNAL_NewFreeTextureRegion(
 			textureBuffer->freeRegions,
 			sizeof(VulkanFreeTextureRegion*) * textureBuffer->freeRegionCapacity
 		);
-
-		for (i = textureBuffer->freeRegionCount - 1; i < textureBuffer->freeRegionCapacity; i += 1)
-		{
-			textureBuffer->freeRegions[i] = SDL_malloc(sizeof(VulkanFreeTextureRegion));
-		}
 	}
 
+	textureBuffer->freeRegions[textureBuffer->freeRegionCount - 1] = SDL_malloc(sizeof(VulkanFreeTextureRegion));
 	textureBuffer->freeRegions[textureBuffer->freeRegionCount - 1]->offset = offset;
 	textureBuffer->freeRegions[textureBuffer->freeRegionCount - 1]->size = size;
 }
@@ -4862,6 +4856,8 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 				/* If we completely used the region, remove it */
 				if (region->size == 0)
 				{
+					SDL_free(textureBuffer->freeRegions[j]);
+
 					if (textureBuffer->freeRegionCount > 1)
 					{
 						textureBuffer->freeRegions[j] =
