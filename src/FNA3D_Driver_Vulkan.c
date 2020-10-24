@@ -52,6 +52,24 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
 	typedef ret (VKAPI_CALL *vkfntype_##func) params;
 #include "FNA3D_Driver_Vulkan_vkfuncs.h"
 
+/* Required extensions */
+static const char* deviceExtensionNames[] =
+{
+	/* Globally supported */
+	VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+	/* Core since 1.1 */
+	VK_KHR_MAINTENANCE1_EXTENSION_NAME,
+	VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
+	VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
+	/* Core since 1.2 */
+	VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,
+	/* EXT, probably not going to be Core */
+	VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,
+	/* Vendor-specific extensions */
+	"VK_GGP_frame_token"
+};
+static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
+
 /* Constants/Limits */
 
 #define TEXTURE_COUNT MAX_TOTAL_SAMPLERS
@@ -9648,24 +9666,6 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 	FNA3D_PresentationParameters presentationParameters;
 	VulkanRenderer *renderer;
 
-	/* Required extensions */
-	static const char* deviceExtensionNames[] =
-	{
-		/* Globally supported */
-		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-		/* Core since 1.1 */
-		VK_KHR_MAINTENANCE1_EXTENSION_NAME,
-		VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
-		VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
-		/* Core since 1.2 */
-		VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,
-		/* EXT, probably not going to be Core */
-		VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,
-		/* Vendor-specific extensions */
-		"VK_GGP_frame_token"
-	};
-	uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
-
 	if (SDL_Vulkan_LoadLibrary(NULL) < 0)
 	{
 		FNA3D_LogWarn("Vulkan: SDL_VulkanLoadLibrary failed");
@@ -9780,24 +9780,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	/* Variables: Create the FNA3D_Device */
 	FNA3D_Device *result;
 	VulkanRenderer *renderer;
-
-	/* Variables: Choose/Create vkDevice */
-	static const char* deviceExtensionNames[] =
-	{
-		/* Globally supported */
-		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-		/* Core since 1.1 */
-		VK_KHR_MAINTENANCE1_EXTENSION_NAME,
-		VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
-		VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
-		/* Core since 1.2 */
-		VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,
-		/* EXT, probably not going to be Core */
-		VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,
-		/* Vendor-specific extensions */
-		"VK_GGP_frame_token"
-	};
-	uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 
 	/* Variables: Choose depth formats */
 	VkImageFormatProperties imageFormatProperties;
