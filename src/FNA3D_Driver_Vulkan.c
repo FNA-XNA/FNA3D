@@ -52,6 +52,24 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
 	typedef ret (VKAPI_CALL *vkfntype_##func) params;
 #include "FNA3D_Driver_Vulkan_vkfuncs.h"
 
+/* Required extensions */
+static const char* deviceExtensionNames[] =
+{
+	/* Globally supported */
+	VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+	/* Core since 1.1 */
+	VK_KHR_MAINTENANCE1_EXTENSION_NAME,
+	VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
+	VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
+	/* Core since 1.2 */
+	VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,
+	/* EXT, probably not going to be Core */
+	VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,
+	/* Vendor-specific extensions */
+	"VK_GGP_frame_token"
+};
+static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
+
 /* Constants/Limits */
 
 #define TEXTURE_COUNT MAX_TOTAL_SAMPLERS
@@ -2412,28 +2430,6 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	renderer->vkGetPhysicalDeviceProperties2KHR(
 		renderer->physicalDevice,
 		&renderer->physicalDeviceProperties
-	);
-
-	FNA3D_LogInfo("FNA3D Driver: Vulkan");
-	FNA3D_LogInfo(
-		"Vulkan Device: %s",
-		renderer->physicalDeviceProperties.properties.deviceName
-	);
-	FNA3D_LogInfo(
-		"Vulkan Driver: %s %s",
-		renderer->physicalDeviceDriverProperties.driverName,
-		renderer->physicalDeviceDriverProperties.driverInfo
-	);
-	FNA3D_LogInfo(
-		"Vulkan Conformance: %u.%u.%u",
-		renderer->physicalDeviceDriverProperties.conformanceVersion.major,
-		renderer->physicalDeviceDriverProperties.conformanceVersion.minor,
-		renderer->physicalDeviceDriverProperties.conformanceVersion.patch
-	);
-	FNA3D_LogWarn(
-		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
-		"FNA3D Vulkan is still in development! You have been warned!\n"
-		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 	);
 
 	SDL_stack_free(physicalDevices);
@@ -9666,9 +9662,13 @@ static void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 
 static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 {
-	/* FIXME: Look for a suitable device too! */
+	SDL_Window *dummyWindowHandle;
+	FNA3D_PresentationParameters presentationParameters;
+	VulkanRenderer *renderer;
+
 	if (SDL_Vulkan_LoadLibrary(NULL) < 0)
 	{
+		FNA3D_LogWarn("Vulkan: SDL_Vulkan_LoadLibrary failed!");
 		return 0;
 	}
 
@@ -9678,7 +9678,7 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 #pragma GCC diagnostic pop
 	if (vkGetInstanceProcAddr == NULL)
 	{
-		FNA3D_LogError(
+		FNA3D_LogWarn(
 			"SDL_Vulkan_GetVkGetInstanceProcAddr(): %s",
 			SDL_GetError()
 		);
@@ -9689,12 +9689,79 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 		name = (PFN_##name) vkGetInstanceProcAddr(VK_NULL_HANDLE, #name);			\
 		if (name == NULL)									\
 		{											\
-			FNA3D_LogError("vkGetInstanceProcAddr(VK_NULL_HANDLE, \"" #name "\") failed");	\
+			FNA3D_LogWarn("vkGetInstanceProcAddr(VK_NULL_HANDLE, \"" #name "\") failed");	\
 			return 0;									\
 		}
 	#include "FNA3D_Driver_Vulkan_vkfuncs.h"
 
 	*flags = SDL_WINDOW_VULKAN;
+
+	/* Test if we can create a vulkan device */
+
+	/* Create a dummy window, otherwise we cannot query swapchain support */
+	dummyWindowHandle = SDL_CreateWindow(
+		"FNA3D Vulkan",
+		0, 0,
+		128, 128,
+		SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN
+	);
+
+	if (dummyWindowHandle == NULL)
+	{
+		FNA3D_LogWarn("Vulkan: Could not create dummy window");
+		return 0;
+	}
+
+	presentationParameters.deviceWindowHandle = dummyWindowHandle;
+
+	/* partially set up VulkanRenderer so we can fall back in case of device non-compliance */
+	renderer = (VulkanRenderer*) SDL_malloc(sizeof(VulkanRenderer));
+	SDL_memset(renderer, '\0', sizeof(VulkanRenderer));
+	renderer->deviceWindowHandle = dummyWindowHandle;
+
+	if (!VULKAN_INTERNAL_CreateInstance(renderer, &presentationParameters))
+	{
+		SDL_DestroyWindow(dummyWindowHandle);
+		SDL_free(renderer);
+		FNA3D_LogWarn("Vulkan: Could not create Vulkan instance");
+		return 0;
+	}
+
+	if (!SDL_Vulkan_CreateSurface(
+		(SDL_Window*) presentationParameters.deviceWindowHandle,
+		renderer->instance,
+		&renderer->surface
+	)) {
+		SDL_DestroyWindow(dummyWindowHandle);
+		SDL_free(renderer);
+		FNA3D_LogWarn(
+			"SDL_Vulkan_CreateSurface failed: %s",
+			SDL_GetError()
+		);
+		return 0;
+	}
+
+	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
+		renderer->func = (vkfntype_##func) vkGetInstanceProcAddr(renderer->instance, #func);
+	#include "FNA3D_Driver_Vulkan_vkfuncs.h"
+
+	if (SDL_strcmp(SDL_GetPlatform(), "Stadia") != 0)
+	{
+		deviceExtensionCount -= 1;
+	}
+	if (!VULKAN_INTERNAL_DeterminePhysicalDevice(
+		renderer,
+		deviceExtensionNames,
+		deviceExtensionCount
+	)) {
+		SDL_DestroyWindow(dummyWindowHandle);
+		SDL_free(renderer);
+		FNA3D_LogWarn("Vulkan: Failed to determine a suitable physical device");
+		return 0;
+	}
+
+	SDL_DestroyWindow(dummyWindowHandle);
+	SDL_free(renderer);
 	return 1;
 }
 
@@ -9713,24 +9780,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	/* Variables: Create the FNA3D_Device */
 	FNA3D_Device *result;
 	VulkanRenderer *renderer;
-
-	/* Variables: Choose/Create vkDevice */
-	static const char* deviceExtensionNames[] =
-	{
-		/* Globally supported */
-		VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-		/* Core since 1.1 */
-		VK_KHR_MAINTENANCE1_EXTENSION_NAME,
-		VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
-		VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
-		/* Core since 1.2 */
-		VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,
-		/* EXT, probably not going to be Core */
-		VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,
-		/* Vendor-specific extensions */
-		"VK_GGP_frame_token"
-	};
-	uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 
 	/* Variables: Choose depth formats */
 	VkImageFormatProperties imageFormatProperties;
@@ -9833,6 +9882,29 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		FNA3D_LogError("Failed to determine a suitable physical device");
 		return NULL;
 	}
+
+	FNA3D_LogInfo("FNA3D Driver: Vulkan");
+	FNA3D_LogInfo(
+		"Vulkan Device: %s",
+		renderer->physicalDeviceProperties.properties.deviceName
+	);
+	FNA3D_LogInfo(
+		"Vulkan Driver: %s %s",
+		renderer->physicalDeviceDriverProperties.driverName,
+		renderer->physicalDeviceDriverProperties.driverInfo
+	);
+	FNA3D_LogInfo(
+		"Vulkan Conformance: %u.%u.%u",
+		renderer->physicalDeviceDriverProperties.conformanceVersion.major,
+		renderer->physicalDeviceDriverProperties.conformanceVersion.minor,
+		renderer->physicalDeviceDriverProperties.conformanceVersion.patch
+	);
+	FNA3D_LogWarn(
+		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
+		"FNA3D Vulkan is still in development! You have been warned!\n"
+		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
+	);
+
 	if (!VULKAN_INTERNAL_CreateLogicalDevice(
 		renderer,
 		deviceExtensionNames,
