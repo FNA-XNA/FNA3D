@@ -9668,7 +9668,7 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 
 	if (SDL_Vulkan_LoadLibrary(NULL) < 0)
 	{
-		FNA3D_LogWarn("Vulkan: SDL_VulkanLoadLibrary failed");
+		FNA3D_LogWarn("Vulkan: SDL_Vulkan_LoadLibrary failed!");
 		return 0;
 	}
 
