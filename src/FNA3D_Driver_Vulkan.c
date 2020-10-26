@@ -77,7 +77,7 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 #define MAX_QUERIES 16
 #define MAX_UNIFORM_DESCRIPTOR_SETS 1024
 #define COMMAND_LIMIT 100
-#define TEXTURE_ALLOCATION_SIZE 100000000 /* 100MB */
+#define TEXTURE_ALLOCATION_SIZE 256000000 /* 256MB */
 #define TEXTURE_STAGING_SIZE 8000000 /* 8MB */
 
 /* Should be equivalent to the number of values in FNA3D_PrimitiveType */
@@ -2102,18 +2102,11 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 			(memoryProperties.memoryTypes[i].propertyFlags & properties) == properties	)
 		{
 			*result = i;
-			FNA3D_LogInfo(
-				"Found suitable memory type; type index: %u, type filter: %u, properties: %u",
-				i,
-				typeFilter,
-				properties
-			);
 			return 1;
 		}
 	}
 
-	FNA3D_LogError("Failed to find suitable memory type");
-
+	FNA3D_LogError("Failed to find memory properties %X, filter %X", properties, typeFilter);
 	return 0;
 }
 
@@ -4732,11 +4725,7 @@ static uint8_t VULKAN_INTERNAL_AllocateTextureMemory(
 		&textureBuffer->memory
 	);
 
-	if (result == VK_ERROR_OUT_OF_DEVICE_MEMORY || result == VK_ERROR_OUT_OF_HOST_MEMORY)
-	{
-		return 2;
-	}
-	else if (result != VK_SUCCESS)
+	if (result != VK_SUCCESS)
 	{
 		LogVulkanResult("vkAllocateMemory", result);
 		return 0;
@@ -4894,51 +4883,11 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 		&textureBuffer
 	);
 
-	/* We're out of device memory, try host memory */
-	if (allocationResult == 2)
+	/* We're out of device memory, time to die */
+
+	if (allocationResult == 0)
 	{
-		allocator->nextAllocationSize = TEXTURE_ALLOCATION_SIZE;
-
-		if (!VULKAN_INTERNAL_FindMemoryType(
-			renderer,
-			memoryRequirements.memoryRequirements.memoryTypeBits,
-			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
-			&memoryTypeIndex
-		)) {
-			FNA3D_LogError(
-				"Could not find valid memory type for image creation"
-			);
-			return 0;
-		}
-
-		allocator = &renderer->textureAllocator->subAllocators[memoryTypeIndex];
-		if (requiredSize > allocator->nextAllocationSize)
-		{
-			/* allocate a page of required size aligned to 100MB increments */
-			allocator->nextAllocationSize =
-				VULKAN_INTERNAL_NextHighestAlignment(requiredSize, TEXTURE_ALLOCATION_SIZE);
-		}
-
-		allocationResult = VULKAN_INTERNAL_AllocateTextureMemory(
-			renderer,
-			memoryTypeIndex,
-			image,
-			requiredSize,
-			dedicatedRequirements.prefersDedicatedAllocation,
-			&textureBuffer
-		);
-
-		if (allocationResult == 0 || allocationResult == 2)
-		{
-			FNA3D_LogError(
-				"Failed to allocate texture memory"
-			);
-			return 0;
-		}
-	}
-	else if (allocationResult == 0)
-	{
-		FNA3D_LogError("Failed to allocate texture memory");
+		FNA3D_LogError("Failed to allocate texture memory!");
 		return 0;
 	}
 
@@ -7370,7 +7319,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		NULL
 	);
 
-	for (i = 0; i < VK_MAX_MEMORY_TYPES; i++)
+	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
 	{
 		allocator = &renderer->textureAllocator->subAllocators[i];
 
