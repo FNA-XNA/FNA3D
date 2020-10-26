@@ -78,6 +78,7 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 #define MAX_UNIFORM_DESCRIPTOR_SETS 1024
 #define COMMAND_LIMIT 100
 #define TEXTURE_ALLOCATION_SIZE 100000000 /* 100MB */
+#define TEXTURE_STAGING_SIZE 8000000 /* 8MB */
 
 /* Should be equivalent to the number of values in FNA3D_PrimitiveType */
 #define PRIMITIVE_TYPES_COUNT 5
@@ -2101,6 +2102,12 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 			(memoryProperties.memoryTypes[i].propertyFlags & properties) == properties	)
 		{
 			*result = i;
+			FNA3D_LogInfo(
+				"Found suitable memory type; type index: %u, type filter: %u, properties: %u",
+				i,
+				typeFilter,
+				properties
+			);
 			return 1;
 		}
 	}
@@ -4465,8 +4472,6 @@ static int8_t VULKAN_INTERNAL_AllocateSubBuffer(
 			totalPhysicalSize,
 			VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
 			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
-			VK_BUFFER_USAGE_TRANSFER_DST_BIT |
 			VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
 		);
 	}
@@ -4897,7 +4902,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 		if (!VULKAN_INTERNAL_FindMemoryType(
 			renderer,
 			memoryRequirements.memoryRequirements.memoryTypeBits,
-			VK_MEMORY_PROPERTY_HOST_CACHED_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
+			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT | VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT,
 			&memoryTypeIndex
 		)) {
 			FNA3D_LogError(
@@ -9993,7 +9998,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	renderer->textureStagingBuffer = VULKAN_INTERNAL_NewPhysicalBuffer(
 		renderer,
-		8000000,
+		TEXTURE_STAGING_SIZE,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
 	);
 
