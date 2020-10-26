@@ -4869,8 +4869,8 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 
 	if (requiredSize > allocator->nextAllocationSize)
 	{
-		/* allocate a page of required size aligned to 100MB increments */
-		allocator->nextAllocationSize =
+		/* allocate a page of required size aligned to ALLOCATION_SIZE increments */ allocator->nextAllocationSize
+		=
 			VULKAN_INTERNAL_NextHighestAlignment(requiredSize, TEXTURE_ALLOCATION_SIZE);
 	}
 
