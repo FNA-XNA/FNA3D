@@ -5539,12 +5539,6 @@ static uint8_t OPENGL_PrepareWindowAttributes(uint32_t *flags)
 	int32_t depthSize, stencilSize;
 	const char *depthFormatHint;
 
-	/* If there's no GL library, bail! */
-	if (SDL_GL_LoadLibrary(NULL) < 0)
-	{
-		return 0;
-	}
-
 	/* GLContext environment variables */
 	forceES3 = SDL_GetHintBoolean("FNA3D_OPENGL_FORCE_ES3", 0);
 	forceCore = SDL_GetHintBoolean("FNA3D_OPENGL_FORCE_CORE_PROFILE", 0);
@@ -5625,6 +5619,16 @@ static uint8_t OPENGL_PrepareWindowAttributes(uint32_t *flags)
 			SDL_GL_CONTEXT_PROFILE_MASK,
 			SDL_GL_CONTEXT_PROFILE_COMPATIBILITY
 		);
+	}
+
+	/* If there's no GL library, bail!
+	 * Only do this after all the flags above are set, as they may affect
+	 * which GL library actually gets loaded (desktop vs ES, for example).
+	 * -flibit
+	 */
+	if (SDL_GL_LoadLibrary(NULL) < 0)
+	{
+		return 0;
 	}
 
 	*flags = SDL_WINDOW_OPENGL;
