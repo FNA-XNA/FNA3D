@@ -34,11 +34,11 @@ static const FNA3D_Driver *drivers[] = {
 #if FNA3D_DRIVER_D3D11
 	&D3D11Driver,
 #endif
-#if FNA3D_DRIVER_METAL
-	&MetalDriver,
-#endif
 #if FNA3D_DRIVER_OPENGL
 	&OpenGLDriver,
+#endif
+#if FNA3D_DRIVER_METAL /* This could be above OpenGL but Apple playin */
+	&MetalDriver,
 #endif
 #if FNA3D_DRIVER_VULKAN /* TODO: Bump this to the top when Vulkan is done! */
 	&VulkanDriver,
