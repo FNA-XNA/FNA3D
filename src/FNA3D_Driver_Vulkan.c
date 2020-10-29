@@ -5125,6 +5125,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 	uint32_t prevIndex;
 	uint8_t *mapPointer;
 	uint8_t *previousSubBufferMapPointer;
+	uint8_t allocateResult;
 	VkResult vulkanResult;
 
 	#define CURIDX vulkanBuffer->currentSubBufferIndex
@@ -5153,13 +5154,15 @@ static void VULKAN_INTERNAL_SetBufferData(
 				/* Create a new SubBuffer if needed */
 				if (CURIDX == vulkanBuffer->subBufferCount)
 				{
-					if (VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer) == 2)
+					allocateResult = VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer);
+					if (allocateResult == 2)
 					{
 						/* Out of memory, flush commands to free memory */
 						VULKAN_INTERNAL_FlushCommands(renderer, 1);
 					}
-					else /* Something went very wrong, time to die */
+					else if (allocateResult == 0)
 					{
+						/* Something went very wrong, time to die */
 						FNA3D_LogError("Failed to allocate VulkanSubBuffer!");
 						return;
 					}
@@ -7673,7 +7676,7 @@ static void VULKAN_DrawInstancedPrimitives(
 	RECORD_CMD(renderer->vkCmdBindIndexBuffer(
 		renderer->currentCommandBuffer,
 		subbuf->buffer,
-		subbuf->offset,
+		0,
 		XNAToVK_IndexType[indexElementSize]
 	));
 
@@ -8179,10 +8182,10 @@ static void VULKAN_ApplyVertexBufferBindings(
 			vertexBuffer->currentSubBufferIndex
 		];
 
-		offset = subbuf->offset + (
+		offset =
 			bindings[i].vertexOffset *
 			bindings[i].vertexDeclaration.vertexStride
-		);
+		;
 
 		VULKAN_INTERNAL_MarkAsBound(renderer, vertexBuffer);
 		if (	renderer->ldVertexBuffers[i] != subbuf->buffer ||
