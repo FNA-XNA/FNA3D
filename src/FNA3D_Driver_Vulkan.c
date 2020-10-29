@@ -2914,7 +2914,11 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 
 	/* No suitable free regions exist, allocate a new memory region */
 
-	if (requiredSize > allocator->nextAllocationSize)
+	if (dedicatedRequirements.prefersDedicatedAllocation || dedicatedRequirements.requiresDedicatedAllocation)
+	{
+		allocationSize = requiredSize;
+	}
+	else if (requiredSize > allocator->nextAllocationSize)
 	{
 		/* allocate a page of required size aligned to STARTING_ALLOCATION_SIZE increments */
 		allocationSize =
