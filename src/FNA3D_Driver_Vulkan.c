@@ -77,7 +77,8 @@ static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 #define MAX_QUERIES 16
 #define MAX_UNIFORM_DESCRIPTOR_SETS 1024
 #define COMMAND_LIMIT 100
-#define ALLOCATION_SIZE 256000000 /* 256MB */
+#define STARTING_ALLOCATION_SIZE 64000000 /* 64MB */
+#define MAX_ALLOCATION_SIZE 256000000 /* 256MB */
 #define TEXTURE_STAGING_SIZE 8000000 /* 8MB */
 
 /* Should be equivalent to the number of values in FNA3D_PrimitiveType */
@@ -2717,7 +2718,7 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 	VkBuffer buffer,
 	VkImage image,
 	uint32_t memoryTypeIndex,
-	VkDeviceSize requiredSize,
+	VkDeviceSize allocationSize,
 	uint8_t dedicated,
 	VulkanMemoryAllocation **pMemoryAllocation
 ) {
@@ -2729,8 +2730,10 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 
 	allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
 	allocInfo.memoryTypeIndex = memoryTypeIndex;
+	allocInfo.allocationSize = allocationSize;
 
 	allocation = SDL_malloc(sizeof(VulkanMemoryAllocation));
+	allocation->size = allocationSize;
 
 	if (dedicated)
 	{
@@ -2740,16 +2743,12 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 		dedicatedInfo.buffer = buffer;
 		dedicatedInfo.image = image;
 
-		allocInfo.allocationSize = requiredSize;
 		allocInfo.pNext = &dedicatedInfo;
 
-		/* allocate dedicated memory */
-		allocation->size = requiredSize;
 		allocation->dedicated = 1;
 	}
 	else
 	{
-		allocInfo.allocationSize = allocator->nextAllocationSize;
 		allocInfo.pNext = NULL;
 
 		/* allocate a non-dedicated texture buffer */
@@ -2763,7 +2762,6 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 			allocator->allocationCount - 1
 		] = allocation;
 
-		allocation->size = allocator->nextAllocationSize;
 		allocation->dedicated = 0;
 	}
 
@@ -2819,7 +2817,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 	VulkanMemorySubAllocator *allocator;
 	VulkanMemoryFreeRegion *region;
 
-	VkDeviceSize requiredSize;
+	VkDeviceSize requiredSize, allocationSize;
 	VkDeviceSize alignedOffset;
 	uint32_t newRegionSize, newRegionOffset;
 	uint8_t allocationResult;
@@ -2918,9 +2916,14 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 
 	if (requiredSize > allocator->nextAllocationSize)
 	{
-		/* allocate a page of required size aligned to ALLOCATION_SIZE increments */
-		allocator->nextAllocationSize =
-			VULKAN_INTERNAL_NextHighestAlignment(requiredSize, ALLOCATION_SIZE);
+		/* allocate a page of required size aligned to STARTING_ALLOCATION_SIZE increments */
+		allocationSize =
+			VULKAN_INTERNAL_NextHighestAlignment(requiredSize, STARTING_ALLOCATION_SIZE);
+	}
+	else
+	{
+		allocationSize = allocator->nextAllocationSize;
+		allocator->nextAllocationSize = SDL_min(allocator->nextAllocationSize * 2, MAX_ALLOCATION_SIZE);
 	}
 
 	allocationResult = VULKAN_INTERNAL_AllocateMemory(
@@ -2928,7 +2931,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 		buffer,
 		image,
 		memoryTypeIndex,
-		requiredSize,
+		allocationSize,
 		dedicatedRequirements.prefersDedicatedAllocation || dedicatedRequirements.requiresDedicatedAllocation,
 		&allocation
 	);
@@ -2962,8 +2965,6 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 			newRegionSize
 		);
 	}
-
-	allocator->nextAllocationSize = ALLOCATION_SIZE;
 
 	SDL_UnlockMutex(renderer->allocatorLock);
 
@@ -10238,7 +10239,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
 	{
-		renderer->memoryAllocator->subAllocators[i].nextAllocationSize = ALLOCATION_SIZE;
+		renderer->memoryAllocator->subAllocators[i].nextAllocationSize = STARTING_ALLOCATION_SIZE;
 		renderer->memoryAllocator->subAllocators[i].allocations = NULL;
 		renderer->memoryAllocator->subAllocators[i].allocationCount = 0;
 		renderer->memoryAllocator->subAllocators[i].sortedFreeRegions = SDL_malloc(
