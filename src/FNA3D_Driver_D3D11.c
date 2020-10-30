@@ -4966,14 +4966,6 @@ static void D3D11_PLATFORM_GetDefaultAdapter(
 	);
 }
 
-static inline void* GetDXGIHandle(SDL_Window *window)
-{
-	SDL_SysWMinfo info;
-	SDL_VERSION(&info.version);
-	SDL_GetWindowWMInfo((SDL_Window*) window, &info);
-	return (void*) info.info.win.window; /* HWND */
-}
-
 static void D3D11_PLATFORM_CreateSwapChain(
 	D3D11Renderer *renderer,
 	FNA3D_PresentationParameters *pp
@@ -4981,7 +4973,13 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	IDXGIOutput *output;
 	DXGI_SWAP_CHAIN_DESC swapchainDesc;
 	DXGI_MODE_DESC swapchainBufferDesc;
+	SDL_SysWMinfo info;
+	HWND dxgiHandle;
 	HRESULT res;
+
+	SDL_VERSION(&info.version);
+	SDL_GetWindowWMInfo((SDL_Window*) pp->deviceWindowHandle, &info);
+	dxgiHandle = info.info.win.window;
 
 	/* Initialize swapchain buffer descriptor */
 	swapchainBufferDesc.Width = 0;
@@ -5010,7 +5008,7 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	swapchainDesc.SampleDesc.Quality = 0;
 	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 	swapchainDesc.BufferCount = 3;
-	swapchainDesc.OutputWindow = (HWND) GetDXGIHandle((SDL_Window*) pp->deviceWindowHandle);
+	swapchainDesc.OutputWindow = dxgiHandle;
 	swapchainDesc.Windowed = 1;
 	swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 	swapchainDesc.Flags = 0;
@@ -5023,6 +5021,20 @@ static void D3D11_PLATFORM_CreateSwapChain(
 		&renderer->swapchain
 	);
 	ERROR_CHECK("Could not create swapchain")
+
+	/* Disable DXGI window crap */
+	res = IDXGIFactory_MakeWindowAssociation(
+		(IDXGIFactory*) renderer->factory,
+		dxgiHandle,
+		DXGI_MWA_NO_WINDOW_CHANGES
+	);
+	if (FAILED(res))
+	{
+		FNA3D_LogWarn(
+			"MakeWindowAssociation failed! Error Code: %08X",
+			res
+		);
+	}
 }
 
 #endif
