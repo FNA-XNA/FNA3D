@@ -4526,7 +4526,7 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 	memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	memoryBarrier.buffer = subBuffer->buffer;
-	memoryBarrier.offset = subBuffer->offset;
+	memoryBarrier.offset = 0;
 	memoryBarrier.size = buffer->size;
 
 	prevAccess = subBuffer->resourceAccessType;
