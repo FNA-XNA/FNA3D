@@ -3007,15 +3007,30 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 
 	for (i = 0; i < buffer->subBufferCount; i += 1)
 	{
-		SDL_LockMutex(renderer->allocatorLock);
+		if (buffer->subBuffers[i]->allocation->dedicated)
+		{
+			renderer->vkFreeMemory(
+				renderer->logicalDevice,
+				buffer->subBuffers[i]->allocation->memory,
+				NULL
+			);
 
-		VULKAN_INTERNAL_NewMemoryFreeRegion(
-			buffer->subBuffers[i]->allocation,
-			buffer->subBuffers[i]->offset,
-			buffer->subBuffers[i]->size
-		);
+			SDL_free(buffer->subBuffers[i]->allocation->freeRegions[0]);
+			SDL_free(buffer->subBuffers[i]->allocation->freeRegions);
+			SDL_free(buffer->subBuffers[i]->allocation);
+		}
+		else
+		{
+			SDL_LockMutex(renderer->allocatorLock);
 
-		SDL_UnlockMutex(renderer->allocatorLock);
+			VULKAN_INTERNAL_NewMemoryFreeRegion(
+				buffer->subBuffers[i]->allocation,
+				buffer->subBuffers[i]->offset,
+				buffer->subBuffers[i]->size
+			);
+
+			SDL_UnlockMutex(renderer->allocatorLock);
+		}
 
 		renderer->vkDestroyBuffer(
 			renderer->logicalDevice,
