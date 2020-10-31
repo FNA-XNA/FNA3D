@@ -227,6 +227,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	uint8_t debugMode;
 	uint32_t supportsDxt1;
 	uint32_t supportsS3tc;
+	uint8_t supportsSRGBRenderTarget;
 	int32_t maxMultiSampleCount;
 	D3D_FEATURE_LEVEL featureLevel;
 
@@ -307,6 +308,8 @@ static DXGI_FORMAT XNAToD3D_TextureFormat[] =
 	DXGI_FORMAT_R16G16B16A16_FLOAT,	/* SurfaceFormat.HalfVector4 */
 	DXGI_FORMAT_R16G16B16A16_FLOAT,	/* SurfaceFormat.HdrBlendable */
 	DXGI_FORMAT_B8G8R8A8_UNORM,	/* SurfaceFormat.ColorBgraEXT */
+	DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,/* SurfaceFormat.ColorSrgbEXT */
+	DXGI_FORMAT_BC3_UNORM_SRGB,	/* SurfaceFormat.Dxt5SrgbEXT */
 };
 
 static DXGI_FORMAT XNAToD3D_DepthFormat[] =
@@ -2495,6 +2498,16 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 	useFauxBackbuffer = (	useFauxBackbuffer ||
 				parameters->multiSampleCount > 0	);
 
+	FNA3D_SurfaceFormat actualFnaFormat = parameters->backBufferFormat;
+	DXGI_FORMAT actualDxgiFormat = XNAToD3D_TextureFormat[actualFnaFormat];
+
+	if ((actualDxgiFormat == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB) && !renderer->supportsSRGBRenderTarget)
+	{
+		FNA3D_LogWarn("Could not create an SRGB swapchain because this renderer does not support it. Silently falling back to UNORM.");
+		actualFnaFormat = FNA3D_SURFACEFORMAT_COLOR;
+		actualDxgiFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+	}
+
 	if (useFauxBackbuffer)
 	{
 		if (	renderer->backbuffer == NULL ||
@@ -2524,7 +2537,7 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 		colorBufferDesc.Height = renderer->backbuffer->height;
 		colorBufferDesc.MipLevels = 1;
 		colorBufferDesc.ArraySize = 1;
-		colorBufferDesc.Format = XNAToD3D_TextureFormat[renderer->backbuffer->d3d11.surfaceFormat];
+		colorBufferDesc.Format = actualDxgiFormat;
 		colorBufferDesc.SampleDesc.Count = (
 			renderer->backbuffer->multiSampleCount > 1 ?
 				renderer->backbuffer->multiSampleCount :
@@ -2573,7 +2586,7 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 			colorBufferDesc.Height = renderer->backbuffer->height;
 			colorBufferDesc.MipLevels = 1;
 			colorBufferDesc.ArraySize = 1;
-			colorBufferDesc.Format = XNAToD3D_TextureFormat[renderer->backbuffer->d3d11.surfaceFormat];
+			colorBufferDesc.Format = actualDxgiFormat;
 			colorBufferDesc.SampleDesc.Count = 1;
 			colorBufferDesc.SampleDesc.Quality = 0;
 			colorBufferDesc.Usage = D3D11_USAGE_DEFAULT;
@@ -2625,6 +2638,7 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 		renderer->backbuffer->width = parameters->backBufferWidth;
 		renderer->backbuffer->height = parameters->backBufferHeight;
 		renderer->backbuffer->depthFormat = parameters->depthStencilFormat;
+		renderer->backbuffer->d3d11.surfaceFormat = parameters->backBufferFormat;
 		renderer->backbuffer->multiSampleCount = 0;
 	}
 
@@ -2689,7 +2703,10 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 	}
 
 	/* Create a render target view for the swapchain */
-	swapchainViewDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	DXGI_FORMAT swapchainFormat = (actualDxgiFormat == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
+		? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
+		: DXGI_FORMAT_R8G8B8A8_UNORM;
+	swapchainViewDesc.Format = swapchainFormat;
 	swapchainViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
 	swapchainViewDesc.Texture2D.MipSlice = 0;
 
@@ -3230,13 +3247,12 @@ static void D3D11_SetTextureData2D(
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
 	D3D11_BOX dstBox;
 
-	/* DXT formats require w and h to be multiples of 4 */
-	if (	d3dTexture->format == FNA3D_SURFACEFORMAT_DXT1 ||
-		d3dTexture->format == FNA3D_SURFACEFORMAT_DXT3 ||
-		d3dTexture->format == FNA3D_SURFACEFORMAT_DXT5	)
+	int32_t blockSize = Texture_GetBlockSize(d3dTexture->format);
+
+	if (blockSize > 1)
 	{
-		w = (w + 3) & ~3;
-		h = (h + 3) & ~3;
+		w = (w + blockSize - 1) & ~(blockSize - 1);
+		h = (h + blockSize - 1) & ~(blockSize - 1);
 	}
 
 	dstBox.left = x;
@@ -3276,13 +3292,12 @@ static void D3D11_SetTextureData3D(
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
 	D3D11_BOX dstBox;
 
-	/* DXT formats require w and h to be multiples of 4 */
-	if (	d3dTexture->format == FNA3D_SURFACEFORMAT_DXT1 ||
-		d3dTexture->format == FNA3D_SURFACEFORMAT_DXT3 ||
-		d3dTexture->format == FNA3D_SURFACEFORMAT_DXT5	)
+	int32_t blockSize = Texture_GetBlockSize(d3dTexture->format);
+
+	if (blockSize > 1)
 	{
-		w = (w + 3) & ~3;
-		h = (h + 3) & ~3;
+		w = (w + blockSize - 1) & ~(blockSize - 1);
+		h = (h + blockSize - 1) & ~(blockSize - 1);
 	}
 
 	dstBox.left = x;
@@ -3321,13 +3336,12 @@ static void D3D11_SetTextureDataCube(
 	D3D11Texture *d3dTexture = (D3D11Texture*) texture;
 	D3D11_BOX dstBox;
 
-	/* DXT formats require w and h to be multiples of 4 */
-	if (	d3dTexture->format == FNA3D_SURFACEFORMAT_DXT1 ||
-		d3dTexture->format == FNA3D_SURFACEFORMAT_DXT3 ||
-		d3dTexture->format == FNA3D_SURFACEFORMAT_DXT5	)
+	int32_t blockSize = Texture_GetBlockSize(d3dTexture->format);
+
+	if (blockSize > 1)
 	{
-		w = (w + 3) & ~3;
-		h = (h + 3) & ~3;
+		w = (w + blockSize - 1) & ~(blockSize - 1);
+		h = (h + blockSize - 1) & ~(blockSize - 1);
 	}
 
 	dstBox.left = x;
@@ -3439,9 +3453,7 @@ static void D3D11_GetTextureData2D(
 	int32_t formatSize = Texture_GetFormatSize(tex->format);
 	HRESULT res;
 
-	if (	tex->format == FNA3D_SURFACEFORMAT_DXT1 ||
-		tex->format == FNA3D_SURFACEFORMAT_DXT3 ||
-		tex->format == FNA3D_SURFACEFORMAT_DXT5	)
+	if (Texture_GetBlockSize(tex->format) != 1)
 	{
 		FNA3D_LogError(
 			"GetData with compressed textures unsupported!"
@@ -3587,9 +3599,7 @@ static void D3D11_GetTextureDataCube(
 	int32_t formatSize = Texture_GetFormatSize(tex->format);
 	HRESULT res;
 
-	if (	tex->format == FNA3D_SURFACEFORMAT_DXT1 ||
-		tex->format == FNA3D_SURFACEFORMAT_DXT3 ||
-		tex->format == FNA3D_SURFACEFORMAT_DXT5	)
+	if (Texture_GetBlockSize(tex->format) != 1)
 	{
 		FNA3D_LogError(
 			"GetData with compressed textures unsupported!"
@@ -4590,6 +4600,12 @@ static uint8_t D3D11_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 	return 1;
 }
 
+static uint8_t D3D11_SupportsSRGBRenderTargets(FNA3D_Renderer *driverData)
+{
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	return renderer->supportsSRGBRenderTarget;
+}
+
 static void D3D11_GetMaxTextureSlots(
 	FNA3D_Renderer *driverData,
 	int32_t *textures,
@@ -4944,7 +4960,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 		D3D_FEATURE_LEVEL_10_1,
 		D3D_FEATURE_LEVEL_10_0
 	};
-	uint32_t flags, supportsDxt3, supportsDxt5;
+	uint32_t flags, supportsDxt3, supportsDxt5, supportsSrgb;
 	int32_t i;
 	HRESULT res;
 
@@ -5037,6 +5053,12 @@ try_create_device:
 		&supportsDxt5
 	);
 	renderer->supportsS3tc = (supportsDxt3 || supportsDxt5);
+	ID3D11Device_CheckFormatSupport(
+		renderer->device,
+		XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_COLORSRGB_EXT],
+		&supportsSrgb
+	);
+	renderer->supportsSRGBRenderTarget = supportsSrgb;
 
 	/* Initialize MojoShader context */
 	renderer->shaderContext = MOJOSHADER_d3d11CreateContext(

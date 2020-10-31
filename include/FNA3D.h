@@ -132,7 +132,9 @@ typedef enum FNA3D_SurfaceFormat
 	FNA3D_SURFACEFORMAT_HALFVECTOR2,
 	FNA3D_SURFACEFORMAT_HALFVECTOR4,
 	FNA3D_SURFACEFORMAT_HDRBLENDABLE,
-	FNA3D_SURFACEFORMAT_COLORBGRA_EXT
+	FNA3D_SURFACEFORMAT_COLORBGRA_EXT,
+	FNA3D_SURFACEFORMAT_COLORSRGB_EXT,
+	FNA3D_SURFACEFORMAT_DXT5SRGB_EXT
 } FNA3D_SurfaceFormat;
 
 typedef enum FNA3D_DepthFormat
@@ -1477,6 +1479,9 @@ FNA3DAPI uint8_t FNA3D_SupportsHardwareInstancing(FNA3D_Device *device);
 
 /* Returns 1 if the renderer natively supports asynchronous buffer writing. */
 FNA3DAPI uint8_t FNA3D_SupportsNoOverwrite(FNA3D_Device *device);
+
+/* Returns 1 if the renderer natively supports SRGB render targets. */
+FNA3DAPI uint8_t FNA3D_SupportsSRGBRenderTargets(FNA3D_Device *device);
 
 /* Returns the number of sampler slots supported by the renderer. */
 FNA3DAPI void FNA3D_GetMaxTextureSlots(
