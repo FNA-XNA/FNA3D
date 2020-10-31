@@ -5022,9 +5022,24 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	);
 	ERROR_CHECK("Could not create swapchain")
 
+	/*
+	 * The swapchain's parent is a separate factory from the factory that
+	 * we used to create the swapchain, and only that parent can be used to
+	 * set the window association. Trying to set an association on our factory
+	 * will silently fail and doesn't even verify arguments or return errors.
+	 * See https://gamedev.net/forums/topic/634235-dxgidisabling-altenter/4999955/
+	 */
+	IDXGIFactory1* pParent;
+	res = IDXGISwapChain_GetParent(
+		(IDXGISwapChain *) renderer->swapchain,
+		&D3D_IID_IDXGIFactory1,
+		&pParent
+	);
+	ERROR_CHECK("Could not get swapchain parent")
+
 	/* Disable DXGI window crap */
-	res = IDXGIFactory_MakeWindowAssociation(
-		(IDXGIFactory*) renderer->factory,
+	res = IDXGIFactory1_MakeWindowAssociation(
+		pParent,
 		dxgiHandle,
 		DXGI_MWA_NO_WINDOW_CHANGES
 	);
