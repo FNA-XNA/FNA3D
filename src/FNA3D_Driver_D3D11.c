@@ -4971,6 +4971,7 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	FNA3D_PresentationParameters *pp
 ) {
 	IDXGIOutput *output;
+	IDXGIFactory1* pParent;
 	DXGI_SWAP_CHAIN_DESC swapchainDesc;
 	DXGI_MODE_DESC swapchainBufferDesc;
 	SDL_SysWMinfo info;
@@ -5029,26 +5030,33 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	 * will silently fail and doesn't even verify arguments or return errors.
 	 * See https://gamedev.net/forums/topic/634235-dxgidisabling-altenter/4999955/
 	 */
-	IDXGIFactory1* pParent;
 	res = IDXGISwapChain_GetParent(
-		(IDXGISwapChain *) renderer->swapchain,
+		(IDXGISwapChain*) renderer->swapchain,
 		&D3D_IID_IDXGIFactory1,
-		&pParent
-	);
-	ERROR_CHECK("Could not get swapchain parent")
-
-	/* Disable DXGI window crap */
-	res = IDXGIFactory1_MakeWindowAssociation(
-		pParent,
-		dxgiHandle,
-		DXGI_MWA_NO_WINDOW_CHANGES
+		(void**) &pParent
 	);
 	if (FAILED(res))
 	{
 		FNA3D_LogWarn(
-			"MakeWindowAssociation failed! Error Code: %08X",
+			"Could not get swapchain parent! Error Code: %08X",
 			res
 		);
+	}
+	else
+	{
+		/* Disable DXGI window crap */
+		res = IDXGIFactory1_MakeWindowAssociation(
+			pParent,
+			dxgiHandle,
+			DXGI_MWA_NO_WINDOW_CHANGES
+		);
+		if (FAILED(res))
+		{
+			FNA3D_LogWarn(
+				"MakeWindowAssociation failed! Error Code: %08X",
+				res
+			);
+		}
 	}
 }
 
