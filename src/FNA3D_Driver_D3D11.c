@@ -491,24 +491,27 @@ static void D3D11_INTERNAL_LogError(
 	char* msg,
 	HRESULT res
 ) {
-	char wszMsgBuff[1024+1];  // Buffer for text, ensure space for \0 terminator after buffer
-	DWORD dwChars;  // Number of chars returned.
+	#define MAX_ERROR_LEN 1024 /* FIXME: Arbitrary! */
 
-	// Try to get the message from the system errors.
-	dwChars = FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM |
-		FORMAT_MESSAGE_IGNORE_INSERTS,
+	/* Buffer for text, ensure space for \0 terminator after buffer */
+	char wszMsgBuff[MAX_ERROR_LEN + 1];
+	DWORD dwChars; /* Number of chars returned. */
+
+	/* Try to get the message from the system errors. */
+	dwChars = FormatMessage(
+		FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
 		NULL,
 		res,
 		0,
 		wszMsgBuff,
-		1024,
-		NULL);
+		MAX_ERROR_LEN,
+		NULL
+	);
 
-	// Ensure valid range
-	if ((dwChars < 0) || (dwChars > 1024))
-		dwChars = 0;
+	/* Ensure valid range */
+	dwChars = SDL_min(dwChars, MAX_ERROR_LEN);
 
-	// Trim whitespace from tail of message
+	/* Trim whitespace from tail of message */
 	while (dwChars > 0)
 	{
 		if (wszMsgBuff[dwChars - 1] <= ' ')
@@ -516,10 +519,12 @@ static void D3D11_INTERNAL_LogError(
 			dwChars--;
 		}
 		else
+		{
 			break;
+		}
 	}
 
-	// Ensure \0 terminated string
+	/* Ensure null-terminated string */
 	wszMsgBuff[dwChars] = '\0';
 
 	FNA3D_LogError(fmt, msg, wszMsgBuff, res);
