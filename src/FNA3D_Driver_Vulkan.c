@@ -1017,6 +1017,7 @@ typedef struct VulkanBuffer VulkanBuffer;
 
 typedef struct VulkanSubBuffer
 {
+	VulkanBuffer *parent;
 	VulkanMemoryAllocation *allocation;
 	VkBuffer buffer;
 	VkDeviceSize offset;
@@ -1037,8 +1038,6 @@ struct VulkanBuffer /* cast from FNA3D_Buffer */
 	int32_t subBufferCapacity;
 	int32_t currentSubBufferIndex;
 	VulkanResourceAccessType resourceAccessType;
-	uint8_t bound;
-	uint8_t boundSubmitted;
 	VkBufferUsageFlags usage;
 };
 
@@ -1151,11 +1150,11 @@ typedef struct VulkanRenderer
 
 	VulkanMemoryAllocator *memoryAllocator;
 
-	VulkanBuffer **buffersInUse;
+	VulkanSubBuffer **buffersInUse;
 	uint32_t numBuffersInUse;
 	uint32_t maxBuffersInUse;
 
-	VulkanBuffer **submittedBuffers;
+	VulkanSubBuffer **submittedBuffers;
 	uint32_t numSubmittedBuffers;
 	uint32_t maxSubmittedBuffers;
 
@@ -2981,24 +2980,24 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 	VulkanRenderer *renderer,
 	VulkanBuffer *buffer
 ) {
-	uint32_t i;
+	uint32_t i, j;
 
-	if (buffer->bound)
+	for (i = 0; i < renderer->numBuffersInUse; i += 1)
 	{
-		for (i = 0; i < renderer->numBuffersInUse; i += 1)
+		for (j = 0; j < buffer->subBufferCount; j += 1)
 		{
-			if (renderer->buffersInUse[i] == buffer)
+			if (renderer->buffersInUse[i] == buffer->subBuffers[j])
 			{
 				renderer->buffersInUse[i] = NULL;
 			}
 		}
 	}
 
-	if (buffer->boundSubmitted)
+	for (i = 0; i < renderer->numSubmittedBuffers; i += 1)
 	{
-		for (i = 0; i < renderer->numSubmittedBuffers; i += 1)
+		for (j = 0; j < buffer->subBufferCount; j += 1)
 		{
-			if (renderer->submittedBuffers[i] == buffer)
+			if (renderer->submittedBuffers[i] == buffer->subBuffers[j])
 			{
 				renderer->submittedBuffers[i] = NULL;
 			}
@@ -4185,7 +4184,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	uint8_t present
 ) {
 	VkSubmitInfo submitInfo;
-	uint32_t i, j;
+	uint32_t i;
 	VkResult result, presentResult = VK_SUCCESS;
 	uint32_t swapChainImageIndex;
 
@@ -4307,17 +4306,12 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	{
 		if (renderer->submittedBuffers[i] != NULL)
 		{
-			renderer->submittedBuffers[i]->boundSubmitted = 0;
-
-			for (j = 0; j < renderer->submittedBuffers[i]->subBufferCount; j += 1)
+			if (renderer->submittedBuffers[i]->bound == renderer->submitCounter)
 			{
-				if (renderer->submittedBuffers[i]->subBuffers[j]->bound == renderer->submitCounter)
-				{
-					renderer->submittedBuffers[i]->subBuffers[j]->bound = -1;
-				}
+				renderer->submittedBuffers[i]->bound = -1;
 			}
 
-			renderer->submittedBuffers[i]->currentSubBufferIndex = 0;
+			renderer->submittedBuffers[i]->parent->currentSubBufferIndex = 0;
 			renderer->submittedBuffers[i] = NULL;
 		}
 	}
@@ -4340,9 +4334,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	{
 		if (renderer->buffersInUse[i] != NULL)
 		{
-			renderer->buffersInUse[i]->bound = 0;
-			renderer->buffersInUse[i]->boundSubmitted = 1;
-			renderer->buffersInUse[i]->currentSubBufferIndex = 0;
+			renderer->buffersInUse[i]->parent->currentSubBufferIndex = 0;
 
 			renderer->submittedBuffers[i] = renderer->buffersInUse[i];
 			renderer->buffersInUse[i] = NULL;
@@ -5086,6 +5078,7 @@ static uint8_t VULKAN_INTERNAL_AllocateSubBuffer(
 
 	subBuffer->resourceAccessType = buffer->resourceAccessType;
 	subBuffer->bound = -1;
+	subBuffer->parent = buffer;
 
 	/* Reallocate the subbuffer array if we're at max capacity */
 	if (buffer->subBufferCount == buffer->subBufferCapacity)
@@ -5114,10 +5107,12 @@ static void VULKAN_INTERNAL_MarkAsBound(
 	VulkanRenderer *renderer,
 	VulkanBuffer *buf
 ) {
-	/* Don't rebind a bound buffer */
-	if (buf->bound) return;
+	VulkanSubBuffer *subbuf = buf->subBuffers[buf->currentSubBufferIndex];
 
-	buf->bound = 1;
+	/* Don't rebind a bound buffer */
+	if (subbuf->bound != -1) return;
+
+	subbuf->bound = renderer->submitCounter;
 
 	if (renderer->numBuffersInUse == renderer->maxBuffersInUse)
 	{
@@ -5128,7 +5123,7 @@ static void VULKAN_INTERNAL_MarkAsBound(
 		);
 	}
 
-	renderer->buffersInUse[renderer->numBuffersInUse] = buf;
+	renderer->buffersInUse[renderer->numBuffersInUse] = subbuf;
 	renderer->numBuffersInUse += 1;
 }
 
@@ -5159,7 +5154,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 		VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer);
 	}
 
-	if (vulkanBuffer->bound || vulkanBuffer->boundSubmitted)
+	if (SUBBUF->bound != -1)
 	{
 		if (options == FNA3D_SETDATAOPTIONS_NONE)
 		{
@@ -5305,8 +5300,6 @@ static void VULKAN_INTERNAL_SetBufferData(
 		SUBBUF->allocation->memory
 	);
 
-	SUBBUF->bound = renderer->submitCounter;
-
 	#undef SUBBUF
 	#undef CURIDX
 }
@@ -5322,8 +5315,6 @@ static FNA3D_Buffer* VULKAN_INTERNAL_CreateBuffer(
 	result->size = size;
 
 	result->currentSubBufferIndex = 0;
-	result->bound = 0;
-	result->boundSubmitted = 0;
 	result->resourceAccessType = resourceAccessType;
 	result->usage = usage;
 
@@ -6951,7 +6942,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	renderPassBeginInfo.renderArea.extent.height =
 		renderer->colorAttachments[0]->dimensions.height;
 
-	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
+	for (i = 0; i < renderer->colorAttachmentCount; i += 1)
 	{
 		if (renderer->colorAttachments[i] != NULL)
 		{
@@ -6967,23 +6958,23 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 				renderer->colorAttachments[i]->image,
 				&renderer->colorAttachments[i]->resourceAccessType
 			);
+		}
 
-			if (renderer->shouldClearColorOnBeginPass)
+		if (renderer->shouldClearColorOnBeginPass)
+		{
+			clearValues[clearValueCount].color.float32[0] = renderer->clearColorValue.float32[0];
+			clearValues[clearValueCount].color.float32[1] = renderer->clearColorValue.float32[1];
+			clearValues[clearValueCount].color.float32[2] = renderer->clearColorValue.float32[2];
+			clearValues[clearValueCount].color.float32[3] = renderer->clearColorValue.float32[3];
+			clearValueCount += 1;
+
+			if (renderer->multiSampleCount > 0)
 			{
 				clearValues[clearValueCount].color.float32[0] = renderer->clearColorValue.float32[0];
 				clearValues[clearValueCount].color.float32[1] = renderer->clearColorValue.float32[1];
 				clearValues[clearValueCount].color.float32[2] = renderer->clearColorValue.float32[2];
 				clearValues[clearValueCount].color.float32[3] = renderer->clearColorValue.float32[3];
 				clearValueCount += 1;
-
-				if (renderer->colorMultiSampleAttachments[i] != NULL)
-				{
-					clearValues[clearValueCount].color.float32[0] = renderer->clearColorValue.float32[0];
-					clearValues[clearValueCount].color.float32[1] = renderer->clearColorValue.float32[1];
-					clearValues[clearValueCount].color.float32[2] = renderer->clearColorValue.float32[2];
-					clearValues[clearValueCount].color.float32[3] = renderer->clearColorValue.float32[3];
-					clearValueCount += 1;
-				}
 			}
 		}
 	}
@@ -10273,15 +10264,14 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	 */
 
 	renderer->maxBuffersInUse = 32;
-	renderer->buffersInUse = (VulkanBuffer**) SDL_malloc(
-		sizeof(VulkanBuffer*) * renderer->maxBuffersInUse
+	renderer->buffersInUse = (VulkanSubBuffer**) SDL_malloc(
+		sizeof(VulkanSubBuffer*) * renderer->maxBuffersInUse
 	);
-	SDL_zerop(renderer->buffersInUse);
 
 	renderer->maxSubmittedBuffers = 32;
 	renderer->numSubmittedBuffers = 0;
-	renderer->submittedBuffers = (VulkanBuffer**) SDL_malloc(
-		sizeof(VulkanBuffer*) * renderer->maxSubmittedBuffers
+	renderer->submittedBuffers = (VulkanSubBuffer**) SDL_malloc(
+		sizeof(VulkanSubBuffer*) * renderer->maxSubmittedBuffers
 	);
 
 	renderer->textureStagingBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
