@@ -4317,7 +4317,6 @@ static void VULKAN_INTERNAL_SubmitCommands(
 				}
 			}
 
-			renderer->submittedBuffers[i]->currentSubBufferIndex = 0;
 			renderer->submittedBuffers[i] = NULL;
 		}
 	}
@@ -4342,7 +4341,6 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		{
 			renderer->buffersInUse[i]->bound = 0;
 			renderer->buffersInUse[i]->boundSubmitted = 1;
-			renderer->buffersInUse[i]->currentSubBufferIndex = 0;
 
 			renderer->submittedBuffers[i] = renderer->buffersInUse[i];
 			renderer->buffersInUse[i] = NULL;
@@ -5114,6 +5112,9 @@ static void VULKAN_INTERNAL_MarkAsBound(
 	VulkanRenderer *renderer,
 	VulkanBuffer *buf
 ) {
+	VulkanSubBuffer *subbuf = buf->subBuffers[buf->currentSubBufferIndex];
+	subbuf->bound = renderer->submitCounter;
+
 	/* Don't rebind a bound buffer */
 	if (buf->bound) return;
 
@@ -5147,56 +5148,60 @@ static void VULKAN_INTERNAL_SetBufferData(
 	uint8_t *previousSubBufferMapPointer;
 	uint8_t allocateResult;
 	VkResult vulkanResult;
+	uint32_t i;
 
 	#define CURIDX vulkanBuffer->currentSubBufferIndex
 	#define SUBBUF vulkanBuffer->subBuffers[CURIDX]
 
-	prevIndex = CURIDX;
-
-	/* Create a new SubBuffer if needed */
-	if (CURIDX == vulkanBuffer->subBufferCount)
+	/* If buffer has not been bound this frame, set the first unbound index */
+	if (!vulkanBuffer->bound)
 	{
-		VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer);
+		for (i = 0; i < vulkanBuffer->subBufferCount; i += 1)
+		{
+			if (vulkanBuffer->subBuffers[i]->bound == -1)
+			{
+				break;
+			}
+		}
+		CURIDX = i;
 	}
 
-	if (vulkanBuffer->bound || vulkanBuffer->boundSubmitted)
+	prevIndex = CURIDX;
+
+	/*
+	 * If buffer was bound and options is NONE or DISCARD
+	 * find the next available unbound sub-buffer
+	 */
+	if (vulkanBuffer->bound)
 	{
-		if (options == FNA3D_SETDATAOPTIONS_NONE)
+		if (options == FNA3D_SETDATAOPTIONS_NONE || options == FNA3D_SETDATAOPTIONS_DISCARD)
 		{
-			VULKAN_INTERNAL_FlushCommands(renderer, 1);
-		}
-		else if (options == FNA3D_SETDATAOPTIONS_DISCARD)
-		{
-			while (SUBBUF->bound != -1)
+			while (CURIDX < vulkanBuffer->subBufferCount && SUBBUF->bound != -1)
 			{
 				CURIDX += 1;
-
-				/* Create a new SubBuffer if needed */
-				if (CURIDX == vulkanBuffer->subBufferCount)
-				{
-					allocateResult = VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer);
-					if (allocateResult == 2)
-					{
-						/* Out of memory, flush commands to free memory */
-						VULKAN_INTERNAL_FlushCommands(renderer, 1);
-					}
-					else if (allocateResult == 0)
-					{
-						/* Something went very wrong, time to die */
-						FNA3D_LogError("Failed to allocate VulkanSubBuffer!");
-						return;
-					}
-				}
 			}
 		}
 	}
 
+	/* Create a new SubBuffer if needed */
+	if (CURIDX == vulkanBuffer->subBufferCount)
+	{
+		allocateResult = VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer);
+		if (allocateResult == 2)
+		{
+			/* Out of memory, flush commands to free memory */
+			VULKAN_INTERNAL_FlushCommands(renderer, 1);
+		}
+		else if (allocateResult == 0)
+		{
+			/* Something went very wrong, time to die */
+			FNA3D_LogError("Failed to allocate VulkanSubBuffer!");
+			return;
+		}
+	}
 
-
-	/* Copy over previous contents when needed */
-	if (	options == FNA3D_SETDATAOPTIONS_NONE &&
-		dataLength < vulkanBuffer->size &&
-		CURIDX != prevIndex			)
+	/* If options is NONE and buffer was bound, copy the previous data into the new buffer */
+	if (options == FNA3D_SETDATAOPTIONS_NONE && prevIndex != CURIDX)
 	{
 		/* we need to do this craziness because you can't map the same allocation twice */
 		if (SUBBUF->allocation != vulkanBuffer->subBuffers[prevIndex]->allocation)
@@ -5278,6 +5283,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 		}
 	}
 
+	/* Map the memory and perform the copy */
 	vulkanResult = renderer->vkMapMemory(
 		renderer->logicalDevice,
 		SUBBUF->allocation->memory,
@@ -5293,7 +5299,6 @@ static void VULKAN_INTERNAL_SetBufferData(
 		return;
 	}
 
-	/* Copy the data! */
 	SDL_memcpy(
 		mapPointer + offsetInBytes,
 		data,
@@ -5304,8 +5309,6 @@ static void VULKAN_INTERNAL_SetBufferData(
 		renderer->logicalDevice,
 		SUBBUF->allocation->memory
 	);
-
-	SUBBUF->bound = renderer->submitCounter;
 
 	#undef SUBBUF
 	#undef CURIDX
@@ -10276,7 +10279,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->buffersInUse = (VulkanBuffer**) SDL_malloc(
 		sizeof(VulkanBuffer*) * renderer->maxBuffersInUse
 	);
-	SDL_zerop(renderer->buffersInUse);
 
 	renderer->maxSubmittedBuffers = 32;
 	renderer->numSubmittedBuffers = 0;
