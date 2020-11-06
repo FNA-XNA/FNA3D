@@ -5051,7 +5051,7 @@ static uint8_t VULKAN_INTERNAL_AllocateSubBuffer(
 	findMemoryResult = VULKAN_INTERNAL_FindAvailableMemory(
 		renderer,
 		subBuffer->buffer,
-		NULL,
+		VK_NULL_HANDLE,
 		&subBuffer->allocation,
 		&subBuffer->offset,
 		&subBuffer->size
@@ -5419,7 +5419,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 
 	findMemoryResult = VULKAN_INTERNAL_FindAvailableMemory(
 		renderer,
-		NULL,
+		VK_NULL_HANDLE,
 		texture->image,
 		&texture->allocation,
 		&texture->offset,
