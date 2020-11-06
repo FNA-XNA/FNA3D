@@ -5172,6 +5172,9 @@ static void VULKAN_INTERNAL_SetBufferData(
 			/* We can copy the buffer directly with a command
 			 * instead of stalling and mapping
 			 */
+
+			VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
+
 			copy.size = SUBBUF->size;
 			copy.srcOffset = 0;
 			copy.dstOffset = 0;
@@ -5183,6 +5186,8 @@ static void VULKAN_INTERNAL_SetBufferData(
 				1,
 				&copy
 			));
+
+			renderer->needNewRenderPass = 1;
 		}
 		else if (options == FNA3D_SETDATAOPTIONS_DISCARD)
 		{
@@ -9302,7 +9307,11 @@ static FNA3D_Buffer* VULKAN_GenVertexBuffer(
 		(VulkanRenderer*) driverData,
 		sizeInBytes,
 		RESOURCE_ACCESS_VERTEX_BUFFER,
-		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+		(
+			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT |
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT
+		)
 	);
 }
 
@@ -9429,7 +9438,11 @@ static FNA3D_Buffer* VULKAN_GenIndexBuffer(
 		(VulkanRenderer*) driverData,
 		sizeInBytes,
 		RESOURCE_ACCESS_INDEX_BUFFER,
-		VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+		(
+			VK_BUFFER_USAGE_INDEX_BUFFER_BIT |
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT |
+			VK_BUFFER_USAGE_TRANSFER_DST_BIT
+		)
 	);
 }
 
