@@ -5137,9 +5137,9 @@ static void VULKAN_INTERNAL_SetBufferData(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
+	VkBufferCopy copy;
 	uint32_t prevIndex;
 	uint8_t *mapPointer;
-	uint8_t *previousSubBufferMapPointer;
 	uint8_t allocateResult;
 	VkResult vulkanResult;
 
@@ -5151,14 +5151,38 @@ static void VULKAN_INTERNAL_SetBufferData(
 	/* Create a new SubBuffer if needed */
 	if (CURIDX == vulkanBuffer->subBufferCount)
 	{
-		VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer);
+		allocateResult = VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer);
+		if (allocateResult == 2)
+		{
+			/* Out of memory, flush commands to free memory */
+			VULKAN_INTERNAL_FlushCommands(renderer, 1);
+		}
+		else
+		{
+			/* Something went very wrong, time to die */
+			FNA3D_LogError("Failed to allocate VulkanSubBuffer!");
+			return;
+		}
 	}
 
 	if (SUBBUF->bound != -1)
 	{
 		if (options == FNA3D_SETDATAOPTIONS_NONE)
 		{
-			VULKAN_INTERNAL_FlushCommands(renderer, 1);
+			/* We can copy the buffer directly with a command
+			 * instead of stalling and mapping
+			 */
+			copy.size = SUBBUF->size;
+			copy.srcOffset = 0;
+			copy.dstOffset = 0;
+
+			RECORD_CMD(renderer->vkCmdCopyBuffer(
+				renderer->currentCommandBuffer,
+				vulkanBuffer->subBuffers[prevIndex]->buffer,
+				SUBBUF->buffer,
+				1,
+				&copy
+			));
 		}
 		else if (options == FNA3D_SETDATAOPTIONS_DISCARD)
 		{
@@ -5183,93 +5207,6 @@ static void VULKAN_INTERNAL_SetBufferData(
 					}
 				}
 			}
-		}
-	}
-
-
-
-	/* Copy over previous contents when needed */
-	if (	options == FNA3D_SETDATAOPTIONS_NONE &&
-		dataLength < vulkanBuffer->size &&
-		CURIDX != prevIndex			)
-	{
-		/* we need to do this craziness because you can't map the same allocation twice */
-		if (SUBBUF->allocation != vulkanBuffer->subBuffers[prevIndex]->allocation)
-		{
-			vulkanResult = renderer->vkMapMemory(
-				renderer->logicalDevice,
-				SUBBUF->allocation->memory,
-				SUBBUF->offset,
-				SUBBUF->size,
-				0,
-				(void**) &mapPointer
-			);
-
-			if (vulkanResult != VK_SUCCESS)
-			{
-				FNA3D_LogError("Failed to map buffer memory!");
-				return;
-			}
-
-			vulkanResult = renderer->vkMapMemory(
-				renderer->logicalDevice,
-				vulkanBuffer->subBuffers[prevIndex]->allocation->memory,
-				vulkanBuffer->subBuffers[prevIndex]->offset,
-				vulkanBuffer->subBuffers[prevIndex]->size,
-				0,
-				(void**) &previousSubBufferMapPointer
-			);
-
-			if (vulkanResult != VK_SUCCESS)
-			{
-				FNA3D_LogError("Failed to map buffer memory!");
-				return;
-			}
-
-			SDL_memcpy(
-				mapPointer,
-				previousSubBufferMapPointer,
-				vulkanBuffer->size
-			);
-
-			renderer->vkUnmapMemory(
-				renderer->logicalDevice,
-				SUBBUF->allocation->memory
-			);
-
-			renderer->vkUnmapMemory(
-				renderer->logicalDevice,
-				vulkanBuffer->subBuffers[prevIndex]->allocation->memory
-			);
-		}
-		else
-		{
-			/* just map the whole dang thing for the copy */
-			vulkanResult = renderer->vkMapMemory(
-				renderer->logicalDevice,
-				SUBBUF->allocation->memory,
-				0,
-				SUBBUF->allocation->size,
-				0,
-				(void**) &mapPointer
-			);
-
-			if (vulkanResult != VK_SUCCESS)
-			{
-				FNA3D_LogError("Failed to map buffer memory!");
-				return;
-			}
-
-			SDL_memcpy(
-				mapPointer + SUBBUF->offset,
-				mapPointer + vulkanBuffer->subBuffers[prevIndex]->offset,
-				vulkanBuffer->size
-			);
-
-			renderer->vkUnmapMemory(
-				renderer->logicalDevice,
-				SUBBUF->allocation->memory
-			);
 		}
 	}
 
