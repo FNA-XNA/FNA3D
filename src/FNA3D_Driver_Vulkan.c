@@ -5168,6 +5168,10 @@ static void VULKAN_INTERNAL_SetBufferData(
 
 	prevIndex = CURIDX;
 
+	/*
+	 * If buffer was bound and options is NONE or DISCARD
+	 * find the next available unbound sub-buffer
+	 */
 	if (vulkanBuffer->bound)
 	{
 		if (options == FNA3D_SETDATAOPTIONS_NONE || options == FNA3D_SETDATAOPTIONS_DISCARD)
@@ -5196,6 +5200,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 		}
 	}
 
+	/* If options is NONE and buffer was bound, copy the previous data into the new buffer */
 	if (options == FNA3D_SETDATAOPTIONS_NONE && prevIndex != CURIDX)
 	{
 		/* we need to do this craziness because you can't map the same allocation twice */
@@ -5276,11 +5281,9 @@ static void VULKAN_INTERNAL_SetBufferData(
 				SUBBUF->allocation->memory
 			);
 		}
-
-		/* Mark None buffer as bound so we don't overwrite */
-		VULKAN_INTERNAL_MarkAsBound(renderer, vulkanBuffer);
 	}
 
+	/* Map the memory and perform the copy */
 	vulkanResult = renderer->vkMapMemory(
 		renderer->logicalDevice,
 		SUBBUF->allocation->memory,
@@ -5296,7 +5299,6 @@ static void VULKAN_INTERNAL_SetBufferData(
 		return;
 	}
 
-	/* Copy the data! */
 	SDL_memcpy(
 		mapPointer + offsetInBytes,
 		data,
