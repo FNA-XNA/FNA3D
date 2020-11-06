@@ -59,18 +59,18 @@
 #define ERROR_CHECK(msg) \
 	if (FAILED(res)) \
 	{ \
-		FNA3D_LogError("%s! Error Code: %08X", msg, res); \
+		D3D11_INTERNAL_LogError("%s! Error Code: %s (0x%08X)", msg, res); \
 	}
 #define ERROR_CHECK_RETURN(msg, ret) \
 	if (FAILED(res)) \
 	{ \
-		FNA3D_LogError("%s! Error Code: %08X", msg, res); \
+		D3D11_INTERNAL_LogError("%s! Error Code: %s (0x%08X)", msg, res); \
 		return ret; \
 	}
 #define ERROR_CHECK_UNLOCK_RETURN(msg, ret) \
 	if (FAILED(res)) \
 	{ \
-		FNA3D_LogError("%s! Error Code: %08X", msg, res); \
+		D3D11_INTERNAL_LogError("%s! Error Code: %s (0x%08X)", msg, res); \
 		SDL_UnlockMutex(renderer->ctxLock); \
 		return ret; \
 	}
@@ -485,6 +485,50 @@ static const char* FAUX_BLIT_PIXEL_SHADER =
 	"}";
 
 /* Helper Functions */
+
+static void D3D11_INTERNAL_LogError(
+	const char* fmt,
+	char* msg,
+	HRESULT res
+) {
+	#define MAX_ERROR_LEN 1024 /* FIXME: Arbitrary! */
+
+	/* Buffer for text, ensure space for \0 terminator after buffer */
+	char wszMsgBuff[MAX_ERROR_LEN + 1];
+	DWORD dwChars; /* Number of chars returned. */
+
+	/* Try to get the message from the system errors. */
+	dwChars = FormatMessage(
+		FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+		NULL,
+		res,
+		0,
+		wszMsgBuff,
+		MAX_ERROR_LEN,
+		NULL
+	);
+
+	/* Ensure valid range */
+	dwChars = SDL_min(dwChars, MAX_ERROR_LEN);
+
+	/* Trim whitespace from tail of message */
+	while (dwChars > 0)
+	{
+		if (wszMsgBuff[dwChars - 1] <= ' ')
+		{
+			dwChars--;
+		}
+		else
+		{
+			break;
+		}
+	}
+
+	/* Ensure null-terminated string */
+	wszMsgBuff[dwChars] = '\0';
+
+	FNA3D_LogError(fmt, msg, wszMsgBuff, res);
+}
 
 static inline uint32_t D3D11_INTERNAL_CalcSubresource(
 	uint32_t mipLevel,
