@@ -3015,7 +3015,6 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 				NULL
 			);
 
-			SDL_free(buffer->subBuffers[i]->allocation->freeRegions[0]);
 			SDL_free(buffer->subBuffers[i]->allocation->freeRegions);
 			SDL_free(buffer->subBuffers[i]->allocation);
 		}
@@ -3061,7 +3060,6 @@ static void VULKAN_INTERNAL_DestroyTexture(
 			NULL
 		);
 
-		SDL_free(texture->allocation->freeRegions[0]);
 		SDL_free(texture->allocation->freeRegions);
 		SDL_free(texture->allocation);
 	}
