@@ -6185,21 +6185,28 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 	frontStencilState.writeMask = renderer->depthStencilState.stencilWriteMask;
 	frontStencilState.reference = renderer->depthStencilState.referenceStencil;
 
-	backStencilState.failOp = XNAToVK_StencilOp[
-		renderer->depthStencilState.ccwStencilFail
-	];
-	backStencilState.passOp = XNAToVK_StencilOp[
-		renderer->depthStencilState.ccwStencilPass
-	];
-	backStencilState.depthFailOp = XNAToVK_StencilOp[
-		renderer->depthStencilState.ccwStencilDepthBufferFail
-	];
-	backStencilState.compareOp = XNAToVK_CompareOp[
-		renderer->depthStencilState.stencilFunction
-	];
-	backStencilState.compareMask = renderer->depthStencilState.stencilMask;
-	backStencilState.writeMask = renderer->depthStencilState.stencilWriteMask;
-	backStencilState.reference = renderer->depthStencilState.referenceStencil;
+	if (renderer->depthStencilState.twoSidedStencilMode)
+	{
+		backStencilState.failOp = XNAToVK_StencilOp[
+			renderer->depthStencilState.ccwStencilFail
+		];
+		backStencilState.passOp = XNAToVK_StencilOp[
+			renderer->depthStencilState.ccwStencilPass
+		];
+		backStencilState.depthFailOp = XNAToVK_StencilOp[
+			renderer->depthStencilState.ccwStencilDepthBufferFail
+		];
+		backStencilState.compareOp = XNAToVK_CompareOp[
+			renderer->depthStencilState.ccwStencilFunction
+		];
+		backStencilState.compareMask = renderer->depthStencilState.stencilMask;
+		backStencilState.writeMask = renderer->depthStencilState.stencilWriteMask;
+		backStencilState.reference = renderer->depthStencilState.referenceStencil;
+	}
+	else
+	{
+		backStencilState = frontStencilState;
+	}
 
 	/* Depth Stencil */
 
