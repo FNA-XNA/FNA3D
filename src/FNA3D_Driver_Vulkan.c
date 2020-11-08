@@ -7100,9 +7100,9 @@ static void VULKAN_INTERNAL_BeginRenderPassClear(
 		return;
 	}
 
-	renderer->shouldClearColorOnBeginPass = clearColor;
-	renderer->shouldClearDepthOnBeginPass = clearDepth;
-	renderer->shouldClearStencilOnBeginPass = clearStencil;
+	renderer->shouldClearColorOnBeginPass |= clearColor;
+	renderer->shouldClearDepthOnBeginPass |= clearDepth;
+	renderer->shouldClearStencilOnBeginPass |= clearStencil;
 
 	if (clearColor)
 	{
