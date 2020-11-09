@@ -6640,10 +6640,10 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 				VK_SAMPLE_COUNT_1_BIT;
 			attachmentDescriptions[attachmentDescriptionsCount].loadOp =
 				hash.clearColor ?
-				VK_ATTACHMENT_LOAD_OP_CLEAR :
-				(hash.preserveTargetContents ?
-					VK_ATTACHMENT_LOAD_OP_LOAD :
-					VK_ATTACHMENT_LOAD_OP_DONT_CARE);
+					VK_ATTACHMENT_LOAD_OP_CLEAR :
+					(hash.preserveTargetContents ?
+						VK_ATTACHMENT_LOAD_OP_LOAD :
+						VK_ATTACHMENT_LOAD_OP_DONT_CARE);
 			attachmentDescriptions[attachmentDescriptionsCount].storeOp =
 				VK_ATTACHMENT_STORE_OP_STORE;
 			attachmentDescriptions[attachmentDescriptionsCount].stencilLoadOp =
@@ -6704,10 +6704,10 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 				VK_SAMPLE_COUNT_1_BIT;
 			attachmentDescriptions[attachmentDescriptionsCount].loadOp =
 				hash.clearColor ?
-				VK_ATTACHMENT_LOAD_OP_CLEAR :
-				(hash.preserveTargetContents ?
-					VK_ATTACHMENT_LOAD_OP_LOAD :
-					VK_ATTACHMENT_LOAD_OP_DONT_CARE);
+					VK_ATTACHMENT_LOAD_OP_CLEAR :
+					(hash.preserveTargetContents ?
+						VK_ATTACHMENT_LOAD_OP_LOAD :
+						VK_ATTACHMENT_LOAD_OP_DONT_CARE);
 			attachmentDescriptions[attachmentDescriptionsCount].storeOp =
 				VK_ATTACHMENT_STORE_OP_STORE;
 			attachmentDescriptions[attachmentDescriptionsCount].stencilLoadOp =
