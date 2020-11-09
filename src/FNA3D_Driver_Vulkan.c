@@ -4245,6 +4245,12 @@ static void VULKAN_INTERNAL_SubmitCommands(
 					}
 				}
 
+				for (i = 0; i < renderer->activeCommandBufferCount; i += 1)
+				{
+					renderer->inactiveCommandBuffers[renderer->inactiveCommandBufferCount] = renderer->activeCommandBuffers[i];
+					renderer->inactiveCommandBufferCount += 1;
+				}
+
 				renderer->activeCommandBufferCount = 0;
 
 				return;
