@@ -4213,10 +4213,12 @@ static void VULKAN_INTERNAL_SubmitCommands(
 			&swapChainImageIndex
 		);
 
-		while (result == VK_ERROR_OUT_OF_DATE_KHR)
+		if (result == VK_ERROR_OUT_OF_DATE_KHR)
 		{
+			/* Can't present, try to recreate swapchain */
 			VULKAN_INTERNAL_RecreateSwapchain(renderer, 0);
 
+			/* Try to acquire again */
 			result = renderer->vkAcquireNextImageKHR(
 				renderer->logicalDevice,
 				renderer->swapChain,
@@ -4225,9 +4227,31 @@ static void VULKAN_INTERNAL_SubmitCommands(
 				VK_NULL_HANDLE,
 				&swapChainImageIndex
 			);
+
+			/* We're screwed, bail out */
+			if (result == VK_ERROR_OUT_OF_DATE_KHR)
+			{
+				/* Reset the active command buffers */
+				for (i = 0; i < renderer->activeCommandBufferCount; i += 1)
+				{
+					result = renderer->vkResetCommandBuffer(
+						renderer->activeCommandBuffers[i],
+						VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+					);
+
+					if (result != VK_SUCCESS)
+					{
+						LogVulkanResult("vkResetCommandBuffer", result);
+					}
+				}
+
+				renderer->activeCommandBufferCount = 0;
+
+				return;
+			}
 		}
 
-		if (result != VK_SUCCESS)
+		if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
 		{
 			LogVulkanResult("vkAcquireNextImageKHR", result);
 			FNA3D_LogError("failed to acquire swapchain image");
