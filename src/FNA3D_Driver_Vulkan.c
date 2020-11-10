@@ -10041,6 +10041,7 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 	SDL_Window *dummyWindowHandle;
 	FNA3D_PresentationParameters presentationParameters;
 	VulkanRenderer *renderer;
+	uint8_t result;
 
 	if (SDL_Vulkan_LoadLibrary(NULL) < 0)
 	{
@@ -10125,20 +10126,25 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 	{
 		deviceExtensionCount -= 1;
 	}
-	if (!VULKAN_INTERNAL_DeterminePhysicalDevice(
+	result = VULKAN_INTERNAL_DeterminePhysicalDevice(
 		renderer,
 		deviceExtensionNames,
 		deviceExtensionCount
-	)) {
-		SDL_DestroyWindow(dummyWindowHandle);
-		SDL_free(renderer);
-		FNA3D_LogWarn("Vulkan: Failed to determine a suitable physical device");
-		return 0;
-	}
+	);
 
+	renderer->vkDestroySurfaceKHR(
+		renderer->instance,
+		renderer->surface,
+		NULL
+	);
 	SDL_DestroyWindow(dummyWindowHandle);
 	SDL_free(renderer);
-	return 1;
+
+	if (!result)
+	{
+		FNA3D_LogWarn("Vulkan: Failed to determine a suitable physical device");
+	}
+	return result;
 }
 
 static void VULKAN_GetDrawableSize(void* window, int32_t *w, int32_t *h)
