@@ -6625,7 +6625,13 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 		return renderPass;
 	}
 
-	/* Otherwise lets make a new one */
+	/* 
+	 * FIXME: We have to always store just in case changing render state
+	 * breaks the render pass. Otherwise we risk discarding necessary data.
+	 * The only way to avoid this would be to buffer draw calls so we can
+	 * ensure that only the final render pass before switching render targets
+	 * may be discarded.
+	 */
 
 	for (i = 0; i < renderer->colorAttachmentCount; i += 1)
 	{
@@ -6671,9 +6677,7 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 					VK_ATTACHMENT_LOAD_OP_CLEAR :
 					VK_ATTACHMENT_LOAD_OP_LOAD;
 			attachmentDescriptions[attachmentDescriptionsCount].storeOp =
-				hash.preserveTargetContents ?
-					VK_ATTACHMENT_STORE_OP_STORE :
-					VK_ATTACHMENT_STORE_OP_DONT_CARE;
+				VK_ATTACHMENT_STORE_OP_STORE;
 			attachmentDescriptions[attachmentDescriptionsCount].stencilLoadOp =
 				VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			attachmentDescriptions[attachmentDescriptionsCount].stencilStoreOp =
@@ -6750,17 +6754,13 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 				VK_ATTACHMENT_LOAD_OP_CLEAR :
 				VK_ATTACHMENT_LOAD_OP_LOAD;
 		attachmentDescriptions[attachmentDescriptionsCount].storeOp =
-			hash.preserveTargetContents ?
-				VK_ATTACHMENT_STORE_OP_STORE :
-				VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			VK_ATTACHMENT_STORE_OP_STORE;
 		attachmentDescriptions[attachmentDescriptionsCount].stencilLoadOp =
 			hash.clearStencil ?
 				VK_ATTACHMENT_LOAD_OP_CLEAR :
 				VK_ATTACHMENT_LOAD_OP_LOAD;
 		attachmentDescriptions[attachmentDescriptionsCount].stencilStoreOp =
-			hash.preserveTargetContents ?
-				VK_ATTACHMENT_STORE_OP_STORE :
-				VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			VK_ATTACHMENT_STORE_OP_STORE;
 		attachmentDescriptions[attachmentDescriptionsCount].initialLayout =
 			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		attachmentDescriptions[attachmentDescriptionsCount].finalLayout =
