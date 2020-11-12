@@ -6678,6 +6678,12 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 					VK_ATTACHMENT_LOAD_OP_LOAD;
 			attachmentDescriptions[attachmentDescriptionsCount].storeOp =
 				VK_ATTACHMENT_STORE_OP_STORE;
+				/* 
+				 * Once above FIXME is resolved:
+				 * 	hash.preserveTargetContents ?
+				 *		VK_ATTACHMENT_STORE_OP_STORE :
+				 *		VK_ATTACHMENT_STORE_OP_DONT_CARE;
+				 */
 			attachmentDescriptions[attachmentDescriptionsCount].stencilLoadOp =
 				VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 			attachmentDescriptions[attachmentDescriptionsCount].stencilStoreOp =
@@ -6755,12 +6761,24 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 				VK_ATTACHMENT_LOAD_OP_LOAD;
 		attachmentDescriptions[attachmentDescriptionsCount].storeOp =
 			VK_ATTACHMENT_STORE_OP_STORE;
+			/*
+			 * Once above FIXME is resolved:
+			 * 	hash.preserveTargetContents ?
+			 *		VK_ATTACHMENT_STORE_OP_STORE :
+			 *		VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			 */
 		attachmentDescriptions[attachmentDescriptionsCount].stencilLoadOp =
 			hash.clearStencil ?
 				VK_ATTACHMENT_LOAD_OP_CLEAR :
 				VK_ATTACHMENT_LOAD_OP_LOAD;
 		attachmentDescriptions[attachmentDescriptionsCount].stencilStoreOp =
 			VK_ATTACHMENT_STORE_OP_STORE;
+			/*
+			 * Once above FIXME is resolved:
+			 * 	hash.preserveTargetContents ?
+			 *		VK_ATTACHMENT_STORE_OP_STORE :
+			 *		VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			 */
 		attachmentDescriptions[attachmentDescriptionsCount].initialLayout =
 			VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 		attachmentDescriptions[attachmentDescriptionsCount].finalLayout =
