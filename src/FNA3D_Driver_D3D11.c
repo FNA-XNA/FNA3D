@@ -59,18 +59,18 @@
 #define ERROR_CHECK(msg) \
 	if (FAILED(res)) \
 	{ \
-		D3D11_INTERNAL_LogError(msg, res); \
+		D3D11_INTERNAL_LogError(renderer->device, msg, res); \
 	}
 #define ERROR_CHECK_RETURN(msg, ret) \
 	if (FAILED(res)) \
 	{ \
-		D3D11_INTERNAL_LogError(msg, res); \
+		D3D11_INTERNAL_LogError(renderer->device, msg, res); \
 		return ret; \
 	}
 #define ERROR_CHECK_UNLOCK_RETURN(msg, ret) \
 	if (FAILED(res)) \
 	{ \
-		D3D11_INTERNAL_LogError(msg, res); \
+		D3D11_INTERNAL_LogError(renderer->device, msg, res); \
 		SDL_UnlockMutex(renderer->ctxLock); \
 		return ret; \
 	}
@@ -487,6 +487,7 @@ static const char* FAUX_BLIT_PIXEL_SHADER =
 /* Helper Functions */
 
 static void D3D11_INTERNAL_LogError(
+	ID3D11Device *device,
 	const char *msg,
 	HRESULT res
 ) {
@@ -495,6 +496,11 @@ static void D3D11_INTERNAL_LogError(
 	/* Buffer for text, ensure space for \0 terminator after buffer */
 	char wszMsgBuff[MAX_ERROR_LEN + 1];
 	DWORD dwChars; /* Number of chars returned. */
+
+	if (res == DXGI_ERROR_DEVICE_REMOVED)
+	{
+		res = ID3D11Device_GetDeviceRemovedReason(device);
+	}
 
 	/* Try to get the message from the system errors. */
 	dwChars = FormatMessage(
