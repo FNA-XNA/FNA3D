@@ -4184,7 +4184,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 ) {
 	VkSubmitInfo submitInfo;
 	uint32_t i, j;
-	VkResult result, presentResult = VK_SUCCESS;
+	VkResult result, acquireResult, presentResult = VK_SUCCESS;
 	uint8_t acquireSuccess = 0;
 	uint32_t swapChainImageIndex;
 
@@ -4208,7 +4208,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	if (present)
 	{
 		/* Begin next frame */
-		result = renderer->vkAcquireNextImageKHR(
+		acquireResult = renderer->vkAcquireNextImageKHR(
 			renderer->logicalDevice,
 			renderer->swapChain,
 			UINT64_MAX,
@@ -4217,7 +4217,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 			&swapChainImageIndex
 		);
 
-		if (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR)
+		if (acquireResult == VK_SUCCESS || acquireResult == VK_SUBOPTIMAL_KHR)
 		{
 			VULKAN_INTERNAL_SwapChainBlit(
 				renderer,
@@ -4426,7 +4426,9 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	/* Now that commands are totally done, check if we need new swapchain */
 	if (present)
 	{
-		if (presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
+		if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR ||
+			acquireResult == VK_SUBOPTIMAL_KHR || 
+			presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
 			presentResult == VK_SUBOPTIMAL_KHR)
 		{
 			VULKAN_INTERNAL_RecreateSwapchain(renderer, 0);
