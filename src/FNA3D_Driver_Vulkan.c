@@ -4185,6 +4185,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	VkSubmitInfo submitInfo;
 	uint32_t i, j;
 	VkResult result, presentResult = VK_SUCCESS;
+	uint8_t acquireSuccess = 0;
 	uint32_t swapChainImageIndex;
 
 	FNA3D_Rect *sourceRectangle, *destinationRectangle;
@@ -4201,6 +4202,9 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	sourceRectangle = renderer->presentSourceRectangle;
 	destinationRectangle = renderer->presentDestinationRectangle;
 
+	/* Must end render pass before ending command buffer */
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
+
 	if (present)
 	{
 		/* Begin next frame */
@@ -4213,65 +4217,17 @@ static void VULKAN_INTERNAL_SubmitCommands(
 			&swapChainImageIndex
 		);
 
-		if (result == VK_ERROR_OUT_OF_DATE_KHR)
+		if (result == VK_SUCCESS || result == VK_SUBOPTIMAL_KHR)
 		{
-			/* Can't present, try to recreate swapchain */
-			VULKAN_INTERNAL_RecreateSwapchain(renderer, 0);
-
-			/* Try to acquire again */
-			result = renderer->vkAcquireNextImageKHR(
-				renderer->logicalDevice,
-				renderer->swapChain,
-				UINT64_MAX,
-				renderer->imageAvailableSemaphore,
-				VK_NULL_HANDLE,
-				&swapChainImageIndex
+			VULKAN_INTERNAL_SwapChainBlit(
+				renderer,
+				sourceRectangle,
+				destinationRectangle,
+				swapChainImageIndex
 			);
 
-			/* We're screwed, bail out */
-			if (result == VK_ERROR_OUT_OF_DATE_KHR)
-			{
-				/* Reset the active command buffers */
-				for (i = 0; i < renderer->activeCommandBufferCount; i += 1)
-				{
-					result = renderer->vkResetCommandBuffer(
-						renderer->activeCommandBuffers[i],
-						VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
-					);
-
-					if (result != VK_SUCCESS)
-					{
-						LogVulkanResult("vkResetCommandBuffer", result);
-					}
-				}
-
-				for (i = 0; i < renderer->activeCommandBufferCount; i += 1)
-				{
-					renderer->inactiveCommandBuffers[renderer->inactiveCommandBufferCount] = renderer->activeCommandBuffers[i];
-					renderer->inactiveCommandBufferCount += 1;
-				}
-
-				renderer->activeCommandBufferCount = 0;
-
-				return;
-			}
+			acquireSuccess = 1;
 		}
-
-		if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR)
-		{
-			LogVulkanResult("vkAcquireNextImageKHR", result);
-			FNA3D_LogError("failed to acquire swapchain image");
-		}
-
-		/* Must end render pass before blitting */
-		VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
-
-		VULKAN_INTERNAL_SwapChainBlit(
-			renderer,
-			sourceRectangle,
-			destinationRectangle,
-			swapChainImageIndex
-		);
 	}
 
 	if (renderer->activeCommandBufferCount <= 1 && renderer->numActiveCommands == 0)
@@ -4293,7 +4249,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	submitInfo.pNext = NULL;
 	submitInfo.commandBufferCount = renderer->activeCommandBufferCount;
 	submitInfo.pCommandBuffers = renderer->activeCommandBuffers;
-	if (present)
+	if (present && acquireSuccess)
 	{
 		submitInfo.waitSemaphoreCount = 1;
 		submitInfo.pWaitSemaphores = &renderer->imageAvailableSemaphore;
@@ -4378,7 +4334,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	renderer->numSubmittedBuffers = renderer->numBuffersInUse;
 	renderer->numBuffersInUse = 0;
 
-	/* Reset the submitted command buffers */
+	/* Reset the previously submitted command buffers */
 	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
 	{
 		result = renderer->vkResetCommandBuffer(
@@ -4392,6 +4348,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		}
 	}
 
+	/* Mark the previously submitted command buffers as inactive */
 	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
 	{
 		renderer->inactiveCommandBuffers[renderer->inactiveCommandBufferCount] = renderer->submittedCommandBuffers[i];
@@ -4423,7 +4380,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	/* Rotate the UBOs */
 	MOJOSHADER_vkEndFrame();
 
-	/* Mark command buffers as submitted */
+	/* Mark active command buffers as submitted */
 	for (i = 0; i < renderer->activeCommandBufferCount; i += 1)
 	{
 		renderer->submittedCommandBuffers[renderer->submittedCommandBufferCount] = renderer->activeCommandBuffers[i];
@@ -4433,7 +4390,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	renderer->activeCommandBufferCount = 0;
 
 	/* Present, if applicable */
-	if (present)
+	if (present && acquireSuccess)
 	{
 		if (renderer->physicalDeviceDriverProperties.driverID == VK_DRIVER_ID_GGP_PROPRIETARY)
 		{
@@ -4466,21 +4423,23 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		);
 	}
 
-	VULKAN_INTERNAL_BeginCommandBuffer(renderer);
-
-	/* Now that commands are totally done, check for present errors */
+	/* Now that commands are totally done, check if we need new swapchain */
 	if (present)
 	{
-		if (	presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
-			presentResult == VK_SUBOPTIMAL_KHR	)
+		if (presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
+			presentResult == VK_SUBOPTIMAL_KHR)
 		{
 			VULKAN_INTERNAL_RecreateSwapchain(renderer, 0);
 		}
-		else if (presentResult != VK_SUCCESS)
+
+		if (!acquireSuccess)
 		{
-			LogVulkanResult("vkQueuePresentKHR", result);
+			FNA3D_LogInfo("Failed to acquire swapchain image, not presenting");
 		}
 	}
+
+	/* Activate the next command buffer */
+	VULKAN_INTERNAL_BeginCommandBuffer(renderer);
 }
 
 static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync)
