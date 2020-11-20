@@ -4426,10 +4426,10 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	/* Now that commands are totally done, check if we need new swapchain */
 	if (present)
 	{
-		if (acquireResult == VK_ERROR_OUT_OF_DATE_KHR ||
+		if (	acquireResult == VK_ERROR_OUT_OF_DATE_KHR ||
 			acquireResult == VK_SUBOPTIMAL_KHR || 
 			presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
-			presentResult == VK_SUBOPTIMAL_KHR)
+			presentResult == VK_SUBOPTIMAL_KHR	)
 		{
 			VULKAN_INTERNAL_RecreateSwapchain(renderer, 0);
 		}
