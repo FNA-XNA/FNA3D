@@ -1381,13 +1381,23 @@ static inline VkSampleCountFlagBits XNAToVK_SampleCount(int32_t sampleCount)
 static VkComponentMapping XNAToVK_SurfaceSwizzle[] =
 {
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.Color */
-	IDENTITY_SWIZZLE,	/* SurfaceFormat.Bgr565 */
-	IDENTITY_SWIZZLE,	/* SurfaceFormat.Bgra5551 */
-	{			/* SurfaceFormat.Bgra4444 */
+	{			/* SurfaceFormat.Bgr565 */
+		VK_COMPONENT_SWIZZLE_B,
 		VK_COMPONENT_SWIZZLE_G,
 		VK_COMPONENT_SWIZZLE_R,
-		VK_COMPONENT_SWIZZLE_A,
-		VK_COMPONENT_SWIZZLE_B
+		VK_COMPONENT_SWIZZLE_ONE
+	},
+	{			/* SurfaceFormat.Bgra5551 */
+		VK_COMPONENT_SWIZZLE_B,
+		VK_COMPONENT_SWIZZLE_G,
+		VK_COMPONENT_SWIZZLE_R,
+		VK_COMPONENT_SWIZZLE_A
+	},
+	{			/* SurfaceFormat.Bgra4444 */
+		VK_COMPONENT_SWIZZLE_B,
+		VK_COMPONENT_SWIZZLE_G,
+		VK_COMPONENT_SWIZZLE_R,
+		VK_COMPONENT_SWIZZLE_A
 	},
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.Dxt1 */
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.Dxt3 */
@@ -1440,7 +1450,12 @@ static VkComponentMapping XNAToVK_SurfaceSwizzle[] =
 	},
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.HalfVector4 */
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.HdrBlendable */
-	IDENTITY_SWIZZLE	/* SurfaceFormat.ColorBgraEXT */
+	{			/* SurfaceFormat.ColorBgraEXT */
+		VK_COMPONENT_SWIZZLE_B,
+		VK_COMPONENT_SWIZZLE_G,
+		VK_COMPONENT_SWIZZLE_R,
+		VK_COMPONENT_SWIZZLE_A
+	}
 };
 
 static VkFormat XNAToVK_SurfaceFormat[] =
@@ -4427,7 +4442,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	if (present)
 	{
 		if (	acquireResult == VK_ERROR_OUT_OF_DATE_KHR ||
-			acquireResult == VK_SUBOPTIMAL_KHR || 
+			acquireResult == VK_SUBOPTIMAL_KHR ||
 			presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
 			presentResult == VK_SUBOPTIMAL_KHR	)
 		{
@@ -6586,7 +6601,7 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 		return renderPass;
 	}
 
-	/* 
+	/*
 	 * FIXME: We have to always store just in case changing render state
 	 * breaks the render pass. Otherwise we risk discarding necessary data.
 	 * The only way to avoid this would be to buffer draw calls so we can
@@ -6639,7 +6654,7 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 					VK_ATTACHMENT_LOAD_OP_LOAD;
 			attachmentDescriptions[attachmentDescriptionsCount].storeOp =
 				VK_ATTACHMENT_STORE_OP_STORE;
-				/* 
+				/*
 				 * Once above FIXME is resolved:
 				 * 	hash.preserveTargetContents ?
 				 *		VK_ATTACHMENT_STORE_OP_STORE :
