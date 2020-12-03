@@ -9390,7 +9390,7 @@ static void VULKAN_AddDisposeRenderbuffer(
 	SDL_UnlockMutex(renderer->disposeLock);
 
 	if (	vlkRenderBuffer->colorBuffer != NULL &&
-			vlkRenderBuffer->colorBuffer->multiSampleCount > 0	)
+		vlkRenderBuffer->colorBuffer->multiSampleCount > 0	)
 	{
 		VULKAN_AddDisposeTexture(
 			driverData,
