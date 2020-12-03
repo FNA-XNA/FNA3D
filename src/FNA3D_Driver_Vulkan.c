@@ -3271,7 +3271,7 @@ static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer *renderer)
 	{
 		renderer->submittedRenderbuffersToDestroy[i] = renderer->renderbuffersToDestroy[i];
 	}
-	renderer->submittedBuffersToDestroyCount = renderer->renderbuffersToDestroyCount;
+	renderer->submittedRenderbuffersToDestroyCount = renderer->renderbuffersToDestroyCount;
 	renderer->renderbuffersToDestroyCount = 0;
 
 	for (i = 0; i < renderer->buffersToDestroyCount; i += 1)
@@ -9388,6 +9388,23 @@ static void VULKAN_AddDisposeRenderbuffer(
 	renderer->renderbuffersToDestroy[renderer->renderbuffersToDestroyCount] = vlkRenderBuffer;
 	renderer->renderbuffersToDestroyCount += 1;
 	SDL_UnlockMutex(renderer->disposeLock);
+
+	if (	vlkRenderBuffer->colorBuffer != NULL &&
+		vlkRenderBuffer->colorBuffer->multiSampleCount > 0	)
+	{
+		VULKAN_AddDisposeTexture(
+			driverData,
+			(FNA3D_Texture*) vlkRenderBuffer->colorBuffer->multiSampleTexture
+		);
+	}
+
+	if (vlkRenderBuffer->depthBuffer != NULL)
+	{
+		VULKAN_AddDisposeTexture(
+			driverData,
+			(FNA3D_Texture*) vlkRenderBuffer->depthBuffer->handle
+		);
+	}
 }
 
 /* Vertex Buffers */
