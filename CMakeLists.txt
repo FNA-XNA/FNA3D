@@ -5,6 +5,7 @@ project(FNA3D C)
 
 # Options
 option(BUILD_SHARED_LIBS "Build shared library" ON)
+option(DISABLE_D3D11 "Disable D3D11 backend")
 
 # Version
 SET(LIB_MAJOR_VERSION "0")
@@ -63,7 +64,7 @@ else()
 	)
 endif()
 
-if(WIN32)
+if(WIN32 AND NOT DISABLE_D3D11)
 	add_definitions(
 		-DFNA3D_DRIVER_D3D11
 	)
