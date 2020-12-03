@@ -3271,7 +3271,7 @@ static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer *renderer)
 	{
 		renderer->submittedRenderbuffersToDestroy[i] = renderer->renderbuffersToDestroy[i];
 	}
-	renderer->submittedBuffersToDestroyCount = renderer->renderbuffersToDestroyCount;
+	renderer->submittedRenderbuffersToDestroyCount = renderer->renderbuffersToDestroyCount;
 	renderer->renderbuffersToDestroyCount = 0;
 
 	for (i = 0; i < renderer->buffersToDestroyCount; i += 1)
