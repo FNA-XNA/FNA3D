@@ -9388,23 +9388,6 @@ static void VULKAN_AddDisposeRenderbuffer(
 	renderer->renderbuffersToDestroy[renderer->renderbuffersToDestroyCount] = vlkRenderBuffer;
 	renderer->renderbuffersToDestroyCount += 1;
 	SDL_UnlockMutex(renderer->disposeLock);
-
-	if (	vlkRenderBuffer->colorBuffer != NULL &&
-		vlkRenderBuffer->colorBuffer->multiSampleCount > 0	)
-	{
-		VULKAN_AddDisposeTexture(
-			driverData,
-			(FNA3D_Texture*) vlkRenderBuffer->colorBuffer->multiSampleTexture
-		);
-	}
-
-	if (vlkRenderBuffer->depthBuffer != NULL)
-	{
-		VULKAN_AddDisposeTexture(
-			driverData,
-			(FNA3D_Texture*) vlkRenderBuffer->depthBuffer->handle
-		);
-	}
 }
 
 /* Vertex Buffers */
