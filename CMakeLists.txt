@@ -159,6 +159,13 @@ if (DEFINED SDL2_INCLUDE_DIRS AND DEFINED SDL2_LIBRARIES)
 	target_include_directories(FNA3D PUBLIC "$<BUILD_INTERFACE:${SDL2_INCLUDE_DIRS}>")
 	target_include_directories(mojoshader PUBLIC "$<BUILD_INTERFACE:${SDL2_INCLUDE_DIRS}>")
 	target_link_libraries(FNA3D PUBLIC ${SDL2_LIBRARIES})
+elseif (UNIX)
+	find_package(PkgConfig REQUIRED)
+	message(STATUS "using pkgconfig SDL2")
+
+	pkg_check_modules(SDL2 REQUIRED IMPORTED_TARGET sdl2)
+	target_link_libraries(FNA3D PUBLIC PkgConfig::SDL2)
+	target_link_libraries(mojoshader PUBLIC PkgConfig::SDL2)
 else()
 	# Only try to autodetect if both SDL2 variables aren't explicitly set
 	find_package(SDL2 CONFIG)
