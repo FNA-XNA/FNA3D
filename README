@@ -19,7 +19,8 @@ API and can be used entirely by itself without dragging in other dependencies.
 
 Dependencies
 ------------
-FNA3D depends solely on SDL2. FNA3D never explicitly uses the C runtime.
+FNA3D depends solely on SDL 2.0.12 or newer.
+FNA3D never explicitly uses the C runtime.
 
 Building FNA3D
 ---------------

@@ -28,6 +28,10 @@
 
 #include <SDL.h>
 
+#if !SDL_VERSION_ATLEAST(2, 0, 12)
+#error "SDL version older than 2.0.12"
+#endif /* !SDL_VERSION_ATLEAST */
+
 /* Drivers */
 
 static const FNA3D_Driver *drivers[] = {
