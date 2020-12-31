@@ -72,7 +72,7 @@ static const char* deviceExtensionNames[] =
 	/* Vendor-specific extensions */
 	"VK_GGP_frame_token"
 };
-static uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
+static const uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
 
 /* Constants/Limits */
 
@@ -10031,6 +10031,7 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 	SDL_Window *dummyWindowHandle;
 	FNA3D_PresentationParameters presentationParameters;
 	VulkanRenderer *renderer;
+	uint32_t deviceExtensionCountFinal = deviceExtensionCount;
 	uint8_t result;
 
 	if (SDL_Vulkan_LoadLibrary(NULL) < 0)
@@ -10114,12 +10115,12 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 
 	if (SDL_strcmp(SDL_GetPlatform(), "Stadia") != 0)
 	{
-		deviceExtensionCount -= 1;
+		deviceExtensionCountFinal -= 1;
 	}
 	result = VULKAN_INTERNAL_DeterminePhysicalDevice(
 		renderer,
 		deviceExtensionNames,
-		deviceExtensionCount
+		deviceExtensionCountFinal
 	);
 
 	renderer->vkDestroySurfaceKHR(
@@ -10148,6 +10149,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 ) {
 	uint32_t i;
 	VkResult vulkanResult;
+	uint32_t deviceExtensionCountFinal = deviceExtensionCount;
 
 	/* Variables: Create the FNA3D_Device */
 	FNA3D_Device *result;
@@ -10244,12 +10246,12 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	if (SDL_strcmp(SDL_GetPlatform(), "Stadia") != 0)
 	{
-		deviceExtensionCount -= 1;
+		deviceExtensionCountFinal -= 1;
 	}
 	if (!VULKAN_INTERNAL_DeterminePhysicalDevice(
 		renderer,
 		deviceExtensionNames,
-		deviceExtensionCount
+		deviceExtensionCountFinal
 	)) {
 		FNA3D_LogError("Failed to determine a suitable physical device");
 		return NULL;
@@ -10280,7 +10282,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	if (!VULKAN_INTERNAL_CreateLogicalDevice(
 		renderer,
 		deviceExtensionNames,
-		deviceExtensionCount
+		deviceExtensionCountFinal
 	)) {
 		FNA3D_LogError("Failed to create logical device");
 		return NULL;
