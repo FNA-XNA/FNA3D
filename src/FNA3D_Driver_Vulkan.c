@@ -65,6 +65,10 @@ static const char* deviceExtensionNames[] =
 	VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,
 	/* EXT, probably not going to be Core */
 	VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,
+	/* Platform extensions */
+#ifdef __APPLE__ /* FIXME: https://github.com/KhronosGroup/Vulkan-Portability/issues/14 */
+	"VK_KHR_portability_subset", /* Hardcoded name because it's in vulkan_beta.h */
+#endif /* __APPLE__ */
 	/* Vendor-specific extensions */
 	"VK_GGP_frame_token"
 };
