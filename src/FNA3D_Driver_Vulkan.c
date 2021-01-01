@@ -26,9 +26,13 @@
 
 #if FNA3D_DRIVER_VULKAN
 
+#ifdef __APPLE__
+/* FIXME: Needed for VK_KHR_portability_subset */
+#define VK_ENABLE_BETA_EXTENSIONS
+#endif /* __APPLE__ */
+
 #define VK_NO_PROTOTYPES
 #include "vulkan/vulkan.h"
-#include "vulkan/vulkan_beta.h" /* FIXME: Needed for VK_KHR_portability_subset */
 
 #include "FNA3D_Driver.h"
 #include "FNA3D_PipelineCache.h"
@@ -66,10 +70,11 @@ static const char* deviceExtensionNames[] =
 	VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,
 	/* EXT, probably not going to be Core */
 	VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,
-	/* Platform extensions */
-#ifdef __APPLE__ /* FIXME: https://github.com/KhronosGroup/Vulkan-Portability/issues/14 */
+	/* Beta extensions */
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+	/* FIXME: https://github.com/KhronosGroup/Vulkan-Portability/issues/14 */
 	VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME,
-#endif /* __APPLE__ */
+#endif /* VK_ENABLE_BETA_EXTENSIONS */
 	/* Vendor-specific extensions */
 	"VK_GGP_frame_token"
 };
@@ -2460,8 +2465,9 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	VkResult vulkanResult;
 	VkDeviceCreateInfo deviceCreateInfo;
 	VkPhysicalDeviceFeatures deviceFeatures;
+#ifdef VK_ENABLE_BETA_EXTENSIONS
 	VkPhysicalDevicePortabilitySubsetFeaturesKHR portabilityFeatures;
-	void* pNext = NULL;
+#endif /* VK_ENABLE_BETA_EXTENSIONS */
 
 	VkDeviceQueueCreateInfo *queueCreateInfos = SDL_stack_alloc(
 		VkDeviceQueueCreateInfo,
@@ -2505,7 +2511,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	deviceFeatures.occlusionQueryPrecise = VK_TRUE;
 	deviceFeatures.fillModeNonSolid = VK_TRUE;
 
-#if __APPLE__ /* FIXME: https://github.com/KhronosGroup/Vulkan-Portability/issues/14 */
+#ifdef VK_ENABLE_BETA_EXTENSIONS
 	portabilityFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR;
 	portabilityFeatures.pNext = NULL;
 	portabilityFeatures.constantAlphaColorBlendFactors = VK_FALSE;
@@ -2523,13 +2529,16 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	portabilityFeatures.tessellationPointMode = VK_FALSE;
 	portabilityFeatures.triangleFans = VK_FALSE;
 	portabilityFeatures.vertexAttributeAccessBeyondStride = VK_FALSE;
-	pNext = &portabilityFeatures;
-#endif
+#endif /* VK_ENABLE_BETA_EXTENSIONS */
 
 	/* creating the logical device */
 
 	deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	deviceCreateInfo.pNext = pNext;
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+	deviceCreateInfo.pNext = &portabilityFeatures;
+#else
+	deviceCreateInfo.pNext = NULL;
+#endif /* VK_ENABLE_BETA_EXTENSIONS */
 	deviceCreateInfo.flags = 0;
 	deviceCreateInfo.queueCreateInfoCount = queueInfoCount;
 	deviceCreateInfo.pQueueCreateInfos = queueCreateInfos;
