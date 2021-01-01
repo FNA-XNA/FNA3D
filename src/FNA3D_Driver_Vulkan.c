@@ -2522,7 +2522,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	portabilityFeatures.multisampleArrayImage = VK_FALSE;
 	portabilityFeatures.mutableComparisonSamplers = VK_FALSE;
 	portabilityFeatures.pointPolygons = VK_FALSE;
-	portabilityFeatures.samplerMipLodBias = VK_FALSE;
+	portabilityFeatures.samplerMipLodBias = VK_FALSE; /* Technically should be true, but eh */
 	portabilityFeatures.separateStencilMaskRef = VK_FALSE;
 	portabilityFeatures.shaderSampleRateInterpolationFunctions = VK_FALSE;
 	portabilityFeatures.tessellationIsolines = VK_FALSE;
