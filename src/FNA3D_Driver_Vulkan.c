@@ -6985,6 +6985,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	VkImageAspectFlags depthAspectFlags;
 	float blendConstants[4];
 	VkClearValue clearValues[2 * MAX_RENDERTARGET_BINDINGS + 1];
+	VkClearColorValue clearColorValue;
 	uint32_t clearValueCount = 0;
 	uint32_t i;
 
@@ -7033,22 +7034,36 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 				&renderer->colorAttachments[i]->resourceAccessType
 			);
 
+			/*
+			 * In MRT scenarios we need to provide as many clearValue structs
+			 * as RTs in the current framebuffer even if they aren't cleared
+			 */
+
 			if (renderer->shouldClearColorOnBeginPass)
 			{
-				clearValues[clearValueCount].color.float32[0] = renderer->clearColorValue.float32[0];
-				clearValues[clearValueCount].color.float32[1] = renderer->clearColorValue.float32[1];
-				clearValues[clearValueCount].color.float32[2] = renderer->clearColorValue.float32[2];
-				clearValues[clearValueCount].color.float32[3] = renderer->clearColorValue.float32[3];
-				clearValueCount += 1;
+				clearColorValue = renderer->clearColorValue;
+			}
+			else
+			{
+				clearColorValue.float32[0] = 0;
+				clearColorValue.float32[1] = 0;
+				clearColorValue.float32[2] = 0;
+				clearColorValue.float32[3] = 0;
+			}
 
-				if (renderer->colorMultiSampleAttachments[i] != NULL)
-				{
-					clearValues[clearValueCount].color.float32[0] = renderer->clearColorValue.float32[0];
-					clearValues[clearValueCount].color.float32[1] = renderer->clearColorValue.float32[1];
-					clearValues[clearValueCount].color.float32[2] = renderer->clearColorValue.float32[2];
-					clearValues[clearValueCount].color.float32[3] = renderer->clearColorValue.float32[3];
-					clearValueCount += 1;
-				}
+			clearValues[clearValueCount].color.float32[0] = clearColorValue.float32[0];
+			clearValues[clearValueCount].color.float32[1] = clearColorValue.float32[1];
+			clearValues[clearValueCount].color.float32[2] = clearColorValue.float32[2];
+			clearValues[clearValueCount].color.float32[3] = clearColorValue.float32[3];
+			clearValueCount += 1;
+
+			if (renderer->colorMultiSampleAttachments[i] != NULL)
+			{
+				clearValues[clearValueCount].color.float32[0] = clearColorValue.float32[0];
+				clearValues[clearValueCount].color.float32[1] = clearColorValue.float32[1];
+				clearValues[clearValueCount].color.float32[2] = clearColorValue.float32[2];
+				clearValues[clearValueCount].color.float32[3] = clearColorValue.float32[3];
+				clearValueCount += 1;
 			}
 		}
 	}
