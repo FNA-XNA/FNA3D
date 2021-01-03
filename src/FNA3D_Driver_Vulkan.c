@@ -979,6 +979,7 @@ struct VulkanMemoryAllocation
 	uint32_t freeRegionCount;
 	uint32_t freeRegionCapacity;
 	uint8_t dedicated;
+	SDL_mutex *mapLock;
 };
 
 typedef struct VulkanMemoryAllocator
@@ -1033,7 +1034,6 @@ typedef struct VulkanSubBuffer
 	VkDeviceSize size;
 	VulkanResourceAccessType resourceAccessType;
 	int8_t bound;
-	SDL_mutex *copyLock;
 } VulkanSubBuffer;
 
 /*
@@ -2788,6 +2788,7 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 
 	allocation = SDL_malloc(sizeof(VulkanMemoryAllocation));
 	allocation->size = allocationSize;
+	allocation->mapLock = SDL_CreateMutex();
 
 	if (dedicated)
 	{
@@ -3069,6 +3070,8 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 				NULL
 			);
 
+			SDL_DestroyMutex(buffer->subBuffers[i]->allocation->mapLock);
+
 			SDL_free(buffer->subBuffers[i]->allocation->freeRegions);
 			SDL_free(buffer->subBuffers[i]->allocation);
 		}
@@ -3091,7 +3094,6 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 			NULL
 		);
 
-		SDL_DestroyMutex(buffer->subBuffers[i]->copyLock);
 		SDL_free(buffer->subBuffers[i]);
 	}
 
@@ -3115,6 +3117,7 @@ static void VULKAN_INTERNAL_DestroyTexture(
 			NULL
 		);
 
+		SDL_DestroyMutex(texture->allocation->mapLock);
 		SDL_free(texture->allocation->freeRegions);
 		SDL_free(texture->allocation);
 	}
@@ -5128,7 +5131,6 @@ static uint8_t VULKAN_INTERNAL_AllocateSubBuffer(
 
 	subBuffer->resourceAccessType = buffer->resourceAccessType;
 	subBuffer->bound = -1;
-	subBuffer->copyLock = SDL_CreateMutex();
 
 	/* Reallocate the subbuffer array if we're at max capacity */
 	if (buffer->subBufferCount == buffer->subBufferCapacity)
@@ -5251,8 +5253,8 @@ static void VULKAN_INTERNAL_SetBufferData(
 		/* we need to do this craziness because you can't map the same allocation twice */
 		if (SUBBUF->allocation != vulkanBuffer->subBuffers[prevIndex]->allocation)
 		{
-			SDL_LockMutex(SUBBUF->copyLock);
-			SDL_LockMutex(vulkanBuffer->subBuffers[prevIndex]->copyLock);
+			SDL_LockMutex(SUBBUF->allocation->mapLock);
+			SDL_LockMutex(vulkanBuffer->subBuffers[prevIndex]->allocation->mapLock);
 
 			vulkanResult = renderer->vkMapMemory(
 				renderer->logicalDevice,
@@ -5300,12 +5302,12 @@ static void VULKAN_INTERNAL_SetBufferData(
 				vulkanBuffer->subBuffers[prevIndex]->allocation->memory
 			);
 
-			SDL_UnlockMutex(SUBBUF->copyLock);
-			SDL_UnlockMutex(vulkanBuffer->subBuffers[prevIndex]->copyLock);
+			SDL_UnlockMutex(SUBBUF->allocation->mapLock);
+			SDL_UnlockMutex(vulkanBuffer->subBuffers[prevIndex]->allocation->mapLock);
 		}
 		else
 		{
-			SDL_LockMutex(SUBBUF->copyLock);
+			SDL_LockMutex(SUBBUF->allocation->mapLock);
 
 			/* just map the whole dang thing for the copy */
 			vulkanResult = renderer->vkMapMemory(
@@ -5334,11 +5336,11 @@ static void VULKAN_INTERNAL_SetBufferData(
 				SUBBUF->allocation->memory
 			);
 
-			SDL_UnlockMutex(SUBBUF->copyLock);
+			SDL_UnlockMutex(SUBBUF->allocation->mapLock);
 		}
 	}
 
-	SDL_LockMutex(SUBBUF->copyLock);
+	SDL_LockMutex(SUBBUF->allocation->mapLock);
 
 	/* Map the memory and perform the copy */
 	vulkanResult = renderer->vkMapMemory(
@@ -5367,7 +5369,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 		SUBBUF->allocation->memory
 	);
 
-	SDL_UnlockMutex(SUBBUF->copyLock);
+	SDL_UnlockMutex(SUBBUF->allocation->mapLock);
 
 	#undef SUBBUF
 	#undef CURIDX
@@ -7646,6 +7648,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 				NULL
 			);
 
+			SDL_DestroyMutex(allocator->allocations[j]->mapLock);
 			SDL_free(allocator->allocations[j]);
 		}
 		SDL_free(allocator->allocations);
@@ -9557,7 +9560,7 @@ static void VULKAN_GetVertexBufferData(
 		subbuf
 	);
 
-	SDL_LockMutex(subbuf->copyLock);
+	SDL_LockMutex(subbuf->allocation->mapLock);
 
 	vulkanResult = renderer->vkMapMemory(
 		renderer->logicalDevice,
@@ -9585,7 +9588,7 @@ static void VULKAN_GetVertexBufferData(
 		subbuf->allocation->memory
 	);
 
-	SDL_UnlockMutex(subbuf->copyLock);
+	SDL_UnlockMutex(subbuf->allocation->mapLock);
 
 	if (useStagingBuffer)
 	{
@@ -9669,7 +9672,7 @@ static void VULKAN_GetIndexBufferData(
 		subbuf
 	);
 
-	SDL_LockMutex(subbuf->copyLock);
+	SDL_LockMutex(subbuf->allocation->mapLock);
 
 	vulkanResult = renderer->vkMapMemory(
 		renderer->logicalDevice,
@@ -9697,7 +9700,7 @@ static void VULKAN_GetIndexBufferData(
 		subbuf->allocation->memory
 	);
 
-	SDL_UnlockMutex(subbuf->copyLock);
+	SDL_UnlockMutex(subbuf->allocation->mapLock);
 
 	VULKAN_INTERNAL_BufferMemoryBarrier(
 		renderer,
