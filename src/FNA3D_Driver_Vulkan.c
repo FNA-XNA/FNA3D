@@ -5128,6 +5128,7 @@ static uint8_t VULKAN_INTERNAL_AllocateSubBuffer(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		FNA3D_LogError("Failed to bind buffer memory!");
+		SDL_UnlockMutex(subBuffer->allocation->mapLock);
 		return 0;
 	}
 
@@ -5272,6 +5273,8 @@ static void VULKAN_INTERNAL_SetBufferData(
 			if (vulkanResult != VK_SUCCESS)
 			{
 				FNA3D_LogError("Failed to map buffer memory!");
+				SDL_UnlockMutex(SUBBUF->allocation->mapLock);
+				SDL_UnlockMutex(vulkanBuffer->subBuffers[prevIndex]->allocation->mapLock);
 				return;
 			}
 
@@ -5287,6 +5290,8 @@ static void VULKAN_INTERNAL_SetBufferData(
 			if (vulkanResult != VK_SUCCESS)
 			{
 				FNA3D_LogError("Failed to map buffer memory!");
+				SDL_UnlockMutex(SUBBUF->allocation->mapLock);
+				SDL_UnlockMutex(vulkanBuffer->subBuffers[prevIndex]->allocation->mapLock);
 				return;
 			}
 
@@ -5326,6 +5331,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 			if (vulkanResult != VK_SUCCESS)
 			{
 				FNA3D_LogError("Failed to map buffer memory!");
+				SDL_UnlockMutex(SUBBUF->allocation->mapLock);
 				return;
 			}
 
@@ -5359,6 +5365,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		FNA3D_LogError("Failed to map buffer memory!");
+		SDL_UnlockMutex(SUBBUF->allocation->mapLock);
 		return;
 	}
 
@@ -5510,13 +5517,13 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 		texture->offset
 	);
 
+	SDL_UnlockMutex(texture->allocation->mapLock);
+
 	if (result != VK_SUCCESS)
 	{
 		LogVulkanResult("vkBindImageMemory", result);
 		return 0;
 	}
-
-	SDL_UnlockMutex(texture->allocation->mapLock);
 
 	imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	imageViewCreateInfo.pNext = NULL;
@@ -5736,6 +5743,9 @@ static void VULKAN_INTERNAL_GetTextureData(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		FNA3D_LogError("Failed to map buffer memory!");
+		SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
+		SDL_UnlockMutex(renderer->stagingLock);
+		SDL_UnlockMutex(renderer->passLock);
 		return;
 	}
 
@@ -8846,6 +8856,9 @@ static void VULKAN_SetTextureData2D(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		FNA3D_LogError("Failed to map buffer memory!");
+		SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
+		SDL_UnlockMutex(renderer->stagingLock);
+		SDL_UnlockMutex(renderer->passLock);
 		return;
 	}
 
@@ -8857,7 +8870,6 @@ static void VULKAN_SetTextureData2D(
 	);
 
 	SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
-	SDL_UnlockMutex(renderer->stagingLock);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -8897,6 +8909,7 @@ static void VULKAN_SetTextureData2D(
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 
+	SDL_UnlockMutex(renderer->stagingLock);
 	SDL_UnlockMutex(renderer->passLock);
 }
 
@@ -8940,6 +8953,9 @@ static void VULKAN_SetTextureData3D(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		FNA3D_LogError("Failed to map buffer memory!");
+		SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
+		SDL_UnlockMutex(renderer->stagingLock);
+		SDL_UnlockMutex(renderer->passLock);
 		return;
 	}
 
@@ -8951,7 +8967,6 @@ static void VULKAN_SetTextureData3D(
 	);
 
 	SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
-	SDL_UnlockMutex(renderer->stagingLock);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -8991,6 +9006,7 @@ static void VULKAN_SetTextureData3D(
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 
+	SDL_UnlockMutex(renderer->stagingLock);
 	SDL_UnlockMutex(renderer->passLock);
 }
 
@@ -9033,6 +9049,9 @@ static void VULKAN_SetTextureDataCube(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		FNA3D_LogError("Failed to map buffer memory!");
+		SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
+		SDL_UnlockMutex(renderer->stagingLock);
+		SDL_UnlockMutex(renderer->passLock);
 		return;
 	}
 
@@ -9044,7 +9063,6 @@ static void VULKAN_SetTextureDataCube(
 	);
 
 	SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
-	SDL_UnlockMutex(renderer->stagingLock);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -9084,6 +9102,7 @@ static void VULKAN_SetTextureDataCube(
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 
+	SDL_UnlockMutex(renderer->stagingLock);
 	SDL_UnlockMutex(renderer->passLock);
 }
 
@@ -9145,6 +9164,9 @@ static void VULKAN_SetTextureDataYUV(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		FNA3D_LogError("Failed to map buffer memory!");
+		SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
+		SDL_UnlockMutex(renderer->stagingLock);
+		SDL_UnlockMutex(renderer->passLock);
 		return;
 	}
 
@@ -9240,7 +9262,6 @@ static void VULKAN_SetTextureDataYUV(
 	);
 
 	SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
-	SDL_UnlockMutex(renderer->stagingLock);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -9266,6 +9287,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 
+	SDL_UnlockMutex(renderer->stagingLock);
 	SDL_UnlockMutex(renderer->passLock);
 }
 
@@ -9609,6 +9631,7 @@ static void VULKAN_GetVertexBufferData(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		FNA3D_LogError("Failed to map buffer memory!");
+		SDL_UnlockMutex(subbuf->allocation->mapLock);
 		return;
 	}
 
@@ -9721,6 +9744,7 @@ static void VULKAN_GetIndexBufferData(
 	if (vulkanResult != VK_SUCCESS)
 	{
 		FNA3D_LogError("Failed to map buffer memory!");
+		SDL_UnlockMutex(subbuf->allocation->mapLock);
 		return;
 	}
 
