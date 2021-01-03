@@ -5125,14 +5125,13 @@ static uint8_t VULKAN_INTERNAL_AllocateSubBuffer(
 		subBuffer->offset
 	);
 
+	SDL_UnlockMutex(subBuffer->allocation->mapLock);
+
 	if (vulkanResult != VK_SUCCESS)
 	{
 		FNA3D_LogError("Failed to bind buffer memory!");
-		SDL_UnlockMutex(subBuffer->allocation->mapLock);
 		return 0;
 	}
-
-	SDL_UnlockMutex(subBuffer->allocation->mapLock);
 
 	subBuffer->resourceAccessType = buffer->resourceAccessType;
 	subBuffer->bound = -1;
