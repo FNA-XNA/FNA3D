@@ -5655,6 +5655,10 @@ static void VULKAN_INTERNAL_GetTextureData(
 	uint8_t *mapPointer;
 	VkResult vulkanResult;
 
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
+
+	SDL_LockMutex(renderer->passLock);
+
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
 	/* Cache this so we can restore it later */
@@ -5748,6 +5752,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 
 	SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
 	SDL_UnlockMutex(renderer->stagingLock);
+	SDL_UnlockMutex(renderer->passLock);
 }
 
 /* Vulkan: Mutable State Commands */
@@ -8820,6 +8825,8 @@ static void VULKAN_SetTextureData2D(
 	uint8_t *mapPointer;
 	VkResult vulkanResult;
 
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
+
 	SDL_LockMutex(renderer->passLock);
 	SDL_LockMutex(renderer->stagingLock);
 
@@ -8912,6 +8919,8 @@ static void VULKAN_SetTextureData3D(
 	uint8_t *mapPointer;
 	VkResult vulkanResult;
 
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
+
 	SDL_LockMutex(renderer->passLock);
 	SDL_LockMutex(renderer->stagingLock);
 
@@ -9002,6 +9011,8 @@ static void VULKAN_SetTextureDataCube(
 	VkBufferImageCopy imageCopy;
 	uint8_t *mapPointer;
 	VkResult vulkanResult;
+
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
 
 	SDL_LockMutex(renderer->passLock);
 	SDL_LockMutex(renderer->stagingLock);
@@ -9096,6 +9107,8 @@ static void VULKAN_SetTextureDataYUV(
 	VkBufferImageCopy imageCopy;
 	uint8_t *mapPointer;
 	VkResult vulkanResult;
+
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
 
 	SDL_LockMutex(renderer->passLock);
 	SDL_LockMutex(renderer->stagingLock);
