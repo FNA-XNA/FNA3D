@@ -764,7 +764,8 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(GetMaxTextureSlots, name) \
 	ASSIGN_DRIVER_FUNC(GetMaxMultiSampleCount, name) \
 	ASSIGN_DRIVER_FUNC(SetStringMarker, name) \
-	ASSIGN_DRIVER_FUNC(GetVulkanHandles_EXT, name)
+	ASSIGN_DRIVER_FUNC(GetVulkanHandles_EXT, name) \
+	ASSIGN_DRIVER_FUNC(CreateExternalTexture_EXT, name)
 
 typedef struct FNA3D_Driver
 {
