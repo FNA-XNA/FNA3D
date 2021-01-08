@@ -46,16 +46,9 @@
 
 #define VK_DEFINE_HANDLE(object) typedef struct object##_T* object;
 
-#if defined(__LP64__) || defined(_WIN64) || defined(__x86_64__) || defined(_M_X64) || defined(__ia64) || defined (_M_IA64) || defined(__aarch64__) || defined(__powerpc64__)
-#define VK_DEFINE_NON_DISPATCHABLE_HANDLE(object) typedef struct object##_T *object;
-#else
-#define VK_DEFINE_NON_DISPATCHABLE_HANDLE(object) typedef unsigned long long object;
-#endif
-
 VK_DEFINE_HANDLE(VkInstance)
 VK_DEFINE_HANDLE(VkPhysicalDevice)
 VK_DEFINE_HANDLE(VkDevice)
-VK_DEFINE_NON_DISPATCHABLE_HANDLE(VkImageView)
 
 #include <stdint.h>
 
@@ -1540,7 +1533,7 @@ FNA3DAPI void FNA3D_GetVulkanHandles_EXT(
 /* Vulkan-only: Create an externally-backed texture. Can only be used for sampling. */
 FNA3DAPI FNA3D_Texture* FNA3D_CreateExternalSamplerTexture_EXT(
 	FNA3D_Device *device,
-	VkImageView imageView
+	void *textureViewHandle
 );
 
 #ifdef __cplusplus

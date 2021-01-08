@@ -5276,9 +5276,9 @@ static VkDevice OPENGL_GetVulkanHandles_EXT(
 
 static FNA3D_Texture* OPENGL_CreateExternalSamplerTexture_EXT(
 	FNA3D_Renderer* driverData,
-	VkImageView imageView
+	void *textureViewHandle
 ) {
-	FNA3D_LogError("This function cannot be used with OpenGL!");
+	FNA3D_LogError("This function not implemented on OpenGL!");
 	return NULL;
 }
 

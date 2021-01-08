@@ -1368,7 +1368,7 @@ void FNA3D_GetVulkanHandles_EXT(
 
 FNA3D_Texture* FNA3D_CreateExternalSamplerTexture_EXT(
 	FNA3D_Device *device,
-	VkImageView imageView
+	void *textureViewHandle
 ) {
 	if (device == NULL)
 	{
@@ -1376,7 +1376,7 @@ FNA3D_Texture* FNA3D_CreateExternalSamplerTexture_EXT(
 	}
 	return device->CreateExternalSamplerTexture_EXT(
 		device->driverData,
-		imageView
+		textureViewHandle
 	);
 }
 

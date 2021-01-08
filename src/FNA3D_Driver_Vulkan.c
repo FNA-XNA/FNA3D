@@ -10206,10 +10206,11 @@ static void VULKAN_GetVulkanHandles_EXT(
 
 static FNA3D_Texture* VULKAN_CreateExternalSamplerTexture_EXT(
 	FNA3D_Renderer *driverData,
-	VkImageView imageView
+	void *textureViewHandle
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *texture = SDL_malloc(sizeof(VulkanTexture));
+	VkImageView imageView = (VkImageView) textureViewHandle;
 
 	texture->allocation = NULL;
 	texture->colorFormat = 0;

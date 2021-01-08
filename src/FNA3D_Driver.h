@@ -680,7 +680,7 @@ struct FNA3D_Device
 
 	FNA3D_Texture* (*CreateExternalSamplerTexture_EXT)(
 		FNA3D_Renderer *driverData,
-		VkImageView imageView
+		void *textureViewHandle
 	);
 
 	/* Opaque pointer for the Driver */
