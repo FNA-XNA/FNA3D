@@ -10204,7 +10204,7 @@ static void VULKAN_GetVulkanHandles_EXT(
 	*pDeviceQueueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily; /* FIXME: get unified queue family */
 }
 
-static FNA3D_Texture* VULKAN_CreateExternalTexture_EXT(
+static FNA3D_Texture* VULKAN_CreateExternalSamplerTexture_EXT(
 	FNA3D_Renderer *driverData,
 	VkImageView imageView
 ) {

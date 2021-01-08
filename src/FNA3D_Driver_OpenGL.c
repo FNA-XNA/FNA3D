@@ -5274,7 +5274,7 @@ static VkDevice OPENGL_GetVulkanHandles_EXT(
 	return NULL;
 }
 
-static FNA3D_Texture* OPENGL_CreateExternalTexture_EXT(
+static FNA3D_Texture* OPENGL_CreateExternalSamplerTexture_EXT(
 	FNA3D_Renderer* driverData,
 	VkImageView imageView
 ) {

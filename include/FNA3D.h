@@ -1538,7 +1538,7 @@ FNA3DAPI void FNA3D_GetVulkanHandles_EXT(
 );
 
 /* Vulkan-only: Create an externally-backed texture. Can only be used for sampling. */
-FNA3DAPI FNA3D_Texture* FNA3D_CreateExternalTexture_EXT(
+FNA3DAPI FNA3D_Texture* FNA3D_CreateExternalSamplerTexture_EXT(
 	FNA3D_Device *device,
 	VkImageView imageView
 );

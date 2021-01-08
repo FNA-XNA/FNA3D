@@ -4418,7 +4418,7 @@ static void D3D11_GetVulkanHandles_EXT(
 	return NULL;
 }
 
-static FNA3D_Texture* D3D11_CreateExternalTexture_EXT(
+static FNA3D_Texture* D3D11_CreateExternalSamplerTexture_EXT(
 	FNA3D_Renderer *driverData,
 	VkImageView imageView
 ) {

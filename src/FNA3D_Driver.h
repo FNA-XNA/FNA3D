@@ -682,7 +682,7 @@ struct FNA3D_Device
 		FNA3D_Renderer *driverData
 	);
 
-	FNA3D_Texture* (*CreateExternalTexture_EXT)(
+	FNA3D_Texture* (*CreateExternalSamplerTexture_EXT)(
 		FNA3D_Renderer *driverData,
 		VkImageView imageView
 	);
@@ -765,7 +765,7 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(GetMaxMultiSampleCount, name) \
 	ASSIGN_DRIVER_FUNC(SetStringMarker, name) \
 	ASSIGN_DRIVER_FUNC(GetVulkanHandles_EXT, name) \
-	ASSIGN_DRIVER_FUNC(CreateExternalTexture_EXT, name)
+	ASSIGN_DRIVER_FUNC(CreateExternalSamplerTexture_EXT, name)
 
 typedef struct FNA3D_Driver
 {

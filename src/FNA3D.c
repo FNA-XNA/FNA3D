@@ -1375,7 +1375,7 @@ uint32_t FNA3D_GetVkDeviceQueueIndex_EXT(FNA3D_Device *device)
 	return device->GetVkDeviceQueueIndex_EXT(device->driverData);
 }
 
-FNA3D_Texture* FNA3D_CreateExternalTexture_EXT(
+FNA3D_Texture* FNA3D_CreateExternalSamplerTexture_EXT(
 	FNA3D_Device *device,
 	VkImageView imageView
 ) {
@@ -1383,7 +1383,7 @@ FNA3D_Texture* FNA3D_CreateExternalTexture_EXT(
 	{
 		return NULL;
 	}
-	return device->CreateExternalTexture_EXT(
+	return device->CreateExternalSamplerTexture_EXT(
 		device->driverData,
 		imageView
 	);
