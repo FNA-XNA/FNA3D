@@ -44,6 +44,19 @@
 #endif /* __GNUC__ */
 #endif /* FNA3DNAMELESS */
 
+#define VK_DEFINE_HANDLE(object) typedef struct object##_T* object;
+
+#if defined(__LP64__) || defined(_WIN64) || defined(__x86_64__) || defined(_M_X64) || defined(__ia64) || defined (_M_IA64) || defined(__aarch64__) || defined(__powerpc64__)
+#define VK_DEFINE_NON_DISPATCHABLE_HANDLE(object) typedef struct object##_T *object;
+#else
+#define VK_DEFINE_NON_DISPATCHABLE_HANDLE(object) typedef unsigned long long object;
+#endif
+
+VK_DEFINE_HANDLE(VkInstance)
+VK_DEFINE_HANDLE(VkPhysicalDevice)
+VK_DEFINE_HANDLE(VkDevice)
+VK_DEFINE_NON_DISPATCHABLE_HANDLE(VkImageView)
+
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -1506,6 +1519,29 @@ FNA3DAPI int32_t FNA3D_GetMaxMultiSampleCount(
  * text: The string constant to mark in the API call stream.
  */
 FNA3DAPI void FNA3D_SetStringMarker(FNA3D_Device *device, const char *text);
+
+/* External library interop */
+
+/* Vulkan-only: Export the internal Vulkan handles. 
+ *
+ * pInstance: A pointer that will be filled by the VkInstance.
+ * pPhysicalDevice: A pointer that will be filled by the VkPhysicalDevice.
+ * pLogicalDevice: A pointer that will be filled by the VkDevice.
+ * pDeviceQueueFamilyIndex: A pointer that will be filled by the queue family index.
+ */
+FNA3DAPI void FNA3D_GetVulkanHandles_EXT(
+	FNA3D_Device *device,
+	VkInstance *pInstance,
+	VkPhysicalDevice *pPhysicalDevice,
+	VkDevice *pLogicalDevice,
+	uint32_t *pDeviceQueueFamilyIndex
+);
+
+/* Vulkan-only: Create an externally-backed texture. Can only be used for sampling. */
+FNA3DAPI FNA3D_Texture* FNA3D_CreateExternalTexture_EXT(
+	FNA3D_Device *device,
+	VkImageView imageView
+);
 
 #ifdef __cplusplus
 }

@@ -1344,4 +1344,49 @@ void FNA3D_SetStringMarker(FNA3D_Device *device, const char *text)
 	device->SetStringMarker(device->driverData, text);
 }
 
+/* External library interop */
+
+void FNA3D_GetVulkanHandles_EXT(
+	FNA3D_Device *device,
+	VkInstance* pInstance,
+	VkPhysicalDevice* pPhysicalDevice,
+	VkDevice* pLogicalDevice,
+	uint32_t* pDeviceQueueFamilyIndex
+) {
+	if (device == NULL)
+	{
+		return;
+	}
+	device->GetVulkanHandles_EXT(
+		device->driverData,
+		pInstance,
+		pPhysicalDevice,
+		pLogicalDevice,
+		pDeviceQueueFamilyIndex
+	);
+}
+
+uint32_t FNA3D_GetVkDeviceQueueIndex_EXT(FNA3D_Device *device)
+{
+	if (device == NULL)
+	{
+		return -1;
+	}
+	return device->GetVkDeviceQueueIndex_EXT(device->driverData);
+}
+
+FNA3D_Texture* FNA3D_CreateExternalTexture_EXT(
+	FNA3D_Device *device,
+	VkImageView imageView
+) {
+	if (device == NULL)
+	{
+		return NULL;
+	}
+	return device->CreateExternalTexture_EXT(
+		device->driverData,
+		imageView
+	);
+}
+
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */

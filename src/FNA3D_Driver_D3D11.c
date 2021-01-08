@@ -4405,6 +4405,27 @@ static void D3D11_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 	);
 }
 
+/* External interop */
+
+static void D3D11_GetVulkanHandles_EXT(
+	FNA3D_Renderer *driverData,
+	VkInstance *pInstance,
+	VkPhysicalDevice *pPhysicalDevice,
+	VkDevice *pDevice,
+	uint32_t *pDeviceQueueFamilyIndex
+) {
+	FNA3D_LogError("This function cannot be used with D3D11!");
+	return NULL;
+}
+
+static FNA3D_Texture* D3D11_CreateExternalTexture_EXT(
+	FNA3D_Renderer *driverData,
+	VkImageView imageView
+) {
+	FNA3D_LogError("This function cannot be used with D3D11!");
+	return NULL;
+}
+
 /* Driver */
 
 static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)

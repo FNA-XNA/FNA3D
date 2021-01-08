@@ -5261,6 +5261,27 @@ static void GLAPIENTRY DebugCall(
 	}
 }
 
+/* External interop */
+
+static VkDevice OPENGL_GetVulkanHandles_EXT(
+	FNA3D_Renderer* driverData,
+	VkInstance *pInstance,
+	VkPhysicalDevice *pPhysicalDevice,
+	VkDevice *pDevice,
+	uint32_t *pDeviceQueueFamilyIndex
+) {
+	FNA3D_LogError("This function cannot be used with OpenGL!");
+	return NULL;
+}
+
+static FNA3D_Texture* OPENGL_CreateExternalTexture_EXT(
+	FNA3D_Renderer* driverData,
+	VkImageView imageView
+) {
+	FNA3D_LogError("This function cannot be used with OpenGL!");
+	return NULL;
+}
+
 /* Load GL Entry Points */
 
 static inline void LoadEntryPoints(

@@ -997,6 +997,7 @@ typedef struct VulkanTexture /* Cast from FNA3D_Texture* */
 	VkImageView rtViews[6];
 	VkExtent2D dimensions;
 	uint32_t depth;
+	uint8_t external;
 	VkDeviceSize memorySize;
 	VkFormat surfaceFormat;
 	uint32_t layerCount;
@@ -3108,6 +3109,12 @@ static void VULKAN_INTERNAL_DestroyTexture(
 	VulkanTexture *texture
 ) {
 	int32_t i;
+
+	if (texture->external)
+	{
+		SDL_free(texture);
+		return;
+	}
 
 	if (texture->allocation->dedicated)
 	{
@@ -5637,6 +5644,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	texture->levelCount = levelCount;
 	texture->layerCount = layerCount;
 	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
+	texture->external = 0;
 
 	return 1;
 }
@@ -8209,18 +8217,21 @@ static void VULKAN_VerifySampler(
 		return;
 	}
 
-	VULKAN_INTERNAL_ImageMemoryBarrier(
-		renderer,
-		RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
-		VK_IMAGE_ASPECT_COLOR_BIT,
-		0,
-		vulkanTexture->layerCount,
-		0,
-		vulkanTexture->levelCount,
-		0,
-		vulkanTexture->image,
-		&vulkanTexture->resourceAccessType
-	);
+	if (!vulkanTexture->external)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			vulkanTexture->layerCount,
+			0,
+			vulkanTexture->levelCount,
+			0,
+			vulkanTexture->image,
+			&vulkanTexture->resourceAccessType
+		);
+	}
 
 	if (vulkanTexture != renderer->textures[index])
 	{
@@ -10174,6 +10185,55 @@ static void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 			&labelInfo
 		));
 	}
+}
+
+/* External interop */
+
+static void VULKAN_GetVulkanHandles_EXT(
+	FNA3D_Renderer *driverData,
+	VkInstance* pInstance,
+	VkPhysicalDevice* pPhysicalDevice,
+	VkDevice* pDevice,
+	uint32_t* pDeviceQueueFamilyIndex
+) {
+	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
+
+	*pInstance = renderer->instance;
+	*pPhysicalDevice = renderer->physicalDevice;
+	*pDevice = renderer->logicalDevice;
+	*pDeviceQueueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily; /* FIXME: get unified queue family */
+}
+
+static FNA3D_Texture* VULKAN_CreateExternalTexture_EXT(
+	FNA3D_Renderer *driverData,
+	VkImageView imageView
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanTexture *texture = SDL_malloc(sizeof(VulkanTexture));
+
+	texture->allocation = NULL;
+	texture->colorFormat = 0;
+	texture->depth = 0;
+	texture->depthStencilFormat = 0;
+	texture->dimensions.width = 0;
+	texture->dimensions.height = 0;
+	texture->external = 1;
+	texture->image = NULL;
+	texture->layerCount = 0;
+	texture->levelCount = 0;
+	texture->memorySize = 0;
+	texture->offset = 0;
+	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
+	texture->rtViews[0] = NULL;
+	texture->rtViews[1] = NULL;
+	texture->rtViews[2] = NULL;
+	texture->rtViews[3] = NULL;
+	texture->rtViews[4] = NULL;
+	texture->rtViews[5] = NULL;
+	texture->surfaceFormat = 0;
+	texture->view = imageView;
+
+	return texture;
 }
 
 /* Driver */

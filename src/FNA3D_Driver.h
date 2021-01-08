@@ -668,6 +668,25 @@ struct FNA3D_Device
 
 	void (*SetStringMarker)(FNA3D_Renderer *driverData, const char *text);
 
+	/* External library interop */
+
+	void (*GetVulkanHandles_EXT)(
+		FNA3D_Renderer *driverData,
+		VkInstance *pInstance,
+		VkPhysicalDevice *pPhysicalDevice,
+		VkDevice *pDevice,
+		uint32_t *pDeviceQueueFamilyIndex
+	);
+
+	uint32_t (*GetVkDeviceQueueIndex_EXT)(
+		FNA3D_Renderer *driverData
+	);
+
+	FNA3D_Texture* (*CreateExternalTexture_EXT)(
+		FNA3D_Renderer *driverData,
+		VkImageView imageView
+	);
+
 	/* Opaque pointer for the Driver */
 	FNA3D_Renderer *driverData;
 };
@@ -744,7 +763,8 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(SupportsNoOverwrite, name) \
 	ASSIGN_DRIVER_FUNC(GetMaxTextureSlots, name) \
 	ASSIGN_DRIVER_FUNC(GetMaxMultiSampleCount, name) \
-	ASSIGN_DRIVER_FUNC(SetStringMarker, name)
+	ASSIGN_DRIVER_FUNC(SetStringMarker, name) \
+	ASSIGN_DRIVER_FUNC(GetVulkanHandles_EXT, name)
 
 typedef struct FNA3D_Driver
 {
