@@ -1366,15 +1366,6 @@ void FNA3D_GetVulkanHandles_EXT(
 	);
 }
 
-uint32_t FNA3D_GetVkDeviceQueueIndex_EXT(FNA3D_Device *device)
-{
-	if (device == NULL)
-	{
-		return -1;
-	}
-	return device->GetVkDeviceQueueIndex_EXT(device->driverData);
-}
-
 FNA3D_Texture* FNA3D_CreateExternalSamplerTexture_EXT(
 	FNA3D_Device *device,
 	VkImageView imageView

@@ -678,10 +678,6 @@ struct FNA3D_Device
 		uint32_t *pDeviceQueueFamilyIndex
 	);
 
-	uint32_t (*GetVkDeviceQueueIndex_EXT)(
-		FNA3D_Renderer *driverData
-	);
-
 	FNA3D_Texture* (*CreateExternalSamplerTexture_EXT)(
 		FNA3D_Renderer *driverData,
 		VkImageView imageView
