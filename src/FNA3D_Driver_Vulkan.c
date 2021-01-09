@@ -1174,8 +1174,8 @@ typedef struct VulkanRenderer
 
 	uint32_t numVertexBindings;
 	FNA3D_VertexBufferBinding *vertexBindings;
-	VkBuffer ldVertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
-	VkDeviceSize ldVertexBufferOffsets[MAX_BOUND_VERTEX_BUFFERS];
+	VkBuffer boundVertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
+	VkDeviceSize boundVertexBufferOffsets[MAX_BOUND_VERTEX_BUFFERS];
 
 	/* Should be equal to swap chain count */
 	VkBuffer ldVertUniformBuffer;
@@ -1184,7 +1184,6 @@ typedef struct VulkanRenderer
 	VkDeviceSize ldFragUniformOffset;
 	VkDeviceSize ldVertUniformSize;
 	VkDeviceSize ldFragUniformSize;
-
 
 	int32_t stencilRef;
 
@@ -7811,8 +7810,8 @@ static void VULKAN_DrawInstancedPrimitives(
 			renderer->currentCommandBuffer,
 			0,
 			renderer->numVertexBindings,
-			renderer->ldVertexBuffers,
-			renderer->ldVertexBufferOffsets
+			renderer->boundVertexBuffers,
+			renderer->boundVertexBufferOffsets
 		));
 	}
 	/* FIXME: State shadowing for index buffers? -flibit */
@@ -7918,8 +7917,8 @@ static void VULKAN_DrawPrimitives(
 			renderer->currentCommandBuffer,
 			0,
 			renderer->numVertexBindings,
-			renderer->ldVertexBuffers,
-			renderer->ldVertexBufferOffsets
+			renderer->boundVertexBuffers,
+			renderer->boundVertexBufferOffsets
 		));
 	}
 
@@ -8325,12 +8324,13 @@ static void VULKAN_ApplyVertexBufferBindings(
 		];
 
 		offset =
-			(bindings[i].vertexOffset) *
+			bindings[i].vertexOffset *
 			bindings[i].vertexDeclaration.vertexStride
 		;
 
-		renderer->ldVertexBuffers[i] = subbuf->buffer;
-		renderer->ldVertexBufferOffsets[i] = offset;
+		renderer->boundVertexBuffers[i] = subbuf->buffer;
+		renderer->boundVertexBufferOffsets[i] = offset;
+
 		VULKAN_INTERNAL_MarkAsBound(renderer, vertexBuffer);
 	}
 }
