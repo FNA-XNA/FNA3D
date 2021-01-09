@@ -1174,9 +1174,8 @@ typedef struct VulkanRenderer
 
 	uint32_t numVertexBindings;
 	FNA3D_VertexBufferBinding *vertexBindings;
-	VkBuffer buffers[MAX_BOUND_VERTEX_BUFFERS];
-	VkDeviceSize offsets[MAX_BOUND_VERTEX_BUFFERS];
-	uint32_t bufferCount;
+	VkBuffer ldVertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
+	VkDeviceSize ldVertexBufferOffsets[MAX_BOUND_VERTEX_BUFFERS];
 
 	/* Should be equal to swap chain count */
 	VkBuffer ldVertUniformBuffer;
@@ -1186,9 +1185,6 @@ typedef struct VulkanRenderer
 	VkDeviceSize ldVertUniformSize;
 	VkDeviceSize ldFragUniformSize;
 
-	/* Needs to be dynamic because of swap chain count */
-	VkBuffer ldVertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
-	VkDeviceSize ldVertexBufferOffsets[MAX_BOUND_VERTEX_BUFFERS];
 
 	int32_t stencilRef;
 
@@ -7194,12 +7190,6 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	renderer->ldVertUniformSize = 0;
 	renderer->currentPipeline = NULL_PIPELINE;
 
-	for (i = 0; i < MAX_BOUND_VERTEX_BUFFERS; i += 1)
-	{
-		renderer->ldVertexBuffers[i] = NULL_BUFFER;
-		renderer->ldVertexBufferOffsets[i] = 0;
-	}
-
 	renderer->needNewRenderPass = 0;
 	renderer->shouldClearColorOnBeginPass = 0;
 	renderer->shouldClearDepthOnBeginPass = 0;
@@ -7811,15 +7801,15 @@ static void VULKAN_DrawInstancedPrimitives(
 	VULKAN_INTERNAL_BeginRenderPass(renderer);
 	VULKAN_INTERNAL_BindPipeline(renderer);
 
-	if (renderer->bufferCount > 0)
+	if (renderer->numVertexBindings > 0)
 	{
 		/* FIXME: State shadowing for vertex buffers? -flibit */
 		RECORD_CMD(renderer->vkCmdBindVertexBuffers(
 			renderer->currentCommandBuffer,
 			0,
-			renderer->bufferCount,
-			renderer->buffers,
-			renderer->offsets
+			renderer->numVertexBindings,
+			renderer->ldVertexBuffers,
+			renderer->ldVertexBufferOffsets
 		));
 	}
 	/* FIXME: State shadowing for index buffers? -flibit */
@@ -7918,15 +7908,15 @@ static void VULKAN_DrawPrimitives(
 	VULKAN_INTERNAL_BeginRenderPass(renderer);
 	VULKAN_INTERNAL_BindPipeline(renderer);
 
-	if (renderer->bufferCount > 0)
+	if (renderer->numVertexBindings > 0)
 	{
 		/* FIXME: State shadowing for vertex buffers? -flibit */
 		RECORD_CMD(renderer->vkCmdBindVertexBuffers(
 			renderer->currentCommandBuffer,
 			0,
-			renderer->bufferCount,
-			renderer->buffers,
-			renderer->offsets
+			renderer->numVertexBindings,
+			renderer->ldVertexBuffers,
+			renderer->ldVertexBufferOffsets
 		));
 	}
 
@@ -8319,7 +8309,6 @@ static void VULKAN_ApplyVertexBufferBindings(
 		renderer->needNewPipeline = 1;
 	}
 
-	renderer->bufferCount = 0;
 	for (i = 0; i < numBindings; i += 1)
 	{
 		vertexBuffer = (VulkanBuffer*) bindings[i].vertexBuffer;
@@ -8333,21 +8322,13 @@ static void VULKAN_ApplyVertexBufferBindings(
 		];
 
 		offset =
-			bindings[i].vertexOffset *
+			(bindings[i].vertexOffset) *
 			bindings[i].vertexDeclaration.vertexStride
 		;
 
+		renderer->ldVertexBuffers[i] = subbuf->buffer;
+		renderer->ldVertexBufferOffsets[i] = offset;
 		VULKAN_INTERNAL_MarkAsBound(renderer, vertexBuffer);
-		if (	renderer->ldVertexBuffers[i] != subbuf->buffer ||
-			renderer->ldVertexBufferOffsets[i] != offset	)
-		{
-			renderer->ldVertexBuffers[i] = subbuf->buffer;
-			renderer->ldVertexBufferOffsets[i] = offset;
-		}
-
-		renderer->buffers[renderer->bufferCount] = subbuf->buffer;
-		renderer->offsets[renderer->bufferCount] = offset;
-		renderer->bufferCount++;
 	}
 }
 
