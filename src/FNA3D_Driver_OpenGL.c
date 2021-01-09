@@ -5263,15 +5263,17 @@ static void GLAPIENTRY DebugCall(
 
 /* External interop */
 
-static VkDevice OPENGL_GetVulkanHandles_EXT(
-	FNA3D_Renderer* driverData,
-	VkInstance *pInstance,
-	VkPhysicalDevice *pPhysicalDevice,
-	VkDevice *pDevice,
-	uint32_t *pDeviceQueueFamilyIndex
+static FNA3D_RenderingContext_EXT* OPENGL_GetRenderingContext_EXT(
+	FNA3D_Renderer* driverData
 ) {
-	FNA3D_LogError("This function cannot be used with OpenGL!");
-	return NULL;
+	OpenGLRenderer* renderer = (OpenGLRenderer*) driverData;
+
+	FNA3D_RenderingContext_EXT* renderingContext = SDL_malloc(sizeof(FNA3D_RenderingContext_EXT));
+
+	renderingContext->rendererType = FNA3D_RENDERER_TYPE_OPENGL;
+	renderingContext->renderingContext.opengl.context = renderer->context;
+
+	return renderingContext;
 }
 
 static FNA3D_Texture* OPENGL_CreateExternalSamplerTexture_EXT(

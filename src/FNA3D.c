@@ -1346,23 +1346,15 @@ void FNA3D_SetStringMarker(FNA3D_Device *device, const char *text)
 
 /* External library interop */
 
-void FNA3D_GetVulkanHandles_EXT(
-	FNA3D_Device *device,
-	VkInstance* pInstance,
-	VkPhysicalDevice* pPhysicalDevice,
-	VkDevice* pLogicalDevice,
-	uint32_t* pDeviceQueueFamilyIndex
+FNA3D_RenderingContext_EXT* FNA3D_GetRenderingContext_EXT(
+	FNA3D_Device *device
 ) {
 	if (device == NULL)
 	{
-		return;
+		return NULL;
 	}
-	device->GetVulkanHandles_EXT(
-		device->driverData,
-		pInstance,
-		pPhysicalDevice,
-		pLogicalDevice,
-		pDeviceQueueFamilyIndex
+	return device->GetRenderingContext_EXT(
+		device->driverData
 	);
 }
 

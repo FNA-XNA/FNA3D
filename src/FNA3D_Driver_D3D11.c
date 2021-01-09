@@ -4407,15 +4407,16 @@ static void D3D11_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 
 /* External interop */
 
-static void D3D11_GetVulkanHandles_EXT(
-	FNA3D_Renderer *driverData,
-	VkInstance *pInstance,
-	VkPhysicalDevice *pPhysicalDevice,
-	VkDevice *pDevice,
-	uint32_t *pDeviceQueueFamilyIndex
+static FNA3D_RenderingContext_EXT* D3D11_GetRenderingContext_EXT(
+	FNA3D_Renderer *driverData
 ) {
-	FNA3D_LogError("This function cannot be used with D3D11!");
-	return NULL;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+
+	FNA3D_RenderingContext_EXT* renderingContext = SDL_malloc(sizeof(FNA3D_RenderingContext_EXT));
+	renderingContext->rendererType = FNA3D_RENDERER_TYPE_D3D11;
+	renderingContext->renderingContext.d3d11.deviceContext = renderer->context;
+
+	return renderingContext;
 }
 
 static FNA3D_Texture* D3D11_CreateExternalSamplerTexture_EXT(

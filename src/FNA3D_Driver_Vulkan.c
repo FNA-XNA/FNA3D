@@ -10189,19 +10189,20 @@ static void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 
 /* External interop */
 
-static void VULKAN_GetVulkanHandles_EXT(
-	FNA3D_Renderer *driverData,
-	VkInstance* pInstance,
-	VkPhysicalDevice* pPhysicalDevice,
-	VkDevice* pDevice,
-	uint32_t* pDeviceQueueFamilyIndex
+static FNA3D_RenderingContext_EXT* VULKAN_GetRenderingContext_EXT(
+	FNA3D_Renderer *driverData
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 
-	*pInstance = renderer->instance;
-	*pPhysicalDevice = renderer->physicalDevice;
-	*pDevice = renderer->logicalDevice;
-	*pDeviceQueueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily; /* FIXME: get unified queue family */
+	FNA3D_RenderingContext_EXT* renderingContext = SDL_malloc(sizeof(FNA3D_RenderingContext_EXT));
+
+	renderingContext->rendererType = FNA3D_RENDERER_TYPE_VULKAN;
+	renderingContext->renderingContext.vulkan.instance = renderer->instance;
+	renderingContext->renderingContext.vulkan.physicalDevice = renderer->physicalDevice;
+	renderingContext->renderingContext.vulkan.logicalDevice = renderer->logicalDevice;
+	renderingContext->renderingContext.vulkan.queueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily; /* FIXME: use explicit unified queue family */
+
+	return renderingContext;
 }
 
 static FNA3D_Texture* VULKAN_CreateExternalSamplerTexture_EXT(
@@ -10234,7 +10235,7 @@ static FNA3D_Texture* VULKAN_CreateExternalSamplerTexture_EXT(
 	texture->surfaceFormat = 0;
 	texture->view = imageView;
 
-	return texture;
+	return (FNA3D_Texture*) texture;
 }
 
 /* Driver */

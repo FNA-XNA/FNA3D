@@ -670,12 +670,8 @@ struct FNA3D_Device
 
 	/* External library interop */
 
-	void (*GetVulkanHandles_EXT)(
-		FNA3D_Renderer *driverData,
-		VkInstance *pInstance,
-		VkPhysicalDevice *pPhysicalDevice,
-		VkDevice *pDevice,
-		uint32_t *pDeviceQueueFamilyIndex
+	FNA3D_RenderingContext_EXT* (*GetRenderingContext_EXT)(
+		FNA3D_Renderer *driverData
 	);
 
 	FNA3D_Texture* (*CreateExternalSamplerTexture_EXT)(
@@ -760,7 +756,7 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(GetMaxTextureSlots, name) \
 	ASSIGN_DRIVER_FUNC(GetMaxMultiSampleCount, name) \
 	ASSIGN_DRIVER_FUNC(SetStringMarker, name) \
-	ASSIGN_DRIVER_FUNC(GetVulkanHandles_EXT, name) \
+	ASSIGN_DRIVER_FUNC(GetRenderingContext_EXT, name) \
 	ASSIGN_DRIVER_FUNC(CreateExternalSamplerTexture_EXT, name)
 
 typedef struct FNA3D_Driver

@@ -44,11 +44,27 @@
 #endif /* __GNUC__ */
 #endif /* FNA3DNAMELESS */
 
-#define VK_DEFINE_HANDLE(object) typedef struct object##_T* object;
+#if FNA3D_DRIVER_D3D11
+#ifndef __ID3D11DeviceContext_FWD_DEFINED__
+#define __ID3D11DeviceContext_FWD_DEFINED__
+typedef struct ID3D11DeviceContext ID3D11DeviceContext;
+#endif 	/* __ID3D11DeviceContext_FWD_DEFINED__ */
+#endif /* FNA3D_DRIVER_D3D11 */
 
+#if FNA3D_DRIVER_METAL
+typedef struct MTLDevice MTLDevice;
+#endif /* FNA3D_DRIVER_METAL */
+
+#if FNA3D_DRIVER_OPENGL
+typedef void* SDL_GLContext;
+#endif /* FNA3D_DRIVER_OPENGL */
+
+#if FNA3D_DRIVER_VULKAN
+#define VK_DEFINE_HANDLE(object) typedef struct object##_T* object;
 VK_DEFINE_HANDLE(VkInstance)
 VK_DEFINE_HANDLE(VkPhysicalDevice)
 VK_DEFINE_HANDLE(VkDevice)
+#endif /* FNA3D_DRIVER_VULKAN */
 
 #include <stdint.h>
 
@@ -460,6 +476,52 @@ typedef struct FNA3D_RenderTargetBinding
 	/* If this is non-NULL, you MUST call ResolveTarget after rendering! */
 	FNA3D_Renderbuffer *colorBuffer;
 } FNA3D_RenderTargetBinding;
+
+/* Extensions */
+
+typedef enum FNA3D_RENDERER_TYPE
+{
+	FNA3D_RENDERER_TYPE_D3D11,
+	FNA3D_RENDERER_TYPE_METAL,
+	FNA3D_RENDERER_TYPE_OPENGL,
+	FNA3D_RENDERER_TYPE_VULKAN
+} FNA3D_RENDERER_TYPE;
+
+typedef struct FNA3D_RenderingContext_EXT
+{
+	FNA3D_RENDERER_TYPE rendererType;
+
+	union
+	{
+#if FNA3D_DRIVER_D3D11
+		struct 
+		{
+			ID3D11DeviceContext *deviceContext;
+		} d3d11;
+#endif
+#if FNA3D_DRIVER_METAL
+		struct 
+		{
+			MTLDevice device;
+		} metal;
+#endif
+#if FNA3D_DRIVER_OPENGL
+		struct 
+		{
+			SDL_GLContext context;
+		} opengl;
+#endif
+#if FNA3D_DRIVER_VULKAN
+		struct 
+		{
+			VkInstance instance;
+			VkPhysicalDevice physicalDevice;
+			VkDevice logicalDevice;
+			uint32_t queueFamilyIndex;
+		} vulkan;
+#endif
+	} renderingContext;
+} FNA3D_RenderingContext_EXT;
 
 /* Version API */
 
@@ -1515,19 +1577,9 @@ FNA3DAPI void FNA3D_SetStringMarker(FNA3D_Device *device, const char *text);
 
 /* External library interop */
 
-/* Vulkan-only: Export the internal Vulkan handles. 
- *
- * pInstance: A pointer that will be filled by the VkInstance.
- * pPhysicalDevice: A pointer that will be filled by the VkPhysicalDevice.
- * pLogicalDevice: A pointer that will be filled by the VkDevice.
- * pDeviceQueueFamilyIndex: A pointer that will be filled by the queue family index.
- */
-FNA3DAPI void FNA3D_GetVulkanHandles_EXT(
-	FNA3D_Device *device,
-	VkInstance *pInstance,
-	VkPhysicalDevice *pPhysicalDevice,
-	VkDevice *pLogicalDevice,
-	uint32_t *pDeviceQueueFamilyIndex
+/* Export the internal rendering context. */
+FNA3DAPI FNA3D_RenderingContext_EXT* FNA3D_GetRenderingContext_EXT(
+	FNA3D_Device *device
 );
 
 /* Vulkan-only: Create an externally-backed texture. Can only be used for sampling. */
