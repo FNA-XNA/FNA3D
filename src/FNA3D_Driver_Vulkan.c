@@ -5200,20 +5200,23 @@ static void VULKAN_INTERNAL_SetBufferData(
 	#define CURIDX vulkanBuffer->currentSubBufferIndex
 	#define SUBBUF vulkanBuffer->subBuffers[CURIDX]
 
-	/* If buffer has not been bound this frame, set the first unbound index */
-	if (!vulkanBuffer->bound)
-	{
-		for (i = 0; i < vulkanBuffer->subBufferCount; i += 1)
-		{
-			if (vulkanBuffer->subBuffers[i]->bound == -1)
-			{
-				break;
-			}
-		}
-		CURIDX = i;
-	}
-
 	prevIndex = CURIDX;
+
+	if (options != FNA3D_SETDATAOPTIONS_NOOVERWRITE)
+	{
+		/* If buffer has not been bound this frame, set the first unbound index */
+		if (!vulkanBuffer->bound)
+		{
+			for (i = 0; i < vulkanBuffer->subBufferCount; i += 1)
+			{
+				if (vulkanBuffer->subBuffers[i]->bound == -1)
+				{
+					break;
+				}
+			}
+			CURIDX = i;
+		}
+	}
 
 	/*
 	 * If buffer was bound and options is NONE or DISCARD
