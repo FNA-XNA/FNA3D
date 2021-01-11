@@ -979,6 +979,7 @@ struct VulkanMemoryAllocation
 	uint32_t freeRegionCount;
 	uint32_t freeRegionCapacity;
 	uint8_t dedicated;
+	uint8_t *mapPointer;
 	SDL_mutex *mapLock;
 };
 
@@ -2831,6 +2832,29 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 	{
 		LogVulkanResult("vkAllocateMemory", result);
 		return 0;
+	}
+
+	/* persistent mapping for buffers */
+	if (buffer != NULL)
+	{
+		result = renderer->vkMapMemory(
+			renderer->logicalDevice,
+			allocation->memory,
+			0,
+			allocation->size,
+			0,
+			(void**) &allocation->mapPointer
+		);
+
+		if (result != VK_SUCCESS)
+		{
+			LogVulkanResult("vkMapMemory", result);
+			return 0;
+		}
+	}
+	else
+	{
+		allocation->mapPointer = NULL;
 	}
 
 	VULKAN_INTERNAL_NewMemoryFreeRegion(
@@ -5190,10 +5214,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
 	uint32_t prevIndex;
-	uint8_t *mapPointer;
-	uint8_t *previousSubBufferMapPointer;
 	uint8_t allocateResult;
-	VkResult vulkanResult;
 	uint32_t i;
 
 	#define CURIDX vulkanBuffer->currentSubBufferIndex
@@ -5252,132 +5273,18 @@ static void VULKAN_INTERNAL_SetBufferData(
 	/* If options is NONE and buffer was bound, copy the previous data into the new buffer */
 	if (options == FNA3D_SETDATAOPTIONS_NONE && prevIndex != CURIDX)
 	{
-		/* we need to do this craziness because you can't map the same allocation twice */
-		if (SUBBUF->allocation != vulkanBuffer->subBuffers[prevIndex]->allocation)
-		{
-			SDL_LockMutex(SUBBUF->allocation->mapLock);
-			SDL_LockMutex(vulkanBuffer->subBuffers[prevIndex]->allocation->mapLock);
-
-			vulkanResult = renderer->vkMapMemory(
-				renderer->logicalDevice,
-				SUBBUF->allocation->memory,
-				SUBBUF->offset,
-				SUBBUF->size,
-				0,
-				(void**) &mapPointer
-			);
-
-			if (vulkanResult != VK_SUCCESS)
-			{
-				FNA3D_LogError("Failed to map buffer memory!");
-				SDL_UnlockMutex(SUBBUF->allocation->mapLock);
-				SDL_UnlockMutex(vulkanBuffer->subBuffers[prevIndex]->allocation->mapLock);
-				return;
-			}
-
-			vulkanResult = renderer->vkMapMemory(
-				renderer->logicalDevice,
-				vulkanBuffer->subBuffers[prevIndex]->allocation->memory,
-				vulkanBuffer->subBuffers[prevIndex]->offset,
-				vulkanBuffer->subBuffers[prevIndex]->size,
-				0,
-				(void**) &previousSubBufferMapPointer
-			);
-
-			if (vulkanResult != VK_SUCCESS)
-			{
-				FNA3D_LogError("Failed to map buffer memory!");
-				SDL_UnlockMutex(SUBBUF->allocation->mapLock);
-				SDL_UnlockMutex(vulkanBuffer->subBuffers[prevIndex]->allocation->mapLock);
-				return;
-			}
-
-			SDL_memcpy(
-				mapPointer,
-				previousSubBufferMapPointer,
-				vulkanBuffer->size
-			);
-
-			renderer->vkUnmapMemory(
-				renderer->logicalDevice,
-				SUBBUF->allocation->memory
-			);
-
-			renderer->vkUnmapMemory(
-				renderer->logicalDevice,
-				vulkanBuffer->subBuffers[prevIndex]->allocation->memory
-			);
-
-			SDL_UnlockMutex(SUBBUF->allocation->mapLock);
-			SDL_UnlockMutex(vulkanBuffer->subBuffers[prevIndex]->allocation->mapLock);
-		}
-		else
-		{
-			SDL_LockMutex(SUBBUF->allocation->mapLock);
-
-			/* just map the whole dang thing for the copy */
-			vulkanResult = renderer->vkMapMemory(
-				renderer->logicalDevice,
-				SUBBUF->allocation->memory,
-				0,
-				SUBBUF->allocation->size,
-				0,
-				(void**) &mapPointer
-			);
-
-			if (vulkanResult != VK_SUCCESS)
-			{
-				FNA3D_LogError("Failed to map buffer memory!");
-				SDL_UnlockMutex(SUBBUF->allocation->mapLock);
-				return;
-			}
-
-			SDL_memcpy(
-				mapPointer + SUBBUF->offset,
-				mapPointer + vulkanBuffer->subBuffers[prevIndex]->offset,
-				vulkanBuffer->size
-			);
-
-			renderer->vkUnmapMemory(
-				renderer->logicalDevice,
-				SUBBUF->allocation->memory
-			);
-
-			SDL_UnlockMutex(SUBBUF->allocation->mapLock);
-		}
-	}
-
-	SDL_LockMutex(SUBBUF->allocation->mapLock);
-
-	/* Map the memory and perform the copy */
-	vulkanResult = renderer->vkMapMemory(
-		renderer->logicalDevice,
-		SUBBUF->allocation->memory,
-		SUBBUF->offset,
-		SUBBUF->size,
-		0,
-		(void**) &mapPointer
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		FNA3D_LogError("Failed to map buffer memory!");
-		SDL_UnlockMutex(SUBBUF->allocation->mapLock);
-		return;
+		SDL_memcpy(
+			SUBBUF->allocation->mapPointer + SUBBUF->offset,
+			vulkanBuffer->subBuffers[prevIndex]->allocation->mapPointer + vulkanBuffer->subBuffers[prevIndex]->offset,
+			vulkanBuffer->size
+		);
 	}
 
 	SDL_memcpy(
-		mapPointer + offsetInBytes,
+		SUBBUF->allocation->mapPointer + SUBBUF->offset + offsetInBytes,
 		data,
 		dataLength
 	);
-
-	renderer->vkUnmapMemory(
-		renderer->logicalDevice,
-		SUBBUF->allocation->memory
-	);
-
-	SDL_UnlockMutex(SUBBUF->allocation->mapLock);
 
 	#undef SUBBUF
 	#undef CURIDX
@@ -5656,14 +5563,17 @@ static void VULKAN_INTERNAL_GetTextureData(
 	VulkanResourceAccessType prevResourceAccess;
 	VkBufferImageCopy imageCopy;
 	uint8_t *dataPtr = (uint8_t*) data;
-	uint8_t *mapPointer;
-	VkResult vulkanResult;
+	uint8_t *stagingBufferPointer;
 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
 
 	SDL_LockMutex(renderer->passLock);
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
+
+ 	stagingBufferPointer =
+		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
+		renderer->textureStagingBuffer->subBuffers[0]->offset;
 
 	/* Cache this so we can restore it later */
 	prevResourceAccess = vulkanTexture->resourceAccessType;
@@ -5726,38 +5636,13 @@ static void VULKAN_INTERNAL_GetTextureData(
 	/* Read from staging buffer */
 
 	SDL_LockMutex(renderer->stagingLock);
-	SDL_LockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
-
-	vulkanResult = renderer->vkMapMemory(
-		renderer->logicalDevice,
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->memory,
-		renderer->textureStagingBuffer->subBuffers[0]->offset,
-		renderer->textureStagingBuffer->subBuffers[0]->size,
-		0,
-		(void**) &mapPointer
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		FNA3D_LogError("Failed to map buffer memory!");
-		SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
-		SDL_UnlockMutex(renderer->stagingLock);
-		SDL_UnlockMutex(renderer->passLock);
-		return;
-	}
 
 	SDL_memcpy(
 		dataPtr,
-		mapPointer,
+		stagingBufferPointer,
 		BytesPerImage(w, h, vulkanTexture->colorFormat)
 	);
 
-	renderer->vkUnmapMemory(
-		renderer->logicalDevice,
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->memory
-	);
-
-	SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
 	SDL_UnlockMutex(renderer->stagingLock);
 	SDL_UnlockMutex(renderer->passLock);
 }
@@ -8815,8 +8700,7 @@ static void VULKAN_SetTextureData2D(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
-	uint8_t *mapPointer;
-	VkResult vulkanResult;
+	uint8_t *stagingBufferPointer;
 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
 
@@ -8825,34 +8709,15 @@ static void VULKAN_SetTextureData2D(
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
-	SDL_LockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
+ 	stagingBufferPointer =
+		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
+		renderer->textureStagingBuffer->subBuffers[0]->offset;
 
-	vulkanResult = renderer->vkMapMemory(
-		renderer->logicalDevice,
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->memory,
-		renderer->textureStagingBuffer->subBuffers[0]->offset,
-		renderer->textureStagingBuffer->subBuffers[0]->size,
-		0,
-		(void**) &mapPointer
+	SDL_memcpy(
+		stagingBufferPointer,
+		data,
+		dataLength
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		FNA3D_LogError("Failed to map buffer memory!");
-		SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
-		SDL_UnlockMutex(renderer->stagingLock);
-		SDL_UnlockMutex(renderer->passLock);
-		return;
-	}
-
-	SDL_memcpy(mapPointer, data, dataLength);
-
-	renderer->vkUnmapMemory(
-		renderer->logicalDevice,
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->memory
-	);
-
-	SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -8912,44 +8777,24 @@ static void VULKAN_SetTextureData3D(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
-	uint8_t *mapPointer;
-	VkResult vulkanResult;
+	uint8_t *stagingBufferPointer;
 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
+
+ 	stagingBufferPointer =
+		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
+		renderer->textureStagingBuffer->subBuffers[0]->offset;
 
 	SDL_LockMutex(renderer->passLock);
 	SDL_LockMutex(renderer->stagingLock);
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
-	SDL_LockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
-
-	vulkanResult = renderer->vkMapMemory(
-		renderer->logicalDevice,
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->memory,
-		renderer->textureStagingBuffer->subBuffers[0]->offset,
-		renderer->textureStagingBuffer->subBuffers[0]->size,
-		0,
-		(void**) &mapPointer
+	SDL_memcpy(
+		stagingBufferPointer,
+		data,
+		dataLength
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		FNA3D_LogError("Failed to map buffer memory!");
-		SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
-		SDL_UnlockMutex(renderer->stagingLock);
-		SDL_UnlockMutex(renderer->passLock);
-		return;
-	}
-
-	SDL_memcpy(mapPointer, data, dataLength);
-
-	renderer->vkUnmapMemory(
-		renderer->logicalDevice,
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->memory
-	);
-
-	SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -9008,8 +8853,7 @@ static void VULKAN_SetTextureDataCube(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkBufferImageCopy imageCopy;
-	uint8_t *mapPointer;
-	VkResult vulkanResult;
+	uint8_t *stagingBufferPointer;
 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
 
@@ -9018,34 +8862,15 @@ static void VULKAN_SetTextureDataCube(
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, dataLength);
 
-	SDL_LockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
+ 	stagingBufferPointer =
+		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
+		renderer->textureStagingBuffer->subBuffers[0]->offset;
 
-	vulkanResult = renderer->vkMapMemory(
-		renderer->logicalDevice,
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->memory,
-		renderer->textureStagingBuffer->subBuffers[0]->offset,
-		renderer->textureStagingBuffer->subBuffers[0]->size,
-		0,
-		(void**) &mapPointer
+	SDL_memcpy(
+		stagingBufferPointer,
+		data,
+		dataLength
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		FNA3D_LogError("Failed to map buffer memory!");
-		SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
-		SDL_UnlockMutex(renderer->stagingLock);
-		SDL_UnlockMutex(renderer->passLock);
-		return;
-	}
-
-	SDL_memcpy(mapPointer, data, dataLength);
-
-	renderer->vkUnmapMemory(
-		renderer->logicalDevice,
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->memory
-	);
-
-	SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -9107,8 +8932,7 @@ static void VULKAN_SetTextureDataYUV(
 	int32_t yDataLength = BytesPerImage(yWidth, yHeight, FNA3D_SURFACEFORMAT_ALPHA8);
 	int32_t uvDataLength = BytesPerImage(uvWidth, uvHeight, FNA3D_SURFACEFORMAT_ALPHA8);
 	VkBufferImageCopy imageCopy;
-	uint8_t *mapPointer;
-	VkResult vulkanResult;
+	uint8_t *stagingBufferPointer;
 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
 
@@ -9117,7 +8941,9 @@ static void VULKAN_SetTextureDataYUV(
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, yDataLength + uvDataLength);
 
-	SDL_LockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
+ 	stagingBufferPointer =
+		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
+		renderer->textureStagingBuffer->subBuffers[0]->offset;
 
 	/* Initialize values that are the same for Y, U, and V */
 
@@ -9135,26 +8961,8 @@ static void VULKAN_SetTextureDataYUV(
 
 	tex = (VulkanTexture*) y;
 
-	vulkanResult = renderer->vkMapMemory(
-		renderer->logicalDevice,
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->memory,
-		renderer->textureStagingBuffer->subBuffers[0]->offset,
-		renderer->textureStagingBuffer->subBuffers[0]->size,
-		0,
-		(void**) &mapPointer
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		FNA3D_LogError("Failed to map buffer memory!");
-		SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
-		SDL_UnlockMutex(renderer->stagingLock);
-		SDL_UnlockMutex(renderer->passLock);
-		return;
-	}
-
 	SDL_memcpy(
-		mapPointer,
+		stagingBufferPointer,
 		dataPtr,
 		yDataLength
 	);
@@ -9200,7 +9008,7 @@ static void VULKAN_SetTextureDataYUV(
 	tex = (VulkanTexture*) u;
 
 	SDL_memcpy(
-		mapPointer + yDataLength,
+		stagingBufferPointer + yDataLength,
 		dataPtr + yDataLength,
 		uvDataLength
 	);
@@ -9234,17 +9042,10 @@ static void VULKAN_SetTextureDataYUV(
 	tex = (VulkanTexture*) v;
 
 	SDL_memcpy(
-		mapPointer + yDataLength + uvDataLength,
+		stagingBufferPointer + yDataLength + uvDataLength,
 		dataPtr + yDataLength + uvDataLength,
 		uvDataLength
 	);
-
-	renderer->vkUnmapMemory(
-		renderer->logicalDevice,
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->memory
-	);
-
-	SDL_UnlockMutex(renderer->textureStagingBuffer->subBuffers[0]->allocation->mapLock);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -9576,10 +9377,9 @@ static void VULKAN_GetVertexBufferData(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
 	VulkanSubBuffer *subbuf = vulkanBuffer->subBuffers[vulkanBuffer->currentSubBufferIndex];
-	uint8_t *dataBytes, *cpy, *src, *dst, *mapPointer;
+	uint8_t *dataBytes, *cpy, *src, *dst;
 	uint8_t useStagingBuffer;
 	int32_t i;
-	VkResult vulkanResult;
 
 	dataBytes = (uint8_t*) data;
 	useStagingBuffer = elementSizeInBytes < vertexStride;
@@ -9600,36 +9400,11 @@ static void VULKAN_GetVertexBufferData(
 		subbuf
 	);
 
-	SDL_LockMutex(subbuf->allocation->mapLock);
-
-	vulkanResult = renderer->vkMapMemory(
-		renderer->logicalDevice,
-		subbuf->allocation->memory,
-		subbuf->offset,
-		subbuf->size,
-		0,
-		(void**) &mapPointer
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		FNA3D_LogError("Failed to map buffer memory!");
-		SDL_UnlockMutex(subbuf->allocation->mapLock);
-		return;
-	}
-
 	SDL_memcpy(
 		cpy,
-		mapPointer + offsetInBytes,
+		subbuf->allocation->mapPointer + subbuf->offset + offsetInBytes,
 		elementCount * vertexStride
 	);
-
-	renderer->vkUnmapMemory(
-		renderer->logicalDevice,
-		subbuf->allocation->memory
-	);
-
-	SDL_UnlockMutex(subbuf->allocation->mapLock);
 
 	if (useStagingBuffer)
 	{
@@ -9703,8 +9478,6 @@ static void VULKAN_GetIndexBufferData(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
 	VulkanSubBuffer *subbuf = vulkanBuffer->subBuffers[vulkanBuffer->currentSubBufferIndex];
-	uint8_t *mapPointer;
-	VkResult vulkanResult;
 
 	VULKAN_INTERNAL_BufferMemoryBarrier(
 		renderer,
@@ -9713,36 +9486,11 @@ static void VULKAN_GetIndexBufferData(
 		subbuf
 	);
 
-	SDL_LockMutex(subbuf->allocation->mapLock);
-
-	vulkanResult = renderer->vkMapMemory(
-		renderer->logicalDevice,
-		subbuf->allocation->memory,
-		subbuf->offset,
-		subbuf->size,
-		0,
-		(void**) &mapPointer
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		FNA3D_LogError("Failed to map buffer memory!");
-		SDL_UnlockMutex(subbuf->allocation->mapLock);
-		return;
-	}
-
 	SDL_memcpy(
 		data,
-		mapPointer + offsetInBytes,
+		subbuf->allocation->mapPointer + subbuf->offset + offsetInBytes,
 		dataLength
 	);
-
-	renderer->vkUnmapMemory(
-		renderer->logicalDevice,
-		subbuf->allocation->memory
-	);
-
-	SDL_UnlockMutex(subbuf->allocation->mapLock);
 
 	VULKAN_INTERNAL_BufferMemoryBarrier(
 		renderer,
