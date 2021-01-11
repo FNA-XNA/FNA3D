@@ -44,28 +44,6 @@
 #endif /* __GNUC__ */
 #endif /* FNA3DNAMELESS */
 
-#if FNA3D_DRIVER_D3D11
-#ifndef __ID3D11DeviceContext_FWD_DEFINED__
-#define __ID3D11DeviceContext_FWD_DEFINED__
-typedef struct ID3D11DeviceContext ID3D11DeviceContext;
-#endif 	/* __ID3D11DeviceContext_FWD_DEFINED__ */
-#endif /* FNA3D_DRIVER_D3D11 */
-
-#if FNA3D_DRIVER_METAL
-typedef struct MTLDevice MTLDevice;
-#endif /* FNA3D_DRIVER_METAL */
-
-#if FNA3D_DRIVER_OPENGL
-typedef void* SDL_GLContext;
-#endif /* FNA3D_DRIVER_OPENGL */
-
-#if FNA3D_DRIVER_VULKAN
-#define VK_DEFINE_HANDLE(object) typedef struct object##_T* object;
-VK_DEFINE_HANDLE(VkInstance)
-VK_DEFINE_HANDLE(VkPhysicalDevice)
-VK_DEFINE_HANDLE(VkDevice)
-#endif /* FNA3D_DRIVER_VULKAN */
-
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -494,25 +472,25 @@ typedef struct FNA3D_RenderingContext_EXT
 	union
 	{
 #if FNA3D_DRIVER_D3D11
-		struct 
+		struct
 		{
-			ID3D11DeviceContext *deviceContext;
+			void *deviceContext; /* ID3D11DeviceContext */
 		} d3d11;
 #endif
 #if FNA3D_DRIVER_METAL
-		struct 
+		struct
 		{
-			MTLDevice device;
+			void *device; /* MTLDevice */
 		} metal;
 #endif
 #if FNA3D_DRIVER_OPENGL
-		struct 
+		struct
 		{
-			SDL_GLContext context;
+			void *context; /* SDL_GLContext */
 		} opengl;
 #endif
 #if FNA3D_DRIVER_VULKAN
-		struct 
+		struct
 		{
 			VkInstance instance;
 			VkPhysicalDevice physicalDevice;
@@ -522,6 +500,43 @@ typedef struct FNA3D_RenderingContext_EXT
 #endif
 	} renderingContext;
 } FNA3D_RenderingContext_EXT;
+
+typedef struct FNA3D_ExternalTextureInfo_EXT
+{
+	FNA3D_RENDERER_TYPE rendererType;
+
+	union
+	{
+#if FNA3D_DRIVER_D3D11
+		struct {
+			void *handle; /* ID3D11Resource* */
+			void *shaderView; /* ID3D11ShaderResourceView* */
+		} d3d11;
+#endif
+#if FNA3D_DRIVER_METAL
+		struct {
+			void *handle;
+			int32_t width;
+			int32_t height;
+		} metal;
+#endif
+#if FNA3D_DRIVER_OPENGL
+		struct {
+			uint32_t handle;
+			uint32_t target; /* GLEnum */
+			int32_t levelCount;
+			int32_t width;
+			int32_t height;
+		} opengl;
+#endif
+#if FNA3D_DRIVER_VULKAN
+		struct {
+			void *image; /* VkImage */
+			void *view; /* VkImageView */
+		} vulkan;
+#endif
+	} textureInfo;
+} FNA3D_ExternalTextureInfo_EXT;
 
 /* Version API */
 
@@ -1582,10 +1597,10 @@ FNA3DAPI FNA3D_RenderingContext_EXT* FNA3D_GetRenderingContext_EXT(
 	FNA3D_Device *device
 );
 
-/* Vulkan-only: Create an externally-backed texture. Can only be used for sampling. */
-FNA3DAPI FNA3D_Texture* FNA3D_CreateExternalSamplerTexture_EXT(
+/* Import a texture reference that is marked as internal */
+FNA3DAPI FNA3D_Texture* FNA3D_CreateExternalTexture_EXT(
 	FNA3D_Device *device,
-	void *textureViewHandle
+	FNA3D_ExternalTextureInfo_EXT *externalTextureInfo
 );
 
 #ifdef __cplusplus

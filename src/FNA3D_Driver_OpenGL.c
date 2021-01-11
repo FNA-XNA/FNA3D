@@ -68,6 +68,7 @@ struct OpenGLTexture /* Cast from FNA3D_Texture* */
 		} cube;
 	};
 	OpenGLTexture *next; /* linked list */
+	uint8_t external;
 };
 
 static OpenGLTexture NullTexture =
@@ -3454,6 +3455,7 @@ static inline OpenGLTexture* OPENGL_INTERNAL_CreateTexture(
 	result->lodBias = 0.0f;
 	result->format = format;
 	result->next = NULL;
+	result->external = 0;
 
 	BindTexture(renderer, result);
 	renderer->glTexParameteri(
@@ -3753,7 +3755,10 @@ static void OPENGL_INTERNAL_DestroyTexture(
 			renderer->textures[i] = &NullTexture;
 		}
 	}
-	renderer->glDeleteTextures(1, &texture->handle);
+	if (!texture->external)
+	{
+		renderer->glDeleteTextures(1, &texture->handle);
+	}
 	SDL_free(texture);
 }
 
@@ -5276,12 +5281,21 @@ static FNA3D_RenderingContext_EXT* OPENGL_GetRenderingContext_EXT(
 	return renderingContext;
 }
 
-static FNA3D_Texture* OPENGL_CreateExternalSamplerTexture_EXT(
+static FNA3D_Texture* OPENGL_CreateExternalTexture_EXT(
 	FNA3D_Renderer* driverData,
-	void *textureViewHandle
+	FNA3D_ExternalTextureInfo_EXT *externalTextureInfo
 ) {
-	FNA3D_LogError("This function not implemented on OpenGL!");
-	return NULL;
+	OpenGLTexture* result = (OpenGLTexture*) SDL_malloc(
+		sizeof(OpenGLTexture)
+	);
+
+	SDL_zerop(result);
+
+	result->handle = externalTextureInfo->textureInfo.opengl.handle;
+	result->target = (GLenum) externalTextureInfo->textureInfo.opengl.target;
+	result->external = 1;
+
+	return (FNA3D_Texture*) result;
 }
 
 /* Load GL Entry Points */

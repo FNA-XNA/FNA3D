@@ -4419,9 +4419,9 @@ static FNA3D_RenderingContext_EXT* D3D11_GetRenderingContext_EXT(
 	return renderingContext;
 }
 
-static FNA3D_Texture* D3D11_CreateExternalSamplerTexture_EXT(
+static FNA3D_Texture* D3D11_CreateExternalTexture_EXT(
 	FNA3D_Renderer *driverData,
-	void *textureViewHandle
+	FNA3D_ExternalTextureInfo_EXT *externalTextureInfo
 ) {
 	FNA3D_LogError("This function not implemented on D3D11!");
 	return NULL;

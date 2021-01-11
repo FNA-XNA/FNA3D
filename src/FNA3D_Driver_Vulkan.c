@@ -10205,22 +10205,24 @@ static FNA3D_RenderingContext_EXT* VULKAN_GetRenderingContext_EXT(
 	return renderingContext;
 }
 
-static FNA3D_Texture* VULKAN_CreateExternalSamplerTexture_EXT(
+static FNA3D_Texture* VULKAN_CreateExternalTexture_EXT(
 	FNA3D_Renderer *driverData,
-	void *textureViewHandle
+	FNA3D_ExternalTextureInfo_EXT *externalTextureInfo
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *texture = SDL_malloc(sizeof(VulkanTexture));
-	VkImageView imageView = (VkImageView) textureViewHandle;
 
+	texture->image = (VkImage) externalTextureInfo->textureInfo.vulkan.image;
+	texture->view = (VkImageView) externalTextureInfo->textureInfo.vulkan.view;
+	texture->external = 1;
+
+	/* unused by external */
 	texture->allocation = NULL;
 	texture->colorFormat = 0;
 	texture->depth = 0;
 	texture->depthStencilFormat = 0;
 	texture->dimensions.width = 0;
 	texture->dimensions.height = 0;
-	texture->external = 1;
-	texture->image = NULL;
 	texture->layerCount = 0;
 	texture->levelCount = 0;
 	texture->memorySize = 0;
@@ -10233,7 +10235,6 @@ static FNA3D_Texture* VULKAN_CreateExternalSamplerTexture_EXT(
 	texture->rtViews[4] = NULL;
 	texture->rtViews[5] = NULL;
 	texture->surfaceFormat = 0;
-	texture->view = imageView;
 
 	return (FNA3D_Texture*) texture;
 }

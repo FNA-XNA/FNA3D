@@ -1358,17 +1358,17 @@ FNA3D_RenderingContext_EXT* FNA3D_GetRenderingContext_EXT(
 	);
 }
 
-FNA3D_Texture* FNA3D_CreateExternalSamplerTexture_EXT(
+FNA3D_Texture* FNA3D_CreateExternalTexture_EXT(
 	FNA3D_Device *device,
-	void *textureViewHandle
+	FNA3D_ExternalTextureInfo_EXT *externalTextureInfo
 ) {
 	if (device == NULL)
 	{
 		return NULL;
 	}
-	return device->CreateExternalSamplerTexture_EXT(
+	return device->CreateExternalTexture_EXT(
 		device->driverData,
-		textureViewHandle
+		externalTextureInfo
 	);
 }
 
