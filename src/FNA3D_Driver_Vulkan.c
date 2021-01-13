@@ -2228,7 +2228,11 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 		 * We do NOT fall back to integrated if we find a dedicated GPU
 		 * that does not meet the VRAM requirement!
 		 */
+#ifdef __APPLE__
+		memoryRequirement = 1; /* Metal marshals memory behind our back */
+#else
 		memoryRequirement = 8;
+#endif
 		memoryRequirementStr = SDL_GetHint("FNA3D_VULKAN_MEMORY_REQUIREMENT");
 		if (memoryRequirementStr != NULL)
 		{
