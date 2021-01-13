@@ -1344,31 +1344,37 @@ void FNA3D_SetStringMarker(FNA3D_Device *device, const char *text)
 	device->SetStringMarker(device->driverData, text);
 }
 
-/* External library interop */
+/* External Interop */
 
-FNA3D_RenderingContext_EXT* FNA3D_GetRenderingContext_EXT(
-	FNA3D_Device *device
+void FNA3D_GetSysRendererEXT(
+	FNA3D_Device *device,
+	FNA3D_SysRendererEXT *sysrenderer
 ) {
-	if (device == NULL)
+	if (	device == NULL ||
+		sysrenderer == NULL ||
+		sysrenderer->version != FNA3D_SYSRENDERER_VERSION_EXT	)
 	{
-		return NULL;
+		return;
 	}
-	return device->GetRenderingContext_EXT(
-		device->driverData
+	device->GetSysRenderer(
+		device->driverData,
+		sysrenderer
 	);
 }
 
-FNA3D_Texture* FNA3D_CreateExternalTexture_EXT(
+FNA3D_Texture* FNA3D_CreateSysTextureEXT(
 	FNA3D_Device *device,
-	FNA3D_ExternalTextureInfo_EXT *externalTextureInfo
+	FNA3D_SysTextureEXT *systexture
 ) {
-	if (device == NULL)
+	if (	device == NULL ||
+		systexture == NULL ||
+		systexture->version != FNA3D_SYSRENDERER_VERSION_EXT	)
 	{
 		return NULL;
 	}
-	return device->CreateExternalTexture_EXT(
+	return device->CreateSysTexture(
 		device->driverData,
-		externalTextureInfo
+		systexture
 	);
 }
 

@@ -455,89 +455,6 @@ typedef struct FNA3D_RenderTargetBinding
 	FNA3D_Renderbuffer *colorBuffer;
 } FNA3D_RenderTargetBinding;
 
-/* Extensions */
-
-typedef enum FNA3D_RENDERER_TYPE
-{
-	FNA3D_RENDERER_TYPE_D3D11,
-	FNA3D_RENDERER_TYPE_METAL,
-	FNA3D_RENDERER_TYPE_OPENGL,
-	FNA3D_RENDERER_TYPE_VULKAN
-} FNA3D_RENDERER_TYPE;
-
-typedef struct FNA3D_RenderingContext_EXT
-{
-	FNA3D_RENDERER_TYPE rendererType;
-
-	union
-	{
-#if FNA3D_DRIVER_D3D11
-		struct
-		{
-			void *deviceContext; /* ID3D11DeviceContext */
-		} d3d11;
-#endif
-#if FNA3D_DRIVER_METAL
-		struct
-		{
-			void *device; /* MTLDevice */
-		} metal;
-#endif
-#if FNA3D_DRIVER_OPENGL
-		struct
-		{
-			void *context; /* SDL_GLContext */
-		} opengl;
-#endif
-#if FNA3D_DRIVER_VULKAN
-		struct
-		{
-			VkInstance instance;
-			VkPhysicalDevice physicalDevice;
-			VkDevice logicalDevice;
-			uint32_t queueFamilyIndex;
-		} vulkan;
-#endif
-	} renderingContext;
-} FNA3D_RenderingContext_EXT;
-
-typedef struct FNA3D_ExternalTextureInfo_EXT
-{
-	FNA3D_RENDERER_TYPE rendererType;
-
-	union
-	{
-#if FNA3D_DRIVER_D3D11
-		struct {
-			void *handle; /* ID3D11Resource* */
-			void *shaderView; /* ID3D11ShaderResourceView* */
-		} d3d11;
-#endif
-#if FNA3D_DRIVER_METAL
-		struct {
-			void *handle;
-			int32_t width;
-			int32_t height;
-		} metal;
-#endif
-#if FNA3D_DRIVER_OPENGL
-		struct {
-			uint32_t handle;
-			uint32_t target; /* GLEnum */
-			int32_t levelCount;
-			int32_t width;
-			int32_t height;
-		} opengl;
-#endif
-#if FNA3D_DRIVER_VULKAN
-		struct {
-			void *image; /* VkImage */
-			void *view; /* VkImageView */
-		} vulkan;
-#endif
-	} textureInfo;
-} FNA3D_ExternalTextureInfo_EXT;
-
 /* Version API */
 
 #define FNA3D_ABI_VERSION	 0
@@ -1589,19 +1506,6 @@ FNA3DAPI int32_t FNA3D_GetMaxMultiSampleCount(
  * text: The string constant to mark in the API call stream.
  */
 FNA3DAPI void FNA3D_SetStringMarker(FNA3D_Device *device, const char *text);
-
-/* External library interop */
-
-/* Export the internal rendering context. */
-FNA3DAPI FNA3D_RenderingContext_EXT* FNA3D_GetRenderingContext_EXT(
-	FNA3D_Device *device
-);
-
-/* Import a texture reference that is marked as internal */
-FNA3DAPI FNA3D_Texture* FNA3D_CreateExternalTexture_EXT(
-	FNA3D_Device *device,
-	FNA3D_ExternalTextureInfo_EXT *externalTextureInfo
-);
 
 #ifdef __cplusplus
 }

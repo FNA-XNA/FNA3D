@@ -29,6 +29,7 @@
 
 #include "mojoshader.h"
 #include "FNA3D.h"
+#include "FNA3D_SysRenderer.h"
 
 /* Windows/Visual Studio cruft */
 #ifdef _WIN32
@@ -668,15 +669,16 @@ struct FNA3D_Device
 
 	void (*SetStringMarker)(FNA3D_Renderer *driverData, const char *text);
 
-	/* External library interop */
+	/* External Interop */
 
-	FNA3D_RenderingContext_EXT* (*GetRenderingContext_EXT)(
-		FNA3D_Renderer *driverData
+	void (*GetSysRenderer)(
+		FNA3D_Renderer *driverData,
+		FNA3D_SysRendererEXT *renderer
 	);
 
-	FNA3D_Texture* (*CreateExternalTexture_EXT)(
+	FNA3D_Texture* (*CreateSysTexture)(
 		FNA3D_Renderer *driverData,
-		FNA3D_ExternalTextureInfo_EXT *externalTextureInfo
+		FNA3D_SysTextureEXT *externalTextureInfo
 	);
 
 	/* Opaque pointer for the Driver */
@@ -756,8 +758,8 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(GetMaxTextureSlots, name) \
 	ASSIGN_DRIVER_FUNC(GetMaxMultiSampleCount, name) \
 	ASSIGN_DRIVER_FUNC(SetStringMarker, name) \
-	ASSIGN_DRIVER_FUNC(GetRenderingContext_EXT, name) \
-	ASSIGN_DRIVER_FUNC(CreateExternalTexture_EXT, name)
+	ASSIGN_DRIVER_FUNC(GetSysRenderer, name) \
+	ASSIGN_DRIVER_FUNC(CreateSysTexture, name)
 
 typedef struct FNA3D_Driver
 {

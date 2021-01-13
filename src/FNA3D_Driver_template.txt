@@ -871,6 +871,21 @@ static void TEMPLATE_SetStringMarker(FNA3D_Renderer *driverData, const char *tex
 {
 }
 
+/* External Interop */
+
+static void TEMPLATE_GetSysRenderer(
+	FNA3D_Renderer *driverData,
+	FNA3D_SysRendererEXT *sysrenderer
+) {
+}
+
+static FNA3D_Texture* TEMPLATE_CreateSysTexture(
+	FNA3D_Renderer *driverData,
+	FNA3D_SysTextureEXT *systexture
+) {
+	return NULL;
+}
+
 /* Driver */
 
 static uint8_t TEMPLATE_PrepareWindowAttributes(uint32_t *flags)

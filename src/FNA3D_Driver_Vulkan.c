@@ -10187,33 +10187,37 @@ static void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 	}
 }
 
-/* External interop */
+/* External Interop */
 
-static FNA3D_RenderingContext_EXT* VULKAN_GetRenderingContext_EXT(
-	FNA3D_Renderer *driverData
+static void VULKAN_GetSysRenderer(
+	FNA3D_Renderer *driverData,
+	FNA3D_SysRendererEXT *sysrenderer
 ) {
 	VulkanRenderer* renderer = (VulkanRenderer*) driverData;
 
-	FNA3D_RenderingContext_EXT* renderingContext = SDL_malloc(sizeof(FNA3D_RenderingContext_EXT));
-
-	renderingContext->rendererType = FNA3D_RENDERER_TYPE_VULKAN;
-	renderingContext->renderingContext.vulkan.instance = renderer->instance;
-	renderingContext->renderingContext.vulkan.physicalDevice = renderer->physicalDevice;
-	renderingContext->renderingContext.vulkan.logicalDevice = renderer->logicalDevice;
-	renderingContext->renderingContext.vulkan.queueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily; /* FIXME: use explicit unified queue family */
-
-	return renderingContext;
+	sysrenderer->rendererType = FNA3D_RENDERER_TYPE_VULKAN_EXT;
+	sysrenderer->renderer.vulkan.instance = renderer->instance;
+	sysrenderer->renderer.vulkan.physicalDevice = renderer->physicalDevice;
+	sysrenderer->renderer.vulkan.logicalDevice = renderer->logicalDevice;
+	/* FIXME: use explicit unified queue family */
+	sysrenderer->renderer.vulkan.queueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily;
 }
 
-static FNA3D_Texture* VULKAN_CreateExternalTexture_EXT(
+static FNA3D_Texture* VULKAN_CreateSysTexture(
 	FNA3D_Renderer *driverData,
-	FNA3D_ExternalTextureInfo_EXT *externalTextureInfo
+	FNA3D_SysTextureEXT *systexture
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanTexture *texture = SDL_malloc(sizeof(VulkanTexture));
+	VulkanTexture *texture;
 
-	texture->image = (VkImage) externalTextureInfo->textureInfo.vulkan.image;
-	texture->view = (VkImageView) externalTextureInfo->textureInfo.vulkan.view;
+	if (systexture->rendererType != FNA3D_RENDERER_TYPE_VULKAN_EXT)
+	{
+		return NULL;
+	}
+
+	texture = (VulkanTexture*) SDL_malloc(sizeof(VulkanTexture));
+
+	texture->image = (VkImage) systexture->texture.vulkan.image;
+	texture->view = (VkImageView) systexture->texture.vulkan.view;
 	texture->external = 1;
 
 	/* unused by external */
@@ -10228,12 +10232,12 @@ static FNA3D_Texture* VULKAN_CreateExternalTexture_EXT(
 	texture->memorySize = 0;
 	texture->offset = 0;
 	texture->resourceAccessType = RESOURCE_ACCESS_NONE;
-	texture->rtViews[0] = NULL;
-	texture->rtViews[1] = NULL;
-	texture->rtViews[2] = NULL;
-	texture->rtViews[3] = NULL;
-	texture->rtViews[4] = NULL;
-	texture->rtViews[5] = NULL;
+	texture->rtViews[0] = VK_NULL_HANDLE;
+	texture->rtViews[1] = VK_NULL_HANDLE;
+	texture->rtViews[2] = VK_NULL_HANDLE;
+	texture->rtViews[3] = VK_NULL_HANDLE;
+	texture->rtViews[4] = VK_NULL_HANDLE;
+	texture->rtViews[5] = VK_NULL_HANDLE;
 	texture->surfaceFormat = 0;
 
 	return (FNA3D_Texture*) texture;

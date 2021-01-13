@@ -4405,26 +4405,41 @@ static void D3D11_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 	);
 }
 
-/* External interop */
+/* External Interop */
 
-static FNA3D_RenderingContext_EXT* D3D11_GetRenderingContext_EXT(
-	FNA3D_Renderer *driverData
+static void D3D11_GetSysRenderer(
+	FNA3D_Renderer *driverData,
+	FNA3D_SysRendererEXT *sysrenderer
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 
-	FNA3D_RenderingContext_EXT* renderingContext = SDL_malloc(sizeof(FNA3D_RenderingContext_EXT));
-	renderingContext->rendererType = FNA3D_RENDERER_TYPE_D3D11;
-	renderingContext->renderingContext.d3d11.deviceContext = renderer->context;
-
-	return renderingContext;
+	sysrenderer->rendererType = FNA3D_RENDERER_TYPE_D3D11_EXT;
+	sysrenderer->renderer.d3d11.device = renderer->device;
+	sysrenderer->renderer.d3d11.context = renderer->context;
 }
 
-static FNA3D_Texture* D3D11_CreateExternalTexture_EXT(
+static FNA3D_Texture* D3D11_CreateSysTexture(
 	FNA3D_Renderer *driverData,
-	FNA3D_ExternalTextureInfo_EXT *externalTextureInfo
+	FNA3D_SysTextureEXT *systexture
 ) {
-	FNA3D_LogError("This function not implemented on D3D11!");
-	return NULL;
+	D3D11Texture *result;
+
+	if (systexture->rendererType != FNA3D_RENDERER_TYPE_D3D11_EXT)
+	{
+		return NULL;
+	}
+
+	result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
+	SDL_zerop(result);
+
+	result->handle = (ID3D11Resource*) systexture->texture.d3d11.handle;
+	result->shaderView = (ID3D11ShaderResourceView*) systexture->texture.d3d11.handle;
+
+	/* Everything else either happens to be 0 or is unused anyway! */
+
+	IUnknown_AddRef(result->handle);
+	ID3D11ShaderResourceView_AddRef(result->shaderView);
+	return (FNA3D_Texture*) result;
 }
 
 /* Driver */

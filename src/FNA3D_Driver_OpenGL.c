@@ -5266,33 +5266,37 @@ static void GLAPIENTRY DebugCall(
 	}
 }
 
-/* External interop */
+/* External Interop */
 
-static FNA3D_RenderingContext_EXT* OPENGL_GetRenderingContext_EXT(
-	FNA3D_Renderer* driverData
+static void OPENGL_GetSysRenderer(
+	FNA3D_Renderer* driverData,
+	FNA3D_SysRendererEXT *sysrenderer
 ) {
 	OpenGLRenderer* renderer = (OpenGLRenderer*) driverData;
 
-	FNA3D_RenderingContext_EXT* renderingContext = SDL_malloc(sizeof(FNA3D_RenderingContext_EXT));
-
-	renderingContext->rendererType = FNA3D_RENDERER_TYPE_OPENGL;
-	renderingContext->renderingContext.opengl.context = renderer->context;
-
-	return renderingContext;
+	sysrenderer->rendererType = FNA3D_RENDERER_TYPE_OPENGL_EXT;
+	sysrenderer->renderer.opengl.context = renderer->context;
 }
 
-static FNA3D_Texture* OPENGL_CreateExternalTexture_EXT(
+static FNA3D_Texture* OPENGL_CreateSysTexture(
 	FNA3D_Renderer* driverData,
-	FNA3D_ExternalTextureInfo_EXT *externalTextureInfo
+	FNA3D_SysTextureEXT *systexture
 ) {
-	OpenGLTexture* result = (OpenGLTexture*) SDL_malloc(
+	OpenGLTexture* result;
+
+	if (systexture->rendererType != FNA3D_RENDERER_TYPE_OPENGL_EXT)
+	{
+		return NULL;
+	}
+
+	result = (OpenGLTexture*) SDL_malloc(
 		sizeof(OpenGLTexture)
 	);
 
 	SDL_zerop(result);
 
-	result->handle = externalTextureInfo->textureInfo.opengl.handle;
-	result->target = (GLenum) externalTextureInfo->textureInfo.opengl.target;
+	result->handle = systexture->texture.opengl.handle;
+	result->target = (GLenum) systexture->texture.opengl.target;
 	result->external = 1;
 
 	return (FNA3D_Texture*) result;

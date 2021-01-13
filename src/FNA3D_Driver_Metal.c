@@ -4279,6 +4279,46 @@ static void METAL_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 	}
 }
 
+/* External Interop */
+
+static void METAL_GetSysRenderer(
+	FNA3D_Renderer *driverData,
+	FNA3D_SysRendererEXT *sysrenderer
+) {
+	MetalRenderer *renderer = (MetalRenderer*) driverData;
+
+	sysrenderer->rendererType = FNA3D_RENDERER_TYPE_METAL_EXT;
+	sysrenderer->renderer.metal.device = renderer->device;
+	sysrenderer->renderer.metal.view = renderer->view;
+}
+
+static FNA3D_Texture* METAL_CreateSysTexture(
+	FNA3D_Renderer *driverData,
+	FNA3D_SysTextureEXT *systexture
+) {
+	MetalTexture *result;
+
+	if (systexture->rendererType != FNA3D_RENDERER_TYPE_METAL_EXT)
+	{
+		return NULL;
+	}
+
+	result = (MetalTexture*) SDL_malloc(sizeof(MetalTexture));
+	result->handle = (MTLTexture*) systexture->texture.metal.handle;
+	/* TODO: Pull this from the MetalTexture!
+	result->width = width;
+	result->height = height;
+	result->format = format;
+	result->hasMipmaps = levelCount > 1;
+	*/
+	result->isPrivate = 0;
+	result->bound = 0;
+	result->next = NULL;
+
+	objc_retain(result->handle);
+	return (FNA3D_Texture*) result;
+}
+
 /* Driver */
 
 static uint8_t METAL_PrepareWindowAttributes(uint32_t *flags)
