@@ -4433,7 +4433,7 @@ static FNA3D_Texture* D3D11_CreateSysTexture(
 	SDL_zerop(result);
 
 	result->handle = (ID3D11Resource*) systexture->texture.d3d11.handle;
-	result->shaderView = (ID3D11ShaderResourceView*) systexture->texture.d3d11.handle;
+	result->shaderView = (ID3D11ShaderResourceView*) systexture->texture.d3d11.shaderView;
 
 	/* Everything else either happens to be 0 or is unused anyway! */
 
