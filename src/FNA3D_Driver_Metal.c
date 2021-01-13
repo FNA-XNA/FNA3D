@@ -4304,16 +4304,12 @@ static FNA3D_Texture* METAL_CreateSysTexture(
 	}
 
 	result = (MetalTexture*) SDL_malloc(sizeof(MetalTexture));
+	SDL_zerop(result);
+
 	result->handle = (MTLTexture*) systexture->texture.metal.handle;
-	/* TODO: Pull this from the MetalTexture!
-	result->width = width;
-	result->height = height;
-	result->format = format;
-	result->hasMipmaps = levelCount > 1;
-	*/
-	result->isPrivate = 0;
-	result->bound = 0;
-	result->next = NULL;
+	result->hasMipmaps = mtlGetTextureLevelCount(result->handle) > 1;
+
+	/* Everything else either happens to be 0 or is unused anyway! */
 
 	objc_retain(result->handle);
 	return (FNA3D_Texture*) result;
