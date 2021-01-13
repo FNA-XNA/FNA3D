@@ -9946,8 +9946,6 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 		}
 	#include "FNA3D_Driver_Vulkan_vkfuncs.h"
 
-	*flags = SDL_WINDOW_VULKAN;
-
 	/* Test if we can create a vulkan device */
 
 	/* Create a dummy window, otherwise we cannot query swapchain support */
@@ -10018,6 +10016,10 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 	if (!result)
 	{
 		FNA3D_LogWarn("Vulkan: Failed to determine a suitable physical device");
+	}
+	else
+	{
+		*flags = SDL_WINDOW_VULKAN;
 	}
 	return result;
 }
