@@ -2137,6 +2137,9 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	VkBool32 supportsPresent;
 	uint8_t querySuccess, foundSuitableDevice = 0;
 	VkPhysicalDeviceProperties deviceProperties;
+	VkPhysicalDeviceMemoryProperties memoryProperties;
+	const char *memoryRequirementStr;
+	VkDeviceSize memoryRequirement;
 
 	queueFamilyIndices->graphicsFamily = UINT32_MAX;
 	queueFamilyIndices->presentFamily = UINT32_MAX;
@@ -2218,7 +2221,40 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 		{
 			*isIdeal = 1;
 		}
-		return 1;
+
+		/* By default we require a _minimum_ of 8GB VRAM. This will
+		 * either be dedicated GPU VRAM or a GPU using unified memory.
+		 *
+		 * We do NOT fall back to integrated if we find a dedicated GPU
+		 * that does not meet the VRAM requirement!
+		 */
+		memoryRequirement = 8;
+		memoryRequirementStr = SDL_GetHint("FNA3D_VULKAN_MEMORY_REQUIREMENT");
+		if (memoryRequirementStr != NULL)
+		{
+			memoryRequirement = SDL_atoi(memoryRequirementStr);
+		}
+		/* For the record: I wish these were 1024, but numbers below the
+		 * GB mark seem to be all over the place. So we'll be nice...
+		 * -flibit
+		 */
+		memoryRequirement *= 1000 * 1000 * 1000;
+		renderer->vkGetPhysicalDeviceMemoryProperties(
+			physicalDevice,
+			&memoryProperties
+		);
+		for (i = 0; i < memoryProperties.memoryHeapCount; i += 1)
+		{
+			const VkMemoryHeap *heap = &memoryProperties.memoryHeaps[i];
+			if (	heap->flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT &&
+				heap->size >= memoryRequirement	)
+			{
+				return 1;
+			}
+		}
+
+		/* Not enough VRAM, forget it! */
+		return 0;
 	}
 
 	/* This device is useless for us, next! */
@@ -2360,7 +2396,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	uint32_t physicalDeviceCount, i, suitableIndex;
 	VkPhysicalDevice physicalDevice;
 	QueueFamilyIndices queueFamilyIndices;
-	uint8_t isIdeal;
+	uint8_t isIdeal, foundIdeal;
 
 	vulkanResult = renderer->vkEnumeratePhysicalDevices(
 		renderer->instance,
@@ -2403,6 +2439,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 
 	/* Any suitable device will do, but we'd like the best */
 	suitableIndex = -1;
+	foundIdeal = 0;
 	for (i = 0; i < physicalDeviceCount; i += 1)
 	{
 		if (VULKAN_INTERNAL_IsDeviceSuitable(
@@ -2414,11 +2451,30 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 			&queueFamilyIndices,
 			&isIdeal
 		)) {
-			suitableIndex = i;
 			if (isIdeal)
 			{
-				/* This is the one we want! */
+				/* We found a dedicated GPU with enough VRAM! */
+				suitableIndex = i;
 				break;
+			}
+			else if (!foundIdeal)
+			{
+				/* We found an integrated GPU with enough VRAM,
+				 * and no dedicated GPU has been found (yet?).
+				 */
+				suitableIndex = i;
+			}
+		}
+		else
+		{
+			if (isIdeal)
+			{
+				/* We found a dedicated GPU but it didn't have
+				 * enough VRAM, don't allow the system to fall
+				 * back to integrated!
+				 */
+				foundIdeal = 1;
+				suitableIndex = -1;
 			}
 		}
 	}
