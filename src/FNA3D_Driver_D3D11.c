@@ -4405,6 +4405,43 @@ static void D3D11_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 	);
 }
 
+/* External Interop */
+
+static void D3D11_GetSysRenderer(
+	FNA3D_Renderer *driverData,
+	FNA3D_SysRendererEXT *sysrenderer
+) {
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+
+	sysrenderer->rendererType = FNA3D_RENDERER_TYPE_D3D11_EXT;
+	sysrenderer->renderer.d3d11.device = renderer->device;
+	sysrenderer->renderer.d3d11.context = renderer->context;
+}
+
+static FNA3D_Texture* D3D11_CreateSysTexture(
+	FNA3D_Renderer *driverData,
+	FNA3D_SysTextureEXT *systexture
+) {
+	D3D11Texture *result;
+
+	if (systexture->rendererType != FNA3D_RENDERER_TYPE_D3D11_EXT)
+	{
+		return NULL;
+	}
+
+	result = (D3D11Texture*) SDL_malloc(sizeof(D3D11Texture));
+	SDL_zerop(result);
+
+	result->handle = (ID3D11Resource*) systexture->texture.d3d11.handle;
+	result->shaderView = (ID3D11ShaderResourceView*) systexture->texture.d3d11.shaderView;
+
+	/* Everything else either happens to be 0 or is unused anyway! */
+
+	IUnknown_AddRef(result->handle);
+	ID3D11ShaderResourceView_AddRef(result->shaderView);
+	return (FNA3D_Texture*) result;
+}
+
 /* Driver */
 
 static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)

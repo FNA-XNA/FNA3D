@@ -390,6 +390,7 @@ static SEL selIsD24S8Supported;
 static SEL selLayer;
 static SEL selLayouts;
 static SEL selLocalizedDescription;
+static SEL selMipmapLevelCount;
 static SEL selName;
 static SEL selNew;
 static SEL selNewBufferWithLength;
@@ -538,6 +539,7 @@ static inline void InitObjC()
 	selLayer				= sel_registerName("layer");
 	selLayouts				= sel_registerName("layouts");
 	selLocalizedDescription			= sel_registerName("localizedDescription");
+	selMipmapLevelCount			= sel_registerName("mipmapLevelCount");
 	selName					= sel_registerName("name");
 	selNew					= sel_registerName("new");
 	selNewBufferWithLength			= sel_registerName("newBufferWithLength:options:");
@@ -1615,6 +1617,11 @@ static inline uint64_t mtlGetTextureWidth(MTLTexture *texture)
 static inline uint64_t mtlGetTextureHeight(MTLTexture *texture)
 {
 	return msg_U(texture, selHeight);
+}
+
+static inline uint64_t mtlGetTextureLevelCount(MTLTexture *texture)
+{
+	return msg_U(texture, selMipmapLevelCount);
 }
 
 /* resource can be an MTLTexture* or MTLBuffer* */

@@ -1344,4 +1344,38 @@ void FNA3D_SetStringMarker(FNA3D_Device *device, const char *text)
 	device->SetStringMarker(device->driverData, text);
 }
 
+/* External Interop */
+
+void FNA3D_GetSysRendererEXT(
+	FNA3D_Device *device,
+	FNA3D_SysRendererEXT *sysrenderer
+) {
+	if (	device == NULL ||
+		sysrenderer == NULL ||
+		sysrenderer->version != FNA3D_SYSRENDERER_VERSION_EXT	)
+	{
+		return;
+	}
+	device->GetSysRenderer(
+		device->driverData,
+		sysrenderer
+	);
+}
+
+FNA3D_Texture* FNA3D_CreateSysTextureEXT(
+	FNA3D_Device *device,
+	FNA3D_SysTextureEXT *systexture
+) {
+	if (	device == NULL ||
+		systexture == NULL ||
+		systexture->version != FNA3D_SYSRENDERER_VERSION_EXT	)
+	{
+		return NULL;
+	}
+	return device->CreateSysTexture(
+		device->driverData,
+		systexture
+	);
+}
+
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */

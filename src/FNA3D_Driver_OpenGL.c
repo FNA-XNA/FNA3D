@@ -68,6 +68,7 @@ struct OpenGLTexture /* Cast from FNA3D_Texture* */
 		} cube;
 	};
 	OpenGLTexture *next; /* linked list */
+	uint8_t external;
 };
 
 static OpenGLTexture NullTexture =
@@ -3454,6 +3455,7 @@ static inline OpenGLTexture* OPENGL_INTERNAL_CreateTexture(
 	result->lodBias = 0.0f;
 	result->format = format;
 	result->next = NULL;
+	result->external = 0;
 
 	BindTexture(renderer, result);
 	renderer->glTexParameteri(
@@ -3753,7 +3755,10 @@ static void OPENGL_INTERNAL_DestroyTexture(
 			renderer->textures[i] = &NullTexture;
 		}
 	}
-	renderer->glDeleteTextures(1, &texture->handle);
+	if (!texture->external)
+	{
+		renderer->glDeleteTextures(1, &texture->handle);
+	}
 	SDL_free(texture);
 }
 
@@ -5259,6 +5264,42 @@ static void GLAPIENTRY DebugCall(
 			debugSeverityStr[severity - GL_DEBUG_SEVERITY_HIGH]
 		);
 	}
+}
+
+/* External Interop */
+
+static void OPENGL_GetSysRenderer(
+	FNA3D_Renderer* driverData,
+	FNA3D_SysRendererEXT *sysrenderer
+) {
+	OpenGLRenderer* renderer = (OpenGLRenderer*) driverData;
+
+	sysrenderer->rendererType = FNA3D_RENDERER_TYPE_OPENGL_EXT;
+	sysrenderer->renderer.opengl.context = renderer->context;
+}
+
+static FNA3D_Texture* OPENGL_CreateSysTexture(
+	FNA3D_Renderer* driverData,
+	FNA3D_SysTextureEXT *systexture
+) {
+	OpenGLTexture* result;
+
+	if (systexture->rendererType != FNA3D_RENDERER_TYPE_OPENGL_EXT)
+	{
+		return NULL;
+	}
+
+	result = (OpenGLTexture*) SDL_malloc(
+		sizeof(OpenGLTexture)
+	);
+
+	SDL_zerop(result);
+
+	result->handle = systexture->texture.opengl.handle;
+	result->target = (GLenum) systexture->texture.opengl.target;
+	result->external = 1;
+
+	return (FNA3D_Texture*) result;
 }
 
 /* Load GL Entry Points */
