@@ -491,12 +491,6 @@ static inline void ShaderResourcesHashTable_Insert(
 
 /* Internal Structures */
 
-typedef struct QueueFamilyIndices
-{
-	uint32_t graphicsFamily;
-	uint32_t presentFamily;
-} QueueFamilyIndices;
-
 typedef struct SwapChainSupportDetails
 {
 	VkSurfaceCapabilitiesKHR capabilities;
@@ -1095,9 +1089,8 @@ typedef struct VulkanRenderer
 	FNA3D_PresentInterval presentInterval;
 	void* deviceWindowHandle;
 
-	QueueFamilyIndices queueFamilyIndices;
-	VkQueue graphicsQueue;
-	VkQueue presentQueue;
+	uint32_t queueFamilyIndex;
+	VkQueue unifiedQueue;
 
 	VkSurfaceKHR surface;
 	VkSwapchainKHR swapChain;
@@ -2129,7 +2122,7 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	const char** requiredExtensionNames,
 	uint32_t requiredExtensionNamesLength,
 	VkSurfaceKHR surface,
-	QueueFamilyIndices *queueFamilyIndices,
+	uint32_t *queueFamilyIndex,
 	uint8_t *isIdeal
 ) {
 	uint32_t queueFamilyCount, i;
@@ -2142,8 +2135,7 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	const char *memoryRequirementStr;
 	VkDeviceSize memoryRequirement;
 
-	queueFamilyIndices->graphicsFamily = UINT32_MAX;
-	queueFamilyIndices->presentFamily = UINT32_MAX;
+	*queueFamilyIndex = UINT32_MAX;
 	*isIdeal = 0;
 
 	/* Note: If no dedicated device exists,
@@ -2200,10 +2192,11 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 			&supportsPresent
 		);
 		if (	supportsPresent &&
-			(queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0	)
+			(queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0	&&
+			(queueProps[i].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0 &&
+			(queueProps[i].queueFlags & VK_QUEUE_TRANSFER_BIT) != 0	)
 		{
-			queueFamilyIndices->graphicsFamily = i;
-			queueFamilyIndices->presentFamily = i;
+			*queueFamilyIndex = i;
 			foundSuitableDevice = 1;
 			break;
 		}
@@ -2400,7 +2393,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	VkPhysicalDevice *physicalDevices;
 	uint32_t physicalDeviceCount, i, suitableIndex;
 	VkPhysicalDevice physicalDevice;
-	QueueFamilyIndices queueFamilyIndices;
+	uint32_t queueFamilyIndex;
 	uint8_t isIdeal, foundIdeal;
 
 	vulkanResult = renderer->vkEnumeratePhysicalDevices(
@@ -2453,7 +2446,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 			deviceExtensionNames,
 			deviceExtensionCount,
 			renderer->surface,
-			&queueFamilyIndices,
+			&queueFamilyIndex,
 			&isIdeal
 		)) {
 			if (isIdeal)
@@ -2496,7 +2489,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	}
 
 	renderer->physicalDevice = physicalDevice;
-	renderer->queueFamilyIndices = queueFamilyIndices;
+	renderer->queueFamilyIndex = queueFamilyIndex;
 
 	renderer->physicalDeviceDriverProperties.sType =
 		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR;
@@ -2528,41 +2521,16 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	VkPhysicalDevicePortabilitySubsetFeaturesKHR portabilityFeatures;
 #endif /* VK_ENABLE_BETA_EXTENSIONS */
 
-	VkDeviceQueueCreateInfo *queueCreateInfos = SDL_stack_alloc(
-		VkDeviceQueueCreateInfo,
-		2
-	);
-	VkDeviceQueueCreateInfo queueCreateInfoGraphics;
-	VkDeviceQueueCreateInfo queueCreateInfoPresent;
-
-	int32_t queueInfoCount = 1;
+	VkDeviceQueueCreateInfo queueCreateInfo;
 	float queuePriority = 1.0f;
 
-	queueCreateInfoGraphics.sType =
+	queueCreateInfo.sType =
 		VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-	queueCreateInfoGraphics.pNext = NULL;
-	queueCreateInfoGraphics.flags = 0;
-	queueCreateInfoGraphics.queueFamilyIndex =
-		renderer->queueFamilyIndices.graphicsFamily;
-	queueCreateInfoGraphics.queueCount = 1;
-	queueCreateInfoGraphics.pQueuePriorities = &queuePriority;
-
-	queueCreateInfos[0] = queueCreateInfoGraphics;
-
-	if (renderer->queueFamilyIndices.presentFamily != renderer->queueFamilyIndices.graphicsFamily)
-	{
-		queueCreateInfoPresent.sType =
-			VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-		queueCreateInfoPresent.pNext = NULL;
-		queueCreateInfoPresent.flags = 0;
-		queueCreateInfoPresent.queueFamilyIndex =
-			renderer->queueFamilyIndices.presentFamily;
-		queueCreateInfoPresent.queueCount = 1;
-		queueCreateInfoPresent.pQueuePriorities = &queuePriority;
-
-		queueCreateInfos[1] = queueCreateInfoPresent;
-		queueInfoCount += 1;
-	}
+	queueCreateInfo.pNext = NULL;
+	queueCreateInfo.flags = 0;
+	queueCreateInfo.queueFamilyIndex = renderer->queueFamilyIndex;
+	queueCreateInfo.queueCount = 1;
+	queueCreateInfo.pQueuePriorities = &queuePriority;
 
 	/* specifying used device features */
 
@@ -2599,8 +2567,8 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	deviceCreateInfo.pNext = NULL;
 #endif /* VK_ENABLE_BETA_EXTENSIONS */
 	deviceCreateInfo.flags = 0;
-	deviceCreateInfo.queueCreateInfoCount = queueInfoCount;
-	deviceCreateInfo.pQueueCreateInfos = queueCreateInfos;
+	deviceCreateInfo.queueCreateInfoCount = 1;
+	deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
 	deviceCreateInfo.enabledLayerCount = 0;
 	deviceCreateInfo.ppEnabledLayerNames = NULL;
 	deviceCreateInfo.enabledExtensionCount = deviceExtensionCount;
@@ -2634,19 +2602,11 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 
 	renderer->vkGetDeviceQueue(
 		renderer->logicalDevice,
-		renderer->queueFamilyIndices.graphicsFamily,
+		renderer->queueFamilyIndex,
 		0,
-		&renderer->graphicsQueue
+		&renderer->unifiedQueue
 	);
 
-	renderer->vkGetDeviceQueue(
-		renderer->logicalDevice,
-		renderer->queueFamilyIndices.presentFamily,
-		0,
-		&renderer->presentQueue
-	);
-
-	SDL_stack_free(queueCreateInfos);
 	return 1;
 }
 
@@ -4510,7 +4470,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 	/* Submit the commands, finally. */
 	result = renderer->vkQueueSubmit(
-		renderer->graphicsQueue,
+		renderer->unifiedQueue,
 		1,
 		&submitInfo,
 		renderer->inFlightFence
@@ -4562,7 +4522,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		presentInfo.pResults = NULL;
 
 		presentResult = renderer->vkQueuePresentKHR(
-			renderer->presentQueue,
+			renderer->unifiedQueue,
 			&presentInfo
 		);
 	}
@@ -5163,7 +5123,7 @@ static uint8_t VULKAN_INTERNAL_AllocateSubBuffer(
 	bufferCreateInfo.usage = buffer->usage;
 	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	bufferCreateInfo.queueFamilyIndexCount = 1;
-	bufferCreateInfo.pQueueFamilyIndices = &renderer->queueFamilyIndices.graphicsFamily;
+	bufferCreateInfo.pQueueFamilyIndices = &renderer->queueFamilyIndex;
 
 	vulkanResult = renderer->vkCreateBuffer(
 		renderer->logicalDevice,
@@ -9991,8 +9951,7 @@ static void VULKAN_GetSysRenderer(
 	sysrenderer->renderer.vulkan.instance = renderer->instance;
 	sysrenderer->renderer.vulkan.physicalDevice = renderer->physicalDevice;
 	sysrenderer->renderer.vulkan.logicalDevice = renderer->logicalDevice;
-	/* FIXME: use explicit unified queue family */
-	sysrenderer->renderer.vulkan.queueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily;
+	sysrenderer->renderer.vulkan.queueFamilyIndex = renderer->queueFamilyIndex;
 }
 
 static FNA3D_Texture* VULKAN_CreateSysTexture(
@@ -10466,7 +10425,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		&renderer->logicalDevice,
 		(PFN_MOJOSHADER_vkGetInstanceProcAddr) vkGetInstanceProcAddr,
 		(PFN_MOJOSHADER_vkGetDeviceProcAddr) renderer->vkGetDeviceProcAddr,
-		renderer->queueFamilyIndices.graphicsFamily,
+		renderer->queueFamilyIndex,
 		renderer->physicalDeviceProperties.properties.limits.maxUniformBufferRange,
 		renderer->physicalDeviceProperties.properties.limits.minUniformBufferOffsetAlignment,
 		NULL,
@@ -10551,7 +10510,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	commandPoolCreateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
 	commandPoolCreateInfo.pNext = NULL;
 	commandPoolCreateInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-	commandPoolCreateInfo.queueFamilyIndex = renderer->queueFamilyIndices.graphicsFamily;
+	commandPoolCreateInfo.queueFamilyIndex = renderer->queueFamilyIndex;
 	vulkanResult = renderer->vkCreateCommandPool(
 		renderer->logicalDevice,
 		&commandPoolCreateInfo,
