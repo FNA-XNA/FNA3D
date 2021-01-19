@@ -58,6 +58,7 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
 #include "FNA3D_Driver_Vulkan_vkfuncs.h"
 
 /* Required extensions */
+
 static const char* deviceExtensionNames[] =
 {
 	/* Globally supported */
@@ -122,6 +123,15 @@ static const VkComponentMapping RGBA_SWIZZLE =
 	VK_COMPONENT_SWIZZLE_G,
 	VK_COMPONENT_SWIZZLE_B,
 	VK_COMPONENT_SWIZZLE_A
+};
+
+static const uint8_t DEVICE_PRIORITY[] =
+{
+	0,	/* VK_PHYSICAL_DEVICE_TYPE_OTHER */
+	3,	/* VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU */
+	4,	/* VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU */
+	2,	/* VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU */
+	1	/* VK_PHYSICAL_DEVICE_TYPE_CPU */
 };
 
 /* Enumerations */
@@ -2123,7 +2133,7 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	uint32_t requiredExtensionNamesLength,
 	VkSurfaceKHR surface,
 	uint32_t *queueFamilyIndex,
-	uint8_t *isIdeal
+	uint8_t *deviceRank
 ) {
 	uint32_t queueFamilyCount, i;
 	SwapChainSupportDetails swapChainSupportDetails;
@@ -2136,7 +2146,7 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	VkDeviceSize memoryRequirement;
 
 	*queueFamilyIndex = UINT32_MAX;
-	*isIdeal = 0;
+	*deviceRank = 0;
 
 	/* Note: If no dedicated device exists,
 	 * one that supports our features would be fine
@@ -2206,15 +2216,12 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 
 	if (foundSuitableDevice)
 	{
-		/* We'd really like a discrete GPU, but it's OK either way! */
+		/* Try to make sure we pick the best device available */
 		renderer->vkGetPhysicalDeviceProperties(
 			physicalDevice,
 			&deviceProperties
 		);
-		if (deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU)
-		{
-			*isIdeal = 1;
-		}
+		*deviceRank = DEVICE_PRIORITY[deviceProperties.deviceType];
 
 		/* By default we require a _minimum_ of 8GB VRAM. This will
 		 * either be dedicated GPU VRAM or a GPU using unified memory.
@@ -2394,7 +2401,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	uint32_t physicalDeviceCount, i, suitableIndex;
 	VkPhysicalDevice physicalDevice;
 	uint32_t queueFamilyIndex;
-	uint8_t isIdeal, foundIdeal;
+	uint8_t deviceRank, highestRank;
 
 	vulkanResult = renderer->vkEnumeratePhysicalDevices(
 		renderer->instance,
@@ -2437,42 +2444,25 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 
 	/* Any suitable device will do, but we'd like the best */
 	suitableIndex = -1;
-	foundIdeal = 0;
+	deviceRank = 0;
+	highestRank = 0;
 	for (i = 0; i < physicalDeviceCount; i += 1)
 	{
-		if (VULKAN_INTERNAL_IsDeviceSuitable(
+		const uint8_t suitable = VULKAN_INTERNAL_IsDeviceSuitable(
 			renderer,
 			physicalDevices[i],
 			deviceExtensionNames,
 			deviceExtensionCount,
 			renderer->surface,
 			&queueFamilyIndex,
-			&isIdeal
-		)) {
-			if (isIdeal)
-			{
-				/* We found a dedicated GPU with enough VRAM! */
-				suitableIndex = i;
-				break;
-			}
-			else if (!foundIdeal)
-			{
-				/* We found an integrated GPU with enough VRAM,
-				 * and no dedicated GPU has been found (yet?).
-				 */
-				suitableIndex = i;
-			}
-		}
-		else
+			&deviceRank
+		);
+		if (deviceRank >= highestRank)
 		{
-			if (isIdeal)
+			highestRank = deviceRank;
+			if (suitable)
 			{
-				/* We found a dedicated GPU but it didn't have
-				 * enough VRAM, don't allow the system to fall
-				 * back to integrated!
-				 */
-				foundIdeal = 1;
-				suitableIndex = -1;
+				suitableIndex = i;
 			}
 		}
 	}
