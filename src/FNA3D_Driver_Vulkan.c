@@ -2459,11 +2459,25 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 		);
 		if (deviceRank >= highestRank)
 		{
-			highestRank = deviceRank;
+			/* We found a better device type, but does it work? */
 			if (suitable)
 			{
+				/* Yes, use this for rendering. */
 				suitableIndex = i;
 			}
+			else if (deviceRank > highestRank)
+			{
+				/* In this case, we found a... "realer?" GPU,
+				 * but it doesn't actually support our Vulkan.
+				 * We should disqualify all devices below as a
+				 * result, because if we don't we end up
+				 * ignoring real hardware and risk using
+				 * something like LLVMpipe instead!
+				 * -flibit
+				 */
+				suitableIndex = -1;
+			}
+			highestRank = deviceRank;
 		}
 	}
 
