@@ -138,6 +138,7 @@ VULKAN_DEVICE_FUNCTION(BaseVK, void, vkFreeCommandBuffers, (VkDevice device, VkC
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkFreeMemory, (VkDevice device, VkDeviceMemory memory, const VkAllocationCallbacks *pAllocator))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkGetBufferMemoryRequirements2KHR, (VkDevice device, const VkBufferMemoryRequirementsInfo2* pInfo, VkMemoryRequirements2* pMemoryRequirements))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkGetDeviceQueue, (VkDevice device, uint32_t queueFamilyIndex, uint32_t queueIndex, VkQueue *pQueue))
+VULKAN_DEVICE_FUNCTION(BaseVK, void, vkGetPipelineCacheData, (VkDevice device, VkPipelineCache pipelineCache, size_t* pDataSize, void* pData))
 VULKAN_DEVICE_FUNCTION(BaseVK, void, vkGetImageMemoryRequirements2KHR, (VkDevice device, const VkImageMemoryRequirementsInfo2* pInfo, VkMemoryRequirements2* pMemoryRequirements))
 VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkGetFenceStatus, (VkDevice device, VkFence fence))
 VULKAN_DEVICE_FUNCTION(BaseVK, VkResult, vkGetSwapchainImagesKHR, (VkDevice device, VkSwapchainKHR swapchain, uint32_t *pSwapchainImageCount, VkImage *pSwapchainImages))
