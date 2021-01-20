@@ -2860,7 +2860,7 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 	}
 
 	/* persistent mapping for buffers */
-	if (buffer != NULL)
+	if (buffer != VK_NULL_HANDLE)
 	{
 		result = renderer->vkMapMemory(
 			renderer->logicalDevice,
