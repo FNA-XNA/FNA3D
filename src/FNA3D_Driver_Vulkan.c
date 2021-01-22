@@ -7372,15 +7372,6 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 	if (pipelineCacheResult == VK_SUCCESS)
 	{
-		pipelineCacheData = SDL_malloc(pipelineCacheSize);
-
-		renderer->vkGetPipelineCacheData(
-			renderer->logicalDevice,
-			renderer->pipelineCache,
-			&pipelineCacheSize,
-			pipelineCacheData
-		);
-
 		pipelineCacheFileName = SDL_GetHint("FNA3D_VULKAN_PIPELINE_CACHE_FILE_NAME");
 		if (pipelineCacheFileName == NULL)
 		{
@@ -7389,17 +7380,26 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 		pipelineCacheFile = SDL_RWFromFile(pipelineCacheFileName, "wb");
 
-		if (pipelineCacheFile == NULL)
+		if (pipelineCacheFile != NULL)
 		{
-			FNA3D_LogWarn("Error opening pipeline cache file for writing!");
+			pipelineCacheData = SDL_malloc(pipelineCacheSize);
+
+			renderer->vkGetPipelineCacheData(
+				renderer->logicalDevice,
+				renderer->pipelineCache,
+				&pipelineCacheSize,
+				pipelineCacheData
+			);
+
+			SDL_RWwrite(pipelineCacheFile, pipelineCacheData, sizeof(uint8_t), pipelineCacheSize);
+			SDL_RWclose(pipelineCacheFile);
+
+			SDL_free(pipelineCacheData);
 		}
 		else
 		{
-			SDL_RWwrite(pipelineCacheFile, pipelineCacheData, sizeof(uint8_t), pipelineCacheSize);
-			SDL_RWclose(pipelineCacheFile);
+			FNA3D_LogWarn("Could not open pipeline cache file for writing!");
 		}
-
-		SDL_free(pipelineCacheData);
 	}
 	else
 	{
