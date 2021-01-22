@@ -7346,7 +7346,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	PipelineHashArray hashArray;
 	VulkanMemorySubAllocator *allocator;
 	uint32_t i, j, k;
-	VkResult waitResult;
+	VkResult waitResult, pipelineCacheResult;
 	size_t pipelineCacheSize;
 	uint8_t *pipelineCacheData;
 	SDL_RWops *pipelineCacheFile;
@@ -7363,39 +7363,48 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 	/* Save the pipeline cache to disk */
 
-	renderer->vkGetPipelineCacheData(
+	pipelineCacheResult = renderer->vkGetPipelineCacheData(
 		renderer->logicalDevice,
 		renderer->pipelineCache,
 		&pipelineCacheSize,
 		NULL
 	);
 
-	pipelineCacheData = SDL_malloc(pipelineCacheSize);
-
-	renderer->vkGetPipelineCacheData(
-		renderer->logicalDevice,
-		renderer->pipelineCache,
-		&pipelineCacheSize,
-		pipelineCacheData
-	);
-
-	pipelineCacheFileName = SDL_GetHint("FNA3D_VULKAN_PIPELINE_CACHE_FILE_NAME");
-	if (pipelineCacheFileName == NULL)
+	if (pipelineCacheResult == VK_SUCCESS)
 	{
-		pipelineCacheFileName = DEFAULT_PIPELINE_CACHE_FILE_NAME;
-	}
+		pipelineCacheData = SDL_malloc(pipelineCacheSize);
 
-	pipelineCacheFile = SDL_RWFromFile(pipelineCacheFileName, "wb");
+		renderer->vkGetPipelineCacheData(
+			renderer->logicalDevice,
+			renderer->pipelineCache,
+			&pipelineCacheSize,
+			pipelineCacheData
+		);
 
-	if (pipelineCacheFile == NULL)
-	{
-		FNA3D_LogWarn("Error opening pipeline cache file for writing!");
+		pipelineCacheFileName = SDL_GetHint("FNA3D_VULKAN_PIPELINE_CACHE_FILE_NAME");
+		if (pipelineCacheFileName == NULL)
+		{
+			pipelineCacheFileName = DEFAULT_PIPELINE_CACHE_FILE_NAME;
+		}
+
+		pipelineCacheFile = SDL_RWFromFile(pipelineCacheFileName, "wb");
+
+		if (pipelineCacheFile == NULL)
+		{
+			FNA3D_LogWarn("Error opening pipeline cache file for writing!");
+		}
+		else
+		{
+			SDL_RWwrite(pipelineCacheFile, pipelineCacheData, sizeof(uint8_t), pipelineCacheSize);
+			SDL_RWclose(pipelineCacheFile);
+		}
+
+		SDL_free(pipelineCacheData);
 	}
 	else
 	{
-		SDL_RWwrite(pipelineCacheFile, pipelineCacheData, sizeof(uint8_t), pipelineCacheSize);
-		SDL_RWclose(pipelineCacheFile);
-		SDL_free(pipelineCacheData);
+		LogVulkanResult("vkGetPipelineCacheData", pipelineCacheResult);
+		FNA3D_LogWarn("Error getting data from pipeline cache, aborting save!");
 	}
 
 	/* Clean up! */
