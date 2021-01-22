@@ -109,7 +109,7 @@ static const uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames)
 #define NULL_SAMPLER (VkSampler) 0
 #define NULL_RENDER_PASS (VkRenderPass) 0
 
-#define DEFAULT_PIPELINE_CACHE_FILE_NAME "vk_pipeline.cache"
+#define DEFAULT_PIPELINE_CACHE_FILE_NAME "FNA3D_Vulkan_PipelineCache.blob"
 
 #define IDENTITY_SWIZZLE \
 { \
@@ -7384,10 +7384,19 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	{
 		pipelineCacheFileName = DEFAULT_PIPELINE_CACHE_FILE_NAME;
 	}
+
 	pipelineCacheFile = SDL_RWFromFile(pipelineCacheFileName, "wb");
-	SDL_RWwrite(pipelineCacheFile, pipelineCacheData, sizeof(uint8_t), pipelineCacheSize);
-	SDL_RWclose(pipelineCacheFile);
-	SDL_free(pipelineCacheData);
+
+	if (pipelineCacheFile == NULL)
+	{
+		FNA3D_LogWarn("Error opening pipeline cache file for writing!");
+	}
+	else
+	{
+		SDL_RWwrite(pipelineCacheFile, pipelineCacheData, sizeof(uint8_t), pipelineCacheSize);
+		SDL_RWclose(pipelineCacheFile);
+		SDL_free(pipelineCacheData);
+	}
 
 	/* Clean up! */
 
@@ -10180,8 +10189,8 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	/* Variables: Create pipeline cache */
 	VkPipelineCacheCreateInfo pipelineCacheCreateInfo;
-	SDL_RWops *pipelineCacheFile;
 	const char *pipelineCacheFileName;
+	size_t pipelineCacheSize;
 	uint8_t *pipelineCacheBytes;
 
 	/* Variables: Create descriptor set layouts */
@@ -10615,14 +10624,14 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	{
 		pipelineCacheFileName = DEFAULT_PIPELINE_CACHE_FILE_NAME;
 	}
-	pipelineCacheFile = SDL_RWFromFile(pipelineCacheFileName, "rb");
-	if (pipelineCacheFile != NULL)
+
+	pipelineCacheBytes = SDL_LoadFile(pipelineCacheFileName, &pipelineCacheSize);
+
+	if (pipelineCacheBytes != NULL)
 	{
 		FNA3D_LogInfo("Pipeline cache found, loading...");
-		pipelineCacheCreateInfo.initialDataSize = SDL_RWsize(pipelineCacheFile);
-		pipelineCacheBytes = SDL_malloc(pipelineCacheCreateInfo.initialDataSize);
-		SDL_RWread(pipelineCacheFile, pipelineCacheBytes, sizeof(uint8_t), pipelineCacheCreateInfo.initialDataSize);
 		pipelineCacheCreateInfo.pInitialData = pipelineCacheBytes;
+		pipelineCacheCreateInfo.initialDataSize = pipelineCacheSize;
 	}
 	else
 	{
@@ -10637,10 +10646,9 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		&renderer->pipelineCache
 	);
 
-	if (pipelineCacheFile != NULL)
+	if (pipelineCacheBytes != NULL)
 	{
 		SDL_free(pipelineCacheBytes);
-		SDL_RWclose(pipelineCacheFile);
 	}
 
 	if (vulkanResult != VK_SUCCESS)
