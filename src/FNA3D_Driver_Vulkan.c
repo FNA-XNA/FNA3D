@@ -2399,8 +2399,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	VkResult vulkanResult;
 	VkPhysicalDevice *physicalDevices;
 	uint32_t physicalDeviceCount, i, suitableIndex;
-	VkPhysicalDevice physicalDevice;
-	uint32_t queueFamilyIndex;
+	uint32_t queueFamilyIndex, suitableQueueFamilyIndex;
 	uint8_t deviceRank, highestRank;
 
 	vulkanResult = renderer->vkEnumeratePhysicalDevices(
@@ -2464,6 +2463,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 			{
 				/* Yes, use this for rendering. */
 				suitableIndex = i;
+				suitableQueueFamilyIndex = queueFamilyIndex;
 			}
 			else if (deviceRank > highestRank)
 			{
@@ -2483,7 +2483,8 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 
 	if (suitableIndex != -1)
 	{
-		physicalDevice = physicalDevices[suitableIndex];
+		renderer->physicalDevice = physicalDevices[suitableIndex];
+		renderer->queueFamilyIndex = suitableQueueFamilyIndex;
 	}
 	else
 	{
@@ -2491,9 +2492,6 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 		SDL_stack_free(physicalDevices);
 		return 0;
 	}
-
-	renderer->physicalDevice = physicalDevice;
-	renderer->queueFamilyIndex = queueFamilyIndex;
 
 	renderer->physicalDeviceDriverProperties.sType =
 		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR;
