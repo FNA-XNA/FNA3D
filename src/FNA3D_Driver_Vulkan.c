@@ -1754,13 +1754,13 @@ static inline void LogVulkanResultAsError(
 	}
 }
 
-static inline void LogVulkanResultAsInfo(
+static inline void LogVulkanResultAsWarn(
 	const char* vulkanFunctionName,
 	VkResult result
 ) {
 	if (result != VK_SUCCESS)
 	{
-		FNA3D_LogInfo(
+		FNA3D_LogWarn(
 			"%s: %s",
 			vulkanFunctionName,
 			VkErrorMessages(result)
@@ -2900,8 +2900,6 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 	if (result != VK_SUCCESS)
 	{
 		/* Uh oh, we couldn't allocate, time to clean up */
-		LogVulkanResultAsInfo("vkAllocateMemory", result);
-
 		SDL_free(allocation->freeRegions);
 
 		allocator->allocationCount -= 1;
@@ -2912,6 +2910,7 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 
 		SDL_free(allocation);
 
+		LogVulkanResultAsWarn("vkAllocateMemory", result);
 		return 0;
 	}
 
@@ -3059,10 +3058,10 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 	/* Uh oh, we're out of memory */
 	if (allocationResult == 0)
 	{
-		/* Responsibility of the caller to handle being out of memory */
-		FNA3D_LogInfo("Failed to allocate memory!");
 		SDL_UnlockMutex(renderer->allocatorLock);
 
+		/* Responsibility of the caller to handle being out of memory */
+		FNA3D_LogWarn("Failed to allocate memory!");
 		return 2;
 	}
 
