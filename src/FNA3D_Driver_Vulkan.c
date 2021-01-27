@@ -109,6 +109,8 @@ static const uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames)
 #define NULL_SAMPLER (VkSampler) 0
 #define NULL_RENDER_PASS (VkRenderPass) 0
 
+#define DEFAULT_PIPELINE_CACHE_FILE_NAME "FNA3D_Vulkan_PipelineCache.blob"
+
 #define IDENTITY_SWIZZLE \
 { \
 	VK_COMPONENT_SWIZZLE_IDENTITY, \
@@ -7508,7 +7510,11 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	PipelineHashArray hashArray;
 	VulkanMemorySubAllocator *allocator;
 	uint32_t i, j, k;
-	VkResult waitResult;
+	VkResult waitResult, pipelineCacheResult;
+	size_t pipelineCacheSize;
+	uint8_t *pipelineCacheData;
+	SDL_RWops *pipelineCacheFile;
+	const char *pipelineCacheFileName;
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 
@@ -7518,6 +7524,54 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	{
 		LogVulkanResultAsError("vkDeviceWaitIdle", waitResult);
 	}
+
+	/* Save the pipeline cache to disk */
+
+	pipelineCacheResult = renderer->vkGetPipelineCacheData(
+		renderer->logicalDevice,
+		renderer->pipelineCache,
+		&pipelineCacheSize,
+		NULL
+	);
+
+	if (pipelineCacheResult == VK_SUCCESS)
+	{
+		pipelineCacheFileName = SDL_GetHint("FNA3D_VULKAN_PIPELINE_CACHE_FILE_NAME");
+		if (pipelineCacheFileName == NULL)
+		{
+			pipelineCacheFileName = DEFAULT_PIPELINE_CACHE_FILE_NAME;
+		}
+
+		pipelineCacheFile = SDL_RWFromFile(pipelineCacheFileName, "wb");
+
+		if (pipelineCacheFile != NULL)
+		{
+			pipelineCacheData = SDL_malloc(pipelineCacheSize);
+
+			renderer->vkGetPipelineCacheData(
+				renderer->logicalDevice,
+				renderer->pipelineCache,
+				&pipelineCacheSize,
+				pipelineCacheData
+			);
+
+			SDL_RWwrite(pipelineCacheFile, pipelineCacheData, sizeof(uint8_t), pipelineCacheSize);
+			SDL_RWclose(pipelineCacheFile);
+
+			SDL_free(pipelineCacheData);
+		}
+		else
+		{
+			FNA3D_LogWarn("Could not open pipeline cache file for writing!");
+		}
+	}
+	else
+	{
+		LogVulkanResult("vkGetPipelineCacheData", pipelineCacheResult);
+		FNA3D_LogWarn("Error getting data from pipeline cache, aborting save!");
+	}
+
+	/* Clean up! */
 
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyVertUniformBuffer);
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyFragUniformBuffer);
@@ -10303,6 +10357,9 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	/* Variables: Create pipeline cache */
 	VkPipelineCacheCreateInfo pipelineCacheCreateInfo;
+	const char *pipelineCacheFileName;
+	size_t pipelineCacheSize;
+	uint8_t *pipelineCacheBytes;
 
 	/* Variables: Create descriptor set layouts */
 	VkDescriptorSetLayoutBinding layoutBinding;
@@ -10729,14 +10786,39 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	pipelineCacheCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO;
 	pipelineCacheCreateInfo.pNext = NULL;
 	pipelineCacheCreateInfo.flags = 0;
-	pipelineCacheCreateInfo.initialDataSize = 0;
-	pipelineCacheCreateInfo.pInitialData = NULL;
+
+	pipelineCacheFileName = SDL_GetHint("FNA3D_VULKAN_PIPELINE_CACHE_FILE_NAME");
+	if (pipelineCacheFileName == NULL)
+	{
+		pipelineCacheFileName = DEFAULT_PIPELINE_CACHE_FILE_NAME;
+	}
+
+	pipelineCacheBytes = SDL_LoadFile(pipelineCacheFileName, &pipelineCacheSize);
+
+	if (pipelineCacheBytes != NULL)
+	{
+		FNA3D_LogInfo("Pipeline cache found, loading...");
+		pipelineCacheCreateInfo.pInitialData = pipelineCacheBytes;
+		pipelineCacheCreateInfo.initialDataSize = pipelineCacheSize;
+	}
+	else
+	{
+		pipelineCacheCreateInfo.initialDataSize = 0;
+		pipelineCacheCreateInfo.pInitialData = NULL;
+	}
+
 	vulkanResult = renderer->vkCreatePipelineCache(
 		renderer->logicalDevice,
 		&pipelineCacheCreateInfo,
 		NULL,
 		&renderer->pipelineCache
 	);
+
+	if (pipelineCacheBytes != NULL)
+	{
+		SDL_free(pipelineCacheBytes);
+	}
+
 	if (vulkanResult != VK_SUCCESS)
 	{
 		LogVulkanResultAsError("vkCreatePipelineCache", vulkanResult);
