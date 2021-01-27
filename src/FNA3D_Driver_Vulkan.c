@@ -2839,6 +2839,7 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 	uint32_t memoryTypeIndex,
 	VkDeviceSize allocationSize,
 	uint8_t dedicated,
+	uint8_t cpuAllocation,
 	VulkanMemoryAllocation **pMemoryAllocation
 ) {
 	VulkanMemoryAllocation *allocation;
@@ -2903,8 +2904,8 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 		return 0;
 	}
 
-	/* persistent mapping for buffers */
-	if (buffer != VK_NULL_HANDLE)
+	/* persistent mapping for host memory */
+	if (cpuAllocation)
 	{
 		result = renderer->vkMapMemory(
 			renderer->logicalDevice,
@@ -2939,6 +2940,7 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 	VulkanRenderer *renderer,
 	uint32_t memoryTypeIndex,
+	uint8_t cpuAllocation,
 	VkMemoryRequirements2KHR *memoryRequirements,
 	VkMemoryDedicatedRequirementsKHR *dedicatedRequirements,
 	VkBuffer buffer, /* may be VK_NULL_HANDLE */
@@ -3039,6 +3041,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 		memoryTypeIndex,
 		allocationSize,
 		shouldAllocDedicated,
+		cpuAllocation,
 		&allocation
 	);
 
@@ -3109,6 +3112,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableBufferMemory(
 	return VULKAN_INTERNAL_FindAvailableMemory(
 		renderer,
 		memoryTypeIndex,
+		1,
 		&memoryRequirements,
 		&dedicatedRequirements,
 		buffer,
@@ -3165,6 +3169,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 	return VULKAN_INTERNAL_FindAvailableMemory(
 		renderer,
 		memoryTypeIndex,
+		cpuAllocation,
 		&memoryRequirements,
 		&dedicatedRequirements,
 		VK_NULL_HANDLE,
