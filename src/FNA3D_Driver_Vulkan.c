@@ -1740,13 +1740,27 @@ static inline const char* VkErrorMessages(VkResult code)
 	#undef ERR_TO_STR
 }
 
-static inline void LogVulkanResult(
+static inline void LogVulkanResultAsError(
 	const char* vulkanFunctionName,
 	VkResult result
 ) {
 	if (result != VK_SUCCESS)
 	{
 		FNA3D_LogError(
+			"%s: %s",
+			vulkanFunctionName,
+			VkErrorMessages(result)
+		);
+	}
+}
+
+static inline void LogVulkanResultAsInfo(
+	const char* vulkanFunctionName,
+	VkResult result
+) {
+	if (result != VK_SUCCESS)
+	{
+		FNA3D_LogInfo(
 			"%s: %s",
 			vulkanFunctionName,
 			VkErrorMessages(result)
@@ -2885,7 +2899,7 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 
 	if (result != VK_SUCCESS)
 	{
-		LogVulkanResult("vkAllocateMemory", result);
+		LogVulkanResultAsInfo("vkAllocateMemory", result);
 		return 0;
 	}
 
@@ -2903,7 +2917,7 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 
 		if (result != VK_SUCCESS)
 		{
-			LogVulkanResult("vkMapMemory", result);
+			LogVulkanResultAsError("vkMapMemory", result);
 			return 0;
 		}
 	}
@@ -3032,7 +3046,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 	if (allocationResult == 0)
 	{
 		/* Responsibility of the caller to handle being out of memory */
-		FNA3D_LogWarn("Failed to allocate memory!");
+		FNA3D_LogInfo("Failed to allocate memory!");
 		SDL_UnlockMutex(renderer->allocatorLock);
 
 		return 2;
@@ -3520,7 +3534,7 @@ static uint8_t VULKAN_INTERNAL_CreateDescriptorPool(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateDescriptorPool", vulkanResult);
+		LogVulkanResultAsError("vkCreateDescriptorPool", vulkanResult);
 		return 0;
 	}
 
@@ -3558,7 +3572,7 @@ static uint8_t VULKAN_INTERNAL_AllocateDescriptorSets(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkAllocateDescriptorSets", vulkanResult);
+		LogVulkanResultAsError("vkAllocateDescriptorSets", vulkanResult);
 		SDL_stack_free(descriptorSetLayouts);
 		return 0;
 	}
@@ -3645,7 +3659,7 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
+		LogVulkanResultAsError("vkCreateDescriptorSetLayout", vulkanResult);
 		return NULL_DESC_LAYOUT;
 	}
 
@@ -4186,7 +4200,7 @@ static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer)
 
 		if (result != VK_SUCCESS)
 		{
-			LogVulkanResult("vkAllocateCommandBuffers", result);
+			LogVulkanResultAsError("vkAllocateCommandBuffers", result);
 			return;
 		}
 
@@ -4209,7 +4223,7 @@ static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer)
 
 	if (result != VK_SUCCESS)
 	{
-		LogVulkanResult("vkBeginCommandBuffer", result);
+		LogVulkanResultAsError("vkBeginCommandBuffer", result);
 	}
 }
 
@@ -4232,7 +4246,7 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 
 	if (result != VK_SUCCESS)
 	{
-		LogVulkanResult("vkEndCommandBuffer", result);
+		LogVulkanResultAsError("vkEndCommandBuffer", result);
 	}
 
 	renderer->currentCommandBuffer = NULL;
@@ -4472,7 +4486,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 	if (result != VK_SUCCESS)
 	{
-		LogVulkanResult("vkWaitForFences", result);
+		LogVulkanResultAsError("vkWaitForFences", result);
 		return;
 	}
 
@@ -4539,7 +4553,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 		if (result != VK_SUCCESS)
 		{
-			LogVulkanResult("vkResetCommandBuffer", result);
+			LogVulkanResultAsError("vkResetCommandBuffer", result);
 		}
 	}
 
@@ -4568,7 +4582,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	);
 	if (result != VK_SUCCESS)
 	{
-		LogVulkanResult("vkQueueSubmit", result);
+		LogVulkanResultAsError("vkQueueSubmit", result);
 		return;
 	}
 
@@ -4998,7 +5012,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateSwapchainKHR", vulkanResult);
+		LogVulkanResultAsError("vkCreateSwapchainKHR", vulkanResult);
 
 		return CREATE_SWAPCHAIN_FAIL;
 	}
@@ -5071,7 +5085,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 
 		if (vulkanResult != VK_SUCCESS)
 		{
-			LogVulkanResult("vkCreateImageView", vulkanResult);
+			LogVulkanResultAsError("vkCreateImageView", vulkanResult);
 			SDL_stack_free(swapChainImages);
 			return CREATE_SWAPCHAIN_FAIL;
 		}
@@ -5225,7 +5239,7 @@ static uint8_t VULKAN_INTERNAL_AllocateSubBuffer(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateBuffer", vulkanResult);
+		LogVulkanResultAsError("vkCreateBuffer", vulkanResult);
 		FNA3D_LogError("Failed to create VkBuffer");
 		return 0;
 	}
@@ -5507,7 +5521,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 
 	if (result != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateImage", result);
+		LogVulkanResultAsError("vkCreateImage", result);
 		FNA3D_LogError("Failed to create image");
 		return 0;
 	}
@@ -5553,7 +5567,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 
 		if (result != VK_SUCCESS)
 		{
-			LogVulkanResult("vkCreateImage", result);
+			LogVulkanResultAsError("vkCreateImage", result);
 			FNA3D_LogError("Failed to create image with linear tiling");
 			return 0;
 		}
@@ -5594,7 +5608,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 
 	if (result != VK_SUCCESS)
 	{
-		LogVulkanResult("vkBindImageMemory", result);
+		LogVulkanResultAsError("vkBindImageMemory", result);
 		return 0;
 	}
 
@@ -5636,7 +5650,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 
 	if (result != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateImageView", result);
+		LogVulkanResultAsError("vkCreateImageView", result);
 		FNA3D_LogError("Failed to create texture image view");
 		return 0;
 	}
@@ -5662,7 +5676,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 
 			if (result != VK_SUCCESS)
 			{
-				LogVulkanResult(
+				LogVulkanResultAsError(
 					"vkCreateImageView",
 					result
 				);
@@ -5693,7 +5707,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 
 				if (result != VK_SUCCESS)
 				{
-					LogVulkanResult(
+					LogVulkanResultAsError(
 						"vkCreateImageView",
 						result
 					);
@@ -5950,7 +5964,7 @@ static VkPipelineLayout VULKAN_INTERNAL_FetchPipelineLayout(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreatePipelineLayout", vulkanResult);
+		LogVulkanResultAsError("vkCreatePipelineLayout", vulkanResult);
 		return NULL_PIPELINE_LAYOUT;
 	}
 
@@ -6434,7 +6448,7 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateGraphicsPipelines", vulkanResult);
+		LogVulkanResultAsError("vkCreateGraphicsPipelines", vulkanResult);
 		return NULL_PIPELINE;
 	}
 
@@ -6934,7 +6948,7 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateRenderPass", vulkanResult);
+		LogVulkanResultAsError("vkCreateRenderPass", vulkanResult);
 		return NULL_RENDER_PASS;
 	}
 
@@ -7039,7 +7053,7 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateFramebuffer", vulkanResult);
+		LogVulkanResultAsError("vkCreateFramebuffer", vulkanResult);
 	}
 
 	FramebufferHashArray_Insert(
@@ -7455,7 +7469,7 @@ static VkSampler VULKAN_INTERNAL_FetchSamplerState(
 
 	if (result != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateSampler", result);
+		LogVulkanResultAsError("vkCreateSampler", result);
 		return 0;
 	}
 
@@ -7487,7 +7501,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 	if (waitResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkDeviceWaitIdle", waitResult);
+		LogVulkanResultAsError("vkDeviceWaitIdle", waitResult);
 	}
 
 	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->dummyVertUniformBuffer);
@@ -9974,7 +9988,7 @@ static int32_t VULKAN_QueryPixelCount(
 	);
 
 	if (vulkanResult != VK_SUCCESS) {
-		LogVulkanResult("vkGetQueryPoolResults", VK_SUCCESS);
+		LogVulkanResultAsError("vkGetQueryPoolResults", VK_SUCCESS);
 		return 0;
 	}
 
@@ -10607,7 +10621,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateFence", vulkanResult);
+		LogVulkanResultAsError("vkCreateFence", vulkanResult);
 		return NULL;
 	}
 
@@ -10620,7 +10634,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateSemaphore", vulkanResult);
+		LogVulkanResultAsError("vkCreateSemaphore", vulkanResult);
 		return NULL;
 	}
 
@@ -10633,7 +10647,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateSemaphore", vulkanResult);
+		LogVulkanResultAsError("vkCreateSemaphore", vulkanResult);
 		return NULL;
 	}
 
@@ -10653,7 +10667,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	);
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateCommandPool", vulkanResult);
+		LogVulkanResultAsError("vkCreateCommandPool", vulkanResult);
 	}
 
 	renderer->allocatedCommandBufferCount = 4;
@@ -10676,7 +10690,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	);
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkAllocateCommandBuffers", vulkanResult);
+		LogVulkanResultAsError("vkAllocateCommandBuffers", vulkanResult);
 	}
 
 	renderer->currentCommandCount = 0;
@@ -10710,7 +10724,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	);
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreatePipelineCache", vulkanResult);
+		LogVulkanResultAsError("vkCreatePipelineCache", vulkanResult);
 		return NULL;
 	}
 
@@ -10753,7 +10767,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
+		LogVulkanResultAsError("vkCreateDescriptorSetLayout", vulkanResult);
 		return NULL;
 	}
 
@@ -10779,7 +10793,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateDescriptorSetLayout", vulkanResult);
+		LogVulkanResultAsError("vkCreateDescriptorSetLayout", vulkanResult);
 		return NULL;
 	}
 
@@ -10852,7 +10866,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	);
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateQueryPool", vulkanResult);
+		LogVulkanResultAsError("vkCreateQueryPool", vulkanResult);
 		return NULL;
 	}
 
@@ -11108,7 +11122,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkCreateDescriptorPool", vulkanResult);
+		LogVulkanResultAsError("vkCreateDescriptorPool", vulkanResult);
 		return 0;
 	}
 
@@ -11126,7 +11140,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkAllocateDescriptorSets", vulkanResult);
+		LogVulkanResultAsError("vkAllocateDescriptorSets", vulkanResult);
 		return 0;
 	}
 
@@ -11140,7 +11154,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		LogVulkanResult("vkAllocateDescriptorSets", vulkanResult);
+		LogVulkanResultAsError("vkAllocateDescriptorSets", vulkanResult);
 		return 0;
 	}
 
