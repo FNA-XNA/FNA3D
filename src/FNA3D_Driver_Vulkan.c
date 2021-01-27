@@ -2268,7 +2268,7 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 		);
 		*deviceRank = DEVICE_PRIORITY[deviceProperties.deviceType];
 
-		/* By default we require a _minimum_ of 8GB VRAM. This will
+		/* By default we require a _minimum_ of 4GB VRAM. This will
 		 * either be dedicated GPU VRAM or a GPU using unified memory.
 		 *
 		 * We do NOT fall back to integrated if we find a dedicated GPU
@@ -2277,7 +2277,7 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 #ifdef __APPLE__
 		memoryRequirement = 1; /* Metal marshals memory behind our back */
 #else
-		memoryRequirement = 8;
+		memoryRequirement = 4;
 #endif
 		memoryRequirementStr = SDL_GetHint("FNA3D_VULKAN_MEMORY_REQUIREMENT");
 		if (memoryRequirementStr != NULL)
