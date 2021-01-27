@@ -7574,7 +7574,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	}
 	else
 	{
-		LogVulkanResult("vkGetPipelineCacheData", pipelineCacheResult);
+		LogVulkanResultAsWarn("vkGetPipelineCacheData", pipelineCacheResult);
 		FNA3D_LogWarn("Error getting data from pipeline cache, aborting save!");
 	}
 
