@@ -7541,8 +7541,15 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		{
 			pipelineCacheFileName = DEFAULT_PIPELINE_CACHE_FILE_NAME;
 		}
-
-		pipelineCacheFile = SDL_RWFromFile(pipelineCacheFileName, "wb");
+		if (pipelineCacheFileName[0] != '\0')
+		{
+			/* For intentionally empty file names, assume caching is disabled */
+			pipelineCacheFile = NULL;
+		}
+		else
+		{
+			pipelineCacheFile = SDL_RWFromFile(pipelineCacheFileName, "wb");
+		}
 
 		if (pipelineCacheFile != NULL)
 		{
@@ -10792,8 +10799,15 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	{
 		pipelineCacheFileName = DEFAULT_PIPELINE_CACHE_FILE_NAME;
 	}
-
-	pipelineCacheBytes = SDL_LoadFile(pipelineCacheFileName, &pipelineCacheSize);
+	if (pipelineCacheFileName[0] == '\0')
+	{
+		/* For intentionally empty file names, assume caching is disabled */
+		pipelineCacheBytes = NULL;
+	}
+	else
+	{
+		pipelineCacheBytes = SDL_LoadFile(pipelineCacheFileName, &pipelineCacheSize);
+	}
 
 	if (pipelineCacheBytes != NULL)
 	{
