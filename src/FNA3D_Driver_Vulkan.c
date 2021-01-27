@@ -29,7 +29,7 @@
 /* FIXME: Needed for VK_KHR_portability_subset, but MoltenVK does not actually
  * "support" this as you would expect - this is just for validation, for now.
  */
-#ifdef __APPLE__ && 0
+#if defined(__APPLE__) && 0
 #define VK_ENABLE_BETA_EXTENSIONS
 #endif /* __APPLE__ */
 
