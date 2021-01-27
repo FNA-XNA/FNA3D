@@ -2872,7 +2872,6 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 	{
 		allocInfo.pNext = NULL;
 
-		/* allocate a non-dedicated texture buffer */
 		allocator->allocationCount += 1;
 		allocator->allocations = SDL_realloc(
 			allocator->allocations,
@@ -2900,7 +2899,19 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 
 	if (result != VK_SUCCESS)
 	{
+		/* Uh oh, we couldn't allocate, time to clean up */
 		LogVulkanResultAsInfo("vkAllocateMemory", result);
+
+		SDL_free(allocation->freeRegions);
+
+		allocator->allocationCount -= 1;
+		allocator->allocations = SDL_realloc(
+			allocator->allocations,
+			sizeof(VulkanMemoryAllocation*) * allocator->allocationCount
+		);
+
+		SDL_free(allocation);
+
 		return 0;
 	}
 
