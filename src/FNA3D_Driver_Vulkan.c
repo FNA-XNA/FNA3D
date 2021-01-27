@@ -5560,7 +5560,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 			return 0;
 		}
 
-		FNA3D_LogInfo("Out of device local memory, falling back to host memory");
+		FNA3D_LogWarn("Out of device local memory, falling back to host memory");
 
 		/* CPU-allocated images need linear tiling
 		 * so we have to destroy our original image and recreate
