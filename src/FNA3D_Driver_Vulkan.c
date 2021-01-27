@@ -9759,6 +9759,15 @@ static void VULKAN_GetIndexBufferData(
 
 /* Effects */
 
+static void VULKAN_INTERNAL_DeleteShader(void* shader)
+{
+	MOJOSHADER_vkShader *vkShader = (MOJOSHADER_vkShader*) shader;
+
+	/* TODO: Invalidate cache data that uses this shader! */
+
+	MOJOSHADER_vkDeleteShader(vkShader);
+}
+
 static void VULKAN_CreateEffect(
 	FNA3D_Renderer *driverData,
 	uint8_t *effectCode,
@@ -9772,7 +9781,7 @@ static void VULKAN_CreateEffect(
 
 	shaderBackend.compileShader = (MOJOSHADER_compileShaderFunc) MOJOSHADER_vkCompileShader;
 	shaderBackend.shaderAddRef = (MOJOSHADER_shaderAddRefFunc) MOJOSHADER_vkShaderAddRef;
-	shaderBackend.deleteShader = (MOJOSHADER_deleteShaderFunc) MOJOSHADER_vkDeleteShader;
+	shaderBackend.deleteShader = VULKAN_INTERNAL_DeleteShader;
 	shaderBackend.getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_vkGetShaderParseData;
 	shaderBackend.bindShaders = (MOJOSHADER_bindShadersFunc) MOJOSHADER_vkBindShaders;
 	shaderBackend.getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_vkGetBoundShaders;

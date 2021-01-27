@@ -3958,6 +3958,15 @@ static void METAL_GetIndexBufferData(
 
 /* Effects */
 
+static void METAL_INTERNAL_DeleteShader(void* shader)
+{
+	MOJOSHADER_mtlShader *mtlShader = (MOJOSHADER_mtlShader*) shader;
+
+	/* TODO: Invalidate cache data that uses this shader! */
+
+	MOJOSHADER_mtlDeleteShader(mtlShader);
+}
+
 static void METAL_CreateEffect(
 	FNA3D_Renderer *driverData,
 	uint8_t *effectCode,
@@ -3971,7 +3980,7 @@ static void METAL_CreateEffect(
 
 	shaderBackend.compileShader = (MOJOSHADER_compileShaderFunc) MOJOSHADER_mtlCompileShader;
 	shaderBackend.shaderAddRef = (MOJOSHADER_shaderAddRefFunc) MOJOSHADER_mtlShaderAddRef;
-	shaderBackend.deleteShader = (MOJOSHADER_deleteShaderFunc) MOJOSHADER_mtlDeleteShader;
+	shaderBackend.deleteShader = METAL_INTERNAL_DeleteShader;
 	shaderBackend.getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_mtlGetShaderParseData;
 	shaderBackend.bindShaders = (MOJOSHADER_bindShadersFunc) MOJOSHADER_mtlBindShaders;
 	shaderBackend.getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_mtlGetBoundShaders;

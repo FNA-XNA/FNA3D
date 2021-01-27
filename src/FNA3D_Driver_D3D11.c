@@ -4052,6 +4052,15 @@ static void D3D11_GetIndexBufferData(
 
 /* Effects */
 
+static void D3D11_INTERNAL_DeleteShader(void* shader)
+{
+	MOJOSHADER_d3d11Shader *d3dShader = (MOJOSHADER_d3d11Shader*) shader;
+
+	/* TODO: Invalidate cache data that uses this shader! */
+
+	MOJOSHADER_d3d11DeleteShader(d3dShader);
+}
+
 static void D3D11_CreateEffect(
 	FNA3D_Renderer *driverData,
 	uint8_t *effectCode,
@@ -4065,7 +4074,7 @@ static void D3D11_CreateEffect(
 
 	shaderBackend.compileShader = (MOJOSHADER_compileShaderFunc) MOJOSHADER_d3d11CompileShader;
 	shaderBackend.shaderAddRef = (MOJOSHADER_shaderAddRefFunc) MOJOSHADER_d3d11ShaderAddRef;
-	shaderBackend.deleteShader = (MOJOSHADER_deleteShaderFunc) MOJOSHADER_d3d11DeleteShader;
+	shaderBackend.deleteShader = D3D11_INTERNAL_DeleteShader;
 	shaderBackend.getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_d3d11GetShaderParseData;
 	shaderBackend.bindShaders = (MOJOSHADER_bindShadersFunc) MOJOSHADER_d3d11BindShaders;
 	shaderBackend.getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_d3d11GetBoundShaders;
