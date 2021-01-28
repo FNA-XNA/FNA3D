@@ -4055,8 +4055,34 @@ static void D3D11_GetIndexBufferData(
 static void D3D11_INTERNAL_DeleteShader(void* shader)
 {
 	MOJOSHADER_d3d11Shader *d3dShader = (MOJOSHADER_d3d11Shader*) shader;
+	const MOJOSHADER_parseData *pd;
+	D3D11Renderer *renderer;
+	PackedVertexBufferBindingsArray *arr;
+	int32_t i;
 
-	/* TODO: Invalidate cache data that uses this shader! */
+	pd = MOJOSHADER_d3d11GetShaderParseData(shader);
+	renderer = (D3D11Renderer*) pd->malloc_data;
+	arr = &renderer->inputLayoutCache;
+
+	/* Run through input layout cache in reverse order, to minimize the
+	 * damage of doing memmove a bunch of times
+	 */
+	for (i = arr->count - 1; i >= 0; i -= 1)
+	{
+		const PackedVertexBufferBindingsMap *elem = &arr->elements[i];
+		if (elem->key.vertexShader == shader)
+		{
+			ID3D11InputLayout_Release(
+				(ID3D11InputLayout*) elem->value
+			);
+			SDL_memmove(
+				arr->elements + i,
+				arr->elements + i + 1,
+				sizeof(PackedVertexBufferBindingsMap) * (arr->count - i - 1)
+			);
+			arr->count -= 1;
+		}
+	}
 
 	MOJOSHADER_d3d11DeleteShader(d3dShader);
 }
@@ -4083,7 +4109,7 @@ static void D3D11_CreateEffect(
 	shaderBackend.getError = MOJOSHADER_d3d11GetError;
 	shaderBackend.m = NULL;
 	shaderBackend.f = NULL;
-	shaderBackend.malloc_data = NULL;
+	shaderBackend.malloc_data = driverData;
 
 	*effectData = MOJOSHADER_compileEffect(
 		effectCode,
@@ -4819,7 +4845,7 @@ try_create_device:
 		renderer->context,
 		NULL,
 		NULL,
-		NULL
+		renderer
 	);
 
 	/* Initialize texture and sampler collections */

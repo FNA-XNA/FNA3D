@@ -9789,7 +9789,7 @@ static void VULKAN_CreateEffect(
 	shaderBackend.unmapUniformBufferMemory = MOJOSHADER_vkUnmapUniformBufferMemory;
 	shaderBackend.m = NULL;
 	shaderBackend.f = NULL;
-	shaderBackend.malloc_data = NULL;
+	shaderBackend.malloc_data = driverData;
 
 	*effectData = MOJOSHADER_compileEffect(
 		effectCode,
@@ -10668,7 +10668,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer->physicalDeviceProperties.properties.limits.minUniformBufferOffsetAlignment,
 		NULL,
 		NULL,
-		NULL
+		renderer
 	);
 	if (renderer->mojoshaderContext != NULL)
 	{

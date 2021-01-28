@@ -3989,7 +3989,7 @@ static void METAL_CreateEffect(
 	shaderBackend.getError = MOJOSHADER_mtlGetError;
 	shaderBackend.m = NULL;
 	shaderBackend.f = NULL;
-	shaderBackend.malloc_data = NULL;
+	shaderBackend.malloc_data = driverData;
 
 	*effectData = MOJOSHADER_compileEffect(
 		effectCode,
@@ -4597,7 +4597,7 @@ FNA3D_Device* METAL_CreateDevice(
 		renderer->device,
 		NULL,
 		NULL,
-		NULL
+		renderer
 	);
 	MOJOSHADER_mtlMakeContextCurrent(renderer->mtlContext);
 

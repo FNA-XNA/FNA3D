@@ -4850,7 +4850,7 @@ static void OPENGL_CreateEffect(
 	shaderBackend.getError = MOJOSHADER_glGetError;
 	shaderBackend.m = NULL;
 	shaderBackend.f = NULL;
-	shaderBackend.malloc_data = NULL;
+	shaderBackend.malloc_data = renderer;
 
 	*effectData = MOJOSHADER_compileEffect(
 		effectCode,
@@ -5853,7 +5853,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 		NULL,
 		NULL,
 		NULL,
-		NULL
+		renderer
 	);
 	MOJOSHADER_glMakeContextCurrent(renderer->shaderContext);
 	FNA3D_LogInfo("MojoShader Profile: %s", renderer->shaderProfile);
