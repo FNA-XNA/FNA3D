@@ -4060,7 +4060,7 @@ static void D3D11_INTERNAL_DeleteShader(void* shader)
 	PackedVertexBufferBindingsArray *arr;
 	int32_t i;
 
-	pd = MOJOSHADER_d3d11GetShaderParseData(shader);
+	pd = MOJOSHADER_d3d11GetShaderParseData(d3dShader);
 	renderer = (D3D11Renderer*) pd->malloc_data;
 	arr = &renderer->inputLayoutCache;
 
