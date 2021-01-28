@@ -3961,8 +3961,52 @@ static void METAL_GetIndexBufferData(
 static void METAL_INTERNAL_DeleteShader(void* shader)
 {
 	MOJOSHADER_mtlShader *mtlShader = (MOJOSHADER_mtlShader*) shader;
+	const MOJOSHADER_parseData *pd;
+	MetalRenderer *renderer;
+	PackedRenderPipelineArray *pArr;
+	PackedVertexBufferBindingsArray *vArr;
+	int32_t i;
 
-	/* TODO: Invalidate cache data that uses this shader! */
+	pd = MOJOSHADER_mtlGetShaderParseData(mtlShader);
+	renderer = (MetalRenderer*) pd->malloc_data;
+	pArr = &renderer->pipelineStateCache;
+	vArr = &renderer->vertexDescriptorCache;
+
+	/* Run through the caches in reverse order, to minimize the damage of
+	 * doing memmove a bunch of times. Also, do the pipeline cache first,
+	 * as they are dependent on the vertex descriptors.
+	 */
+
+	for (i = pArr->count - 1; i >= 0; i -= 1)
+	{
+		const PackedRenderPipelineMap *elem = &pArr->elements[i];
+		if (	shader == elem->key.vshader ||
+			shader == elem->key.pshader	)
+		{
+			objc_release(elem->value);
+			SDL_memmove(
+				pArr->elements + i,
+				pArr->elements + i + 1,
+				sizeof(PackedRenderPipelineMap) * (pArr->count - i - 1)
+			);
+			pArr->count -= 1;
+		}
+	}
+
+	for (i = vArr->count - 1; i >= 0; i -= 1)
+	{
+		const PackedVertexBufferBindingsMap *elem = &vArr->elements[i];
+		if (elem->key.vertexShader == shader)
+		{
+			objc_release(elem->value);
+			SDL_memmove(
+				vArr->elements + i,
+				vArr->elements + i + 1,
+				sizeof(PackedVertexBufferBindingsMap) * (vArr->count - i - 1)
+			);
+			vArr->count -= 1;
+		}
+	}
 
 	MOJOSHADER_mtlDeleteShader(mtlShader);
 }
