@@ -1551,37 +1551,6 @@ static inline uint8_t DepthFormatContainsStencil(VkFormat format)
 	}
 }
 
-static inline uint8_t ImageFormatCanBeCPUAllocated(VkFormat format)
-{
-	switch (format)
-	{
-		case VK_FORMAT_D16_UNORM:
-		case VK_FORMAT_D16_UNORM_S8_UINT:
-		case VK_FORMAT_D32_SFLOAT:
-		case VK_FORMAT_D32_SFLOAT_S8_UINT:
-		case VK_FORMAT_BC1_RGB_SRGB_BLOCK:
-		case VK_FORMAT_BC1_RGBA_SRGB_BLOCK:
-		case VK_FORMAT_BC1_RGB_UNORM_BLOCK:
-		case VK_FORMAT_BC1_RGBA_UNORM_BLOCK:
-		case VK_FORMAT_BC2_SRGB_BLOCK:
-		case VK_FORMAT_BC2_UNORM_BLOCK:
-		case VK_FORMAT_BC3_SRGB_BLOCK:
-		case VK_FORMAT_BC3_UNORM_BLOCK:
-		case VK_FORMAT_BC4_SNORM_BLOCK:
-		case VK_FORMAT_BC4_UNORM_BLOCK:
-		case VK_FORMAT_BC5_SNORM_BLOCK:
-		case VK_FORMAT_BC5_UNORM_BLOCK:
-		case VK_FORMAT_BC6H_SFLOAT_BLOCK:
-		case VK_FORMAT_BC6H_UFLOAT_BLOCK:
-		case VK_FORMAT_BC7_SRGB_BLOCK:
-		case VK_FORMAT_BC7_UNORM_BLOCK:
-			return 0;
-
-		default:
-			return 1;
-	}
-}
-
 static VkBlendFactor XNAToVK_BlendFactor[] =
 {
 	VK_BLEND_FACTOR_ONE, 				/* FNA3D_BLEND_ONE */
@@ -3160,9 +3129,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 
 	if (cpuAllocation)
 	{
-		memoryPropertyFlags =
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		memoryPropertyFlags = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 	}
 	else
 	{
@@ -5558,38 +5525,13 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	/* No device local memory available */
 	if (findMemoryResult == 2)
 	{
-		if (isRenderTarget || !ImageFormatCanBeCPUAllocated(format))
+		if (isRenderTarget)
 		{
-			FNA3D_LogError("Out of device local memory and cannot allocate to host memory!");
+			FNA3D_LogError("Cannot allocate render target to host memory!");
 			return 0;
 		}
 
 		FNA3D_LogWarn("Out of device local memory, falling back to host memory");
-
-		/* CPU-allocated images need linear tiling
-		 * so we have to destroy our original image and recreate
-		 */
-		renderer->vkDestroyImage(
-			renderer->logicalDevice,
-			texture->image,
-			NULL
-		);
-
-		imageCreateInfo.tiling = VK_IMAGE_TILING_LINEAR;
-
-		result = renderer->vkCreateImage(
-			renderer->logicalDevice,
-			&imageCreateInfo,
-			NULL,
-			&texture->image
-		);
-
-		if (result != VK_SUCCESS)
-		{
-			LogVulkanResultAsError("vkCreateImage", result);
-			FNA3D_LogError("Failed to create image with linear tiling");
-			return 0;
-		}
 
 		/* Attempt CPU allocation */
 		findMemoryResult = VULKAN_INTERNAL_FindAvailableTextureMemory(
