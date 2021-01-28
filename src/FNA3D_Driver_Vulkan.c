@@ -7543,7 +7543,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		{
 			pipelineCacheFileName = DEFAULT_PIPELINE_CACHE_FILE_NAME;
 		}
-		if (pipelineCacheFileName[0] != '\0')
+		if (pipelineCacheFileName[0] == '\0')
 		{
 			/* For intentionally empty file names, assume caching is disabled */
 			pipelineCacheFile = NULL;
