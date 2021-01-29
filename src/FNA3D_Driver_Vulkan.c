@@ -3121,7 +3121,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 
 	if (cpuAllocation)
 	{
-		memoryPropertyFlags = VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		memoryPropertyFlags = 0;
 	}
 	else
 	{
