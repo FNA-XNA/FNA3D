@@ -3654,7 +3654,7 @@ static void ShaderResources_Destroy(
 	VulkanRenderer *renderer,
 	ShaderResources *shaderResources
 ) {
-	uint32_t i = 0;
+	uint32_t i;
 
 	for (i = 0; i < shaderResources->samplerDescriptorPoolCount; i += 1)
 	{
@@ -9750,10 +9750,9 @@ static void VULKAN_INTERNAL_DeleteShader(void* shader)
 		pipelineHashArray = &renderer->pipelineHashTable.buckets[i];
 		for (j = pipelineHashArray->count - 1; j >= 0; j -= 1)
 		{
-			if (
-				pipelineHashArray->elements[j].key.vertShader == vkShader ||
-				pipelineHashArray->elements[j].key.fragShader == vkShader
-			) {
+			if (	pipelineHashArray->elements[j].key.vertShader == vkShader ||
+				pipelineHashArray->elements[j].key.fragShader == vkShader	)
+			{
 				renderer->vkDestroyPipeline(
 					renderer->logicalDevice,
 					pipelineHashArray->elements[j].value,
