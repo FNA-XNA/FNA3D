@@ -1162,6 +1162,7 @@ typedef struct VulkanRenderer
 	FNA3D_PrimitiveType currentPrimitiveType;
 
 	VulkanMemoryAllocator *memoryAllocator;
+	VkPhysicalDeviceMemoryProperties memoryProperties;
 
 	VulkanBuffer **buffersInUse;
 	uint32_t numBuffersInUse;
@@ -2115,19 +2116,13 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 	VkMemoryPropertyFlags ignoredProperties,
 	uint32_t *result
 ) {
-	VkPhysicalDeviceMemoryProperties memoryProperties;
 	uint32_t i;
 
-	renderer->vkGetPhysicalDeviceMemoryProperties(
-		renderer->physicalDevice,
-		&memoryProperties
-	);
-
-	for (i = 0; i < memoryProperties.memoryTypeCount; i += 1)
+	for (i = 0; i < renderer->memoryProperties.memoryTypeCount; i += 1)
 	{
 		if (	(typeFilter & (1 << i)) &&
-			(memoryProperties.memoryTypes[i].propertyFlags & requiredProperties) == requiredProperties &&
-			(memoryProperties.memoryTypes[i].propertyFlags & ignoredProperties) == 0	)
+			(renderer->memoryProperties.memoryTypes[i].propertyFlags & requiredProperties) == requiredProperties &&
+			(renderer->memoryProperties.memoryTypes[i].propertyFlags & ignoredProperties) == 0	)
 		{
 			*result = i;
 			return 1;
@@ -2519,6 +2514,11 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 		&renderer->physicalDeviceProperties
 	);
 
+	renderer->vkGetPhysicalDeviceMemoryProperties(
+		renderer->physicalDevice,
+		&renderer->memoryProperties
+	);
+
 	SDL_stack_free(physicalDevices);
 	return 1;
 }
@@ -2809,7 +2809,7 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 	uint32_t memoryTypeIndex,
 	VkDeviceSize allocationSize,
 	uint8_t dedicated,
-	uint8_t cpuAllocation,
+	uint8_t isHostVisible,
 	VulkanMemoryAllocation **pMemoryAllocation
 ) {
 	VulkanMemoryAllocation *allocation;
@@ -2885,7 +2885,7 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 	}
 
 	/* persistent mapping for host memory */
-	if (cpuAllocation)
+	if (isHostVisible)
 	{
 		result = renderer->vkMapMemory(
 			renderer->logicalDevice,
@@ -2920,7 +2920,6 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 	VulkanRenderer *renderer,
 	uint32_t memoryTypeIndex,
-	uint8_t cpuAllocation,
 	VkMemoryRequirements2KHR *memoryRequirements,
 	VkMemoryDedicatedRequirementsKHR *dedicatedRequirements,
 	VkBuffer buffer, /* may be VK_NULL_HANDLE */
@@ -2939,7 +2938,11 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 	uint8_t shouldAllocDedicated =
 		dedicatedRequirements->prefersDedicatedAllocation ||
 		dedicatedRequirements->requiresDedicatedAllocation;
-	uint8_t allocationResult;
+	uint8_t isHostVisible, allocationResult;
+
+	isHostVisible =
+		(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
 
 	allocator = &renderer->memoryAllocator->subAllocators[memoryTypeIndex];
 	requiredSize = memoryRequirements->memoryRequirements.size;
@@ -3021,7 +3024,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 		memoryTypeIndex,
 		allocationSize,
 		shouldAllocDedicated,
-		cpuAllocation,
+		isHostVisible,
 		&allocation
 	);
 
@@ -3092,7 +3095,6 @@ static uint8_t VULKAN_INTERNAL_FindAvailableBufferMemory(
 	return VULKAN_INTERNAL_FindAvailableMemory(
 		renderer,
 		memoryTypeIndex,
-		1,
 		&memoryRequirements,
 		&dedicatedRequirements,
 		buffer,
@@ -3151,7 +3153,6 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 	return VULKAN_INTERNAL_FindAvailableMemory(
 		renderer,
 		memoryTypeIndex,
-		cpuAllocation,
 		&memoryRequirements,
 		&dedicatedRequirements,
 		VK_NULL_HANDLE,
