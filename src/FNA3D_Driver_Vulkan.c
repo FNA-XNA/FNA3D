@@ -2920,7 +2920,6 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 	VulkanRenderer *renderer,
 	uint32_t memoryTypeIndex,
-	uint8_t isHostVisible,
 	VkMemoryRequirements2KHR *memoryRequirements,
 	VkMemoryDedicatedRequirementsKHR *dedicatedRequirements,
 	VkBuffer buffer, /* may be VK_NULL_HANDLE */
@@ -2932,14 +2931,24 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 	VulkanMemoryAllocation *allocation;
 	VulkanMemorySubAllocator *allocator;
 	VulkanMemoryFreeRegion *region;
+	VkPhysicalDeviceMemoryProperties memoryProperties;
 
 	VkDeviceSize requiredSize, allocationSize;
 	VkDeviceSize alignedOffset;
-	uint32_t newRegionSize, newRegionOffset;
+	uint32_t i, newRegionSize, newRegionOffset;
 	uint8_t shouldAllocDedicated =
 		dedicatedRequirements->prefersDedicatedAllocation ||
 		dedicatedRequirements->requiresDedicatedAllocation;
-	uint8_t allocationResult;
+	uint8_t isHostVisible, allocationResult;
+
+	renderer->vkGetPhysicalDeviceMemoryProperties(
+		renderer->physicalDevice,
+		&memoryProperties
+	);
+
+	isHostVisible =
+		(memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
 
 	allocator = &renderer->memoryAllocator->subAllocators[memoryTypeIndex];
 	requiredSize = memoryRequirements->memoryRequirements.size;
@@ -3092,7 +3101,6 @@ static uint8_t VULKAN_INTERNAL_FindAvailableBufferMemory(
 	return VULKAN_INTERNAL_FindAvailableMemory(
 		renderer,
 		memoryTypeIndex,
-		1,
 		&memoryRequirements,
 		&dedicatedRequirements,
 		buffer,
@@ -3151,7 +3159,6 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 	return VULKAN_INTERNAL_FindAvailableMemory(
 		renderer,
 		memoryTypeIndex,
-		0,
 		&memoryRequirements,
 		&dedicatedRequirements,
 		VK_NULL_HANDLE,
