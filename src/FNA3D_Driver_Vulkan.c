@@ -445,7 +445,7 @@ typedef struct ShaderResourcesHashMap
 
 typedef struct ShaderResourcesHashArray
 {
-	uint32_t *elements;
+	ShaderResourcesHashMap *elements;
 	int32_t count;
 	int32_t capacity;
 } ShaderResourcesHashArray;
@@ -454,10 +454,7 @@ typedef struct ShaderResourcesHashArray
 
 typedef struct ShaderResourcesHashTable
 {
-	ShaderResourcesHashArray buckets[NUM_SHADER_RESOURCES_BUCKETS]; /* these buckets store indices */
-	ShaderResourcesHashMap *elements; /* where the hash map elements are stored */
-	uint32_t count;
-	uint32_t capacity;
+	ShaderResourcesHashArray buckets[NUM_SHADER_RESOURCES_BUCKETS];
 } ShaderResourcesHashTable;
 
 static inline ShaderResources *ShaderResourcesHashTable_Fetch(
@@ -470,10 +467,10 @@ static inline ShaderResources *ShaderResourcesHashTable_Fetch(
 
 	for (i = 0; i < arr->count; i += 1)
 	{
-		const MOJOSHADER_vkShader *e = table->elements[arr->elements[i]].key;
+		const MOJOSHADER_vkShader *e = arr->elements[i].key;
 		if (key == e)
 		{
-			return table->elements[arr->elements[i]].value;
+			return arr->elements[i].value;
 		}
 	}
 
@@ -492,15 +489,10 @@ static inline void ShaderResourcesHashTable_Insert(
 	map.key = key;
 	map.value = value;
 
-	EXPAND_ARRAY_IF_NEEDED(arr, 2, uint32_t)
+	EXPAND_ARRAY_IF_NEEDED(arr, 2, ShaderResourcesHashMap)
 
-	arr->elements[arr->count] = table->count;
+	arr->elements[arr->count] = map;
 	arr->count += 1;
-
-	EXPAND_ARRAY_IF_NEEDED(table, 2, ShaderResourcesHashMap);
-
-	table->elements[table->count] = map;
-	table->count += 1;
 }
 
 /* Internal Structures */
@@ -3658,6 +3650,34 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 	return descriptorSetLayout;
 }
 
+static void ShaderResources_Destroy(
+	VulkanRenderer *renderer,
+	ShaderResources *shaderResources
+) {
+	uint32_t i = 0;
+
+	for (i = 0; i < shaderResources->samplerDescriptorPoolCount; i += 1)
+	{
+		renderer->vkDestroyDescriptorPool(
+			renderer->logicalDevice,
+			shaderResources->samplerDescriptorPools[i],
+			NULL
+		);
+	}
+
+	SDL_free(shaderResources->samplerDescriptorPools);
+	SDL_free(shaderResources->samplerBindingIndices);
+	SDL_free(shaderResources->inactiveDescriptorSets);
+	SDL_free(shaderResources->elements);
+
+	for (i = 0; i < NUM_DESCRIPTOR_SET_HASH_BUCKETS; i += 1)
+	{
+		SDL_free(shaderResources->buckets[i].elements);
+	}
+
+	SDL_free(shaderResources);
+}
+
 static ShaderResources *ShaderResources_Init(
 	VulkanRenderer *renderer,
 	MOJOSHADER_vkShader *shader,
@@ -4128,13 +4148,16 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 
 static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer *renderer)
 {
-	uint32_t i;
+	uint32_t i, j;
 	ShaderResources *shaderResources;
 
-	for (i = 0; i < renderer->shaderResourcesHashTable.count; i += 1)
+	for (i = 0; i < NUM_SHADER_RESOURCES_BUCKETS; i += 1)
 	{
-		shaderResources = renderer->shaderResourcesHashTable.elements[i].value;
-		ShaderResources_DeactivateUnusedDescriptorSets(shaderResources);
+		for (j = 0; j < renderer->shaderResourcesHashTable.buckets[i].count; j += 1)
+		{
+			shaderResources = renderer->shaderResourcesHashTable.buckets[i].elements[j].value;
+			ShaderResources_DeactivateUnusedDescriptorSets(shaderResources);
+		}
 	}
 
 	renderer->vertexSamplerDescriptorSetDataNeedsUpdate = 1;
@@ -7591,34 +7614,14 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		}
 	}
 
-	for (i = 0; i < renderer->shaderResourcesHashTable.count; i += 1)
-	{
-		shaderResources = renderer->shaderResourcesHashTable.elements[i].value;
-
-		for (j = 0; j < shaderResources->samplerDescriptorPoolCount; j += 1)
-		{
-			renderer->vkDestroyDescriptorPool(
-				renderer->logicalDevice,
-				shaderResources->samplerDescriptorPools[j],
-				NULL
-			);
-		}
-
-		SDL_free(shaderResources->samplerDescriptorPools);
-		SDL_free(shaderResources->samplerBindingIndices);
-		SDL_free(shaderResources->inactiveDescriptorSets);
-		SDL_free(shaderResources->elements);
-
-		for (j = 0; j < NUM_DESCRIPTOR_SET_HASH_BUCKETS; j += 1)
-		{
-			SDL_free(shaderResources->buckets[j].elements);
-		}
-
-		SDL_free(shaderResources);
-	}
-
 	for (i = 0; i < NUM_SHADER_RESOURCES_BUCKETS; i += 1)
 	{
+		for (j = 0; j < renderer->shaderResourcesHashTable.buckets[i].count; j += 1)
+		{
+			shaderResources = renderer->shaderResourcesHashTable.buckets[i].elements[j].value;
+			ShaderResources_Destroy(renderer, shaderResources);
+		}
+
 		SDL_free(renderer->shaderResourcesHashTable.buckets[i].elements);
 	}
 
@@ -7773,7 +7776,6 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	renderer->vkDestroyDevice(renderer->logicalDevice, NULL);
 	renderer->vkDestroyInstance(renderer->instance, NULL);
 
-	SDL_free(renderer->shaderResourcesHashTable.elements);
 	SDL_free(renderer->renderPassArray.elements);
 	SDL_free(renderer->samplerStateArray.elements);
 
@@ -9701,11 +9703,73 @@ static void VULKAN_GetIndexBufferData(
 
 /* Effects */
 
+static inline void ShaderResourcesHashTable_Remove(
+	VulkanRenderer *renderer,
+	MOJOSHADER_vkShader *key
+) {
+	int32_t i;
+	uint64_t hashcode = (uint64_t) (size_t) key;
+	ShaderResourcesHashArray *arr =
+		&renderer->shaderResourcesHashTable.buckets[hashcode % NUM_SHADER_RESOURCES_BUCKETS];
+	ShaderResourcesHashMap *element;
+
+	for (i = arr->count - 1; i >= 0; i -= 1)
+	{
+		element = &arr->elements[i];
+		if (element->key == key)
+		{
+			ShaderResources_Destroy(renderer, element->value);
+
+			SDL_memmove(
+				arr->elements + i,
+				arr->elements + i + 1,
+				sizeof(ShaderResourcesHashMap) * (arr->count - i - 1)
+			);
+
+			arr->count -= 1;
+		}
+	}
+}
+
 static void VULKAN_INTERNAL_DeleteShader(void* shader)
 {
 	MOJOSHADER_vkShader *vkShader = (MOJOSHADER_vkShader*) shader;
+	const MOJOSHADER_parseData *pd;
+	VulkanRenderer *renderer;
+	PipelineHashArray *pipelineHashArray;
+	int32_t i, j;
 
-	/* TODO: Invalidate cache data that uses this shader! */
+	pd = MOJOSHADER_vkGetShaderParseData(vkShader);
+	renderer = (VulkanRenderer*) pd->malloc_data;
+
+	ShaderResourcesHashTable_Remove(renderer, vkShader);
+
+	/* invalidate any pipeline containing shader */
+	for (i = 0; i < NUM_PIPELINE_HASH_BUCKETS; i += 1)
+	{
+		pipelineHashArray = &renderer->pipelineHashTable.buckets[i];
+		for (j = pipelineHashArray->count - 1; j >= 0; j -= 1)
+		{
+			if (
+				pipelineHashArray->elements[j].key.vertShader == vkShader ||
+				pipelineHashArray->elements[j].key.fragShader == vkShader
+			) {
+				renderer->vkDestroyPipeline(
+					renderer->logicalDevice,
+					pipelineHashArray->elements[j].value,
+					NULL
+				);
+
+				SDL_memmove(
+					pipelineHashArray->elements + j,
+					pipelineHashArray->elements + j + 1,
+					sizeof(PipelineHashMap) * (pipelineHashArray->count - j - 1)
+				);
+
+				pipelineHashArray->count -= 1;
+			}
+		}
+	}
 
 	MOJOSHADER_vkDeleteShader(vkShader);
 }
@@ -10950,9 +11014,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer->shaderResourcesHashTable.buckets[i].elements = NULL;
 		renderer->shaderResourcesHashTable.buckets[i].count = 0;
 		renderer->shaderResourcesHashTable.buckets[i].capacity = 0;
-		renderer->shaderResourcesHashTable.elements = NULL;
-		renderer->shaderResourcesHashTable.count = 0;
-		renderer->shaderResourcesHashTable.capacity = 0;
 	}
 
 	for (i = 0; i < NUM_DESCRIPTOR_SET_LAYOUT_BUCKETS; i += 1)
