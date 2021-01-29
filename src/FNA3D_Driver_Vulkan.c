@@ -5560,8 +5560,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	{
 		if (isRenderTarget)
 		{
-			FNA3D_LogError("Cannot allocate render target to host memory!");
-			return 0;
+			FNA3D_LogWarn("RenderTarget is allocated in host memory, pre-allocate your targets!");
 		}
 
 		FNA3D_LogWarn("Out of device local memory, falling back to host memory");
