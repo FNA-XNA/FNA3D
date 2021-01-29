@@ -2676,7 +2676,6 @@ static void VULKAN_INTERNAL_NewMemoryFreeRegion(
 	VkDeviceSize newOffset, newSize;
 	int32_t insertionIndex = 0;
 	int32_t i;
-	uint8_t regionMerged = 0;
 
 	/* look for an adjacent region to merge */
 	for (i = allocation->freeRegionCount - 1; i >= 0; i -= 1)
@@ -2689,8 +2688,7 @@ static void VULKAN_INTERNAL_NewMemoryFreeRegion(
 
 			VULKAN_INTERNAL_RemoveMemoryFreeRegion(allocation->freeRegions[i]);
 			VULKAN_INTERNAL_NewMemoryFreeRegion(allocation, newOffset, newSize);
-			/* allow fallthrough in case there is also a free region on the right */
-			regionMerged = 1;
+			return;
 		}
 
 		/* check right side */
@@ -2701,11 +2699,6 @@ static void VULKAN_INTERNAL_NewMemoryFreeRegion(
 
 			VULKAN_INTERNAL_RemoveMemoryFreeRegion(allocation->freeRegions[i]);
 			VULKAN_INTERNAL_NewMemoryFreeRegion(allocation, newOffset, newSize);
-			regionMerged = 1;
-		}
-
-		if (regionMerged)
-		{
 			return;
 		}
 	}
