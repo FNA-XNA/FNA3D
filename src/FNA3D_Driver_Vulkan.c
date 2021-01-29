@@ -1162,6 +1162,7 @@ typedef struct VulkanRenderer
 	FNA3D_PrimitiveType currentPrimitiveType;
 
 	VulkanMemoryAllocator *memoryAllocator;
+	VkPhysicalDeviceMemoryProperties memoryProperties;
 
 	VulkanBuffer **buffersInUse;
 	uint32_t numBuffersInUse;
@@ -2115,19 +2116,13 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 	VkMemoryPropertyFlags ignoredProperties,
 	uint32_t *result
 ) {
-	VkPhysicalDeviceMemoryProperties memoryProperties;
 	uint32_t i;
 
-	renderer->vkGetPhysicalDeviceMemoryProperties(
-		renderer->physicalDevice,
-		&memoryProperties
-	);
-
-	for (i = 0; i < memoryProperties.memoryTypeCount; i += 1)
+	for (i = 0; i < renderer->memoryProperties.memoryTypeCount; i += 1)
 	{
 		if (	(typeFilter & (1 << i)) &&
-			(memoryProperties.memoryTypes[i].propertyFlags & requiredProperties) == requiredProperties &&
-			(memoryProperties.memoryTypes[i].propertyFlags & ignoredProperties) == 0	)
+			(renderer->memoryProperties.memoryTypes[i].propertyFlags & requiredProperties) == requiredProperties &&
+			(renderer->memoryProperties.memoryTypes[i].propertyFlags & ignoredProperties) == 0	)
 		{
 			*result = i;
 			return 1;
@@ -2517,6 +2512,11 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	renderer->vkGetPhysicalDeviceProperties2KHR(
 		renderer->physicalDevice,
 		&renderer->physicalDeviceProperties
+	);
+
+	renderer->vkGetPhysicalDeviceMemoryProperties(
+		renderer->physicalDevice,
+		&renderer->memoryProperties
 	);
 
 	SDL_stack_free(physicalDevices);
@@ -2931,23 +2931,17 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 	VulkanMemoryAllocation *allocation;
 	VulkanMemorySubAllocator *allocator;
 	VulkanMemoryFreeRegion *region;
-	VkPhysicalDeviceMemoryProperties memoryProperties;
 
 	VkDeviceSize requiredSize, allocationSize;
 	VkDeviceSize alignedOffset;
-	uint32_t i, newRegionSize, newRegionOffset;
+	uint32_t newRegionSize, newRegionOffset;
 	uint8_t shouldAllocDedicated =
 		dedicatedRequirements->prefersDedicatedAllocation ||
 		dedicatedRequirements->requiresDedicatedAllocation;
 	uint8_t isHostVisible, allocationResult;
 
-	renderer->vkGetPhysicalDeviceMemoryProperties(
-		renderer->physicalDevice,
-		&memoryProperties
-	);
-
 	isHostVisible =
-		(memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
+		(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
 
 	allocator = &renderer->memoryAllocator->subAllocators[memoryTypeIndex];
