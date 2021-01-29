@@ -2754,7 +2754,7 @@ static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
 		renderer,
 		pMemoryRequirements->memoryRequirements.memoryTypeBits,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
+		0,
 		pMemoryTypeIndex
 	)) {
 		FNA3D_LogError(
