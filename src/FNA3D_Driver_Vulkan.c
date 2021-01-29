@@ -2633,16 +2633,75 @@ static inline VkDeviceSize VULKAN_INTERNAL_NextHighestAlignment(
 	return align * ((n + align - 1) / align);
 }
 
-static VulkanMemoryFreeRegion* VULKAN_INTERNAL_NewMemoryFreeRegion(
+static void VULKAN_INTERNAL_RemoveMemoryFreeRegion(
+	VulkanMemoryFreeRegion *freeRegion
+) {
+	uint32_t i;
+
+	/* close the gap in the sorted list */
+	if (freeRegion->allocation->allocator->sortedFreeRegionCount > 1)
+	{
+		for (i = freeRegion->sortedIndex; i < freeRegion->allocation->allocator->sortedFreeRegionCount - 1; i += 1)
+		{
+			freeRegion->allocation->allocator->sortedFreeRegions[i] =
+				freeRegion->allocation->allocator->sortedFreeRegions[i + 1];
+
+			freeRegion->allocation->allocator->sortedFreeRegions[i]->sortedIndex = i;
+		}
+	}
+
+	freeRegion->allocation->allocator->sortedFreeRegionCount -= 1;
+
+	/* close the gap in the buffer list */
+	if (freeRegion->allocation->freeRegionCount > 1 && freeRegion->allocationIndex != freeRegion->allocation->freeRegionCount - 1)
+	{
+		freeRegion->allocation->freeRegions[freeRegion->allocationIndex] =
+			freeRegion->allocation->freeRegions[freeRegion->allocation->freeRegionCount - 1];
+
+		freeRegion->allocation->freeRegions[freeRegion->allocationIndex]->allocationIndex =
+			freeRegion->allocationIndex;
+	}
+
+	freeRegion->allocation->freeRegionCount -= 1;
+
+	SDL_free(freeRegion);
+}
+
+static void VULKAN_INTERNAL_NewMemoryFreeRegion(
 	VulkanMemoryAllocation *allocation,
 	VkDeviceSize offset,
 	VkDeviceSize size
 ) {
 	VulkanMemoryFreeRegion *newFreeRegion;
-	uint32_t insertionIndex = 0;
-	uint32_t i;
+	VkDeviceSize newOffset, newSize;
+	int32_t insertionIndex = 0;
+	int32_t i;
 
-	/* TODO: an improvement here could be to merge contiguous free regions */
+	/* look for an adjacent region to merge */
+	for (i = allocation->freeRegionCount - 1; i >= 0; i -= 1)
+	{
+		if (allocation->freeRegions[i]->offset + size == offset)
+		{
+			newOffset = allocation->freeRegions[i]->offset;
+			newSize = allocation->freeRegions[i]->size + size;
+
+			VULKAN_INTERNAL_RemoveMemoryFreeRegion(allocation->freeRegions[i]);
+			VULKAN_INTERNAL_NewMemoryFreeRegion(allocation, newOffset, newSize);
+			return;
+		}
+
+		if (allocation->freeRegions[i]->offset == offset + size)
+		{
+			newOffset = offset;
+			newSize = allocation->freeRegions[i]->size + size;
+
+			VULKAN_INTERNAL_RemoveMemoryFreeRegion(allocation->freeRegions[i]);
+			VULKAN_INTERNAL_NewMemoryFreeRegion(allocation, newOffset, newSize);
+			return;
+		}
+	}
+
+	/* region is not contiguous with another free region, make a new one */
 	allocation->freeRegionCount += 1;
 	if (allocation->freeRegionCount > allocation->freeRegionCapacity)
 	{
@@ -2694,42 +2753,6 @@ static VulkanMemoryFreeRegion* VULKAN_INTERNAL_NewMemoryFreeRegion(
 	allocation->allocator->sortedFreeRegionCount += 1;
 	allocation->allocator->sortedFreeRegions[insertionIndex] = newFreeRegion;
 	newFreeRegion->sortedIndex = insertionIndex;
-
-	return newFreeRegion;
-}
-
-static void VULKAN_INTERNAL_RemoveMemoryFreeRegion(
-	VulkanMemoryFreeRegion *freeRegion
-) {
-	uint32_t i;
-
-	/* close the gap in the sorted list */
-	if (freeRegion->allocation->allocator->sortedFreeRegionCount > 1)
-	{
-		for (i = freeRegion->sortedIndex; i < freeRegion->allocation->allocator->sortedFreeRegionCount - 1; i += 1)
-		{
-			freeRegion->allocation->allocator->sortedFreeRegions[i] =
-				freeRegion->allocation->allocator->sortedFreeRegions[i + 1];
-
-			freeRegion->allocation->allocator->sortedFreeRegions[i]->sortedIndex = i;
-		}
-	}
-
-	freeRegion->allocation->allocator->sortedFreeRegionCount -= 1;
-
-	/* close the gap in the buffer list */
-	if (freeRegion->allocation->freeRegionCount > 1 && freeRegion->allocationIndex != freeRegion->allocation->freeRegionCount - 1)
-	{
-		freeRegion->allocation->freeRegions[freeRegion->allocationIndex] =
-			freeRegion->allocation->freeRegions[freeRegion->allocation->freeRegionCount - 1];
-
-		freeRegion->allocation->freeRegions[freeRegion->allocationIndex]->allocationIndex =
-			freeRegion->allocationIndex;
-	}
-
-	freeRegion->allocation->freeRegionCount -= 1;
-
-	SDL_free(freeRegion);
 }
 
 static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
