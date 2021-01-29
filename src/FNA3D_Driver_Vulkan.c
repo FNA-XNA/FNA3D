@@ -2680,7 +2680,8 @@ static void VULKAN_INTERNAL_NewMemoryFreeRegion(
 	/* look for an adjacent region to merge */
 	for (i = allocation->freeRegionCount - 1; i >= 0; i -= 1)
 	{
-		if (allocation->freeRegions[i]->offset + size == offset)
+		/* check left side */
+		if (allocation->freeRegions[i]->offset + allocation->freeRegions[i]->size == offset)
 		{
 			newOffset = allocation->freeRegions[i]->offset;
 			newSize = allocation->freeRegions[i]->size + size;
@@ -2690,6 +2691,7 @@ static void VULKAN_INTERNAL_NewMemoryFreeRegion(
 			return;
 		}
 
+		/* check right side */
 		if (allocation->freeRegions[i]->offset == offset + size)
 		{
 			newOffset = offset;
