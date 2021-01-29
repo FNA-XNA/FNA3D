@@ -2111,7 +2111,8 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
 static uint8_t VULKAN_INTERNAL_FindMemoryType(
 	VulkanRenderer *renderer,
 	uint32_t typeFilter,
-	VkMemoryPropertyFlags properties,
+	VkMemoryPropertyFlags requiredProperties,
+	VkMemoryPropertyFlags ignoredProperties,
 	uint32_t *result
 ) {
 	VkPhysicalDeviceMemoryProperties memoryProperties;
@@ -2125,14 +2126,15 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 	for (i = 0; i < memoryProperties.memoryTypeCount; i += 1)
 	{
 		if (	(typeFilter & (1 << i)) &&
-			(memoryProperties.memoryTypes[i].propertyFlags & properties) == properties	)
+			(memoryProperties.memoryTypes[i].propertyFlags & requiredProperties) == requiredProperties &&
+			(memoryProperties.memoryTypes[i].propertyFlags & ignoredProperties) == 0	)
 		{
 			*result = i;
 			return 1;
 		}
 	}
 
-	FNA3D_LogError("Failed to find memory properties %X, filter %X", properties, typeFilter);
+	FNA3D_LogError("Failed to find memory properties %X, required %X, ignored %X", requiredProperties, ignoredProperties, typeFilter);
 	return 0;
 }
 
@@ -2752,6 +2754,7 @@ static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
 		renderer,
 		pMemoryRequirements->memoryRequirements.memoryTypeBits,
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT,
 		pMemoryTypeIndex
 	)) {
 		FNA3D_LogError(
@@ -2766,7 +2769,8 @@ static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
 static uint8_t VULKAN_INTERNAL_FindImageMemoryRequirements(
 	VulkanRenderer *renderer,
 	VkImage image,
-	VkMemoryPropertyFlags memoryPropertyFlags,
+	VkMemoryPropertyFlags requiredMemoryPropertyFlags,
+	VkMemoryPropertyFlags ignoredMemoryPropertyFlags,
 	VkMemoryRequirements2KHR *pMemoryRequirements,
 	uint32_t *pMemoryTypeIndex
 ) {
@@ -2785,7 +2789,8 @@ static uint8_t VULKAN_INTERNAL_FindImageMemoryRequirements(
 	if (!VULKAN_INTERNAL_FindMemoryType(
 		renderer,
 		pMemoryRequirements->memoryRequirements.memoryTypeBits,
-		memoryPropertyFlags,
+		requiredMemoryPropertyFlags,
+		ignoredMemoryPropertyFlags,
 		pMemoryTypeIndex
 	)) {
 		FNA3D_LogError(
@@ -3107,7 +3112,8 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 	VkDeviceSize *pSize
 ) {
 	uint32_t memoryTypeIndex;
-	VkMemoryPropertyFlags memoryPropertyFlags;
+	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
+	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
 	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
 	{
 		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
@@ -3121,17 +3127,20 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 
 	if (cpuAllocation)
 	{
-		memoryPropertyFlags = 0;
+		requiredMemoryPropertyFlags = 0;
+		ignoredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	}
 	else
 	{
-		memoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+		requiredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+		ignoredMemoryPropertyFlags = 0;
 	}
 
 	if (!VULKAN_INTERNAL_FindImageMemoryRequirements(
 		renderer,
 		image,
-		memoryPropertyFlags,
+		requiredMemoryPropertyFlags,
+		ignoredMemoryPropertyFlags,
 		&memoryRequirements,
 		&memoryTypeIndex
 	)) {
