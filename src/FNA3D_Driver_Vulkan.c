@@ -5771,7 +5771,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 
 	SDL_LockMutex(renderer->passLock);
 
-	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, BytesPerImage(w, h, vulkanTexture->surfaceFormat));
+	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, BytesPerImage(w, h, vulkanTexture->colorFormat));
 
  	stagingBufferPointer =
 		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
@@ -8944,7 +8944,7 @@ static void VULKAN_SetTextureData2D(
 	SDL_LockMutex(renderer->passLock);
 	SDL_LockMutex(renderer->stagingLock);
 
-	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, BytesPerImage(w, h, vulkanTexture->surfaceFormat));
+	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, BytesPerImage(w, h, vulkanTexture->colorFormat));
 
  	stagingBufferPointer =
 		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
@@ -9097,7 +9097,7 @@ static void VULKAN_SetTextureDataCube(
 	SDL_LockMutex(renderer->passLock);
 	SDL_LockMutex(renderer->stagingLock);
 
-	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, BytesPerImage(w, h, vulkanTexture->surfaceFormat));
+	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, BytesPerImage(w, h, vulkanTexture->colorFormat));
 
  	stagingBufferPointer =
 		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
