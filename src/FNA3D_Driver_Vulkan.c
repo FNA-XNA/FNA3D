@@ -7467,10 +7467,11 @@ static VkSampler VULKAN_INTERNAL_FetchSamplerState(
 		samplerState->addressW
 	];
 	createInfo.mipLodBias = samplerState->mipMapLevelOfDetailBias;
-	createInfo.anisotropyEnable = 0; /* FIXME: 1 when > 1.0f? */
-	createInfo.maxAnisotropy = (samplerState->filter == FNA3D_TEXTUREFILTER_ANISOTROPIC) ?
-		(float) SDL_max(1, samplerState->maxAnisotropy) :
-		1.0f;
+	createInfo.anisotropyEnable = (samplerState->filter == FNA3D_TEXTUREFILTER_ANISOTROPIC);
+	createInfo.maxAnisotropy = SDL_min(
+		SDL_max(1.0f, (float) samplerState->maxAnisotropy),
+		renderer->physicalDeviceProperties.properties.limits.maxSamplerAnisotropy
+	);
 	createInfo.compareEnable = 0;
 	createInfo.compareOp = 0;
 	createInfo.minLod = (float) samplerState->maxMipLevel;
