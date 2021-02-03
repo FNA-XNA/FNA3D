@@ -1173,6 +1173,7 @@ typedef struct VulkanRenderer
 	uint32_t maxSubmittedBuffers;
 
 	VulkanBuffer *textureStagingBuffer;
+	VkDeviceSize textureStagingBufferOffset;
 
 	uint32_t numVertexBindings;
 	FNA3D_VertexBufferBinding *vertexBindings;
@@ -4630,6 +4631,9 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	/* Rotate the UBOs */
 	MOJOSHADER_vkEndFrame();
 
+	/* Reset the texture staging buffer */
+	renderer->textureStagingBufferOffset = 0;
+
 	/* Mark active command buffers as submitted */
 	for (i = 0; i < renderer->activeCommandBufferCount; i += 1)
 	{
@@ -5506,16 +5510,25 @@ static void VULKAN_INTERNAL_MaybeExpandStagingBuffer(
 	VulkanRenderer *renderer,
 	VkDeviceSize size
 ) {
-	if (size <= renderer->textureStagingBuffer->size)
+	VkDeviceSize nextStagingSize = renderer->textureStagingBuffer->size;
+
+	if (renderer->textureStagingBufferOffset + size <= renderer->textureStagingBuffer->size)
 	{
 		return;
+	}
+
+	VULKAN_INTERNAL_FlushCommands(renderer, 1);
+
+	while (nextStagingSize < size)
+	{
+		nextStagingSize *= 2;
 	}
 
 	VULKAN_INTERNAL_DestroyTextureStagingBuffer(renderer);
 
 	renderer->textureStagingBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
 		renderer,
-		size,
+		nextStagingSize,
 		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
 	);
@@ -5781,7 +5794,8 @@ static void VULKAN_INTERNAL_GetTextureData(
 
  	stagingBufferPointer =
 		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
-		renderer->textureStagingBuffer->subBuffers[0]->offset;
+		renderer->textureStagingBuffer->subBuffers[0]->offset +
+		renderer->textureStagingBufferOffset;
 
 	/* Cache this so we can restore it later */
 	prevResourceAccess = vulkanTexture->resourceAccessType;
@@ -5804,8 +5818,6 @@ static void VULKAN_INTERNAL_GetTextureData(
 	imageCopy.imageExtent.width = w;
 	imageCopy.imageExtent.height = h;
 	imageCopy.imageExtent.depth = 1;
-	imageCopy.bufferRowLength = w;
-	imageCopy.bufferImageHeight = h;
 	imageCopy.imageOffset.x = x;
 	imageCopy.imageOffset.y = y;
 	imageCopy.imageOffset.z = 0;
@@ -5813,7 +5825,9 @@ static void VULKAN_INTERNAL_GetTextureData(
 	imageCopy.imageSubresource.baseArrayLayer = layer;
 	imageCopy.imageSubresource.layerCount = 1;
 	imageCopy.imageSubresource.mipLevel = level;
-	imageCopy.bufferOffset = 0;
+	imageCopy.bufferOffset = renderer->textureStagingBufferOffset;
+	imageCopy.bufferRowLength = w;
+	imageCopy.bufferImageHeight = h;
 
 	RECORD_CMD(renderer->vkCmdCopyImageToBuffer(
 		renderer->currentCommandBuffer,
@@ -8963,7 +8977,8 @@ static void VULKAN_INTERNAL_SetTextureData(
 
  	stagingBufferPointer =
 		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
-		renderer->textureStagingBuffer->subBuffers[0]->offset;
+		renderer->textureStagingBuffer->subBuffers[0]->offset +
+		renderer->textureStagingBufferOffset;
 
 	SDL_memcpy(
 		stagingBufferPointer,
@@ -8994,7 +9009,7 @@ static void VULKAN_INTERNAL_SetTextureData(
 	imageCopy.imageSubresource.baseArrayLayer = layer;
 	imageCopy.imageSubresource.layerCount = 1;
 	imageCopy.imageSubresource.mipLevel = level;
-	imageCopy.bufferOffset = 0;
+	imageCopy.bufferOffset = renderer->textureStagingBufferOffset;
 	imageCopy.bufferRowLength = 0;
 	imageCopy.bufferImageHeight = 0;
 
@@ -9007,7 +9022,7 @@ static void VULKAN_INTERNAL_SetTextureData(
 		&imageCopy
 	));
 
-	VULKAN_INTERNAL_FlushCommands(renderer, 1);
+	renderer->textureStagingBufferOffset += copyLength;
 
 	SDL_UnlockMutex(renderer->stagingLock);
 	SDL_UnlockMutex(renderer->passLock);
@@ -9126,7 +9141,8 @@ static void VULKAN_SetTextureDataYUV(
 
  	stagingBufferPointer =
 		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
-		renderer->textureStagingBuffer->subBuffers[0]->offset;
+		renderer->textureStagingBuffer->subBuffers[0]->offset +
+		renderer->textureStagingBufferOffset;
 
 	/* Initialize values that are the same for Y, U, and V */
 
@@ -9138,7 +9154,6 @@ static void VULKAN_SetTextureDataYUV(
 	imageCopy.imageSubresource.baseArrayLayer = 0;
 	imageCopy.imageSubresource.layerCount = 1;
 	imageCopy.imageSubresource.mipLevel = 0;
-	imageCopy.bufferOffset = 0;
 
 	/* Y */
 
@@ -9165,6 +9180,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	imageCopy.imageExtent.width = yWidth;
 	imageCopy.imageExtent.height = yHeight;
+	imageCopy.bufferOffset = renderer->textureStagingBufferOffset;
 	imageCopy.bufferRowLength = yWidth;
 	imageCopy.bufferImageHeight = yHeight;
 
@@ -9186,7 +9202,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	/* U */
 
-	imageCopy.bufferOffset = yDataLength;
+	imageCopy.bufferOffset = renderer->textureStagingBufferOffset + yDataLength;
 
 	tex = (VulkanTexture*) u;
 
@@ -9220,7 +9236,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	/* V */
 
-	imageCopy.bufferOffset = yDataLength + uvDataLength;
+	imageCopy.bufferOffset = renderer->textureStagingBufferOffset + yDataLength + uvDataLength;
 
 	tex = (VulkanTexture*) v;
 
@@ -9229,6 +9245,8 @@ static void VULKAN_SetTextureDataYUV(
 		dataPtr + yDataLength + uvDataLength,
 		uvDataLength
 	);
+
+	renderer->textureStagingBufferOffset += yDataLength + uvDataLength;
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
@@ -10524,6 +10542,8 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
 	);
+
+	renderer->textureStagingBufferOffset = 0;
 
 	/*
 	 * Choose depth formats
