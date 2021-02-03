@@ -2493,7 +2493,6 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	}
 	else
 	{
-		FNA3D_LogError("No suitable physical devices found");
 		SDL_stack_free(physicalDevices);
 		return 0;
 	}
