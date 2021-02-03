@@ -8945,12 +8945,13 @@ static void VULKAN_INTERNAL_SetTextureData(
 	int32_t dataLength
 ) {
 	VkBufferImageCopy imageCopy;
-	int32_t copyLength = SDL_min(dataLength, texture->memorySize);
+	int32_t levelSize = texture->memorySize >> level;
+	int32_t copyLength = SDL_min(dataLength, levelSize);
 	uint8_t *stagingBufferPointer;
 
 	if (dataLength > texture->memorySize)
 	{
-		FNA3D_LogWarn("dataLength %i too long for texture size %i", dataLength, texture->memorySize);
+		FNA3D_LogWarn("dataLength %i too long for texture size %i", dataLength, levelSize);
 	}
 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
