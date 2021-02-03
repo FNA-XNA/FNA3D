@@ -93,7 +93,7 @@ static const uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames)
 #define STARTING_ALLOCATION_SIZE 64000000 /* 64MB */
 #define MAX_ALLOCATION_SIZE 256000000 /* 256MB */
 #define TEXTURE_STAGING_SIZE 8000000 /* 8MB */
-#define MAX_TEXTURE_STAGING_SIZE MAX_ALLOCATION_SIZE
+#define MAX_TEXTURE_STAGING_SIZE 128000000 /* 128MB */
 
 /* Should be equivalent to the number of values in FNA3D_PrimitiveType */
 #define PRIMITIVE_TYPES_COUNT 5
@@ -1175,6 +1175,7 @@ typedef struct VulkanRenderer
 
 	VulkanBuffer *textureStagingBuffer;
 	VkDeviceSize textureStagingBufferOffset;
+	uint32_t textureStagingSubBufferIndex;
 
 	uint32_t numVertexBindings;
 	FNA3D_VertexBufferBinding *vertexBindings;
@@ -4634,6 +4635,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 	/* Reset the texture staging buffer */
 	renderer->textureStagingBufferOffset = 0;
+	renderer->textureStagingSubBufferIndex = (renderer->textureStagingSubBufferIndex + 1) % 2;
 
 	/* Mark active command buffers as submitted */
 	for (i = 0; i < renderer->activeCommandBufferCount; i += 1)
@@ -5541,6 +5543,9 @@ static void VULKAN_INTERNAL_MaybeExpandStagingBuffer(
 			RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
 			VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
 		);
+
+		/* we want two sub-buffers for frame-in-flight support */
+		VULKAN_INTERNAL_AllocateSubBuffer(renderer, renderer->textureStagingBuffer);
 	}
 }
 
@@ -5791,6 +5796,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
+	VulkanSubBuffer *stagingSubBuffer;
 	VulkanResourceAccessType prevResourceAccess;
 	VkBufferImageCopy imageCopy;
 	uint8_t *dataPtr = (uint8_t*) data;
@@ -5803,9 +5809,11 @@ static void VULKAN_INTERNAL_GetTextureData(
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, BytesPerImage(w, h, vulkanTexture->colorFormat));
 
+	stagingSubBuffer = renderer->textureStagingBuffer->subBuffers[renderer->textureStagingSubBufferIndex];
+
  	stagingBufferPointer =
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
-		renderer->textureStagingBuffer->subBuffers[0]->offset +
+		stagingSubBuffer->allocation->mapPointer +
+		stagingSubBuffer->offset +
 		renderer->textureStagingBufferOffset;
 
 	/* Cache this so we can restore it later */
@@ -5844,7 +5852,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 		renderer->currentCommandBuffer,
 		vulkanTexture->image,
 		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
-		renderer->textureStagingBuffer->subBuffers[0]->buffer,
+		stagingSubBuffer->buffer,
 		1,
 		&imageCopy
 	));
@@ -8967,6 +8975,7 @@ static void VULKAN_INTERNAL_SetTextureData(
 	void *data,
 	int32_t dataLength
 ) {
+	VulkanSubBuffer *stagingSubBuffer;
 	VkBufferImageCopy imageCopy;
 	int32_t uploadLength = BytesPerImage(w, h, texture->colorFormat) * d;
 	int32_t copyLength = SDL_min(dataLength, uploadLength);
@@ -8990,9 +8999,11 @@ static void VULKAN_INTERNAL_SetTextureData(
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, uploadLength);
 
+	stagingSubBuffer = renderer->textureStagingBuffer->subBuffers[renderer->textureStagingSubBufferIndex];
+
  	stagingBufferPointer =
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
-		renderer->textureStagingBuffer->subBuffers[0]->offset +
+		stagingSubBuffer->allocation->mapPointer +
+		stagingSubBuffer->offset +
 		renderer->textureStagingBufferOffset;
 
 	SDL_memcpy(
@@ -9030,7 +9041,7 @@ static void VULKAN_INTERNAL_SetTextureData(
 
 	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
 		renderer->currentCommandBuffer,
-		renderer->textureStagingBuffer->subBuffers[0]->buffer,
+		stagingSubBuffer->buffer,
 		texture->image,
 		AccessMap[texture->resourceAccessType].imageLayout,
 		1,
@@ -9141,6 +9152,7 @@ static void VULKAN_SetTextureDataYUV(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *tex;
+	VulkanSubBuffer *stagingSubBuffer;
 	uint8_t *dataPtr = (uint8_t*) data;
 	int32_t yDataLength = BytesPerImage(yWidth, yHeight, FNA3D_SURFACEFORMAT_ALPHA8);
 	int32_t uvDataLength = BytesPerImage(uvWidth, uvHeight, FNA3D_SURFACEFORMAT_ALPHA8);
@@ -9154,9 +9166,11 @@ static void VULKAN_SetTextureDataYUV(
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, yDataLength + uvDataLength * 2);
 
+	stagingSubBuffer = renderer->textureStagingBuffer->subBuffers[renderer->textureStagingSubBufferIndex];
+
  	stagingBufferPointer =
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
-		renderer->textureStagingBuffer->subBuffers[0]->offset +
+		stagingSubBuffer->allocation->mapPointer +
+		stagingSubBuffer->offset +
 		renderer->textureStagingBufferOffset;
 
 	/* Initialize values that are the same for Y, U, and V */
@@ -9201,7 +9215,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
 		renderer->currentCommandBuffer,
-		renderer->textureStagingBuffer->subBuffers[0]->buffer,
+		stagingSubBuffer->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
 		1,
@@ -9242,7 +9256,7 @@ static void VULKAN_SetTextureDataYUV(
 
 	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
 		renderer->currentCommandBuffer,
-		renderer->textureStagingBuffer->subBuffers[0]->buffer,
+		stagingSubBuffer->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
 		1,
@@ -9278,14 +9292,12 @@ static void VULKAN_SetTextureDataYUV(
 
 	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
 		renderer->currentCommandBuffer,
-		renderer->textureStagingBuffer->subBuffers[0]->buffer,
+		stagingSubBuffer->buffer,
 		tex->image,
 		AccessMap[tex->resourceAccessType].imageLayout,
 		1,
 		&imageCopy
 	));
-
-	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 
 	SDL_UnlockMutex(renderer->stagingLock);
 	SDL_UnlockMutex(renderer->passLock);
@@ -10558,7 +10570,11 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
 	);
 
+	/* we want two sub-buffers for frame-in-flight */
+	VULKAN_INTERNAL_AllocateSubBuffer(renderer, renderer->textureStagingBuffer);
+
 	renderer->textureStagingBufferOffset = 0;
+	renderer->textureStagingSubBufferIndex = 0;
 
 	/*
 	 * Choose depth formats
