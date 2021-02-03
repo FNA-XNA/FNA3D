@@ -93,6 +93,7 @@ static const uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames)
 #define STARTING_ALLOCATION_SIZE 64000000 /* 64MB */
 #define MAX_ALLOCATION_SIZE 256000000 /* 256MB */
 #define TEXTURE_STAGING_SIZE 8000000 /* 8MB */
+#define MAX_TEXTURE_STAGING_SIZE MAX_ALLOCATION_SIZE
 
 /* Should be equivalent to the number of values in FNA3D_PrimitiveType */
 #define PRIMITIVE_TYPES_COUNT 5
@@ -4702,6 +4703,7 @@ static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync
 {
 	SDL_LockMutex(renderer->passLock);
 	SDL_LockMutex(renderer->commandLock);
+	SDL_LockMutex(renderer->stagingLock);
 
 	VULKAN_INTERNAL_SubmitCommands(renderer, 0);
 
@@ -4718,6 +4720,7 @@ static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync
 
 	SDL_UnlockMutex(renderer->passLock);
 	SDL_UnlockMutex(renderer->commandLock);
+	SDL_UnlockMutex(renderer->stagingLock);
 }
 
 static void VULKAN_INTERNAL_FlushCommandsAndPresent(
@@ -4728,6 +4731,7 @@ static void VULKAN_INTERNAL_FlushCommandsAndPresent(
 ) {
 	SDL_LockMutex(renderer->passLock);
 	SDL_LockMutex(renderer->commandLock);
+	SDL_LockMutex(renderer->stagingLock);
 
 	renderer->presentSourceRectangle = sourceRectangle;
 	renderer->presentDestinationRectangle = destinationRectangle;
@@ -4737,6 +4741,7 @@ static void VULKAN_INTERNAL_FlushCommandsAndPresent(
 
 	SDL_UnlockMutex(renderer->passLock);
 	SDL_UnlockMutex(renderer->commandLock);
+	SDL_UnlockMutex(renderer->stagingLock);
 }
 
 /* Vulkan: Memory Barriers */
@@ -5519,19 +5524,24 @@ static void VULKAN_INTERNAL_MaybeExpandStagingBuffer(
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 
-	while (nextStagingSize < size)
+	if (renderer->textureStagingBuffer->size < MAX_TEXTURE_STAGING_SIZE)
 	{
 		nextStagingSize *= 2;
+
+		while (nextStagingSize < size)
+		{
+			nextStagingSize *= 2;
+		}
+
+		VULKAN_INTERNAL_DestroyTextureStagingBuffer(renderer);
+
+		renderer->textureStagingBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
+			renderer,
+			nextStagingSize,
+			RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+		);
 	}
-
-	VULKAN_INTERNAL_DestroyTextureStagingBuffer(renderer);
-
-	renderer->textureStagingBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
-		renderer,
-		nextStagingSize,
-		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
-		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
-	);
 }
 
 static uint8_t VULKAN_INTERNAL_CreateTexture(
@@ -5789,6 +5799,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
 
 	SDL_LockMutex(renderer->passLock);
+	SDL_LockMutex(renderer->stagingLock);
 
 	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, BytesPerImage(w, h, vulkanTexture->colorFormat));
 
@@ -5856,8 +5867,6 @@ static void VULKAN_INTERNAL_GetTextureData(
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 
 	/* Read from staging buffer */
-
-	SDL_LockMutex(renderer->stagingLock);
 
 	SDL_memcpy(
 		dataPtr,
@@ -8959,13 +8968,19 @@ static void VULKAN_INTERNAL_SetTextureData(
 	int32_t dataLength
 ) {
 	VkBufferImageCopy imageCopy;
-	int32_t levelSize = texture->memorySize >> level;
-	int32_t copyLength = SDL_min(dataLength, levelSize);
+	int32_t uploadLength = BytesPerImage(w, h, texture->colorFormat) * d;
+	int32_t copyLength = SDL_min(dataLength, uploadLength);
 	uint8_t *stagingBufferPointer;
 
-	if (dataLength > texture->memorySize)
+	if (dataLength > uploadLength)
 	{
-		FNA3D_LogWarn("dataLength %i too long for texture size %i", dataLength, levelSize);
+		FNA3D_LogWarn(
+			"dataLength %i too long for texture upload, w: %i, h: %i, max upload length: %i",
+			dataLength,
+			w,
+			h,
+			uploadLength
+		);
 	}
 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
@@ -8973,7 +8988,7 @@ static void VULKAN_INTERNAL_SetTextureData(
 	SDL_LockMutex(renderer->passLock);
 	SDL_LockMutex(renderer->stagingLock);
 
-	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, copyLength);
+	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, uploadLength);
 
  	stagingBufferPointer =
 		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
@@ -9010,8 +9025,8 @@ static void VULKAN_INTERNAL_SetTextureData(
 	imageCopy.imageSubresource.layerCount = 1;
 	imageCopy.imageSubresource.mipLevel = level;
 	imageCopy.bufferOffset = renderer->textureStagingBufferOffset;
-	imageCopy.bufferRowLength = 0;
-	imageCopy.bufferImageHeight = 0;
+	imageCopy.bufferRowLength = w;
+	imageCopy.bufferImageHeight = h;
 
 	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
 		renderer->currentCommandBuffer,
@@ -9022,7 +9037,7 @@ static void VULKAN_INTERNAL_SetTextureData(
 		&imageCopy
 	));
 
-	renderer->textureStagingBufferOffset += copyLength;
+	renderer->textureStagingBufferOffset += uploadLength;
 
 	SDL_UnlockMutex(renderer->stagingLock);
 	SDL_UnlockMutex(renderer->passLock);
@@ -9137,7 +9152,7 @@ static void VULKAN_SetTextureDataYUV(
 	SDL_LockMutex(renderer->passLock);
 	SDL_LockMutex(renderer->stagingLock);
 
-	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, yDataLength + uvDataLength);
+	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, yDataLength + uvDataLength * 2);
 
  	stagingBufferPointer =
 		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
@@ -9246,7 +9261,7 @@ static void VULKAN_SetTextureDataYUV(
 		uvDataLength
 	);
 
-	renderer->textureStagingBufferOffset += yDataLength + uvDataLength;
+	renderer->textureStagingBufferOffset += yDataLength + uvDataLength * 2;
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
