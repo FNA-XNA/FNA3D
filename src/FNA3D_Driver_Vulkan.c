@@ -8930,6 +8930,88 @@ static void VULKAN_AddDisposeTexture(
 	SDL_UnlockMutex(renderer->disposeLock);
 }
 
+static void VULKAN_INTERNAL_SetTextureData(
+	VulkanRenderer *renderer,
+	VulkanTexture *texture,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t w,
+	int32_t h,
+	int32_t d,
+	int32_t level,
+	int32_t layer,
+	void *data,
+	int32_t dataLength
+) {
+	VkBufferImageCopy imageCopy;
+	int32_t copyLength = SDL_min(dataLength, texture->memorySize);
+	uint8_t *stagingBufferPointer;
+
+	if (dataLength > texture->memorySize)
+	{
+		FNA3D_LogWarn("dataLength %i too long for texture size %i", dataLength, texture->memorySize);
+	}
+
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
+
+	SDL_LockMutex(renderer->passLock);
+	SDL_LockMutex(renderer->stagingLock);
+
+	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, copyLength);
+
+ 	stagingBufferPointer =
+		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
+		renderer->textureStagingBuffer->subBuffers[0]->offset;
+
+	SDL_memcpy(
+		stagingBufferPointer,
+		data,
+		copyLength
+	);
+
+	VULKAN_INTERNAL_ImageMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_TRANSFER_WRITE,
+		VK_IMAGE_ASPECT_COLOR_BIT,
+		0,
+		texture->layerCount,
+		0,
+		texture->levelCount,
+		0,
+		texture->image,
+		&texture->resourceAccessType
+	);
+
+	imageCopy.imageExtent.width = w;
+	imageCopy.imageExtent.height = h;
+	imageCopy.imageExtent.depth = d;
+	imageCopy.imageOffset.x = x;
+	imageCopy.imageOffset.y = y;
+	imageCopy.imageOffset.z = z;
+	imageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	imageCopy.imageSubresource.baseArrayLayer = layer;
+	imageCopy.imageSubresource.layerCount = 1;
+	imageCopy.imageSubresource.mipLevel = level;
+	imageCopy.bufferOffset = 0;
+	imageCopy.bufferRowLength = 0;
+	imageCopy.bufferImageHeight = 0;
+
+	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
+		renderer->currentCommandBuffer,
+		renderer->textureStagingBuffer->subBuffers[0]->buffer,
+		texture->image,
+		AccessMap[texture->resourceAccessType].imageLayout,
+		1,
+		&imageCopy
+	));
+
+	VULKAN_INTERNAL_FlushCommands(renderer, 1);
+
+	SDL_UnlockMutex(renderer->stagingLock);
+	SDL_UnlockMutex(renderer->passLock);
+}
+
 static void VULKAN_SetTextureData2D(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture,
@@ -8941,68 +9023,20 @@ static void VULKAN_SetTextureData2D(
 	void* data,
 	int32_t dataLength
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
-	VkBufferImageCopy imageCopy;
-	uint8_t *stagingBufferPointer;
-
-	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
-
-	SDL_LockMutex(renderer->passLock);
-	SDL_LockMutex(renderer->stagingLock);
-
-	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, BytesPerImage(w, h, vulkanTexture->colorFormat));
-
- 	stagingBufferPointer =
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
-		renderer->textureStagingBuffer->subBuffers[0]->offset;
-
-	SDL_memcpy(
-		stagingBufferPointer,
+	VULKAN_INTERNAL_SetTextureData(
+		(VulkanRenderer*) driverData,
+		(VulkanTexture*) texture,
+		x,
+		y,
+		0,
+		w,
+		h,
+		1,
+		level,
+		0,
 		data,
 		dataLength
 	);
-
-	VULKAN_INTERNAL_ImageMemoryBarrier(
-		renderer,
-		RESOURCE_ACCESS_TRANSFER_WRITE,
-		VK_IMAGE_ASPECT_COLOR_BIT,
-		0,
-		vulkanTexture->layerCount,
-		0,
-		vulkanTexture->levelCount,
-		0,
-		vulkanTexture->image,
-		&vulkanTexture->resourceAccessType
-	);
-
-	imageCopy.imageExtent.width = w;
-	imageCopy.imageExtent.height = h;
-	imageCopy.imageExtent.depth = 1;
-	imageCopy.imageOffset.x = x;
-	imageCopy.imageOffset.y = y;
-	imageCopy.imageOffset.z = 0;
-	imageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	imageCopy.imageSubresource.baseArrayLayer = 0;
-	imageCopy.imageSubresource.layerCount = 1;
-	imageCopy.imageSubresource.mipLevel = level;
-	imageCopy.bufferOffset = 0;
-	imageCopy.bufferRowLength = 0;
-	imageCopy.bufferImageHeight = 0;
-
-	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
-		renderer->currentCommandBuffer,
-		renderer->textureStagingBuffer->subBuffers[0]->buffer,
-		vulkanTexture->image,
-		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
-		1,
-		&imageCopy
-	));
-
-	VULKAN_INTERNAL_FlushCommands(renderer, 1);
-
-	SDL_UnlockMutex(renderer->stagingLock);
-	SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_SetTextureData3D(
@@ -9018,68 +9052,20 @@ static void VULKAN_SetTextureData3D(
 	void* data,
 	int32_t dataLength
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
-	VkBufferImageCopy imageCopy;
-	uint8_t *stagingBufferPointer;
-
-	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
-
- 	stagingBufferPointer =
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
-		renderer->textureStagingBuffer->subBuffers[0]->offset;
-
-	SDL_LockMutex(renderer->passLock);
-	SDL_LockMutex(renderer->stagingLock);
-
-	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, BytesPerImage(w, h, vulkanTexture->colorFormat));
-
-	SDL_memcpy(
-		stagingBufferPointer,
+	VULKAN_INTERNAL_SetTextureData(
+		(VulkanRenderer*) driverData,
+		(VulkanTexture*) texture,
+		x,
+		y,
+		z,
+		w,
+		h,
+		d,
+		level,
+		0,
 		data,
 		dataLength
 	);
-
-	VULKAN_INTERNAL_ImageMemoryBarrier(
-		renderer,
-		RESOURCE_ACCESS_TRANSFER_WRITE,
-		VK_IMAGE_ASPECT_COLOR_BIT,
-		0,
-		vulkanTexture->layerCount,
-		0,
-		vulkanTexture->levelCount,
-		0,
-		vulkanTexture->image,
-		&vulkanTexture->resourceAccessType
-	);
-
-	imageCopy.imageExtent.width = w;
-	imageCopy.imageExtent.height = h;
-	imageCopy.imageExtent.depth = d;
-	imageCopy.imageOffset.x = x;
-	imageCopy.imageOffset.y = y;
-	imageCopy.imageOffset.z = z;
-	imageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	imageCopy.imageSubresource.baseArrayLayer = 0;
-	imageCopy.imageSubresource.layerCount = 1;
-	imageCopy.imageSubresource.mipLevel = level;
-	imageCopy.bufferOffset = 0;
-	imageCopy.bufferRowLength = 0;
-	imageCopy.bufferImageHeight = 0;
-
-	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
-		renderer->currentCommandBuffer,
-		renderer->textureStagingBuffer->subBuffers[0]->buffer,
-		vulkanTexture->image,
-		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
-		1,
-		&imageCopy
-	));
-
-	VULKAN_INTERNAL_FlushCommands(renderer, 1);
-
-	SDL_UnlockMutex(renderer->stagingLock);
-	SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_SetTextureDataCube(
@@ -9094,68 +9080,20 @@ static void VULKAN_SetTextureDataCube(
 	void* data,
 	int32_t dataLength
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
-	VkBufferImageCopy imageCopy;
-	uint8_t *stagingBufferPointer;
-
-	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
-
-	SDL_LockMutex(renderer->passLock);
-	SDL_LockMutex(renderer->stagingLock);
-
-	VULKAN_INTERNAL_MaybeExpandStagingBuffer(renderer, BytesPerImage(w, h, vulkanTexture->colorFormat));
-
- 	stagingBufferPointer =
-		renderer->textureStagingBuffer->subBuffers[0]->allocation->mapPointer +
-		renderer->textureStagingBuffer->subBuffers[0]->offset;
-
-	SDL_memcpy(
-		stagingBufferPointer,
+	VULKAN_INTERNAL_SetTextureData(
+		(VulkanRenderer*) driverData,
+		(VulkanTexture*) texture,
+		x,
+		y,
+		0,
+		w,
+		h,
+		1,
+		level,
+		cubeMapFace,
 		data,
 		dataLength
 	);
-
-	VULKAN_INTERNAL_ImageMemoryBarrier(
-		renderer,
-		RESOURCE_ACCESS_TRANSFER_WRITE,
-		VK_IMAGE_ASPECT_COLOR_BIT,
-		0,
-		vulkanTexture->layerCount,
-		0,
-		vulkanTexture->levelCount,
-		0,
-		vulkanTexture->image,
-		&vulkanTexture->resourceAccessType
-	);
-
-	imageCopy.imageExtent.width = w;
-	imageCopy.imageExtent.height = h;
-	imageCopy.imageExtent.depth = 1;
-	imageCopy.imageOffset.x = x;
-	imageCopy.imageOffset.y = y;
-	imageCopy.imageOffset.z = 0;
-	imageCopy.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-	imageCopy.imageSubresource.baseArrayLayer = cubeMapFace;
-	imageCopy.imageSubresource.layerCount = 1;
-	imageCopy.imageSubresource.mipLevel = level;
-	imageCopy.bufferOffset = 0;
-	imageCopy.bufferRowLength = 0; /* assumes tightly packed data */
-	imageCopy.bufferImageHeight = 0; /* assumes tightly packed data */
-
-	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
-		renderer->currentCommandBuffer,
-		renderer->textureStagingBuffer->subBuffers[0]->buffer,
-		vulkanTexture->image,
-		AccessMap[vulkanTexture->resourceAccessType].imageLayout,
-		1,
-		&imageCopy
-	));
-
-	VULKAN_INTERNAL_FlushCommands(renderer, 1);
-
-	SDL_UnlockMutex(renderer->stagingLock);
-	SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_SetTextureDataYUV(
