@@ -4976,7 +4976,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		&surfaceFormat
 	)) {
 		/* Tegra may prefer this format instead... */
-		renderer->swapchainFormat = VK_FORMAT_R8G8B8A8_SRGB;
+		renderer->swapchainFormat = VK_FORMAT_R8G8B8A8_UNORM;
 		if (!VULKAN_INTERNAL_ChooseSwapSurfaceFormat(
 			renderer->swapchainFormat,
 			swapChainSupportDetails.formats,
