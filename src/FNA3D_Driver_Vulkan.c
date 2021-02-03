@@ -2046,8 +2046,6 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapSurfaceFormat(
 			return 1;
 		}
 	}
-
-	FNA3D_LogError("Desired surface format is unavailable.");
 	return 0;
 }
 
@@ -4978,10 +4976,19 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		swapChainSupportDetails.formatsLength,
 		&surfaceFormat
 	)) {
-		SDL_free(swapChainSupportDetails.formats);
-		SDL_free(swapChainSupportDetails.presentModes);
-		FNA3D_LogError("Device does not support swap chain format");
-		return CREATE_SWAPCHAIN_FAIL;
+		/* Tegra may prefer this format instead... */
+		renderer->swapchainFormat = VK_FORMAT_R8G8B8A8_SRGB;
+		if (!VULKAN_INTERNAL_ChooseSwapSurfaceFormat(
+			renderer->swapchainFormat,
+			swapChainSupportDetails.formats,
+			swapChainSupportDetails.formatsLength,
+			&surfaceFormat
+		)) {
+			SDL_free(swapChainSupportDetails.formats);
+			SDL_free(swapChainSupportDetails.presentModes);
+			FNA3D_LogError("Device does not support swap chain format");
+			return CREATE_SWAPCHAIN_FAIL;
+		}
 	}
 
 	if (!VULKAN_INTERNAL_ChooseSwapPresentMode(
