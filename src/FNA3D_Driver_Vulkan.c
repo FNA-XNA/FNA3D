@@ -4013,7 +4013,7 @@ static void VULKAN_INTERNAL_CreateSlowStagingBuffer(
 		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 		0,
-		2
+		1
 	);
 
 	if (renderer->textureStagingBuffer->slowBuffer == NULL)
