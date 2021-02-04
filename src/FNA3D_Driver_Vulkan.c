@@ -1054,6 +1054,7 @@ struct VulkanBuffer /* cast from FNA3D_Buffer */
 	uint8_t bound;
 	uint8_t boundSubmitted;
 	VkBufferUsageFlags usage;
+	uint8_t isStaging;
 };
 
 typedef struct VulkanColorBuffer
@@ -2760,6 +2761,8 @@ static void VULKAN_INTERNAL_NewMemoryFreeRegion(
 static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
 	VulkanRenderer *renderer,
 	VkBuffer buffer,
+	VkMemoryPropertyFlags requiredMemoryProperties,
+	VkMemoryPropertyFlags ignoredMemoryProperties,
 	VkMemoryRequirements2KHR *pMemoryRequirements,
 	uint32_t *pMemoryTypeIndex
 ) {
@@ -2778,8 +2781,8 @@ static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
 	if (!VULKAN_INTERNAL_FindMemoryType(
 		renderer,
 		pMemoryRequirements->memoryRequirements.memoryTypeBits,
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT,
-		0,
+		requiredMemoryProperties,
+		ignoredMemoryProperties,
 		pMemoryTypeIndex
 	)) {
 		FNA3D_LogError(
@@ -3091,11 +3094,14 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 static uint8_t VULKAN_INTERNAL_FindAvailableBufferMemory(
 	VulkanRenderer *renderer,
 	VkBuffer buffer,
+	uint8_t isStaging,
 	VulkanMemoryAllocation **pMemoryAllocation,
 	VkDeviceSize *pOffset,
 	VkDeviceSize *pSize
 ) {
 	uint32_t memoryTypeIndex;
+	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
+	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
 	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
 	{
 		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
@@ -3107,9 +3113,30 @@ static uint8_t VULKAN_INTERNAL_FindAvailableBufferMemory(
 		&dedicatedRequirements
 	};
 
+	if (isStaging)
+	{
+		requiredMemoryPropertyFlags =
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+		ignoredMemoryPropertyFlags = 0;
+	}
+	else
+	{
+		requiredMemoryPropertyFlags =
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+		ignoredMemoryPropertyFlags = 0;
+	}
+
+
 	if (!VULKAN_INTERNAL_FindBufferMemoryRequirements(
 		renderer,
 		buffer,
+		requiredMemoryPropertyFlags,
+		ignoredMemoryPropertyFlags,
 		&memoryRequirements,
 		&memoryTypeIndex
 	)) {
@@ -5308,6 +5335,7 @@ static uint8_t VULKAN_INTERNAL_AllocateSubBuffer(
 	findMemoryResult = VULKAN_INTERNAL_FindAvailableBufferMemory(
 		renderer,
 		subBuffer->buffer,
+		buffer->isStaging,
 		&subBuffer->allocation,
 		&subBuffer->offset,
 		&subBuffer->size
@@ -5486,7 +5514,8 @@ static FNA3D_Buffer* VULKAN_INTERNAL_CreateBuffer(
 	VulkanRenderer *renderer,
 	VkDeviceSize size,
 	VulkanResourceAccessType resourceAccessType,
-	VkBufferUsageFlags usage
+	VkBufferUsageFlags usage,
+	uint8_t isStaging
 ) {
 	VulkanBuffer *result = SDL_malloc(sizeof(VulkanBuffer));
 
@@ -5497,6 +5526,7 @@ static FNA3D_Buffer* VULKAN_INTERNAL_CreateBuffer(
 	result->boundSubmitted = 0;
 	result->resourceAccessType = resourceAccessType;
 	result->usage = usage;
+	result->isStaging = isStaging;
 
 	result->subBufferCount = 0;
 	result->subBufferCapacity = 4;
@@ -5541,7 +5571,8 @@ static void VULKAN_INTERNAL_MaybeExpandStagingBuffer(
 			renderer,
 			nextStagingSize,
 			RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
-			VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+			VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+			1
 		);
 
 		/* we want two sub-buffers for frame-in-flight support */
@@ -9559,7 +9590,8 @@ static FNA3D_Buffer* VULKAN_GenVertexBuffer(
 		(VulkanRenderer*) driverData,
 		sizeInBytes,
 		RESOURCE_ACCESS_VERTEX_BUFFER,
-		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT
+		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+		0
 	);
 }
 
@@ -9665,7 +9697,8 @@ static FNA3D_Buffer* VULKAN_GenIndexBuffer(
 		(VulkanRenderer*) driverData,
 		sizeInBytes,
 		RESOURCE_ACCESS_INDEX_BUFFER,
-		VK_BUFFER_USAGE_INDEX_BUFFER_BIT
+		VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+		0
 	);
 }
 
@@ -10567,7 +10600,8 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer,
 		TEXTURE_STAGING_SIZE,
 		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
-		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT
+		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+		1
 	);
 
 	/* we want two sub-buffers for frame-in-flight */
@@ -11178,7 +11212,8 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer,
 		1,
 		RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER,
-		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		0
 	);
 	VULKAN_INTERNAL_SetBufferData(
 		(FNA3D_Renderer*) renderer,
@@ -11192,7 +11227,8 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer,
 		1,
 		RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER,
-		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT
+		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		0
 	);
 	VULKAN_INTERNAL_SetBufferData(
 		(FNA3D_Renderer*) renderer,
