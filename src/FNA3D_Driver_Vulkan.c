@@ -5341,6 +5341,19 @@ static uint8_t VULKAN_INTERNAL_AllocateSubBuffer(
 		&subBuffer->size
 	);
 
+	/* No BAR memory available, just try CPU memory */
+	if (buffer->isStaging && findMemoryResult == 2)
+	{
+		findMemoryResult = VULKAN_INTERNAL_FindAvailableBufferMemory(
+			renderer,
+			subBuffer->buffer,
+			0,
+			&subBuffer->allocation,
+			&subBuffer->offset,
+			&subBuffer->size
+		);
+	}
+
 	/* We're out of available memory */
 	if (findMemoryResult == 2)
 	{
