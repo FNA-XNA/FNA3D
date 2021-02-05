@@ -92,8 +92,8 @@ static const uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames)
 #define COMMAND_LIMIT 100
 #define STARTING_ALLOCATION_SIZE 64000000 /* 64MB */
 #define MAX_ALLOCATION_SIZE 256000000 /* 256MB */
-#define STARTING_TEXTURE_STAGING_SIZE 16000000 /* 16MB */
-#define MAX_FAST_TEXTURE_STAGING_SIZE 128000000 /* 128MB */
+#define FAST_TEXTURE_STAGING_SIZE 64000000 /* 64MB */
+#define STARTING_SLOW_TEXTURE_STAGING_SIZE 16000000 /* 16MB */
 #define MAX_SLOW_TEXTURE_STAGING_SIZE 256000000 /* 256MB */
 
 /* Should be equivalent to the number of values in FNA3D_PrimitiveType */
@@ -4013,7 +4013,7 @@ static void VULKAN_INTERNAL_CreateSlowStagingBuffer(
 ) {
 	renderer->textureStagingBuffer->slowBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
 		renderer,
-		STARTING_TEXTURE_STAGING_SIZE,
+		size,
 		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 		0,
@@ -4023,33 +4023,6 @@ static void VULKAN_INTERNAL_CreateSlowStagingBuffer(
 	if (renderer->textureStagingBuffer->slowBuffer == NULL)
 	{
 		FNA3D_LogError("Failed to create slow texture staging buffer!");
-	}
-}
-
-static void VULKAN_INTERNAL_ExpandFastStagingBuffer(
-	VulkanRenderer *renderer,
-	VkDeviceSize requiredSize
-) {
-	VkDeviceSize nextStagingSize = renderer->textureStagingBuffer->fastBuffer->size;
-
-	if (renderer->textureStagingBuffer->fastBuffer->size < MAX_FAST_TEXTURE_STAGING_SIZE)
-	{
-		nextStagingSize *= 2;
-
-		while (nextStagingSize < requiredSize)
-		{
-			nextStagingSize *= 2;
-		}
-
-		VULKAN_INTERNAL_DestroyBuffer(
-			renderer,
-			renderer->textureStagingBuffer->fastBuffer
-		);
-
-		VULKAN_INTERNAL_CreateFastStagingBuffer(
-			renderer,
-			nextStagingSize
-		);
 	}
 }
 
@@ -4119,14 +4092,9 @@ static void VULKAN_INTERNAL_CopyToStagingBuffer(
 
 	VULKAN_INTERNAL_WaitForStagingTransfers(renderer);
 
-	if (uploadLength <= MAX_FAST_TEXTURE_STAGING_SIZE && renderer->textureStagingBuffer->fastBuffer != NULL)
+	if (	renderer->textureStagingBuffer->fastBuffer != NULL	&&
+		renderer->textureStagingBuffer->fastBufferOffset + uploadLength < renderer->textureStagingBuffer->fastBuffer->size	)
 	{
-		if (renderer->textureStagingBuffer->fastBufferOffset + uploadLength > renderer->textureStagingBuffer->fastBuffer->size)
-		{
-			VULKAN_INTERNAL_FlushCommands(renderer, 1);
-			VULKAN_INTERNAL_ExpandFastStagingBuffer(renderer, uploadLength);
-		}
-
 		stagingSubBuffer = renderer->textureStagingBuffer->fastBuffer->subBuffers[0];
 		offset = renderer->textureStagingBuffer->fastBufferOffset;
 		renderer->textureStagingBuffer->fastBufferOffset += uploadLength;
@@ -4170,9 +4138,8 @@ static void VULKAN_INTERNAL_PrepareCopyFromStagingBuffer(
 ) {
 	VULKAN_INTERNAL_WaitForStagingTransfers(renderer);
 
-	if (	dataLength <= MAX_FAST_TEXTURE_STAGING_SIZE &&
-		renderer->textureStagingBuffer->fastBuffer != NULL &&
-		renderer->textureStagingBuffer->fastBufferOffset + dataLength > renderer->textureStagingBuffer->fastBuffer->size	)
+	if (	renderer->textureStagingBuffer->fastBuffer != NULL &&
+		renderer->textureStagingBuffer->fastBufferOffset + dataLength < renderer->textureStagingBuffer->fastBuffer->size	)
 	{
 		*pStagingSubBuffer = renderer->textureStagingBuffer->fastBuffer->subBuffers[0];
 		*pOffset = renderer->textureStagingBuffer->fastBufferOffset;
@@ -4205,10 +4172,10 @@ static void VULKAN_INTERNAL_CreateTextureStagingBuffer(
 ) {
 	renderer->textureStagingBuffer = SDL_malloc(sizeof(VulkanStagingBuffer));
 
-	VULKAN_INTERNAL_CreateFastStagingBuffer(renderer, STARTING_TEXTURE_STAGING_SIZE);
+	VULKAN_INTERNAL_CreateFastStagingBuffer(renderer, FAST_TEXTURE_STAGING_SIZE);
 	renderer->textureStagingBuffer->fastBufferOffset = 0;
 
-	VULKAN_INTERNAL_CreateSlowStagingBuffer(renderer, STARTING_TEXTURE_STAGING_SIZE);
+	VULKAN_INTERNAL_CreateSlowStagingBuffer(renderer, STARTING_SLOW_TEXTURE_STAGING_SIZE);
 	renderer->textureStagingBuffer->slowBufferOffset = 0;
 
 	renderer->textureStagingBuffer->pendingTransfer = 0;
