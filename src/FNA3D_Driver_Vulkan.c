@@ -1065,6 +1065,9 @@ typedef struct VulkanStagingBuffer
 
 	VulkanBuffer *slowBuffer; /* always exists */
 	VkDeviceSize slowBufferOffset;
+
+	uint8_t pendingTransfer;
+	uint8_t transferInProgress;
 } VulkanStagingBuffer;
 
 typedef struct VulkanColorBuffer
@@ -3978,6 +3981,12 @@ static void VULKAN_INTERNAL_ResetTextureStagingBuffer(
 ) {
 	renderer->textureStagingBuffer->slowBufferOffset = 0;
 	renderer->textureStagingBuffer->fastBufferOffset = 0;
+
+	if (renderer->textureStagingBuffer->pendingTransfer)
+	{
+		renderer->textureStagingBuffer->transferInProgress = 1;
+		renderer->textureStagingBuffer->pendingTransfer = 0;
+	}
 }
 
 static void VULKAN_INTERNAL_CreateFastStagingBuffer(
@@ -4067,6 +4076,31 @@ static void VULKAN_INTERNAL_ExpandSlowStagingBuffer(
 	}
 }
 
+static void VULKAN_INTERNAL_WaitForStagingTransfers(
+	VulkanRenderer *renderer
+) {
+	VkResult result;
+
+	if (renderer->textureStagingBuffer->transferInProgress)
+	{
+		result = renderer->vkWaitForFences(
+			renderer->logicalDevice,
+			1,
+			&renderer->inFlightFence,
+			VK_TRUE,
+			UINT64_MAX
+		);
+
+		if (result != VK_SUCCESS)
+		{
+			LogVulkanResultAsError("vkWaitForFences", result);
+			return;
+		}
+
+		renderer->textureStagingBuffer->transferInProgress = 0;
+	}
+}
+
 static void VULKAN_INTERNAL_CopyToStagingBuffer(
 	VulkanRenderer *renderer,
 	void* data,
@@ -4078,6 +4112,8 @@ static void VULKAN_INTERNAL_CopyToStagingBuffer(
 	VulkanSubBuffer *stagingSubBuffer;
 	VkDeviceSize offset;
 	uint8_t *stagingBufferPointer;
+
+	VULKAN_INTERNAL_WaitForStagingTransfers(renderer);
 
 	if (uploadLength <= MAX_FAST_TEXTURE_STAGING_SIZE && renderer->textureStagingBuffer->fastBuffer != NULL)
 	{
@@ -4117,6 +4153,8 @@ static void VULKAN_INTERNAL_CopyToStagingBuffer(
 
 	*pStagingBuffer = stagingSubBuffer;
 	*pOffset = offset;
+
+	renderer->textureStagingBuffer->pendingTransfer = 1;
 }
 
 static void VULKAN_INTERNAL_PrepareCopyFromStagingBuffer(
@@ -4126,6 +4164,8 @@ static void VULKAN_INTERNAL_PrepareCopyFromStagingBuffer(
 	VkDeviceSize *pOffset,
 	void **pStagingBufferPointer
 ) {
+	VULKAN_INTERNAL_WaitForStagingTransfers(renderer);
+
 	if (	dataLength <= MAX_FAST_TEXTURE_STAGING_SIZE &&
 		renderer->textureStagingBuffer->fastBuffer != NULL &&
 		renderer->textureStagingBuffer->fastBufferOffset + dataLength > renderer->textureStagingBuffer->fastBuffer->size	)
@@ -4152,6 +4192,8 @@ static void VULKAN_INTERNAL_PrepareCopyFromStagingBuffer(
 			renderer->textureStagingBuffer->slowBuffer->subBuffers[0]->offset +
 			renderer->textureStagingBuffer->slowBufferOffset;
 	}
+
+	renderer->textureStagingBuffer->pendingTransfer = 1;
 }
 
 static void VULKAN_INTERNAL_CreateTextureStagingBuffer(
@@ -4164,6 +4206,9 @@ static void VULKAN_INTERNAL_CreateTextureStagingBuffer(
 
 	VULKAN_INTERNAL_CreateSlowStagingBuffer(renderer, STARTING_TEXTURE_STAGING_SIZE);
 	renderer->textureStagingBuffer->slowBufferOffset = 0;
+
+	renderer->textureStagingBuffer->pendingTransfer = 0;
+	renderer->textureStagingBuffer->transferInProgress = 0;
 }
 
 /* Vulkan: Descriptor Set Logic */
