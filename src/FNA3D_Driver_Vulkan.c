@@ -3121,24 +3121,15 @@ static uint8_t VULKAN_INTERNAL_FindAvailableBufferMemory(
 		&dedicatedRequirements
 	};
 
+	requiredMemoryPropertyFlags =
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 	if (isDeviceLocal)
 	{
-		requiredMemoryPropertyFlags =
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT |
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-		ignoredMemoryPropertyFlags = 0;
+		requiredMemoryPropertyFlags |=
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	}
-	else
-	{
-		requiredMemoryPropertyFlags =
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-		ignoredMemoryPropertyFlags = 0;
-	}
-
+	ignoredMemoryPropertyFlags = 0;
 	if (!VULKAN_INTERNAL_FindBufferMemoryRequirements(
 		renderer,
 		buffer,
@@ -4135,11 +4126,10 @@ static void VULKAN_INTERNAL_PrepareCopyFromStagingBuffer(
 	VkDeviceSize *pOffset,
 	void **pStagingBufferPointer
 ) {
-	if (
-		dataLength <= MAX_FAST_TEXTURE_STAGING_SIZE &&
+	if (	dataLength <= MAX_FAST_TEXTURE_STAGING_SIZE &&
 		renderer->textureStagingBuffer->fastBuffer != NULL &&
-		renderer->textureStagingBuffer->fastBufferOffset + dataLength > renderer->textureStagingBuffer->fastBuffer->size
-	) {
+		renderer->textureStagingBuffer->fastBufferOffset + dataLength > renderer->textureStagingBuffer->fastBuffer->size	)
+	{
 		*pStagingSubBuffer = renderer->textureStagingBuffer->fastBuffer->subBuffers[0];
 		*pOffset = renderer->textureStagingBuffer->fastBufferOffset;
 		*pStagingBufferPointer =
