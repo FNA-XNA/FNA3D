@@ -4092,7 +4092,7 @@ static void VULKAN_INTERNAL_CopyToStagingBuffer(
 
 	VULKAN_INTERNAL_WaitForStagingTransfers(renderer);
 
-	if (	renderer->textureStagingBuffer->fastBuffer != NULL	&&
+	if (	renderer->textureStagingBuffer->fastBuffer != NULL &&
 		renderer->textureStagingBuffer->fastBufferOffset + uploadLength < renderer->textureStagingBuffer->fastBuffer->size	)
 	{
 		stagingSubBuffer = renderer->textureStagingBuffer->fastBuffer->subBuffers[0];
