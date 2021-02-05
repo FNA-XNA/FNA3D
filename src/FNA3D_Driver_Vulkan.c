@@ -94,6 +94,7 @@ static const uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames)
 #define FAST_TEXTURE_STAGING_SIZE 64000000 /* 64MB */
 #define STARTING_SLOW_TEXTURE_STAGING_SIZE 16000000 /* 16MB */
 #define MAX_SLOW_TEXTURE_STAGING_SIZE 256000000 /* 256MB */
+#define DEVICE_LOCAL_HEAP_USAGE_FACTOR 0.8
 
 /* Should be equivalent to the number of values in FNA3D_PrimitiveType */
 #define PRIMITIVE_TYPES_COUNT 5
@@ -1164,6 +1165,8 @@ typedef struct VulkanRenderer
 
 	VulkanMemoryAllocator *memoryAllocator;
 	VkPhysicalDeviceMemoryProperties memoryProperties;
+	VkDeviceSize maxDeviceLocalHeapUsage;
+	VkDeviceSize deviceLocalHeapUsage;
 
 	VulkanBuffer **buffersInUse;
 	uint32_t numBuffersInUse;
@@ -2387,6 +2390,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	VkPhysicalDevice *physicalDevices;
 	uint32_t physicalDeviceCount, i, suitableIndex;
 	uint32_t queueFamilyIndex, suitableQueueFamilyIndex;
+	VkDeviceSize deviceLocalHeapSize;
 	uint8_t deviceRank, highestRank;
 
 	vulkanResult = renderer->vkEnumeratePhysicalDevices(
@@ -2489,6 +2493,22 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 		renderer->physicalDevice,
 		&renderer->memoryProperties
 	);
+
+	deviceLocalHeapSize = 0;
+	for (i = 0; i < renderer->memoryProperties.memoryHeapCount; i += 1)
+	{
+		if (	renderer->memoryProperties.memoryHeaps[i].flags &
+			VK_MEMORY_HEAP_DEVICE_LOCAL_BIT	)
+		{
+			if (renderer->memoryProperties.memoryHeaps[i].size > deviceLocalHeapSize)
+			{
+				deviceLocalHeapSize = renderer->memoryProperties.memoryHeaps[i].size;
+			}
+		}
+	}
+
+	renderer->maxDeviceLocalHeapUsage = deviceLocalHeapSize * DEVICE_LOCAL_HEAP_USAGE_FACTOR;
+	renderer->deviceLocalHeapUsage = 0;
 
 	SDL_stack_free(physicalDevices);
 	return 1;
@@ -2913,11 +2933,15 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 	uint8_t shouldAllocDedicated =
 		dedicatedRequirements->prefersDedicatedAllocation ||
 		dedicatedRequirements->requiresDedicatedAllocation;
-	uint8_t isHostVisible, allocationResult;
+	uint8_t isDeviceLocal, isHostVisible, allocationResult;
 
 	isHostVisible =
 		(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
+
+	isDeviceLocal =
+		(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
 
 	allocator = &renderer->memoryAllocator->subAllocators[memoryTypeIndex];
 	requiredSize = memoryRequirements->memoryRequirements.size;
@@ -2992,6 +3016,12 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 		allocator->nextAllocationSize = SDL_min(allocator->nextAllocationSize * 2, MAX_ALLOCATION_SIZE);
 	}
 
+	if (isDeviceLocal && renderer->deviceLocalHeapUsage + allocationSize > renderer->maxDeviceLocalHeapUsage)
+	{
+		/* we are oversubscribing device local memory */
+		return 2;
+	}
+
 	allocationResult = VULKAN_INTERNAL_AllocateMemory(
 		renderer,
 		buffer,
@@ -3011,6 +3041,11 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 		/* Responsibility of the caller to handle being out of memory */
 		FNA3D_LogWarn("Failed to allocate memory!");
 		return 2;
+	}
+
+	if (isDeviceLocal)
+	{
+		renderer->deviceLocalHeapUsage += allocationSize;
 	}
 
 	*pMemoryAllocation = allocation;
