@@ -3533,7 +3533,403 @@ static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer *renderer)
 	SDL_UnlockMutex(renderer->disposeLock);
 }
 
-/* Staging buffer functions */
+/* Vulkan: Command Buffers */
+
+static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer)
+{
+	VkCommandBufferAllocateInfo allocateInfo;
+	VkCommandBufferBeginInfo beginInfo;
+	VkResult result;
+
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.pNext = NULL;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	beginInfo.pInheritanceInfo = NULL;
+
+	/* If we are out of unused command buffers, allocate some more */
+	if (renderer->inactiveCommandBufferCount == 0)
+	{
+		renderer->activeCommandBuffers = SDL_realloc(
+			renderer->activeCommandBuffers,
+			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
+		);
+
+		renderer->inactiveCommandBuffers = SDL_realloc(
+			renderer->inactiveCommandBuffers,
+			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
+		);
+
+		renderer->submittedCommandBuffers = SDL_realloc(
+			renderer->submittedCommandBuffers,
+			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
+		);
+
+		allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		allocateInfo.pNext = NULL;
+		allocateInfo.commandPool = renderer->commandPool;
+		allocateInfo.commandBufferCount = renderer->allocatedCommandBufferCount;
+		allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+		result = renderer->vkAllocateCommandBuffers(
+			renderer->logicalDevice,
+			&allocateInfo,
+			renderer->inactiveCommandBuffers
+		);
+
+		if (result != VK_SUCCESS)
+		{
+			LogVulkanResultAsError("vkAllocateCommandBuffers", result);
+			return;
+		}
+
+		renderer->inactiveCommandBufferCount = renderer->allocatedCommandBufferCount;
+		renderer->allocatedCommandBufferCount *= 2;
+	}
+
+	renderer->currentCommandBuffer =
+		renderer->inactiveCommandBuffers[renderer->inactiveCommandBufferCount - 1];
+
+	renderer->activeCommandBuffers[renderer->activeCommandBufferCount] = renderer->currentCommandBuffer;
+
+	renderer->activeCommandBufferCount += 1;
+	renderer->inactiveCommandBufferCount -= 1;
+
+	result = renderer->vkBeginCommandBuffer(
+		renderer->currentCommandBuffer,
+		&beginInfo
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResultAsError("vkBeginCommandBuffer", result);
+	}
+}
+
+static void VULKAN_INTERNAL_EndCommandBuffer(
+	VulkanRenderer *renderer,
+	uint8_t startNext,
+	uint8_t allowFlush
+) {
+	VkResult result;
+
+	if (renderer->renderPassInProgress)
+	{
+		VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
+		renderer->needNewRenderPass = 1;
+	}
+
+	result = renderer->vkEndCommandBuffer(
+		renderer->currentCommandBuffer
+	);
+
+	if (result != VK_SUCCESS)
+	{
+		LogVulkanResultAsError("vkEndCommandBuffer", result);
+	}
+
+	renderer->currentCommandBuffer = NULL;
+	renderer->numActiveCommands = 0;
+
+	if (allowFlush)
+	{
+		/* TODO: Figure out how to properly submit commands mid-frame */
+	}
+
+	if (startNext)
+	{
+		VULKAN_INTERNAL_BeginCommandBuffer(renderer);
+	}
+}
+
+/* Vulkan: Memory Barriers */
+
+static void VULKAN_INTERNAL_BufferMemoryBarrier(
+	VulkanRenderer *renderer,
+	VulkanResourceAccessType nextResourceAccessType,
+	VulkanBuffer *buffer,
+	VulkanSubBuffer *subBuffer
+) {
+	VkPipelineStageFlags srcStages = 0;
+	VkPipelineStageFlags dstStages = 0;
+	VkBufferMemoryBarrier memoryBarrier;
+	VulkanResourceAccessType prevAccess, nextAccess;
+	const VulkanResourceAccessInfo *prevAccessInfo, *nextAccessInfo;
+
+	if (subBuffer->resourceAccessType == nextResourceAccessType)
+	{
+		return;
+	}
+
+	SDL_LockMutex(renderer->passLock);
+
+	memoryBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
+	memoryBarrier.pNext = NULL;
+	memoryBarrier.srcAccessMask = 0;
+	memoryBarrier.dstAccessMask = 0;
+	memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrier.buffer = subBuffer->buffer;
+	memoryBarrier.offset = 0;
+	memoryBarrier.size = buffer->size;
+
+	prevAccess = subBuffer->resourceAccessType;
+	prevAccessInfo = &AccessMap[prevAccess];
+
+	srcStages |= prevAccessInfo->stageMask;
+
+	if (prevAccess > RESOURCE_ACCESS_END_OF_READ)
+	{
+		memoryBarrier.srcAccessMask |= prevAccessInfo->accessMask;
+	}
+
+	nextAccess = nextResourceAccessType;
+	nextAccessInfo = &AccessMap[nextAccess];
+
+	dstStages |= nextAccessInfo->stageMask;
+
+	if (memoryBarrier.srcAccessMask != 0)
+	{
+		memoryBarrier.dstAccessMask |= nextAccessInfo->accessMask;
+	}
+
+	if (srcStages == 0)
+	{
+		srcStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+	}
+	if (dstStages == 0)
+	{
+		dstStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	}
+
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
+	renderer->needNewRenderPass = 1;
+
+	RECORD_CMD(renderer->vkCmdPipelineBarrier(
+		renderer->currentCommandBuffer,
+		srcStages,
+		dstStages,
+		0,
+		0,
+		NULL,
+		1,
+		&memoryBarrier,
+		0,
+		NULL
+	));
+
+	subBuffer->resourceAccessType = nextResourceAccessType;
+
+	SDL_UnlockMutex(renderer->passLock);
+}
+
+static void VULKAN_INTERNAL_ImageMemoryBarrier(
+	VulkanRenderer *renderer,
+	VulkanResourceAccessType nextAccess,
+	VkImageAspectFlags aspectMask,
+	uint32_t baseLayer,
+	uint32_t layerCount,
+	uint32_t baseLevel,
+	uint32_t levelCount,
+	uint8_t discardContents,
+	VkImage image,
+	VulkanResourceAccessType *resourceAccessType
+) {
+	VkPipelineStageFlags srcStages = 0;
+	VkPipelineStageFlags dstStages = 0;
+	VkImageMemoryBarrier memoryBarrier;
+	VulkanResourceAccessType prevAccess;
+	const VulkanResourceAccessInfo *pPrevAccessInfo, *pNextAccessInfo;
+
+	if (*resourceAccessType == nextAccess)
+	{
+		return;
+	}
+
+	SDL_LockMutex(renderer->passLock);
+
+	memoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+	memoryBarrier.pNext = NULL;
+	memoryBarrier.srcAccessMask = 0;
+	memoryBarrier.dstAccessMask = 0;
+	memoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	memoryBarrier.newLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+	memoryBarrier.image = image;
+	memoryBarrier.subresourceRange.aspectMask = aspectMask;
+	memoryBarrier.subresourceRange.baseArrayLayer = baseLayer;
+	memoryBarrier.subresourceRange.layerCount = layerCount;
+	memoryBarrier.subresourceRange.baseMipLevel = baseLevel;
+	memoryBarrier.subresourceRange.levelCount = levelCount;
+
+	prevAccess = *resourceAccessType;
+	pPrevAccessInfo = &AccessMap[prevAccess];
+
+	srcStages |= pPrevAccessInfo->stageMask;
+
+	if (prevAccess > RESOURCE_ACCESS_END_OF_READ)
+	{
+		memoryBarrier.srcAccessMask |= pPrevAccessInfo->accessMask;
+	}
+
+	if (discardContents)
+	{
+		memoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	}
+	else
+	{
+		memoryBarrier.oldLayout = pPrevAccessInfo->imageLayout;
+	}
+
+	pNextAccessInfo = &AccessMap[nextAccess];
+
+	dstStages |= pNextAccessInfo->stageMask;
+
+	memoryBarrier.dstAccessMask |= pNextAccessInfo->accessMask;
+	memoryBarrier.newLayout = pNextAccessInfo->imageLayout;
+
+	if (srcStages == 0)
+	{
+		srcStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+	}
+	if (dstStages == 0)
+	{
+		dstStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	}
+
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
+	renderer->needNewRenderPass = 1;
+
+	RECORD_CMD(renderer->vkCmdPipelineBarrier(
+		renderer->currentCommandBuffer,
+		srcStages,
+		dstStages,
+		0,
+		0,
+		NULL,
+		0,
+		NULL,
+		1,
+		&memoryBarrier
+	));
+
+	*resourceAccessType = nextAccess;
+
+	SDL_UnlockMutex(renderer->passLock);
+}
+
+/* Buffer allocator functions */
+
+static uint8_t VULKAN_INTERNAL_AllocateSubBuffer(
+	VulkanRenderer *renderer,
+	VulkanBuffer *buffer
+) {
+	VkBufferCreateInfo bufferCreateInfo;
+	VkResult vulkanResult;
+	uint8_t findMemoryResult;
+	VulkanSubBuffer *subBuffer = SDL_malloc(sizeof(VulkanSubBuffer));
+
+	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufferCreateInfo.pNext = NULL;
+	bufferCreateInfo.flags = 0;
+	bufferCreateInfo.size = buffer->size;
+	bufferCreateInfo.usage = buffer->usage;
+	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	bufferCreateInfo.queueFamilyIndexCount = 1;
+	bufferCreateInfo.pQueueFamilyIndices = &renderer->queueFamilyIndex;
+
+	vulkanResult = renderer->vkCreateBuffer(
+		renderer->logicalDevice,
+		&bufferCreateInfo,
+		NULL,
+		&subBuffer->buffer
+	);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		LogVulkanResultAsError("vkCreateBuffer", vulkanResult);
+		FNA3D_LogError("Failed to create VkBuffer");
+		return 0;
+	}
+
+	findMemoryResult = VULKAN_INTERNAL_FindAvailableBufferMemory(
+		renderer,
+		subBuffer->buffer,
+		buffer->isDeviceLocal,
+		&subBuffer->allocation,
+		&subBuffer->offset,
+		&subBuffer->size
+	);
+
+	/* No BAR memory available, just try CPU memory */
+	if (buffer->isDeviceLocal && findMemoryResult == 2)
+	{
+		findMemoryResult = VULKAN_INTERNAL_FindAvailableBufferMemory(
+			renderer,
+			subBuffer->buffer,
+			0,
+			&subBuffer->allocation,
+			&subBuffer->offset,
+			&subBuffer->size
+		);
+	}
+
+	/* We're out of available memory */
+	if (findMemoryResult == 2)
+	{
+		SDL_free(subBuffer);
+		FNA3D_LogWarn("Out of buffer memory!");
+		return 2;
+	}
+	else if (findMemoryResult == 0)
+	{
+		SDL_free(subBuffer);
+		FNA3D_LogError("Failed to find buffer memory!");
+		return 0;
+	}
+
+	SDL_LockMutex(subBuffer->allocation->mapLock);
+
+	vulkanResult = renderer->vkBindBufferMemory(
+		renderer->logicalDevice,
+		subBuffer->buffer,
+		subBuffer->allocation->memory,
+		subBuffer->offset
+	);
+
+	SDL_UnlockMutex(subBuffer->allocation->mapLock);
+
+	if (vulkanResult != VK_SUCCESS)
+	{
+		FNA3D_LogError("Failed to bind buffer memory!");
+		return 0;
+	}
+
+	subBuffer->resourceAccessType = buffer->resourceAccessType;
+	subBuffer->bound = -1;
+
+	/* Reallocate the subbuffer array if we're at max capacity */
+	if (buffer->subBufferCount == buffer->subBufferCapacity)
+	{
+		buffer->subBufferCapacity *= 2;
+		buffer->subBuffers = SDL_realloc(
+			buffer->subBuffers,
+			sizeof(VulkanSubBuffer) * buffer->subBufferCapacity
+		);
+	}
+
+	buffer->subBuffers[buffer->subBufferCount] = subBuffer;
+	buffer->subBufferCount += 1;
+
+	VULKAN_INTERNAL_BufferMemoryBarrier(
+		renderer,
+		buffer->resourceAccessType,
+		buffer,
+		subBuffer
+	);
+
+	return 1;
+}
 
 static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	VulkanRenderer *renderer,
@@ -3542,7 +3938,45 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	VkBufferUsageFlags usage,
 	uint8_t isDeviceLocal,
 	uint32_t subBufferCount
-);
+) {
+	uint32_t i;
+	uint8_t allocateResult;
+
+	VulkanBuffer *buffer = SDL_malloc(sizeof(VulkanBuffer));
+
+	buffer->size = size;
+
+	buffer->currentSubBufferIndex = 0;
+	buffer->bound = 0;
+	buffer->boundSubmitted = 0;
+	buffer->resourceAccessType = resourceAccessType;
+	buffer->usage = usage;
+	buffer->isDeviceLocal = isDeviceLocal;
+
+	buffer->subBufferCount = 0;
+	buffer->subBufferCapacity = subBufferCount;
+	buffer->subBuffers = SDL_malloc(
+		sizeof(VulkanSubBuffer) * buffer->subBufferCapacity
+	);
+
+	for (i = 0; i < buffer->subBufferCapacity; i += 1)
+	{
+		/* Populate one sub buffer */
+		allocateResult = VULKAN_INTERNAL_AllocateSubBuffer(
+			renderer,
+			buffer
+		);
+
+		if (allocateResult != 1)
+		{
+			return NULL;
+		}
+	}
+
+	return buffer;
+}
+
+/* Staging buffer functions */
 
 static void VULKAN_INTERNAL_ResetTextureStagingBuffer(
 	VulkanRenderer *renderer
@@ -4435,113 +4869,7 @@ static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer *renderer)
 	renderer->fragSamplerDescriptorSetDataNeedsUpdate = 1;
 }
 
-/* Vulkan: Command Buffers */
-
-static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer)
-{
-	VkCommandBufferAllocateInfo allocateInfo;
-	VkCommandBufferBeginInfo beginInfo;
-	VkResult result;
-
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.pNext = NULL;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	beginInfo.pInheritanceInfo = NULL;
-
-	/* If we are out of unused command buffers, allocate some more */
-	if (renderer->inactiveCommandBufferCount == 0)
-	{
-		renderer->activeCommandBuffers = SDL_realloc(
-			renderer->activeCommandBuffers,
-			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
-		);
-
-		renderer->inactiveCommandBuffers = SDL_realloc(
-			renderer->inactiveCommandBuffers,
-			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
-		);
-
-		renderer->submittedCommandBuffers = SDL_realloc(
-			renderer->submittedCommandBuffers,
-			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
-		);
-
-		allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-		allocateInfo.pNext = NULL;
-		allocateInfo.commandPool = renderer->commandPool;
-		allocateInfo.commandBufferCount = renderer->allocatedCommandBufferCount;
-		allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-
-		result = renderer->vkAllocateCommandBuffers(
-			renderer->logicalDevice,
-			&allocateInfo,
-			renderer->inactiveCommandBuffers
-		);
-
-		if (result != VK_SUCCESS)
-		{
-			LogVulkanResultAsError("vkAllocateCommandBuffers", result);
-			return;
-		}
-
-		renderer->inactiveCommandBufferCount = renderer->allocatedCommandBufferCount;
-		renderer->allocatedCommandBufferCount *= 2;
-	}
-
-	renderer->currentCommandBuffer =
-		renderer->inactiveCommandBuffers[renderer->inactiveCommandBufferCount - 1];
-
-	renderer->activeCommandBuffers[renderer->activeCommandBufferCount] = renderer->currentCommandBuffer;
-
-	renderer->activeCommandBufferCount += 1;
-	renderer->inactiveCommandBufferCount -= 1;
-
-	result = renderer->vkBeginCommandBuffer(
-		renderer->currentCommandBuffer,
-		&beginInfo
-	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkBeginCommandBuffer", result);
-	}
-}
-
-static void VULKAN_INTERNAL_EndCommandBuffer(
-	VulkanRenderer *renderer,
-	uint8_t startNext,
-	uint8_t allowFlush
-) {
-	VkResult result;
-
-	if (renderer->renderPassInProgress)
-	{
-		VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
-		renderer->needNewRenderPass = 1;
-	}
-
-	result = renderer->vkEndCommandBuffer(
-		renderer->currentCommandBuffer
-	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkEndCommandBuffer", result);
-	}
-
-	renderer->currentCommandBuffer = NULL;
-	renderer->numActiveCommands = 0;
-
-	if (allowFlush)
-	{
-		/* TODO: Figure out how to properly submit commands mid-frame */
-	}
-
-	if (startNext)
-	{
-		VULKAN_INTERNAL_BeginCommandBuffer(renderer);
-	}
-}
+/* Vulkan: Command Submission */
 
 static void VULKAN_INTERNAL_SwapChainBlit(
 	VulkanRenderer *renderer,
@@ -4981,183 +5309,6 @@ static void VULKAN_INTERNAL_FlushCommandsAndPresent(
 	SDL_UnlockMutex(renderer->stagingLock);
 }
 
-/* Vulkan: Memory Barriers */
-
-static void VULKAN_INTERNAL_BufferMemoryBarrier(
-	VulkanRenderer *renderer,
-	VulkanResourceAccessType nextResourceAccessType,
-	VulkanBuffer *buffer,
-	VulkanSubBuffer *subBuffer
-) {
-	VkPipelineStageFlags srcStages = 0;
-	VkPipelineStageFlags dstStages = 0;
-	VkBufferMemoryBarrier memoryBarrier;
-	VulkanResourceAccessType prevAccess, nextAccess;
-	const VulkanResourceAccessInfo *prevAccessInfo, *nextAccessInfo;
-
-	if (subBuffer->resourceAccessType == nextResourceAccessType)
-	{
-		return;
-	}
-
-	SDL_LockMutex(renderer->passLock);
-
-	memoryBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
-	memoryBarrier.pNext = NULL;
-	memoryBarrier.srcAccessMask = 0;
-	memoryBarrier.dstAccessMask = 0;
-	memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	memoryBarrier.buffer = subBuffer->buffer;
-	memoryBarrier.offset = 0;
-	memoryBarrier.size = buffer->size;
-
-	prevAccess = subBuffer->resourceAccessType;
-	prevAccessInfo = &AccessMap[prevAccess];
-
-	srcStages |= prevAccessInfo->stageMask;
-
-	if (prevAccess > RESOURCE_ACCESS_END_OF_READ)
-	{
-		memoryBarrier.srcAccessMask |= prevAccessInfo->accessMask;
-	}
-
-	nextAccess = nextResourceAccessType;
-	nextAccessInfo = &AccessMap[nextAccess];
-
-	dstStages |= nextAccessInfo->stageMask;
-
-	if (memoryBarrier.srcAccessMask != 0)
-	{
-		memoryBarrier.dstAccessMask |= nextAccessInfo->accessMask;
-	}
-
-	if (srcStages == 0)
-	{
-		srcStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-	}
-	if (dstStages == 0)
-	{
-		dstStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-	}
-
-	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
-	renderer->needNewRenderPass = 1;
-
-	RECORD_CMD(renderer->vkCmdPipelineBarrier(
-		renderer->currentCommandBuffer,
-		srcStages,
-		dstStages,
-		0,
-		0,
-		NULL,
-		1,
-		&memoryBarrier,
-		0,
-		NULL
-	));
-
-	subBuffer->resourceAccessType = nextResourceAccessType;
-
-	SDL_UnlockMutex(renderer->passLock);
-}
-
-static void VULKAN_INTERNAL_ImageMemoryBarrier(
-	VulkanRenderer *renderer,
-	VulkanResourceAccessType nextAccess,
-	VkImageAspectFlags aspectMask,
-	uint32_t baseLayer,
-	uint32_t layerCount,
-	uint32_t baseLevel,
-	uint32_t levelCount,
-	uint8_t discardContents,
-	VkImage image,
-	VulkanResourceAccessType *resourceAccessType
-) {
-	VkPipelineStageFlags srcStages = 0;
-	VkPipelineStageFlags dstStages = 0;
-	VkImageMemoryBarrier memoryBarrier;
-	VulkanResourceAccessType prevAccess;
-	const VulkanResourceAccessInfo *pPrevAccessInfo, *pNextAccessInfo;
-
-	if (*resourceAccessType == nextAccess)
-	{
-		return;
-	}
-
-	SDL_LockMutex(renderer->passLock);
-
-	memoryBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	memoryBarrier.pNext = NULL;
-	memoryBarrier.srcAccessMask = 0;
-	memoryBarrier.dstAccessMask = 0;
-	memoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	memoryBarrier.newLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	memoryBarrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	memoryBarrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-	memoryBarrier.image = image;
-	memoryBarrier.subresourceRange.aspectMask = aspectMask;
-	memoryBarrier.subresourceRange.baseArrayLayer = baseLayer;
-	memoryBarrier.subresourceRange.layerCount = layerCount;
-	memoryBarrier.subresourceRange.baseMipLevel = baseLevel;
-	memoryBarrier.subresourceRange.levelCount = levelCount;
-
-	prevAccess = *resourceAccessType;
-	pPrevAccessInfo = &AccessMap[prevAccess];
-
-	srcStages |= pPrevAccessInfo->stageMask;
-
-	if (prevAccess > RESOURCE_ACCESS_END_OF_READ)
-	{
-		memoryBarrier.srcAccessMask |= pPrevAccessInfo->accessMask;
-	}
-
-	if (discardContents)
-	{
-		memoryBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	}
-	else
-	{
-		memoryBarrier.oldLayout = pPrevAccessInfo->imageLayout;
-	}
-
-	pNextAccessInfo = &AccessMap[nextAccess];
-
-	dstStages |= pNextAccessInfo->stageMask;
-
-	memoryBarrier.dstAccessMask |= pNextAccessInfo->accessMask;
-	memoryBarrier.newLayout = pNextAccessInfo->imageLayout;
-
-	if (srcStages == 0)
-	{
-		srcStages = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-	}
-	if (dstStages == 0)
-	{
-		dstStages = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-	}
-
-	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
-	renderer->needNewRenderPass = 1;
-
-	RECORD_CMD(renderer->vkCmdPipelineBarrier(
-		renderer->currentCommandBuffer,
-		srcStages,
-		dstStages,
-		0,
-		0,
-		NULL,
-		0,
-		NULL,
-		1,
-		&memoryBarrier
-	));
-
-	*resourceAccessType = nextAccess;
-
-	SDL_UnlockMutex(renderer->passLock);
-}
-
 /* Vulkan: Swapchain */
 
 static inline VkExtent2D ChooseSwapExtent(
@@ -5508,117 +5659,6 @@ static void VULKAN_INTERNAL_RemoveBuffer(
 	SDL_UnlockMutex(renderer->disposeLock);
 }
 
-static uint8_t VULKAN_INTERNAL_AllocateSubBuffer(
-	VulkanRenderer *renderer,
-	VulkanBuffer *buffer
-) {
-	VkBufferCreateInfo bufferCreateInfo;
-	VkResult vulkanResult;
-	uint8_t findMemoryResult;
-	VulkanSubBuffer *subBuffer = SDL_malloc(sizeof(VulkanSubBuffer));
-
-	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufferCreateInfo.pNext = NULL;
-	bufferCreateInfo.flags = 0;
-	bufferCreateInfo.size = buffer->size;
-	bufferCreateInfo.usage = buffer->usage;
-	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
-	bufferCreateInfo.queueFamilyIndexCount = 1;
-	bufferCreateInfo.pQueueFamilyIndices = &renderer->queueFamilyIndex;
-
-	vulkanResult = renderer->vkCreateBuffer(
-		renderer->logicalDevice,
-		&bufferCreateInfo,
-		NULL,
-		&subBuffer->buffer
-	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateBuffer", vulkanResult);
-		FNA3D_LogError("Failed to create VkBuffer");
-		return 0;
-	}
-
-	findMemoryResult = VULKAN_INTERNAL_FindAvailableBufferMemory(
-		renderer,
-		subBuffer->buffer,
-		buffer->isDeviceLocal,
-		&subBuffer->allocation,
-		&subBuffer->offset,
-		&subBuffer->size
-	);
-
-	/* No BAR memory available, just try CPU memory */
-	if (buffer->isDeviceLocal && findMemoryResult == 2)
-	{
-		findMemoryResult = VULKAN_INTERNAL_FindAvailableBufferMemory(
-			renderer,
-			subBuffer->buffer,
-			0,
-			&subBuffer->allocation,
-			&subBuffer->offset,
-			&subBuffer->size
-		);
-	}
-
-	/* We're out of available memory */
-	if (findMemoryResult == 2)
-	{
-		SDL_free(subBuffer);
-		FNA3D_LogWarn("Out of buffer memory!");
-		return 2;
-	}
-	else if (findMemoryResult == 0)
-	{
-		SDL_free(subBuffer);
-		FNA3D_LogError("Failed to find buffer memory!");
-		return 0;
-	}
-
-	SDL_LockMutex(subBuffer->allocation->mapLock);
-
-	vulkanResult = renderer->vkBindBufferMemory(
-		renderer->logicalDevice,
-		subBuffer->buffer,
-		subBuffer->allocation->memory,
-		subBuffer->offset
-	);
-
-	SDL_UnlockMutex(subBuffer->allocation->mapLock);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		FNA3D_LogError("Failed to bind buffer memory!");
-		return 0;
-	}
-
-	subBuffer->resourceAccessType = buffer->resourceAccessType;
-	subBuffer->bound = -1;
-
-	/* Reallocate the subbuffer array if we're at max capacity */
-	if (buffer->subBufferCount == buffer->subBufferCapacity)
-	{
-		buffer->subBufferCapacity *= 2;
-		buffer->subBuffers = SDL_realloc(
-			buffer->subBuffers,
-			sizeof(VulkanSubBuffer) * buffer->subBufferCapacity
-		);
-	}
-
-	buffer->subBuffers[buffer->subBufferCount] = subBuffer;
-	buffer->subBufferCount += 1;
-
-	VULKAN_INTERNAL_BufferMemoryBarrier(
-		renderer,
-		buffer->resourceAccessType,
-		buffer,
-		subBuffer
-	);
-
-	return 1;
-}
-
 static void VULKAN_INTERNAL_MarkAsBound(
 	VulkanRenderer *renderer,
 	VulkanBuffer *buf
@@ -5729,51 +5769,6 @@ static void VULKAN_INTERNAL_SetBufferData(
 
 	#undef SUBBUF
 	#undef CURIDX
-}
-
-static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
-	VulkanRenderer *renderer,
-	VkDeviceSize size,
-	VulkanResourceAccessType resourceAccessType,
-	VkBufferUsageFlags usage,
-	uint8_t isDeviceLocal,
-	uint32_t subBufferCount
-) {
-	uint32_t i;
-	uint8_t allocateResult;
-
-	VulkanBuffer *buffer = SDL_malloc(sizeof(VulkanBuffer));
-
-	buffer->size = size;
-
-	buffer->currentSubBufferIndex = 0;
-	buffer->bound = 0;
-	buffer->boundSubmitted = 0;
-	buffer->resourceAccessType = resourceAccessType;
-	buffer->usage = usage;
-	buffer->isDeviceLocal = isDeviceLocal;
-
-	buffer->subBufferCount = 0;
-	buffer->subBufferCapacity = subBufferCount;
-	buffer->subBuffers = SDL_malloc(
-		sizeof(VulkanSubBuffer) * buffer->subBufferCapacity
-	);
-
-	for (i = 0; i < buffer->subBufferCapacity; i += 1)
-	{
-		/* Populate one sub buffer */
-		allocateResult = VULKAN_INTERNAL_AllocateSubBuffer(
-			renderer,
-			buffer
-		);
-
-		if (allocateResult != 1)
-		{
-			return NULL;
-		}
-	}
-
-	return buffer;
 }
 
 static uint8_t VULKAN_INTERNAL_CreateTexture(
