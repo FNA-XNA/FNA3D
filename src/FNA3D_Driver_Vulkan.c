@@ -3016,7 +3016,8 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 		allocator->nextAllocationSize = SDL_min(allocator->nextAllocationSize * 2, MAX_ALLOCATION_SIZE);
 	}
 
-	if (isDeviceLocal && renderer->deviceLocalHeapUsage + allocationSize > renderer->maxDeviceLocalHeapUsage)
+	if (	isDeviceLocal &&
+		(renderer->deviceLocalHeapUsage + allocationSize > renderer->maxDeviceLocalHeapUsage)	)
 	{
 		/* we are oversubscribing device local memory */
 		return 2;
