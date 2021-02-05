@@ -3987,6 +3987,10 @@ static void VULKAN_INTERNAL_ResetTextureStagingBuffer(
 		renderer->textureStagingBuffer->transferInProgress = 1;
 		renderer->textureStagingBuffer->pendingTransfer = 0;
 	}
+	else
+	{
+		renderer->textureStagingBuffer->transferInProgress = 0;
+	}
 }
 
 static void VULKAN_INTERNAL_CreateFastStagingBuffer(
