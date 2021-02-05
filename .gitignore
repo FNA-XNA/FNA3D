@@ -11,4 +11,3 @@ Release/
 .DS_Store
 xcuserdata/
 *.xcworkspace/
-build/
