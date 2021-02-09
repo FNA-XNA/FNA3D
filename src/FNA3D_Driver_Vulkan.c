@@ -3975,7 +3975,12 @@ static void VULKAN_INTERNAL_WaitForStagingTransfers(
 			VK_TRUE,
 			UINT64_MAX
 		);
-		VULKAN_ERROR_CHECK(result, vkWaitForFences,)
+
+		/* Just warn if this fails, odds are a crash is already in progress */
+		if (result != VK_SUCCESS)
+		{
+			FNA3D_LogWarn("vkWaitForFences: %s", VkErrorMessages(result));
+		}
 
 		renderer->textureStagingBuffer->transferInProgress = 0;
 	}
@@ -4978,7 +4983,15 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		VK_TRUE,
 		UINT64_MAX
 	);
-	VULKAN_ERROR_CHECK(result, vkWaitForFences,)
+
+	/* This may return an error on exit, so just quietly bail if waiting
+	 * fails for any reason
+	 */
+	if (result != VK_SUCCESS)
+	{
+		FNA3D_LogWarn("vkWaitForFences: %s", VkErrorMessages(result));
+		return;
+	}
 
 	/* Cleanup */
 	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
@@ -5140,6 +5153,8 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync)
 {
+	VkResult result;
+
 	SDL_LockMutex(renderer->passLock);
 	SDL_LockMutex(renderer->commandLock);
 	SDL_LockMutex(renderer->stagingLock);
@@ -5148,13 +5163,19 @@ static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync
 
 	if (sync)
 	{
-		renderer->vkWaitForFences(
+		result = renderer->vkWaitForFences(
 			renderer->logicalDevice,
 			1,
 			&renderer->inFlightFence,
 			VK_TRUE,
 			UINT64_MAX
 		);
+
+		/* Just warn if this fails, odds are a crash is already in progress */
+		if (result != VK_SUCCESS)
+		{
+			FNA3D_LogWarn("vkWaitForFences: %s", VkErrorMessages(result));
+		}
 	}
 
 	SDL_UnlockMutex(renderer->passLock);
@@ -7590,7 +7611,12 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 
 	waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
-	VULKAN_ERROR_CHECK(waitResult, vkDeviceWaitIdle,)
+
+	/* Just treat this as a warning, we're about to exit anyway... */
+	if (waitResult != VK_SUCCESS)
+	{
+		FNA3D_LogWarn("vkDeviceWaitIdle: %s\n", VkErrorMessages(waitResult));
+	}
 
 	/* Save the pipeline cache to disk */
 
