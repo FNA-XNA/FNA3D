@@ -5141,6 +5141,15 @@ static void VULKAN_INTERNAL_SubmitCommands(
 			VULKAN_INTERNAL_RecreateSwapchain(renderer, 0);
 		}
 
+		/* This can technically happen anywhere, but this is the nicest
+		 * place for it to happen so we try to log it here.
+		 */
+		if (	acquireResult == VK_ERROR_DEVICE_LOST ||
+			presentResult == VK_ERROR_DEVICE_LOST	)
+		{
+			FNA3D_LogError("Vulkan device was lost!");
+		}
+
 		if (!acquireSuccess)
 		{
 			FNA3D_LogInfo("Failed to acquire swapchain image, not presenting");
