@@ -2142,7 +2142,7 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 		}
 	}
 
-	FNA3D_LogError("Failed to find memory properties %X, required %X, ignored %X", requiredProperties, ignoredProperties, typeFilter);
+	FNA3D_LogWarn("Failed to find memory properties %X, required %X, ignored %X", requiredProperties, ignoredProperties, typeFilter);
 	return 0;
 }
 
@@ -2789,20 +2789,13 @@ static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
 		pMemoryRequirements
 	);
 
-	if (!VULKAN_INTERNAL_FindMemoryType(
+	return VULKAN_INTERNAL_FindMemoryType(
 		renderer,
 		pMemoryRequirements->memoryRequirements.memoryTypeBits,
 		requiredMemoryProperties,
 		ignoredMemoryProperties,
 		pMemoryTypeIndex
-	)) {
-		FNA3D_LogError(
-			"Could not find valid memory type for buffer creation"
-		);
-		return 0;
-	}
-
-	return 1;
+	);
 }
 
 static uint8_t VULKAN_INTERNAL_FindImageMemoryRequirements(
@@ -2825,18 +2818,13 @@ static uint8_t VULKAN_INTERNAL_FindImageMemoryRequirements(
 		pMemoryRequirements
 	);
 
-	if (!VULKAN_INTERNAL_FindMemoryType(
+	return VULKAN_INTERNAL_FindMemoryType(
 		renderer,
 		pMemoryRequirements->memoryRequirements.memoryTypeBits,
 		requiredMemoryPropertyFlags,
 		ignoredMemoryPropertyFlags,
 		pMemoryTypeIndex
-	)) {
-		FNA3D_LogError(
-			"Could not find valid memory type for image creation"
-		);
-		return 0;
-	}
+	);
 
 	return 1;
 }
@@ -3141,8 +3129,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableBufferMemory(
 		&memoryRequirements,
 		&memoryTypeIndex
 	)) {
-		FNA3D_LogError("Failed to acquire buffer memory requirements!");
-		return 0;
+		return isDeviceLocal ? 2 : 0;
 	}
 
 	return VULKAN_INTERNAL_FindAvailableMemory(
