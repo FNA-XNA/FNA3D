@@ -2439,7 +2439,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 
 	if (physicalDeviceCount == 0)
 	{
-		FNA3D_LogError("Failed to find any GPUs with Vulkan support");
+		FNA3D_LogWarn("Failed to find any GPUs with Vulkan support");
 		return 0;
 	}
 
