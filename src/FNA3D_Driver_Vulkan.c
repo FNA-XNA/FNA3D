@@ -102,17 +102,6 @@ static const uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames)
 #define STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE 16
 #define DESCRIPTOR_SET_DEACTIVATE_FRAMES 10
 
-#define NULL_BUFFER (VkBuffer) 0
-#define NULL_DESC_SET (VkDescriptorSet) 0
-#define NULL_DESC_LAYOUT (VkDescriptorSetLayout) 0
-#define NULL_FENCE (VkFence) 0
-#define NULL_FRAMEBUFFER (VkFramebuffer) 0
-#define NULL_IMAGE_VIEW (VkImageView) 0
-#define NULL_PIPELINE (VkPipeline) 0
-#define NULL_PIPELINE_LAYOUT (VkPipelineLayout) 0
-#define NULL_SAMPLER (VkSampler) 0
-#define NULL_RENDER_PASS (VkRenderPass) 0
-
 #define DEFAULT_PIPELINE_CACHE_FILE_NAME "FNA3D_Vulkan_PipelineCache.blob"
 
 #define IDENTITY_SWIZZLE \
@@ -443,8 +432,6 @@ typedef struct ShaderResourcesHashMap
 	ShaderResources *value;
 } ShaderResourcesHashMap;
 
-#define NULL_SHADER_RESOURCES (ShaderResources*) 0
-
 typedef struct ShaderResourcesHashArray
 {
 	ShaderResourcesHashMap *elements;
@@ -476,7 +463,7 @@ static inline ShaderResources *ShaderResourcesHashTable_Fetch(
 		}
 	}
 
-	return NULL_SHADER_RESOURCES;
+	return NULL;
 }
 
 static inline void ShaderResourcesHashTable_Insert(
@@ -1721,33 +1708,12 @@ static inline const char* VkErrorMessages(VkResult code)
 	#undef ERR_TO_STR
 }
 
-static inline void LogVulkanResultAsError(
-	const char* vulkanFunctionName,
-	VkResult result
-) {
-	if (result != VK_SUCCESS)
-	{
-		FNA3D_LogError(
-			"%s: %s",
-			vulkanFunctionName,
-			VkErrorMessages(result)
-		);
+#define VULKAN_ERROR_CHECK(res, fn, ret) \
+	if (res != VK_SUCCESS) \
+	{ \
+		FNA3D_LogError("%s %s", #fn, VkErrorMessages(res)); \
+		return ret; \
 	}
-}
-
-static inline void LogVulkanResultAsWarn(
-	const char* vulkanFunctionName,
-	VkResult result
-) {
-	if (result != VK_SUCCESS)
-	{
-		FNA3D_LogWarn(
-			"%s: %s",
-			vulkanFunctionName,
-			VkErrorMessages(result)
-		);
-	}
-}
 
 /* Forward Declarations */
 
@@ -1955,15 +1921,7 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 		surface,
 		&outputDetails->capabilities
 	);
-	if (result != VK_SUCCESS)
-	{
-		FNA3D_LogError(
-			"vkGetPhysicalDeviceSurfaceCapabilitiesKHR: %s",
-			VkErrorMessages(result)
-		);
-
-		return 0;
-	}
+	VULKAN_ERROR_CHECK(result, vkGetPhysicalDeviceSurfaceCapabilitiesKHR, 0)
 
 	renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(
 		physicalDevice,
@@ -2142,7 +2100,12 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 		}
 	}
 
-	FNA3D_LogWarn("Failed to find memory properties %X, required %X, ignored %X", requiredProperties, ignoredProperties, typeFilter);
+	FNA3D_LogWarn(
+		"Failed to find memory properties %X, required %X, ignored %X",
+		requiredProperties,
+		ignoredProperties,
+		typeFilter
+	);
 	return 0;
 }
 
@@ -2312,7 +2275,7 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 		&instanceExtensionCount,
 		NULL
 	)) {
-		FNA3D_LogError(
+		FNA3D_LogWarn(
 			"SDL_Vulkan_GetInstanceExtensions(): getExtensionCount: %s",
 			SDL_GetError()
 		);
@@ -2334,7 +2297,7 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 		&instanceExtensionCount,
 		instanceExtensionNames
 	)) {
-		FNA3D_LogError(
+		FNA3D_LogWarn(
 			"SDL_Vulkan_GetInstanceExtensions(): %s",
 			SDL_GetError()
 		);
@@ -2350,7 +2313,7 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 		instanceExtensionCount,
 		&renderer->supportsDebugUtils
 	)) {
-		FNA3D_LogError(
+		FNA3D_LogWarn(
 			"Required Vulkan instance extensions not supported"
 		);
 		goto create_instance_fail;
@@ -2396,7 +2359,7 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 	vulkanResult = vkCreateInstance(&createInfo, NULL, &renderer->instance);
 	if (vulkanResult != VK_SUCCESS)
 	{
-		FNA3D_LogError(
+		FNA3D_LogWarn(
 			"vkCreateInstance failed: %s",
 			VkErrorMessages(vulkanResult)
 		);
@@ -2427,15 +2390,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 		&physicalDeviceCount,
 		NULL
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		FNA3D_LogError(
-			"vkEnumeratePhysicalDevices failed: %s",
-			VkErrorMessages(vulkanResult)
-		);
-		return 0;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkEnumeratePhysicalDevices, 0)
 
 	if (physicalDeviceCount == 0)
 	{
@@ -2453,7 +2408,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 
 	if (vulkanResult != VK_SUCCESS)
 	{
-		FNA3D_LogError(
+		FNA3D_LogWarn(
 			"vkEnumeratePhysicalDevices failed: %s",
 			VkErrorMessages(vulkanResult)
 		);
@@ -2607,14 +2562,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 		NULL,
 		&renderer->logicalDevice
 	);
-	if (vulkanResult != VK_SUCCESS)
-	{
-		FNA3D_LogError(
-			"vkCreateDevice failed: %s",
-			VkErrorMessages(vulkanResult)
-		);
-		return 0;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateDevice, 0)
 
 	/* Load vkDevice entry points */
 
@@ -2907,7 +2855,7 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 
 		SDL_free(allocation);
 
-		LogVulkanResultAsWarn("vkAllocateMemory", result);
+		FNA3D_LogWarn("vkAllocateMemory: %s", VkErrorMessages(result));
 		return 0;
 	}
 
@@ -2922,12 +2870,7 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 			0,
 			(void**) &allocation->mapPointer
 		);
-
-		if (result != VK_SUCCESS)
-		{
-			LogVulkanResultAsError("vkMapMemory", result);
-			return 0;
-		}
+		VULKAN_ERROR_CHECK(result, vkMapMemory, 0)
 	}
 	else
 	{
@@ -3148,7 +3091,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableBufferMemory(
 static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 	VulkanRenderer *renderer,
 	VkImage image,
-	uint8_t cpuAllocation,
+	uint8_t isDeviceLocal,
 	VulkanMemoryAllocation **pMemoryAllocation,
 	VkDeviceSize *pOffset,
 	VkDeviceSize *pSize
@@ -3167,15 +3110,15 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 		&dedicatedRequirements
 	};
 
-	if (cpuAllocation)
-	{
-		requiredMemoryPropertyFlags = 0;
-		ignoredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-	}
-	else
+	if (isDeviceLocal)
 	{
 		requiredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 		ignoredMemoryPropertyFlags = 0;
+	}
+	else
+	{
+		requiredMemoryPropertyFlags = 0;
+		ignoredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	}
 
 	if (!VULKAN_INTERNAL_FindImageMemoryRequirements(
@@ -3186,8 +3129,7 @@ static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
 		&memoryRequirements,
 		&memoryTypeIndex
 	)) {
-		FNA3D_LogError("Failed to acquire image memory requirements!");
-		return 0;
+		return isDeviceLocal ? 2 : 0;
 	}
 
 	return VULKAN_INTERNAL_FindAvailableMemory(
@@ -3328,7 +3270,7 @@ static void VULKAN_INTERNAL_DestroyTexture(
 		);
 	}
 
-	if (texture->rtViews[1] != NULL_IMAGE_VIEW)
+	if (texture->rtViews[1] != VK_NULL_HANDLE)
 	{
 		/* Free all the other cube RT views */
 		for (i = 1; i < 6; i += 1)
@@ -3562,12 +3504,7 @@ static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer)
 			&allocateInfo,
 			renderer->inactiveCommandBuffers
 		);
-
-		if (result != VK_SUCCESS)
-		{
-			LogVulkanResultAsError("vkAllocateCommandBuffers", result);
-			return;
-		}
+		VULKAN_ERROR_CHECK(result, vkAllocateCommandBuffers,)
 
 		renderer->inactiveCommandBufferCount = renderer->allocatedCommandBufferCount;
 		renderer->allocatedCommandBufferCount *= 2;
@@ -3585,11 +3522,7 @@ static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer)
 		renderer->currentCommandBuffer,
 		&beginInfo
 	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkBeginCommandBuffer", result);
-	}
+	VULKAN_ERROR_CHECK(result, vkBeginCommandBuffer,)
 }
 
 static void VULKAN_INTERNAL_EndCommandBuffer(
@@ -3608,11 +3541,7 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 	result = renderer->vkEndCommandBuffer(
 		renderer->currentCommandBuffer
 	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkEndCommandBuffer", result);
-	}
+	VULKAN_ERROR_CHECK(result, vkEndCommandBuffer,)
 
 	renderer->currentCommandBuffer = NULL;
 	renderer->numActiveCommands = 0;
@@ -3831,13 +3760,7 @@ static uint8_t VULKAN_INTERNAL_AllocateSubBuffer(
 		NULL,
 		&subBuffer->buffer
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateBuffer", vulkanResult);
-		FNA3D_LogError("Failed to create VkBuffer");
-		return 0;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateBuffer, 0)
 
 	findMemoryResult = VULKAN_INTERNAL_FindAvailableBufferMemory(
 		renderer,
@@ -3886,11 +3809,7 @@ static uint8_t VULKAN_INTERNAL_AllocateSubBuffer(
 
 	SDL_UnlockMutex(subBuffer->allocation->mapLock);
 
-	if (vulkanResult != VK_SUCCESS)
-	{
-		FNA3D_LogError("Failed to bind buffer memory!");
-		return 0;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkBindBufferMemory, 0)
 
 	subBuffer->resourceAccessType = buffer->resourceAccessType;
 	subBuffer->bound = -1;
@@ -4056,12 +3975,7 @@ static void VULKAN_INTERNAL_WaitForStagingTransfers(
 			VK_TRUE,
 			UINT64_MAX
 		);
-
-		if (result != VK_SUCCESS)
-		{
-			LogVulkanResultAsError("vkWaitForFences", result);
-			return;
-		}
+		VULKAN_ERROR_CHECK(result, vkWaitForFences,)
 
 		renderer->textureStagingBuffer->transferInProgress = 0;
 	}
@@ -4201,12 +4115,7 @@ static uint8_t VULKAN_INTERNAL_CreateDescriptorPool(
 		NULL,
 		pDescriptorPool
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateDescriptorPool", vulkanResult);
-		return 0;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateDescriptorPool, 0)
 
 	return 1;
 }
@@ -4240,14 +4149,10 @@ static uint8_t VULKAN_INTERNAL_AllocateDescriptorSets(
 		descriptorSetArray
 	);
 
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkAllocateDescriptorSets", vulkanResult);
-		SDL_stack_free(descriptorSetLayouts);
-		return 0;
-	}
-
 	SDL_stack_free(descriptorSetLayouts);
+
+	VULKAN_ERROR_CHECK(vulkanResult, vkAllocateDescriptorSets, 0)
+
 	return 1;
 }
 
@@ -4326,12 +4231,7 @@ static VkDescriptorSetLayout VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(
 		NULL,
 		&descriptorSetLayout
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateDescriptorSetLayout", vulkanResult);
-		return NULL_DESC_LAYOUT;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateDescriptorSetLayout, VK_NULL_HANDLE)
 
 	DescriptorSetLayoutHashTable_Insert(
 		&renderer->descriptorSetLayoutTable,
@@ -4497,7 +4397,7 @@ static ShaderResources* VULKAN_INTERNAL_FetchShaderResources(
 ) {
 	ShaderResources *shaderResources = ShaderResourcesHashTable_Fetch(&renderer->shaderResourcesHashTable, shader);
 
-	if (shaderResources == NULL_SHADER_RESOURCES)
+	if (shaderResources == VK_NULL_HANDLE)
 	{
 		shaderResources = ShaderResources_Init(renderer, shader, shaderStageFlag);
 		ShaderResourcesHashTable_Insert(&renderer->shaderResourcesHashTable, shader, shaderResources);
@@ -5078,12 +4978,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		VK_TRUE,
 		UINT64_MAX
 	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkWaitForFences", result);
-		return;
-	}
+	VULKAN_ERROR_CHECK(result, vkWaitForFences,)
 
 	/* Cleanup */
 	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
@@ -5145,11 +5040,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 			renderer->submittedCommandBuffers[i],
 			VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
 		);
-
-		if (result != VK_SUCCESS)
-		{
-			LogVulkanResultAsError("vkResetCommandBuffer", result);
-		}
+		VULKAN_ERROR_CHECK(result, vkResetCommandBuffer,)
 	}
 
 	/* Mark the previously submitted command buffers as inactive */
@@ -5175,11 +5066,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		&submitInfo,
 		renderer->inFlightFence
 	);
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkQueueSubmit", result);
-		return;
-	}
+	VULKAN_ERROR_CHECK(result, vkQueueSubmit,)
 
 	/* Rotate the UBOs */
 	MOJOSHADER_vkEndFrame();
@@ -5444,12 +5331,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	SDL_free(swapChainSupportDetails.formats);
 	SDL_free(swapChainSupportDetails.presentModes);
 
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateSwapchainKHR", vulkanResult);
-
-		return CREATE_SWAPCHAIN_FAIL;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateSwapchainKHR, CREATE_SWAPCHAIN_FAIL)
 
 	renderer->vkGetSwapchainImagesKHR(
 		renderer->logicalDevice,
@@ -5519,7 +5401,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 
 		if (vulkanResult != VK_SUCCESS)
 		{
-			LogVulkanResultAsError("vkCreateImageView", vulkanResult);
+			FNA3D_LogError("vkCreateImageView: %s", VkErrorMessages(vulkanResult));
 			SDL_stack_free(swapChainImages);
 			return CREATE_SWAPCHAIN_FAIL;
 		}
@@ -5609,7 +5491,6 @@ static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer, uint8_t 
 
 	if (createSwapchainResult == CREATE_SWAPCHAIN_FAIL)
 	{
-		FNA3D_LogError("Failed to recreate swapchain");
 		return;
 	}
 
@@ -5805,19 +5686,13 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 		NULL,
 		&texture->image
 	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateImage", result);
-		FNA3D_LogError("Failed to create image");
-		return 0;
-	}
+	VULKAN_ERROR_CHECK(result, vkCreateImage, 0)
 
 	/* Prefer GPU allocation */
 	findMemoryResult = VULKAN_INTERNAL_FindAvailableTextureMemory(
 		renderer,
 		texture->image,
-		0,
+		1,
 		&texture->allocation,
 		&texture->offset,
 		&texture->memorySize
@@ -5837,7 +5712,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 		findMemoryResult = VULKAN_INTERNAL_FindAvailableTextureMemory(
 			renderer,
 			texture->image,
-			1,
+			0,
 			&texture->allocation,
 			&texture->offset,
 			&texture->memorySize
@@ -5867,11 +5742,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 
 	SDL_UnlockMutex(texture->allocation->mapLock);
 
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkBindImageMemory", result);
-		return 0;
-	}
+	VULKAN_ERROR_CHECK(result, vkBindImageMemory, 0)
 
 	imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	imageViewCreateInfo.pNext = NULL;
@@ -5899,7 +5770,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	}
 	else
 	{
-		FNA3D_LogError("invalid image type: %u", imageType);
+		FNA3D_LogError("Invalid image type: %u", imageType);
 	}
 
 	result = renderer->vkCreateImageView(
@@ -5908,13 +5779,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 		NULL,
 		&texture->view
 	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateImageView", result);
-		FNA3D_LogError("Failed to create texture image view");
-		return 0;
-	}
+	VULKAN_ERROR_CHECK(result, vkCreateImageView, 0)
 
 	/* FIXME: Reduce this memset to the minimum necessary for init! */
 	SDL_memset(texture->rtViews, '\0', sizeof(texture->rtViews));
@@ -5934,16 +5799,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 				NULL,
 				&texture->rtViews[0]
 			);
-
-			if (result != VK_SUCCESS)
-			{
-				LogVulkanResultAsError(
-					"vkCreateImageView",
-					result
-				);
-				FNA3D_LogError("Failed to create color attachment image view");
-				return 0;
-			}
+			VULKAN_ERROR_CHECK(result, vkCreateImageView, 0)
 		}
 		else
 		{
@@ -5965,16 +5821,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 					NULL,
 					&texture->rtViews[i]
 				);
-
-				if (result != VK_SUCCESS)
-				{
-					LogVulkanResultAsError(
-						"vkCreateImageView",
-						result
-					);
-					FNA3D_LogError("Failed to create color attachment image view");
-					return 0;
-				}
+				VULKAN_ERROR_CHECK(result, vkCreateImageView, 0)
 			}
 		}
 	}
@@ -6225,12 +6072,7 @@ static VkPipelineLayout VULKAN_INTERNAL_FetchPipelineLayout(
 		NULL,
 		&layout
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreatePipelineLayout", vulkanResult);
-		return NULL_PIPELINE_LAYOUT;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreatePipelineLayout, VK_NULL_HANDLE)
 
 	PipelineLayoutHashArray_Insert(
 		&renderer->pipelineLayoutTable,
@@ -6709,12 +6551,7 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 		NULL,
 		&pipeline
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateGraphicsPipelines", vulkanResult);
-		return NULL_PIPELINE;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateGraphicsPipelines, VK_NULL_HANDLE)
 
 	SDL_free(bindingDescriptions);
 	SDL_free(attributeDescriptions);
@@ -7209,12 +7046,7 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 		NULL,
 		&renderPass
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateRenderPass", vulkanResult);
-		return NULL_RENDER_PASS;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateRenderPass, VK_NULL_HANDLE)
 
 	RenderPassHashArray_Insert(
 		&renderer->renderPassArray,
@@ -7242,20 +7074,20 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 				renderer->colorAttachments[i]->rtViews[
 					renderer->attachmentCubeFaces[i]
 				] :
-				NULL_IMAGE_VIEW
+				VK_NULL_HANDLE
 		);
 		hash.colorMultiSampleAttachmentViews[i] = (
 			renderer->colorMultiSampleAttachments[i] != NULL ?
 				renderer->colorMultiSampleAttachments[i]->rtViews[
 					renderer->attachmentCubeFaces[i]
 				] :
-				NULL_IMAGE_VIEW
+				VK_NULL_HANDLE
 		);
 	}
 	hash.depthStencilAttachmentView = (
 		renderer->depthStencilAttachment != NULL ?
 			renderer->depthStencilAttachment->rtViews[0] :
-			NULL_IMAGE_VIEW
+			VK_NULL_HANDLE
 	);
 	hash.width = renderer->colorAttachments[0]->dimensions.width;
 	hash.height = renderer->colorAttachments[0]->dimensions.height;
@@ -7314,11 +7146,7 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 		NULL,
 		&framebuffer
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateFramebuffer", vulkanResult);
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateFramebuffer, VK_NULL_HANDLE)
 
 	FramebufferHashArray_Insert(
 		&renderer->framebufferArray,
@@ -7508,19 +7336,19 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 		{
 			renderer->textureNeedsUpdate[i] = 1;
 		}
-		if (renderer->samplers[i] != NULL_SAMPLER)
+		if (renderer->samplers[i] != VK_NULL_HANDLE)
 		{
 			renderer->samplerNeedsUpdate[i] = 1;
 		}
 	}
 
-	renderer->ldFragUniformBuffer = NULL_BUFFER;
+	renderer->ldFragUniformBuffer = VK_NULL_HANDLE;
 	renderer->ldFragUniformOffset = 0;
 	renderer->ldFragUniformSize = 0;
-	renderer->ldVertUniformBuffer = NULL_BUFFER;
+	renderer->ldVertUniformBuffer = VK_NULL_HANDLE;
 	renderer->ldVertUniformOffset = 0;
 	renderer->ldVertUniformSize = 0;
-	renderer->currentPipeline = NULL_PIPELINE;
+	renderer->currentPipeline = VK_NULL_HANDLE;
 
 	renderer->needNewRenderPass = 0;
 	renderer->shouldClearColorOnBeginPass = 0;
@@ -7731,12 +7559,7 @@ static VkSampler VULKAN_INTERNAL_FetchSamplerState(
 		NULL,
 		&state
 	);
-
-	if (result != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateSampler", result);
-		return 0;
-	}
+	VULKAN_ERROR_CHECK(result, vkCreateSampler, 0)
 
 	SamplerStateHashArray_Insert(
 		&renderer->samplerStateArray,
@@ -7767,11 +7590,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 
 	waitResult = renderer->vkDeviceWaitIdle(renderer->logicalDevice);
-
-	if (waitResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkDeviceWaitIdle", waitResult);
-	}
+	VULKAN_ERROR_CHECK(waitResult, vkDeviceWaitIdle,)
 
 	/* Save the pipeline cache to disk */
 
@@ -7822,7 +7641,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	}
 	else
 	{
-		LogVulkanResultAsWarn("vkGetPipelineCacheData", pipelineCacheResult);
+		FNA3D_LogWarn("vkGetPipelineCacheData: %s", VkErrorMessages(pipelineCacheResult));
 		FNA3D_LogWarn("Error getting data from pipeline cache, aborting save!");
 	}
 
@@ -8557,7 +8376,7 @@ static void VULKAN_VerifySampler(
 			renderer->textureNeedsUpdate[index] = 1;
 		}
 
-		if (renderer->samplers[index] == NULL_SAMPLER)
+		if (renderer->samplers[index] == VK_NULL_HANDLE)
 		{
 			vkSamplerState = VULKAN_INTERNAL_FetchSamplerState(
 				renderer,
@@ -10189,7 +10008,8 @@ static FNA3D_Query* VULKAN_CreateQuery(FNA3D_Renderer *driverData)
 	VulkanRenderer *renderer = (VulkanRenderer *) driverData;
 	VulkanQuery *query = (VulkanQuery*) SDL_malloc(sizeof(VulkanQuery));
 
-	if (renderer->freeQueryIndexStackHead == -1) {
+	if (renderer->freeQueryIndexStackHead == -1)
+	{
 		FNA3D_LogError(
 			"Query limit of %d has been exceeded!",
 			MAX_QUERIES
@@ -10300,11 +10120,7 @@ static int32_t VULKAN_QueryPixelCount(
 		0,
 		0
 	);
-
-	if (vulkanResult != VK_SUCCESS) {
-		LogVulkanResultAsError("vkGetQueryPoolResults", VK_SUCCESS);
-		return 0;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkGetQueryPoolResults, 0)
 
 	/* FIXME maybe signed/unsigned integer problems? */
 	return queryResult;
@@ -10930,12 +10746,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		NULL,
 		&renderer->imageAvailableSemaphore
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateFence", vulkanResult);
-		return NULL;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateSemaphore, NULL)
 
 	vulkanResult = renderer->vkCreateSemaphore(
 		renderer->logicalDevice,
@@ -10943,12 +10754,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		NULL,
 		&renderer->renderFinishedSemaphore
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateSemaphore", vulkanResult);
-		return NULL;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateSemaphore, NULL)
 
 	vulkanResult = renderer->vkCreateFence(
 		renderer->logicalDevice,
@@ -10956,12 +10762,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		NULL,
 		&renderer->inFlightFence
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateSemaphore", vulkanResult);
-		return NULL;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateFence, NULL)
 
 	/*
 	 * Create command pool and buffers
@@ -10977,10 +10778,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		NULL,
 		&renderer->commandPool
 	);
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateCommandPool", vulkanResult);
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateCommandPool, NULL)
 
 	renderer->allocatedCommandBufferCount = 4;
 	renderer->inactiveCommandBuffers = SDL_malloc(sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount);
@@ -11000,10 +10798,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		&commandBufferAllocateInfo,
 		renderer->inactiveCommandBuffers
 	);
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkAllocateCommandBuffers", vulkanResult);
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkAllocateCommandBuffers, NULL)
 
 	renderer->currentCommandCount = 0;
 
@@ -11066,11 +10861,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		SDL_free(pipelineCacheBytes);
 	}
 
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreatePipelineCache", vulkanResult);
-		return NULL;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreatePipelineCache, NULL)
 
 	/*
 	 * Define sampler counts
@@ -11108,12 +10899,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		NULL,
 		&renderer->vertexUniformBufferDescriptorSetLayout
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateDescriptorSetLayout", vulkanResult);
-		return NULL;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateDescriptorSetLayout, NULL)
 
 	/* Define frag UBO set layout */
 	layoutBinding.binding = 0;
@@ -11134,12 +10920,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		NULL,
 		&renderer->fragUniformBufferDescriptorSetLayout
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateDescriptorSetLayout", vulkanResult);
-		return NULL;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateDescriptorSetLayout, NULL)
 
 	renderer->vertexSamplerDescriptorSetDataNeedsUpdate = 1;
 	renderer->fragSamplerDescriptorSetDataNeedsUpdate = 1;
@@ -11149,7 +10930,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	 */
 
 	renderer->currentDepthFormat = presentationParameters->depthStencilFormat;
-	renderer->currentPipeline = NULL_PIPELINE;
+	renderer->currentPipeline = VK_NULL_HANDLE;
 	renderer->needNewRenderPass = 1;
 	renderer->needNewPipeline = 1;
 
@@ -11208,11 +10989,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		NULL,
 		&renderer->queryPool
 	);
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateQueryPool", vulkanResult);
-		return NULL;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateQueryPool, NULL)
 
 	/* Set up the stack, the value at each index is the next available
 	 * index, or -1 if no such index exists.
@@ -11464,12 +11241,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		NULL,
 		&renderer->uniformBufferDescriptorPool
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkCreateDescriptorPool", vulkanResult);
-		return 0;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateDescriptorPool, 0)
 
 	descriptorSetAllocateInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 	descriptorSetAllocateInfo.pNext = NULL;
@@ -11482,12 +11254,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		&descriptorSetAllocateInfo,
 		&renderer->dummyVertexUniformBufferDescriptorSet
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkAllocateDescriptorSets", vulkanResult);
-		return 0;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkAllocateDescriptorSets, 0)
 
 	descriptorSetAllocateInfo.pSetLayouts = &renderer->fragUniformBufferDescriptorSetLayout;
 
@@ -11496,12 +11263,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		&descriptorSetAllocateInfo,
 		&renderer->dummyFragUniformBufferDescriptorSet
 	);
-
-	if (vulkanResult != VK_SUCCESS)
-	{
-		LogVulkanResultAsError("vkAllocateDescriptorSets", vulkanResult);
-		return 0;
-	}
+	VULKAN_ERROR_CHECK(vulkanResult, vkAllocateDescriptorSets, 0)
 
 	bufferInfos[0].buffer = renderer->dummyVertUniformBuffer->subBuffers[renderer->dummyVertUniformBuffer->currentSubBufferIndex]->buffer;
 	bufferInfos[0].offset = 0;
