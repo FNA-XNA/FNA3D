@@ -481,6 +481,7 @@ int main(int argc, char **argv)
 		case MARK_CREATEEFFECT:
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
+			ops->read(ops, miscBuffer, dataLength, 1);
 			FNA3D_CreateEffect(
 				device,
 				(uint8_t*) miscBuffer,
