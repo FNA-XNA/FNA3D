@@ -147,7 +147,8 @@ void FNA3D_Trace_SwapBuffers(
 		return;
 	}
 
-	SDL_assert(overrideWindowHandle == windowHandle);
+	SDL_assert(	overrideWindowHandle == NULL ||
+			overrideWindowHandle == windowHandle	);
 
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_SWAPBUFFERS);
