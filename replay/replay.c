@@ -93,7 +93,7 @@ int main(int argc, char **argv)
 	SDL_RWops *ops;
 	uint8_t mark;
 
-	/* CreateDevice */
+	/* CreateDevice, ResetBackbuffer */
 	FNA3D_Device *device;
 	FNA3D_PresentationParameters presentationParameters;
 	uint8_t debugMode;
@@ -108,6 +108,47 @@ int main(int argc, char **argv)
 	FNA3D_Vec4 color;
 	float depth;
 	int32_t stencil;
+
+	/* DrawPrimitives */
+	FNA3D_PrimitiveType primitiveType;
+	int32_t vertexStart;
+	int32_t primitiveCount;
+
+	/* SetViewport */
+	FNA3D_Viewport viewport;
+
+	/* SetScissorRect */
+	FNA3D_Rect scissor;
+
+	/* SetBlendFactor */
+	FNA3D_Color blendFactor;
+
+	/* SetMultiSampleMask */
+	int32_t mask;
+
+	/* SetReferenceStencil */
+	int32_t ref;
+
+	/* SetBlendState */
+	FNA3D_BlendState blendState;
+
+	/* SetDepthStencilState */
+	FNA3D_DepthStencilState depthStencilState;
+
+	/* ApplyRasterizerState */
+	FNA3D_RasterizerState rasterizerState;
+
+	/* CreateEffect */
+	FNA3D_Effect *effect;
+	MOJOSHADER_effect *effectData;
+
+	/* Miscellaneous allocations, dimensions, blah blah... */
+	int32_t x, y, z, w, h, d, levelCount, sizeInBytes, dataLength;
+	FNA3D_CubeMapFace cubeMapFace;
+	FNA3D_SurfaceFormat format;
+	FNA3D_BufferUsage usage;
+	uint8_t isRenderTarget, dynamic;
+	void* miscBuffer;
 
 	/* TODO: Use argv for filenames */
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "rb");
@@ -197,22 +238,92 @@ int main(int argc, char **argv)
 		case MARK_DRAWINSTANCEDPRIMITIVES:
 			break;
 		case MARK_DRAWPRIMITIVES:
+			READ(primitiveType);
+			READ(vertexStart);
+			READ(primitiveCount);
+			FNA3D_DrawPrimitives(
+				device,
+				primitiveType,
+				vertexStart,
+				primitiveCount
+			);
 			break;
 		case MARK_SETVIEWPORT:
+			READ(viewport.x);
+			READ(viewport.y);
+			READ(viewport.w);
+			READ(viewport.h);
+			READ(viewport.minDepth);
+			READ(viewport.maxDepth);
+			FNA3D_SetViewport(device, &viewport);
 			break;
 		case MARK_SETSCISSORRECT:
+			READ(scissor.x);
+			READ(scissor.y);
+			READ(scissor.w);
+			READ(scissor.h);
+			FNA3D_SetScissorRect(device, &scissor);
 			break;
 		case MARK_SETBLENDFACTOR:
+			READ(blendFactor.r);
+			READ(blendFactor.g);
+			READ(blendFactor.b);
+			READ(blendFactor.a);
+			FNA3D_SetBlendFactor(device, &blendFactor);
 			break;
 		case MARK_SETMULTISAMPLEMASK:
+			READ(mask);
+			FNA3D_SetMultiSampleMask(device, mask);
 			break;
 		case MARK_SETREFERENCESTENCIL:
+			READ(ref);
+			FNA3D_SetReferenceStencil(device, ref);
 			break;
 		case MARK_SETBLENDSTATE:
+			READ(blendState.colorSourceBlend);
+			READ(blendState.colorDestinationBlend);
+			READ(blendState.colorBlendFunction);
+			READ(blendState.alphaSourceBlend);
+			READ(blendState.alphaDestinationBlend);
+			READ(blendState.alphaBlendFunction);
+			READ(blendState.colorWriteEnable);
+			READ(blendState.colorWriteEnable1);
+			READ(blendState.colorWriteEnable2);
+			READ(blendState.colorWriteEnable3);
+			READ(blendState.blendFactor.r);
+			READ(blendState.blendFactor.g);
+			READ(blendState.blendFactor.b);
+			READ(blendState.blendFactor.a);
+			READ(blendState.multiSampleMask);
+			FNA3D_SetBlendState(device, &blendState);
 			break;
 		case MARK_SETDEPTHSTENCILSTATE:
+			READ(depthStencilState.depthBufferEnable);
+			READ(depthStencilState.depthBufferWriteEnable);
+			READ(depthStencilState.depthBufferFunction);
+			READ(depthStencilState.stencilEnable);
+			READ(depthStencilState.stencilMask);
+			READ(depthStencilState.stencilWriteMask);
+			READ(depthStencilState.twoSidedStencilMode);
+			READ(depthStencilState.stencilFail);
+			READ(depthStencilState.stencilDepthBufferFail);
+			READ(depthStencilState.stencilPass);
+			READ(depthStencilState.stencilFunction);
+			READ(depthStencilState.ccwStencilFail);
+			READ(depthStencilState.ccwStencilDepthBufferFail);
+			READ(depthStencilState.ccwStencilPass);
+			READ(depthStencilState.ccwStencilFunction);
+			READ(depthStencilState.referenceStencil);
+			FNA3D_SetDepthStencilState(device, &depthStencilState);
 			break;
 		case MARK_APPLYRASTERIZERSTATE:
+			READ(rasterizerState.fillMode);
+			READ(rasterizerState.cullMode);
+			READ(rasterizerState.depthBias);
+			READ(rasterizerState.slopeScaleDepthBias);
+			READ(rasterizerState.scissorTestEnable);
+			READ(rasterizerState.multiSampleAntiAlias);
+			FNA3D_ApplyRasterizerState(device, &rasterizerState);
 			break;
 		case MARK_VERIFYSAMPLER:
 			break;
@@ -248,12 +359,65 @@ int main(int argc, char **argv)
 			FNA3D_ResetBackbuffer(device, &presentationParameters);
 			break;
 		case MARK_READBACKBUFFER:
+			READ(x);
+			READ(y);
+			READ(w);
+			READ(h);
+			READ(dataLength);
+			miscBuffer = SDL_malloc(dataLength);
+			FNA3D_ReadBackbuffer(
+				device,
+				x,
+				y,
+				w,
+				h,
+				miscBuffer,
+				dataLength
+			);
+			SDL_free(miscBuffer);
 			break;
 		case MARK_CREATETEXTURE2D:
+			READ(format);
+			READ(w);
+			READ(h);
+			READ(levelCount);
+			READ(isRenderTarget);
+			/* TODO: */ FNA3D_CreateTexture2D(
+				device,
+				format,
+				w,
+				h,
+				levelCount,
+				isRenderTarget
+			);
 			break;
 		case MARK_CREATETEXTURE3D:
+			READ(format);
+			READ(w);
+			READ(h);
+			READ(d);
+			READ(levelCount);
+			/* TODO: */ FNA3D_CreateTexture3D(
+				device,
+				format,
+				w,
+				h,
+				d,
+				levelCount
+			);
 			break;
 		case MARK_CREATETEXTURECUBE:
+			READ(format);
+			READ(w);
+			READ(levelCount);
+			READ(isRenderTarget);
+			/* TODO: */ FNA3D_CreateTextureCube(
+				device,
+				format,
+				w,
+				levelCount,
+				isRenderTarget
+			);
 			break;
 		case MARK_ADDDISPOSETEXTURE:
 			break;
@@ -278,6 +442,15 @@ int main(int argc, char **argv)
 		case MARK_ADDDISPOSERENDERBUFFER:
 			break;
 		case MARK_GENVERTEXBUFFER:
+			READ(dynamic);
+			READ(usage);
+			READ(sizeInBytes);
+			/* TODO: */ FNA3D_GenVertexBuffer(
+				device,
+				dynamic,
+				usage,
+				sizeInBytes
+			);
 			break;
 		case MARK_ADDDISPOSEVERTEXBUFFER:
 			break;
@@ -286,6 +459,15 @@ int main(int argc, char **argv)
 		case MARK_GETVERTEXBUFFERDATA:
 			break;
 		case MARK_GENINDEXBUFFER:
+			READ(dynamic);
+			READ(usage);
+			READ(sizeInBytes);
+			/* TODO: */ FNA3D_GenIndexBuffer(
+				device,
+				dynamic,
+				usage,
+				sizeInBytes
+			);
 			break;
 		case MARK_ADDDISPOSEINDEXBUFFER:
 			break;
@@ -294,6 +476,15 @@ int main(int argc, char **argv)
 		case MARK_GETINDEXBUFFERDATA:
 			break;
 		case MARK_CREATEEFFECT:
+			READ(dataLength);
+			miscBuffer = SDL_malloc(dataLength);
+			FNA3D_CreateEffect(
+				device,
+				(uint8_t*) miscBuffer,
+				dataLength,
+				&effect,
+				&effectData
+			);
 			break;
 		case MARK_CLONEEFFECT:
 			break;
@@ -308,6 +499,7 @@ int main(int argc, char **argv)
 		case MARK_ENDPASSRESTORE:
 			break;
 		case MARK_CREATEQUERY:
+			/* TODO: */ FNA3D_CreateQuery(device);
 			break;
 		case MARK_ADDDISPOSEQUERY:
 			break;
@@ -318,6 +510,10 @@ int main(int argc, char **argv)
 		case MARK_QUERYPIXELCOUNT:
 			break;
 		case MARK_SETSTRINGMARKER:
+			READ(dataLength);
+			miscBuffer = SDL_malloc(dataLength);
+			ops->read(ops, miscBuffer, dataLength, 1);
+			FNA3D_SetStringMarker(device, (char*) miscBuffer);
 			break;
 		case MARK_CREATEDEVICE:
 		case MARK_DESTROYDEVICE:
