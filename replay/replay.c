@@ -489,6 +489,7 @@ int main(int argc, char **argv)
 				&effect,
 				&effectData
 			);
+			SDL_free(miscBuffer);
 			break;
 		case MARK_CLONEEFFECT:
 			break;
