@@ -690,6 +690,7 @@ void FNA3D_Trace_ApplyEffect(
 	uint32_t pass
 ) {
 	/* TODO: FNA3D_Effect */
+	/* TODO: Capture effect parameter buffers here! */
 }
 
 void FNA3D_Trace_BeginPassRestore(
