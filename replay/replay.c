@@ -91,7 +91,8 @@ int main(int argc, char **argv)
 
 	SDL_WindowFlags flags;
 	SDL_RWops *ops;
-	uint8_t mark;
+	SDL_Event evt;
+	uint8_t mark, run;
 
 	/* CreateDevice, ResetBackbuffer */
 	FNA3D_Device *device;
@@ -197,8 +198,9 @@ int main(int argc, char **argv)
 	device = FNA3D_CreateDevice(&presentationParameters, debugMode);
 
 	/* Go through all the calls, let vsync do the timing if applicable */
+	run = 1;
 	READ(mark);
-	while (mark != MARK_DESTROYDEVICE)
+	while (run && mark != MARK_DESTROYDEVICE)
 	{
 		switch (mark)
 		{
@@ -225,6 +227,13 @@ int main(int argc, char **argv)
 				&destinationRectangle,
 				presentationParameters.deviceWindowHandle
 			);
+			while (SDL_PollEvent(&evt) > 0)
+			{
+				if (evt.type == SDL_QUIT)
+				{
+					run = 0;
+				}
+			}
 			break;
 		case MARK_CLEAR:
 			READ(options);
