@@ -115,7 +115,7 @@ void FNA3D_Trace_CreateDevice(
 void FNA3D_Trace_DestroyDevice(void)
 {
 	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
-	ops->write(ops, &MARK_DESTROYDEVICE, sizeof(MARK_DESTROYDEVICE), 1);
+	WRITE(MARK_DESTROYDEVICE);
 	ops->close(ops);
 }
 
@@ -124,7 +124,31 @@ void FNA3D_Trace_SwapBuffers(
 	FNA3D_Rect *destinationRectangle,
 	void* overrideWindowHandle
 ) {
+	SDL_RWops *ops;
+	uint8_t hasSource = sourceRectangle != NULL;
+	uint8_t hasDestination = destinationRectangle != NULL;
+
 	SDL_assert(overrideWindowHandle == windowHandle);
+
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_SWAPBUFFERS);
+	WRITE(hasSource);
+	if (hasSource)
+	{
+		WRITE(sourceRectangle->x);
+		WRITE(sourceRectangle->y);
+		WRITE(sourceRectangle->w);
+		WRITE(sourceRectangle->h);
+	}
+	WRITE(hasDestination);
+	if (hasDestination)
+	{
+		WRITE(destinationRectangle->x);
+		WRITE(destinationRectangle->y);
+		WRITE(destinationRectangle->w);
+		WRITE(destinationRectangle->h);
+	}
+	ops->close(ops);
 }
 
 void FNA3D_Trace_Clear(
@@ -133,6 +157,16 @@ void FNA3D_Trace_Clear(
 	float depth,
 	int32_t stencil
 ) {
+	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_CLEAR);
+	WRITE(options);
+	WRITE(color->x);
+	WRITE(color->y);
+	WRITE(color->z);
+	WRITE(color->w);
+	WRITE(depth);
+	WRITE(stencil);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_DrawIndexedPrimitives(
@@ -242,7 +276,22 @@ void FNA3D_Trace_ResolveTarget(
 void FNA3D_Trace_ResetBackbuffer(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
+	SDL_RWops *ops;
+
 	SDL_assert(presentationParameters->deviceWindowHandle == windowHandle);
+
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "wb");
+	WRITE(MARK_RESETBACKBUFFER);
+	WRITE(presentationParameters->backBufferWidth);
+	WRITE(presentationParameters->backBufferHeight);
+	WRITE(presentationParameters->backBufferFormat);
+	WRITE(presentationParameters->multiSampleCount);
+	WRITE(presentationParameters->isFullScreen);
+	WRITE(presentationParameters->depthStencilFormat);
+	WRITE(presentationParameters->presentationInterval);
+	WRITE(presentationParameters->displayOrientation);
+	WRITE(presentationParameters->renderTargetUsage);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_ReadBackbuffer(

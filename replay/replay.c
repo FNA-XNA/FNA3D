@@ -99,8 +99,15 @@ int main(int argc, char **argv)
 	uint8_t debugMode;
 
 	/* SwapBuffers */
+	uint8_t hasSource, hasDestination;
 	FNA3D_Rect sourceRectangle;
 	FNA3D_Rect destinationRectangle;
+
+	/* Clear */
+	FNA3D_ClearOptions options;
+	FNA3D_Vec4 color;
+	float depth;
+	int32_t stencil;
 
 	/* TODO: Use argv for filenames */
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "rb");
@@ -152,14 +159,22 @@ int main(int argc, char **argv)
 		switch (mark)
 		{
 		case MARK_SWAPBUFFERS:
-			READ(sourceRectangle.x);
-			READ(sourceRectangle.y);
-			READ(sourceRectangle.w);
-			READ(sourceRectangle.h);
-			READ(destinationRectangle.x);
-			READ(destinationRectangle.y);
-			READ(destinationRectangle.w);
-			READ(destinationRectangle.h);
+			READ(hasSource);
+			if (hasSource)
+			{
+				READ(sourceRectangle.x);
+				READ(sourceRectangle.y);
+				READ(sourceRectangle.w);
+				READ(sourceRectangle.h);
+			}
+			READ(hasDestination);
+			if (hasDestination)
+			{
+				READ(destinationRectangle.x);
+				READ(destinationRectangle.y);
+				READ(destinationRectangle.w);
+				READ(destinationRectangle.h);
+			}
 			FNA3D_SwapBuffers(
 				device,
 				&sourceRectangle,
@@ -168,6 +183,14 @@ int main(int argc, char **argv)
 			);
 			break;
 		case MARK_CLEAR:
+			READ(options);
+			READ(color.x);
+			READ(color.y);
+			READ(color.z);
+			READ(color.w);
+			READ(depth);
+			READ(stencil);
+			FNA3D_Clear(device, options, &color, depth, stencil);
 			break;
 		case MARK_DRAWINDEXEDPRIMITIVES:
 			break;
@@ -202,6 +225,27 @@ int main(int argc, char **argv)
 		case MARK_RESOLVETARGET:
 			break;
 		case MARK_RESETBACKBUFFER:
+			READ(presentationParameters.backBufferWidth);
+			READ(presentationParameters.backBufferHeight);
+			READ(presentationParameters.backBufferFormat);
+			READ(presentationParameters.multiSampleCount);
+			READ(presentationParameters.isFullScreen);
+			READ(presentationParameters.depthStencilFormat);
+			READ(presentationParameters.presentationInterval);
+			READ(presentationParameters.displayOrientation);
+			READ(presentationParameters.renderTargetUsage);
+			SDL_SetWindowFullscreen(
+				presentationParameters.deviceWindowHandle,
+				presentationParameters.isFullScreen ?
+					SDL_WINDOW_FULLSCREEN_DESKTOP :
+					0
+			);
+			SDL_SetWindowSize(
+				presentationParameters.deviceWindowHandle,
+				presentationParameters.backBufferWidth,
+				presentationParameters.backBufferHeight
+			);
+			FNA3D_ResetBackbuffer(device, &presentationParameters);
 			break;
 		case MARK_READBACKBUFFER:
 			break;
