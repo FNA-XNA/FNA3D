@@ -99,10 +99,12 @@ void FNA3D_Trace_CreateDevice(
 ) {
 	SDL_RWops *ops;
 	traceEnabled = !SDL_GetHintBoolean("FNA3D_DISABLE_TRACING", SDL_FALSE);
-	SDL_Log(traceEnabled ?
-		"FNA3D tracing started!" :
-		"FNA3D tracing disabled!"
-	);
+	if (traceEnabled)
+	{
+		SDL_Log("FNA3D tracing disabled!");
+		return;
+	}
+	SDL_Log("FNA3D tracing started!");
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "wb");
 	WRITE(MARK_CREATEDEVICE);
 	WRITE(presentationParameters->backBufferWidth);
