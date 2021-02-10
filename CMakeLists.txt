@@ -5,6 +5,7 @@ project(FNA3D C)
 
 # Options
 option(BUILD_SHARED_LIBS "Build shared library" ON)
+option(TRACING_SUPPORT "Build with tracing enabled" OFF)
 option(DISABLE_D3D11 "Disable D3D11 backend")
 
 # Version
@@ -54,6 +55,9 @@ add_definitions(
 	-DSUPPORT_PROFILE_BYTECODE=0
 	-DSUPPORT_PROFILE_D3D=0
 )
+if(TRACING_SUPPORT)
+	add_definitions(-DFNA3D_TRACING)
+endif()
 if(APPLE)
 	add_definitions(
 		-DFNA3D_DRIVER_METAL
@@ -104,6 +108,7 @@ add_library(FNA3D
 	src/FNA3D_Driver_Vulkan.c
 	src/FNA3D_Image.c
 	src/FNA3D_PipelineCache.c
+	src/FNA3D_Tracing.c
 )
 add_library(mojoshader STATIC
 	MojoShader/mojoshader.c
