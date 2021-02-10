@@ -528,6 +528,7 @@ int main(int argc, char **argv)
 			miscBuffer = SDL_malloc(dataLength);
 			ops->read(ops, miscBuffer, dataLength, 1);
 			FNA3D_SetStringMarker(device, (char*) miscBuffer);
+			SDL_free(miscBuffer);
 			break;
 		case MARK_CREATEDEVICE:
 		case MARK_DESTROYDEVICE:
