@@ -150,6 +150,9 @@ int main(int argc, char **argv)
 	uint8_t isRenderTarget, dynamic;
 	void* miscBuffer;
 
+	/* Make sure we don't recursively trace... */
+	SDL_SetHint("FNA3D_DISABLE_TRACING", "1");
+
 	/* TODO: Use argv for filenames */
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "rb");
 	if (ops == NULL)

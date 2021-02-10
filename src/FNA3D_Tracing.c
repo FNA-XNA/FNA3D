@@ -90,13 +90,20 @@ static const uint8_t MARK_SETSTRINGMARKER		= 56;
 
 #define WRITE(val) ops->write(ops, &val, sizeof(val), 1)
 
+static SDL_bool traceEnabled;
 static void* windowHandle = NULL;
 
 void FNA3D_Trace_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters,
 	uint8_t debugMode
 ) {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "wb");
+	SDL_RWops *ops;
+	traceEnabled = !SDL_GetHintBoolean("FNA3D_DISABLE_TRACING", SDL_FALSE);
+	SDL_Log(traceEnabled ?
+		"FNA3D tracing started!" :
+		"FNA3D tracing disabled!"
+	);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "wb");
 	WRITE(MARK_CREATEDEVICE);
 	WRITE(presentationParameters->backBufferWidth);
 	WRITE(presentationParameters->backBufferHeight);
@@ -114,7 +121,12 @@ void FNA3D_Trace_CreateDevice(
 
 void FNA3D_Trace_DestroyDevice(void)
 {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_DESTROYDEVICE);
 	ops->close(ops);
 }
@@ -127,6 +139,11 @@ void FNA3D_Trace_SwapBuffers(
 	SDL_RWops *ops;
 	uint8_t hasSource = sourceRectangle != NULL;
 	uint8_t hasDestination = destinationRectangle != NULL;
+
+	if (!traceEnabled)
+	{
+		return;
+	}
 
 	SDL_assert(overrideWindowHandle == windowHandle);
 
@@ -157,7 +174,12 @@ void FNA3D_Trace_Clear(
 	float depth,
 	int32_t stencil
 ) {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_CLEAR);
 	WRITE(options);
 	WRITE(color->x);
@@ -201,7 +223,12 @@ void FNA3D_Trace_DrawPrimitives(
 	int32_t vertexStart,
 	int32_t primitiveCount
 ) {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_DRAWPRIMITIVES);
 	WRITE(primitiveType);
 	WRITE(vertexStart);
@@ -211,7 +238,12 @@ void FNA3D_Trace_DrawPrimitives(
 
 void FNA3D_Trace_SetViewport(FNA3D_Viewport *viewport)
 {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_SETVIEWPORT);
 	WRITE(viewport->x);
 	WRITE(viewport->y);
@@ -224,7 +256,12 @@ void FNA3D_Trace_SetViewport(FNA3D_Viewport *viewport)
 
 void FNA3D_Trace_SetScissorRect(FNA3D_Rect *scissor)
 {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_SETSCISSORRECT);
 	WRITE(scissor->x);
 	WRITE(scissor->y);
@@ -236,7 +273,12 @@ void FNA3D_Trace_SetScissorRect(FNA3D_Rect *scissor)
 void FNA3D_Trace_SetBlendFactor(
 	FNA3D_Color *blendFactor
 ) {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_SETBLENDFACTOR);
 	WRITE(blendFactor->r);
 	WRITE(blendFactor->g);
@@ -247,7 +289,12 @@ void FNA3D_Trace_SetBlendFactor(
 
 void FNA3D_Trace_SetMultiSampleMask(int32_t mask)
 {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_SETMULTISAMPLEMASK);
 	WRITE(mask);
 	ops->close(ops);
@@ -255,7 +302,12 @@ void FNA3D_Trace_SetMultiSampleMask(int32_t mask)
 
 void FNA3D_Trace_SetReferenceStencil(int32_t ref)
 {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_SETREFERENCESTENCIL);
 	WRITE(ref);
 	ops->close(ops);
@@ -264,7 +316,12 @@ void FNA3D_Trace_SetReferenceStencil(int32_t ref)
 void FNA3D_Trace_SetBlendState(
 	FNA3D_BlendState *blendState
 ) {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_SETBLENDSTATE);
 	WRITE(blendState->colorSourceBlend);
 	WRITE(blendState->colorDestinationBlend);
@@ -287,7 +344,12 @@ void FNA3D_Trace_SetBlendState(
 void FNA3D_Trace_SetDepthStencilState(
 	FNA3D_DepthStencilState *depthStencilState
 ) {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_SETDEPTHSTENCILSTATE);
 	WRITE(depthStencilState->depthBufferEnable);
 	WRITE(depthStencilState->depthBufferWriteEnable);
@@ -311,7 +373,12 @@ void FNA3D_Trace_SetDepthStencilState(
 void FNA3D_Trace_ApplyRasterizerState(
 	FNA3D_RasterizerState *rasterizerState
 ) {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_APPLYRASTERIZERSTATE);
 	WRITE(rasterizerState->fillMode);
 	WRITE(rasterizerState->cullMode);
@@ -368,6 +435,11 @@ void FNA3D_Trace_ResetBackbuffer(
 ) {
 	SDL_RWops *ops;
 
+	if (!traceEnabled)
+	{
+		return;
+	}
+
 	SDL_assert(presentationParameters->deviceWindowHandle == windowHandle);
 
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "wb");
@@ -391,7 +463,12 @@ void FNA3D_Trace_ReadBackbuffer(
 	int32_t h,
 	int32_t dataLength
 ) {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_READBACKBUFFER);
 	WRITE(x);
 	WRITE(y);
@@ -408,7 +485,12 @@ void FNA3D_Trace_CreateTexture2D(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_CREATETEXTURE2D);
 	WRITE(format);
 	WRITE(width);
@@ -425,7 +507,12 @@ void FNA3D_Trace_CreateTexture3D(
 	int32_t depth,
 	int32_t levelCount
 ) {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_CREATETEXTURE3D);
 	WRITE(format);
 	WRITE(width);
@@ -441,7 +528,12 @@ void FNA3D_Trace_CreateTextureCube(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_CREATETEXTURECUBE);
 	WRITE(format);
 	WRITE(size);
@@ -581,7 +673,12 @@ void FNA3D_Trace_GenVertexBuffer(
 	FNA3D_BufferUsage usage,
 	int32_t sizeInBytes
 ) {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_GENVERTEXBUFFER);
 	WRITE(dynamic);
 	WRITE(usage);
@@ -622,7 +719,12 @@ void FNA3D_Trace_GenIndexBuffer(
 	FNA3D_BufferUsage usage,
 	int32_t sizeInBytes
 ) {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_GENINDEXBUFFER);
 	WRITE(dynamic);
 	WRITE(usage);
@@ -658,7 +760,12 @@ void FNA3D_Trace_CreateEffect(
 	uint8_t *effectCode,
 	uint32_t effectCodeLength
 ) {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_CREATEEFFECT);
 	WRITE(effectCodeLength);
 	ops->write(ops, effectCode, effectCodeLength, 1);
@@ -707,7 +814,12 @@ void FNA3D_Trace_EndPassRestore(
 
 void FNA3D_Trace_CreateQuery(void)
 {
-	SDL_RWops *ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	SDL_RWops *ops;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_CREATEQUERY);
 	ops->close(ops);
 }
@@ -737,6 +849,11 @@ void FNA3D_Trace_SetStringMarker(const char *text)
 {
 	int32_t len;
 	SDL_RWops *ops;
+
+	if (!traceEnabled)
+	{
+		return;
+	}
 
 	len = (int32_t) SDL_strlen(text) + 1;
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
