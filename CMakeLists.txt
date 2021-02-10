@@ -124,6 +124,10 @@ add_library(mojoshader STATIC
 	MojoShader/profiles/mojoshader_profile_metal.c
 	MojoShader/profiles/mojoshader_profile_spirv.c
 )
+if(TRACING_SUPPORT)
+	add_executable(fna3d_replay replay/replay.c)
+	target_link_libraries(fna3d_replay FNA3D)
+endif()
 
 # Build flags
 if(NOT MSVC)
