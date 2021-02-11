@@ -24,6 +24,7 @@
  *
  */
 
+#include "mojoshader.h"
 #include "FNA3D_Tracing.h"
 
 #ifdef FNA3D_TRACING
@@ -310,8 +311,24 @@ void FNA3D_Trace_DrawIndexedPrimitives(
 	FNA3D_Buffer *indices,
 	FNA3D_IndexElementSize indexElementSize
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchIndexBuffer(indices);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchIndexBuffer(indices);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_DRAWINDEXEDPRIMITIVES);
+	WRITE(primitiveType);
+	WRITE(baseVertex);
+	WRITE(minVertexIndex);
+	WRITE(numVertices);
+	WRITE(startIndex);
+	WRITE(primitiveCount);
+	WRITE(obj);
+	WRITE(indexElementSize);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_DrawInstancedPrimitives(
@@ -325,8 +342,25 @@ void FNA3D_Trace_DrawInstancedPrimitives(
 	FNA3D_Buffer *indices,
 	FNA3D_IndexElementSize indexElementSize
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchIndexBuffer(indices);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchIndexBuffer(indices);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_DRAWINSTANCEDPRIMITIVES);
+	WRITE(primitiveType);
+	WRITE(baseVertex);
+	WRITE(minVertexIndex);
+	WRITE(numVertices);
+	WRITE(startIndex);
+	WRITE(primitiveCount);
+	WRITE(instanceCount);
+	WRITE(obj);
+	WRITE(indexElementSize);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_DrawPrimitives(
@@ -505,8 +539,25 @@ void FNA3D_Trace_VerifySampler(
 	FNA3D_Texture *texture,
 	FNA3D_SamplerState *sampler
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchTexture(texture);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchTexture(texture);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_VERIFYSAMPLER);
+	WRITE(index);
+	WRITE(obj);
+	WRITE(sampler->filter);
+	WRITE(sampler->addressU);
+	WRITE(sampler->addressV);
+	WRITE(sampler->addressW);
+	WRITE(sampler->mipMapLevelOfDetailBias);
+	WRITE(sampler->maxAnisotropy);
+	WRITE(sampler->maxMipLevel);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_VerifyVertexSampler(
@@ -514,8 +565,25 @@ void FNA3D_Trace_VerifyVertexSampler(
 	FNA3D_Texture *texture,
 	FNA3D_SamplerState *sampler
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchTexture(texture);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchTexture(texture);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_VERIFYVERTEXSAMPLER);
+	WRITE(index);
+	WRITE(obj);
+	WRITE(sampler->filter);
+	WRITE(sampler->addressU);
+	WRITE(sampler->addressV);
+	WRITE(sampler->addressW);
+	WRITE(sampler->mipMapLevelOfDetailBias);
+	WRITE(sampler->maxAnisotropy);
+	WRITE(sampler->maxMipLevel);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_ApplyVertexBufferBindings(
@@ -524,9 +592,38 @@ void FNA3D_Trace_ApplyVertexBufferBindings(
 	uint8_t bindingsUpdated,
 	int32_t baseVertex
 ) {
-	/* TODO:
-	FNA3D_Trace_FetchVertexBuffer(buffer);
-	*/
+	SDL_RWops *ops;
+	uint64_t obj;
+	int32_t i, j;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_APPLYVERTEXBUFFERBINDINGS);
+	WRITE(numBindings);
+	for (i = 0; i < numBindings; i += 1)
+	{
+		const FNA3D_VertexBufferBinding *binding = &bindings[i];
+		obj = FNA3D_Trace_FetchVertexBuffer(binding->vertexBuffer);
+		WRITE(obj);
+		WRITE(binding->vertexDeclaration.vertexStride);
+		WRITE(binding->vertexDeclaration.elementCount);
+		for (j = 0; j < binding->vertexDeclaration.elementCount; j += 1)
+		{
+			const FNA3D_VertexElement *elem =
+				&binding->vertexDeclaration.elements[j];
+			WRITE(elem->offset);
+			WRITE(elem->vertexElementFormat);
+			WRITE(elem->vertexElementUsage);
+			WRITE(elem->usageIndex);
+		}
+		WRITE(binding->vertexOffset);
+		WRITE(binding->instanceFrequency);
+	}
+	WRITE(bindingsUpdated);
+	WRITE(baseVertex);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_SetRenderTargets(
@@ -536,19 +633,110 @@ void FNA3D_Trace_SetRenderTargets(
 	FNA3D_DepthFormat depthFormat,
 	uint8_t preserveTargetContents
 ) {
-	/* TODO:
-	FNA3D_Trace_FetchTexture(texture);
-	FNA3D_Trace_FetchRenderbuffer(renderbuffer);
-	*/
+	SDL_RWops *ops;
+	uint64_t obj;
+	int32_t i;
+	uint8_t nonNull;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_SETRENDERTARGETS);
+	WRITE(numRenderTargets);
+	for (i = 0; i < numRenderTargets; i += 1)
+	{
+		const FNA3D_RenderTargetBinding *binding = &renderTargets[i];
+		WRITE(binding->type);
+		if (binding->type == FNA3D_RENDERTARGET_TYPE_2D)
+		{
+			WRITE(binding->twod.width);
+			WRITE(binding->twod.height);
+		}
+		else
+		{
+			SDL_assert(binding->type == FNA3D_RENDERTARGET_TYPE_CUBE);
+			WRITE(binding->cube.size);
+			WRITE(binding->cube.face);
+		}
+
+		WRITE(binding->levelCount);
+		WRITE(binding->multiSampleCount);
+
+		nonNull = binding->texture != NULL;
+		WRITE(nonNull);
+		if (nonNull)
+		{
+			obj = FNA3D_Trace_FetchTexture(binding->texture);
+			WRITE(obj);
+		}
+
+		nonNull = binding->colorBuffer != NULL;
+		WRITE(nonNull);
+		if (nonNull)
+		{
+			obj = FNA3D_Trace_FetchRenderbuffer(binding->colorBuffer);
+			WRITE(obj);
+		}
+	}
+
+	nonNull = depthStencilBuffer != NULL;
+	WRITE(nonNull);
+	if (nonNull)
+	{
+		obj = FNA3D_Trace_FetchRenderbuffer(depthStencilBuffer);
+		WRITE(obj);
+	}
+
+	WRITE(depthFormat);
+	WRITE(preserveTargetContents);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_ResolveTarget(
 	FNA3D_RenderTargetBinding *target
 ) {
-	/* TODO:
-	FNA3D_Trace_FetchTexture(texture);
-	FNA3D_Trace_FetchRenderbuffer(renderbuffer);
-	*/
+	SDL_RWops *ops;
+	uint64_t obj;
+	uint8_t nonNull;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_RESOLVETARGET);
+	WRITE(target->type);
+	if (target->type == FNA3D_RENDERTARGET_TYPE_2D)
+	{
+		WRITE(target->twod.width);
+		WRITE(target->twod.height);
+	}
+	else
+	{
+		SDL_assert(target->type == FNA3D_RENDERTARGET_TYPE_CUBE);
+		WRITE(target->cube.size);
+		WRITE(target->cube.face);
+	}
+
+	WRITE(target->levelCount);
+	WRITE(target->multiSampleCount);
+
+	nonNull = target->texture != NULL;
+	WRITE(nonNull);
+	if (nonNull)
+	{
+		obj = FNA3D_Trace_FetchTexture(target->texture);
+		WRITE(obj);
+	}
+
+	nonNull = target->colorBuffer != NULL;
+	WRITE(nonNull);
+	if (nonNull)
+	{
+		obj = FNA3D_Trace_FetchRenderbuffer(target->colorBuffer);
+		WRITE(obj);
+	}
+	ops->close(ops);
 }
 
 void FNA3D_Trace_ResetBackbuffer(
@@ -666,8 +854,17 @@ void FNA3D_Trace_CreateTextureCube(
 void FNA3D_Trace_AddDisposeTexture(
 	FNA3D_Texture *texture
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchTexture(texture);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchTexture(texture);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_ADDDISPOSETEXTURE);
+	WRITE(obj);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_SetTextureData2D(
@@ -680,8 +877,24 @@ void FNA3D_Trace_SetTextureData2D(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchTexture(texture);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchTexture(texture);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_SETTEXTUREDATA2D);
+	WRITE(obj);
+	WRITE(x);
+	WRITE(y);
+	WRITE(w);
+	WRITE(h);
+	WRITE(level);
+	WRITE(dataLength);
+	ops->write(ops, data, dataLength, 1);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_SetTextureData3D(
@@ -696,8 +909,26 @@ void FNA3D_Trace_SetTextureData3D(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchTexture(texture);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchTexture(texture);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_SETTEXTUREDATA3D);
+	WRITE(obj);
+	WRITE(x);
+	WRITE(y);
+	WRITE(z);
+	WRITE(w);
+	WRITE(h);
+	WRITE(d);
+	WRITE(level);
+	WRITE(dataLength);
+	ops->write(ops, data, dataLength, 1);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_SetTextureDataCube(
@@ -711,8 +942,25 @@ void FNA3D_Trace_SetTextureDataCube(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchTexture(texture);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchTexture(texture);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_SETTEXTUREDATACUBE);
+	WRITE(obj);
+	WRITE(x);
+	WRITE(y);
+	WRITE(w);
+	WRITE(h);
+	WRITE(cubeMapFace);
+	WRITE(level);
+	WRITE(dataLength);
+	ops->write(ops, data, dataLength, 1);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_SetTextureDataYUV(
@@ -726,10 +974,27 @@ void FNA3D_Trace_SetTextureDataYUV(
 	void* data,
 	int32_t dataLength
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchTexture(y);
-	FNA3D_Trace_FetchTexture(u);
-	FNA3D_Trace_FetchTexture(v);
+	SDL_RWops *ops;
+	uint64_t objY, objU, objV;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	objY = FNA3D_Trace_FetchTexture(y);
+	objU = FNA3D_Trace_FetchTexture(u);
+	objV = FNA3D_Trace_FetchTexture(v);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_SETTEXTUREDATAYUV);
+	WRITE(objY);
+	WRITE(objU);
+	WRITE(objV);
+	WRITE(yWidth);
+	WRITE(yHeight);
+	WRITE(uvWidth);
+	WRITE(uvHeight);
+	WRITE(dataLength);
+	ops->write(ops, data, dataLength, 1);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_GetTextureData2D(
@@ -741,8 +1006,23 @@ void FNA3D_Trace_GetTextureData2D(
 	int32_t level,
 	int32_t dataLength
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchTexture(texture);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchTexture(texture);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_GETTEXTUREDATA2D);
+	WRITE(obj);
+	WRITE(x);
+	WRITE(y);
+	WRITE(w);
+	WRITE(h);
+	WRITE(level);
+	WRITE(dataLength);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_GetTextureData3D(
@@ -756,8 +1036,25 @@ void FNA3D_Trace_GetTextureData3D(
 	int32_t level,
 	int32_t dataLength
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchTexture(texture);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchTexture(texture);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_GETTEXTUREDATA3D);
+	WRITE(obj);
+	WRITE(x);
+	WRITE(y);
+	WRITE(z);
+	WRITE(w);
+	WRITE(h);
+	WRITE(d);
+	WRITE(level);
+	WRITE(dataLength);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_GetTextureDataCube(
@@ -770,8 +1067,24 @@ void FNA3D_Trace_GetTextureDataCube(
 	int32_t level,
 	int32_t dataLength
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchTexture(texture);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchTexture(texture);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_GETTEXTUREDATACUBE);
+	WRITE(obj);
+	WRITE(x);
+	WRITE(y);
+	WRITE(w);
+	WRITE(h);
+	WRITE(cubeMapFace);
+	WRITE(level);
+	WRITE(dataLength);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_GenColorRenderbuffer(
@@ -781,8 +1094,27 @@ void FNA3D_Trace_GenColorRenderbuffer(
 	int32_t multiSampleCount,
 	FNA3D_Texture *texture
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchTexture(texture);
+	SDL_RWops *ops;
+	uint64_t obj;
+	uint8_t nonNull;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_GENCOLORRENDERBUFFER);
+	WRITE(width);
+	WRITE(height);
+	WRITE(format);
+	WRITE(multiSampleCount);
+	nonNull = texture != NULL;
+	WRITE(nonNull);
+	if (nonNull)
+	{
+		obj = FNA3D_Trace_FetchTexture(texture);
+		WRITE(obj);
+	}
+	ops->close(ops);
 }
 
 void FNA3D_Trace_GenDepthStencilRenderbuffer(
@@ -797,6 +1129,7 @@ void FNA3D_Trace_GenDepthStencilRenderbuffer(
 		return;
 	}
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_GENDEPTHSTENCILRENDERBUFFER);
 	WRITE(width);
 	WRITE(height);
 	WRITE(format);
@@ -807,8 +1140,17 @@ void FNA3D_Trace_GenDepthStencilRenderbuffer(
 void FNA3D_Trace_AddDisposeRenderbuffer(
 	FNA3D_Renderbuffer *renderbuffer
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchRenderbuffer(renderbuffer);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchRenderbuffer(renderbuffer);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_ADDDISPOSERENDERBUFFER);
+	WRITE(obj);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_GenVertexBuffer(
@@ -832,8 +1174,17 @@ void FNA3D_Trace_GenVertexBuffer(
 void FNA3D_Trace_AddDisposeVertexBuffer(
 	FNA3D_Buffer *buffer
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchVertexBuffer(buffer);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchVertexBuffer(buffer);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_ADDDISPOSEVERTEXBUFFER);
+	WRITE(obj);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_SetVertexBufferData(
@@ -845,8 +1196,23 @@ void FNA3D_Trace_SetVertexBufferData(
 	int32_t vertexStride,
 	FNA3D_SetDataOptions options
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchVertexBuffer(buffer);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchVertexBuffer(buffer);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_SETVERTEXBUFFERDATA);
+	WRITE(obj);
+	WRITE(offsetInBytes);
+	WRITE(elementCount);
+	WRITE(elementSizeInBytes);
+	WRITE(vertexStride);
+	WRITE(options);
+	ops->write(ops, data, vertexStride * elementCount, 1);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_GetVertexBufferData(
@@ -856,8 +1222,21 @@ void FNA3D_Trace_GetVertexBufferData(
 	int32_t elementSizeInBytes,
 	int32_t vertexStride
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchVertexBuffer(buffer);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchVertexBuffer(buffer);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_GETVERTEXBUFFERDATA);
+	WRITE(obj);
+	WRITE(offsetInBytes);
+	WRITE(elementCount);
+	WRITE(elementSizeInBytes);
+	WRITE(vertexStride);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_GenIndexBuffer(
@@ -881,8 +1260,17 @@ void FNA3D_Trace_GenIndexBuffer(
 void FNA3D_Trace_AddDisposeIndexBuffer(
 	FNA3D_Buffer *buffer
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchIndexBuffer(buffer);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchIndexBuffer(buffer);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_ADDDISPOSEINDEXBUFFER);
+	WRITE(obj);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_SetIndexBufferData(
@@ -892,8 +1280,21 @@ void FNA3D_Trace_SetIndexBufferData(
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchIndexBuffer(buffer);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchIndexBuffer(buffer);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_SETINDEXBUFFERDATA);
+	WRITE(obj);
+	WRITE(offsetInBytes);
+	WRITE(dataLength);
+	WRITE(options);
+	ops->write(ops, data, dataLength, 1);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_GetIndexBufferData(
@@ -901,8 +1302,19 @@ void FNA3D_Trace_GetIndexBufferData(
 	int32_t offsetInBytes,
 	int32_t dataLength
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchIndexBuffer(buffer);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchIndexBuffer(buffer);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_GETINDEXBUFFERDATA);
+	WRITE(obj);
+	WRITE(offsetInBytes);
+	WRITE(dataLength);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_CreateEffect(
@@ -924,47 +1336,111 @@ void FNA3D_Trace_CreateEffect(
 void FNA3D_Trace_CloneEffect(
 	FNA3D_Effect *cloneSource
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchEffect(cloneSource);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchEffect(cloneSource);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_CLONEEFFECT);
+	WRITE(obj);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_AddDisposeEffect(
 	FNA3D_Effect *effect
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchEffect(effect);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchEffect(effect);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_ADDDISPOSEEFFECT);
+	WRITE(obj);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_SetEffectTechnique(
 	FNA3D_Effect *effect,
 	MOJOSHADER_effectTechnique *technique
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchEffect(effect);
-	/* TODO: Use technique's index, don't serialize the pointer! */
+	SDL_RWops *ops;
+	uint64_t obj;
+	int32_t i;
+	MOJOSHADER_effect *effectData;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchEffect(effect);
+	effectData = traceEffectData[obj];
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_SETEFFECTTECHNIQUE);
+	WRITE(obj);
+	for (i = 0; i < effectData->technique_count; i += 1)
+	{
+		if (technique == &effectData->techniques[i])
+		{
+			break;
+		}
+	}
+	WRITE(i);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_ApplyEffect(
 	FNA3D_Effect *effect,
 	uint32_t pass
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchEffect(effect);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchEffect(effect);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_APPLYEFFECT);
+	WRITE(obj);
 	/* TODO: Capture effect parameter buffers here! */
+	ops->close(ops);
 }
 
 void FNA3D_Trace_BeginPassRestore(
 	FNA3D_Effect *effect
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchEffect(effect);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchEffect(effect);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_BEGINPASSRESTORE);
+	WRITE(obj);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_EndPassRestore(
 	FNA3D_Effect *effect
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchEffect(effect);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchEffect(effect);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_ENDPASSRESTORE);
+	WRITE(obj);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_CreateQuery(void)
@@ -981,27 +1457,63 @@ void FNA3D_Trace_CreateQuery(void)
 
 void FNA3D_Trace_AddDisposeQuery(FNA3D_Query *query)
 {
-	/* TODO */
-	FNA3D_Trace_FetchQuery(query);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchQuery(query);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_ADDDISPOSEQUERY);
+	WRITE(obj);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_QueryBegin(FNA3D_Query *query)
 {
-	/* TODO */
-	FNA3D_Trace_FetchQuery(query);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchQuery(query);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_QUERYBEGIN);
+	WRITE(obj);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_QueryEnd(FNA3D_Query *query)
 {
-	/* TODO */
-	FNA3D_Trace_FetchQuery(query);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchQuery(query);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_QUERYEND);
+	WRITE(obj);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_QueryPixelCount(
 	FNA3D_Query *query
 ) {
-	/* TODO */
-	FNA3D_Trace_FetchQuery(query);
+	SDL_RWops *ops;
+	uint64_t obj;
+	if (!traceEnabled)
+	{
+		return;
+	}
+	obj = FNA3D_Trace_FetchQuery(query);
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
+	WRITE(MARK_QUERYPIXELCOUNT);
+	WRITE(obj);
+	ops->close(ops);
 }
 
 void FNA3D_Trace_SetStringMarker(const char *text)
