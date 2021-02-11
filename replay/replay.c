@@ -85,7 +85,7 @@
 #define MARK_QUERYPIXELCOUNT			55
 #define MARK_SETSTRINGMARKER			56
 
-int main(int argc, char **argv)
+static uint8_t replay(const char *filename)
 {
 	#define READ(val) ops->read(ops, &val, sizeof(val), 1)
 
@@ -151,14 +151,11 @@ int main(int argc, char **argv)
 	uint8_t isRenderTarget, dynamic;
 	void* miscBuffer;
 
-	/* Make sure we don't recursively trace... */
-	SDL_SetHint("FNA3D_DISABLE_TRACING", "1");
-
-	/* TODO: Use argv for filenames */
-	ops = SDL_RWFromFile("FNA3D_Trace.bin", "rb");
+	/* Check for the trace file */
+	ops = SDL_RWFromFile(filename, "rb");
 	if (ops == NULL)
 	{
-		SDL_Log("FNA3D_Trace.bin not found!");
+		SDL_Log("%s not found!", filename);
 		return 0;
 	}
 
@@ -166,7 +163,7 @@ int main(int argc, char **argv)
 	READ(mark);
 	if (mark != MARK_CREATEDEVICE)
 	{
-		SDL_Log("Bad trace!");
+		SDL_Log("%s is a bad trace!", filename);
 		ops->close(ops);
 		return 0;
 	}
@@ -182,7 +179,6 @@ int main(int argc, char **argv)
 	READ(debugMode);
 
 	/* Create a window alongside the device */
-	SDL_Init(SDL_INIT_VIDEO);
 	flags = SDL_WINDOW_SHOWN | FNA3D_PrepareWindowAttributes();
 	if (presentationParameters.isFullScreen)
 	{
@@ -546,8 +542,32 @@ int main(int argc, char **argv)
 	ops->close(ops);
 	FNA3D_DestroyDevice(device);
 	SDL_DestroyWindow(presentationParameters.deviceWindowHandle);
-	SDL_Quit();
-	return 0;
+	return !run;
 
 	#undef READ
+}
+
+int main(int argc, char **argv)
+{
+	int i;
+
+	SDL_Init(SDL_INIT_VIDEO);
+
+	/* Make sure we don't recursively trace... */
+	SDL_SetHint("FNA3D_DISABLE_TRACING", "1");
+
+	if (argc < 2)
+	{
+		replay("FNA3D_Trace.bin");
+	}
+	else for (i = 1; i < argc, i += 1)
+	{
+		if (replay(argv[i]))
+		{
+			break;
+		}
+	}
+
+	SDL_Quit();
+	return 0;
 }
