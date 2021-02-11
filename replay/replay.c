@@ -560,7 +560,7 @@ int main(int argc, char **argv)
 	{
 		replay("FNA3D_Trace.bin");
 	}
-	else for (i = 1; i < argc, i += 1)
+	else for (i = 1; i < argc; i += 1)
 	{
 		if (replay(argv[i]))
 		{
