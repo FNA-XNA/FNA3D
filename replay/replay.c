@@ -167,6 +167,7 @@ int main(int argc, char **argv)
 	if (mark != MARK_CREATEDEVICE)
 	{
 		SDL_Log("Bad trace!");
+		ops->close(ops);
 		return 0;
 	}
 	READ(presentationParameters.backBufferWidth);
@@ -223,8 +224,8 @@ int main(int argc, char **argv)
 			}
 			FNA3D_SwapBuffers(
 				device,
-				&sourceRectangle,
-				&destinationRectangle,
+				hasSource ? &sourceRectangle : NULL,
+				hasDestination ? &destinationRectangle : NULL,
 				presentationParameters.deviceWindowHandle
 			);
 			while (SDL_PollEvent(&evt) > 0)
