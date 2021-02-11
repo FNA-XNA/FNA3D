@@ -110,10 +110,16 @@ static uint8_t replay(const char *filename)
 	float depth;
 	int32_t stencil;
 
-	/* DrawPrimitives */
+	/* Draw*Primitives */
 	FNA3D_PrimitiveType primitiveType;
-	int32_t vertexStart;
+	int32_t baseVertex;
+	int32_t minVertexIndex;
+	int32_t numVertices;
+	int32_t startIndex;
 	int32_t primitiveCount;
+	int32_t instanceCount;
+	FNA3D_IndexElementSize indexElementSize;
+	int32_t vertexStart;
 
 	/* SetViewport */
 	FNA3D_Viewport viewport;
@@ -139,12 +145,37 @@ static uint8_t replay(const char *filename)
 	/* ApplyRasterizerState */
 	FNA3D_RasterizerState rasterizerState;
 
+	/* Verify*Sampler */
+	int32_t index;
+	FNA3D_SamplerState sampler;
+
+	/* ApplyVertexBufferBindings */
+	FNA3D_VertexBufferBinding *bindings;
+	FNA3D_VertexBufferBinding *binding;
+	FNA3D_VertexElement *elem;
+	int32_t numBindings;
+	uint8_t bindingsUpdated;
+	int32_t vi, vj;
+
+	/* SetRenderTargets */
+	FNA3D_RenderTargetBinding *renderTargets;
+	FNA3D_RenderTargetBinding *target;
+	int32_t numRenderTargets;
+	FNA3D_Renderbuffer *depthStencilBuffer;
+	FNA3D_DepthFormat depthFormat;
+	uint8_t preserveTargetContents;
+	int32_t ri;
+
+	/* ResolveTarget */
+	FNA3D_RenderTargetBinding resolveTarget;
+
 	/* Miscellaneous allocations, dimensions, blah blah... */
 	int32_t x, y, z, w, h, d, levelCount, sizeInBytes, dataLength;
 	FNA3D_CubeMapFace cubeMapFace;
 	FNA3D_SurfaceFormat format;
 	FNA3D_BufferUsage usage;
 	uint8_t isRenderTarget, dynamic;
+	uint8_t nonNull;
 	void* miscBuffer;
 
 	/* Objects */
@@ -170,15 +201,6 @@ static uint8_t replay(const char *filename)
 	FNA3D_Query **traceQuery = NULL;
 	uint64_t traceQueryCount = 0;
 	uint64_t i;
-	#define FETCH_OBJECT(type, object) \
-		for (i = 0; i < trace##type##Count; i += 1) \
-		{ \
-			if (object == trace##type[i]) \
-			{ \
-				break; \
-			} \
-		} \
-		SDL_assert(i < trace##type##Count);
 	#define REGISTER_OBJECT(array, type, object) \
 		for (i = 0; i < trace##array##Count; i += 1) \
 		{ \
@@ -290,8 +312,48 @@ static uint8_t replay(const char *filename)
 			FNA3D_Clear(device, options, &color, depth, stencil);
 			break;
 		case MARK_DRAWINDEXEDPRIMITIVES:
+			READ(primitiveType);
+			READ(baseVertex);
+			READ(minVertexIndex);
+			READ(numVertices);
+			READ(startIndex);
+			READ(primitiveCount);
+			READ(i);
+			READ(indexElementSize);
+			FNA3D_DrawIndexedPrimitives(
+				device,
+				primitiveType,
+				baseVertex,
+				minVertexIndex,
+				numVertices,
+				startIndex,
+				primitiveCount,
+				traceIndexBuffer[i],
+				indexElementSize
+			);
 			break;
 		case MARK_DRAWINSTANCEDPRIMITIVES:
+			READ(primitiveType);
+			READ(baseVertex);
+			READ(minVertexIndex);
+			READ(numVertices);
+			READ(startIndex);
+			READ(primitiveCount);
+			READ(instanceCount);
+			READ(i);
+			READ(indexElementSize);
+			FNA3D_DrawInstancedPrimitives(
+				device,
+				primitiveType,
+				baseVertex,
+				minVertexIndex,
+				numVertices,
+				startIndex,
+				primitiveCount,
+				instanceCount,
+				traceIndexBuffer[i],
+				indexElementSize
+			);
 			break;
 		case MARK_DRAWPRIMITIVES:
 			READ(primitiveType);
@@ -382,14 +444,196 @@ static uint8_t replay(const char *filename)
 			FNA3D_ApplyRasterizerState(device, &rasterizerState);
 			break;
 		case MARK_VERIFYSAMPLER:
+			READ(index);
+			READ(i);
+			READ(sampler.filter);
+			READ(sampler.addressU);
+			READ(sampler.addressV);
+			READ(sampler.addressW);
+			READ(sampler.mipMapLevelOfDetailBias);
+			READ(sampler.maxAnisotropy);
+			READ(sampler.maxMipLevel);
+			FNA3D_VerifySampler(
+				device,
+				index,
+				traceTexture[i],
+				&sampler
+			);
 			break;
 		case MARK_VERIFYVERTEXSAMPLER:
+			READ(index);
+			READ(i);
+			READ(sampler.filter);
+			READ(sampler.addressU);
+			READ(sampler.addressV);
+			READ(sampler.addressW);
+			READ(sampler.mipMapLevelOfDetailBias);
+			READ(sampler.maxAnisotropy);
+			READ(sampler.maxMipLevel);
+			FNA3D_VerifyVertexSampler(
+				device,
+				index,
+				traceTexture[i],
+				&sampler
+			);
 			break;
 		case MARK_APPLYVERTEXBUFFERBINDINGS:
+			READ(numBindings);
+			bindings = (FNA3D_VertexBufferBinding*) SDL_malloc(
+				sizeof(FNA3D_VertexBufferBinding) *
+				numBindings
+			);
+			for (vi = 0; vi < numBindings; vi += 1)
+			{
+				binding = &bindings[vi];
+				READ(i);
+				binding->vertexBuffer = traceVertexBuffer[i];
+				READ(binding->vertexDeclaration.vertexStride);
+				READ(binding->vertexDeclaration.elementCount);
+				binding->vertexDeclaration.elements = (FNA3D_VertexElement*) SDL_malloc(
+					sizeof(FNA3D_VertexElement) *
+					binding->vertexDeclaration.elementCount
+				);
+				for (vj = 0; vj < binding->vertexDeclaration.elementCount; vj += 1)
+				{
+					elem = &binding->vertexDeclaration.elements[vj];
+					READ(elem->offset);
+					READ(elem->vertexElementFormat);
+					READ(elem->vertexElementUsage);
+					READ(elem->usageIndex);
+				}
+				READ(binding->vertexOffset);
+				READ(binding->instanceFrequency);
+			}
+			READ(bindingsUpdated);
+			READ(baseVertex);
+			FNA3D_ApplyVertexBufferBindings(
+				device,
+				bindings,
+				numBindings,
+				bindingsUpdated,
+				baseVertex
+			);
+			for (vi = 0; vi < numBindings; vi += 1)
+			{
+				binding = &bindings[vi];
+				SDL_free(binding->vertexDeclaration.elements);
+			}
+			SDL_free(bindings);
 			break;
 		case MARK_SETRENDERTARGETS:
+			READ(numRenderTargets);
+			renderTargets = (FNA3D_RenderTargetBinding*) SDL_malloc(
+				sizeof(FNA3D_RenderTargetBinding) *
+				numRenderTargets
+			);
+			for (ri = 0; ri < numRenderTargets; ri += 1)
+			{
+				target = &renderTargets[i];
+				READ(target->type);
+				if (target->type == FNA3D_RENDERTARGET_TYPE_2D)
+				{
+					READ(target->twod.width);
+					READ(target->twod.height);
+				}
+				else
+				{
+					SDL_assert(target->type == FNA3D_RENDERTARGET_TYPE_CUBE);
+					READ(target->cube.size);
+					READ(target->cube.face);
+				}
+
+				READ(target->levelCount);
+				READ(target->multiSampleCount);
+
+				READ(nonNull);
+				if (nonNull)
+				{
+					READ(i);
+					target->texture = traceTexture[i];
+				}
+				else
+				{
+					target->texture = NULL;
+				}
+
+				READ(nonNull);
+				if (nonNull)
+				{
+					READ(i);
+					target->colorBuffer = traceRenderbuffer[i];
+				}
+				else
+				{
+					target->colorBuffer = NULL;
+				}
+			}
+
+			READ(nonNull);
+			if (nonNull)
+			{
+				READ(i);
+				depthStencilBuffer = traceRenderbuffer[i];
+			}
+			else
+			{
+				depthStencilBuffer = NULL;
+			}
+
+			READ(depthFormat);
+			READ(preserveTargetContents);
+
+			FNA3D_SetRenderTargets(
+				device,
+				renderTargets,
+				numRenderTargets,
+				depthStencilBuffer,
+				depthFormat,
+				preserveTargetContents
+			);
+
+			SDL_free(renderTargets);
 			break;
 		case MARK_RESOLVETARGET:
+			READ(resolveTarget.type);
+			if (resolveTarget.type == FNA3D_RENDERTARGET_TYPE_2D)
+			{
+				READ(resolveTarget.twod.width);
+				READ(resolveTarget.twod.height);
+			}
+			else
+			{
+				SDL_assert(resolveTarget.type == FNA3D_RENDERTARGET_TYPE_CUBE);
+				READ(resolveTarget.cube.size);
+				READ(resolveTarget.cube.face);
+			}
+
+			READ(resolveTarget.levelCount);
+			READ(resolveTarget.multiSampleCount);
+
+			READ(nonNull);
+			if (nonNull)
+			{
+				READ(i);
+				resolveTarget.texture = traceTexture[i];
+			}
+			else
+			{
+				resolveTarget.texture = NULL;
+			}
+
+			READ(nonNull);
+			if (nonNull)
+			{
+				READ(i);
+				resolveTarget.colorBuffer = traceRenderbuffer[i];
+			}
+			else
+			{
+				resolveTarget.colorBuffer = NULL;
+			}
+
+			FNA3D_ResolveTarget(device, &resolveTarget);
 			break;
 		case MARK_RESETBACKBUFFER:
 			READ(presentationParameters.backBufferWidth);
@@ -479,6 +723,9 @@ static uint8_t replay(const char *filename)
 			REGISTER_OBJECT(Texture, Texture, texture)
 			break;
 		case MARK_ADDDISPOSETEXTURE:
+			READ(i);
+			FNA3D_AddDisposeTexture(device, traceTexture[i]);
+			traceTexture[i] = NULL;
 			break;
 		case MARK_SETTEXTUREDATA2D:
 			break;
@@ -499,6 +746,12 @@ static uint8_t replay(const char *filename)
 		case MARK_GENDEPTHSTENCILRENDERBUFFER:
 			break;
 		case MARK_ADDDISPOSERENDERBUFFER:
+			READ(i);
+			FNA3D_AddDisposeRenderbuffer(
+				device,
+				traceRenderbuffer[i]
+			);
+			traceRenderbuffer[i] = NULL;
 			break;
 		case MARK_GENVERTEXBUFFER:
 			READ(dynamic);
@@ -513,6 +766,12 @@ static uint8_t replay(const char *filename)
 			REGISTER_OBJECT(VertexBuffer, Buffer, buffer)
 			break;
 		case MARK_ADDDISPOSEVERTEXBUFFER:
+			READ(i);
+			FNA3D_AddDisposeVertexBuffer(
+				device,
+				traceVertexBuffer[i]
+			);
+			traceVertexBuffer[i] = NULL;
 			break;
 		case MARK_SETVERTEXBUFFERDATA:
 			break;
@@ -531,6 +790,12 @@ static uint8_t replay(const char *filename)
 			REGISTER_OBJECT(IndexBuffer, Buffer, buffer)
 			break;
 		case MARK_ADDDISPOSEINDEXBUFFER:
+			READ(i);
+			FNA3D_AddDisposeIndexBuffer(
+				device,
+				traceIndexBuffer[i]
+			);
+			traceIndexBuffer[i] = NULL;
 			break;
 		case MARK_SETINDEXBUFFERDATA:
 			break;
@@ -575,6 +840,10 @@ static uint8_t replay(const char *filename)
 		case MARK_CLONEEFFECT:
 			break;
 		case MARK_ADDDISPOSEEFFECT:
+			READ(i);
+			FNA3D_AddDisposeEffect(device, traceEffect[i]);
+			traceEffect[i] = NULL;
+			traceEffectData[i] = NULL;
 			break;
 		case MARK_SETEFFECTTECHNIQUE:
 			break;
@@ -589,6 +858,9 @@ static uint8_t replay(const char *filename)
 			REGISTER_OBJECT(Query, Query, query)
 			break;
 		case MARK_ADDDISPOSEQUERY:
+			READ(i);
+			FNA3D_AddDisposeQuery(device, traceQuery[i]);
+			traceQuery[i] = NULL;
 			break;
 		case MARK_QUERYBEGIN:
 			break;
@@ -650,7 +922,6 @@ static uint8_t replay(const char *filename)
 	return !run;
 
 	#undef REGISTER_OBJECT
-	#undef FETCH_OBJECT
 	#undef READ
 }
 

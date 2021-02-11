@@ -861,6 +861,7 @@ void FNA3D_Trace_AddDisposeTexture(
 		return;
 	}
 	obj = FNA3D_Trace_FetchTexture(texture);
+	traceTexture[obj] = NULL;
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_ADDDISPOSETEXTURE);
 	WRITE(obj);
@@ -1147,6 +1148,7 @@ void FNA3D_Trace_AddDisposeRenderbuffer(
 		return;
 	}
 	obj = FNA3D_Trace_FetchRenderbuffer(renderbuffer);
+	traceRenderbuffer[obj] = NULL;
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_ADDDISPOSERENDERBUFFER);
 	WRITE(obj);
@@ -1181,6 +1183,7 @@ void FNA3D_Trace_AddDisposeVertexBuffer(
 		return;
 	}
 	obj = FNA3D_Trace_FetchVertexBuffer(buffer);
+	traceVertexBuffer[obj] = NULL;
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_ADDDISPOSEVERTEXBUFFER);
 	WRITE(obj);
@@ -1267,6 +1270,7 @@ void FNA3D_Trace_AddDisposeIndexBuffer(
 		return;
 	}
 	obj = FNA3D_Trace_FetchIndexBuffer(buffer);
+	traceIndexBuffer[obj] = NULL;
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_ADDDISPOSEINDEXBUFFER);
 	WRITE(obj);
@@ -1359,6 +1363,8 @@ void FNA3D_Trace_AddDisposeEffect(
 		return;
 	}
 	obj = FNA3D_Trace_FetchEffect(effect);
+	traceEffect[obj] = NULL;
+	traceEffectData[obj] = NULL;
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_ADDDISPOSEEFFECT);
 	WRITE(obj);
@@ -1464,6 +1470,7 @@ void FNA3D_Trace_AddDisposeQuery(FNA3D_Query *query)
 		return;
 	}
 	obj = FNA3D_Trace_FetchQuery(query);
+	traceQuery[obj] = NULL;
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_ADDDISPOSEQUERY);
 	WRITE(obj);
