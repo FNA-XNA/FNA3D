@@ -1413,6 +1413,7 @@ void FNA3D_Trace_ApplyEffect(
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_APPLYEFFECT);
 	WRITE(obj);
+	WRITE(pass);
 	/* TODO: Capture effect parameter buffers here! */
 	ops->close(ops);
 }
