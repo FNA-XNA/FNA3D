@@ -372,11 +372,13 @@ void FNA3D_Trace_RegisterTexture(FNA3D_Texture *texture);
 
 void FNA3D_Trace_RegisterRenderbuffer(FNA3D_Renderbuffer *renderbuffer);
 
-void FNA3D_Trace_RegisterBuffer(FNA3D_Buffer *buffer);
+void FNA3D_Trace_RegisterVertexBuffer(FNA3D_Buffer *buffer);
 
-void FNA3D_Trace_RegisterEffect(FNA3D_Effect *effect, MOJOSHADER_effect *data);
+void FNA3D_Trace_RegisterIndexBuffer(FNA3D_Buffer *buffer);
 
 void FNA3D_Trace_RegisterQuery(FNA3D_Query *query);
+
+void FNA3D_Trace_RegisterEffect(FNA3D_Effect *effect, MOJOSHADER_effect *effectData);
 
 #define TRACE_CREATEDEVICE FNA3D_Trace_CreateDevice(presentationParameters, debugMode);
 #define TRACE_DESTROYDEVICE FNA3D_Trace_DestroyDevice();
@@ -437,9 +439,10 @@ void FNA3D_Trace_RegisterQuery(FNA3D_Query *query);
 #define TRACE_SETSTRINGMARKER FNA3D_Trace_SetStringMarker(text);
 #define TRACE_REGISTERTEXTURE FNA3D_Trace_RegisterTexture(result);
 #define TRACE_REGISTERRENDERBUFFER FNA3D_Trace_RegisterRenderbuffer(result);
-#define TRACE_REGISTERBUFFER FNA3D_Trace_RegisterBuffer(result);
-#define TRACE_REGISTEREFFECT FNA3D_Trace_RegisterEffect(*effect, *effectData);
+#define TRACE_REGISTERVERTEXBUFFER FNA3D_Trace_RegisterVertexBuffer(result);
+#define TRACE_REGISTERINDEXBUFFER FNA3D_Trace_RegisterIndexBuffer(result);
 #define TRACE_REGISTERQUERY FNA3D_Trace_RegisterQuery(result);
+#define TRACE_REGISTEREFFECT FNA3D_Trace_RegisterEffect(*effect, *effectData);
 
 #else
 
@@ -502,7 +505,8 @@ void FNA3D_Trace_RegisterQuery(FNA3D_Query *query);
 #define TRACE_SETSTRINGMARKER
 #define TRACE_REGISTERTEXTURE
 #define TRACE_REGISTERRENDERBUFFER
-#define TRACE_REGISTERBUFFER
+#define TRACE_REGISTERVERTEXBUFFER
+#define TRACE_REGISTERINDEXBUFFER
 #define TRACE_REGISTEREFFECT
 #define TRACE_REGISTERQUERY
 

@@ -1018,7 +1018,7 @@ FNA3D_Buffer* FNA3D_GenVertexBuffer(
 		usage,
 		sizeInBytes
 	);
-	TRACE_REGISTERBUFFER
+	TRACE_REGISTERVERTEXBUFFER
 	return result;
 }
 
@@ -1106,7 +1106,7 @@ FNA3D_Buffer* FNA3D_GenIndexBuffer(
 		usage,
 		sizeInBytes
 	);
-	TRACE_REGISTERBUFFER
+	TRACE_REGISTERINDEXBUFFER
 	return result;
 }
 

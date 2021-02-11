@@ -139,10 +139,6 @@ static uint8_t replay(const char *filename)
 	/* ApplyRasterizerState */
 	FNA3D_RasterizerState rasterizerState;
 
-	/* CreateEffect */
-	FNA3D_Effect *effect;
-	MOJOSHADER_effect *effectData;
-
 	/* Miscellaneous allocations, dimensions, blah blah... */
 	int32_t x, y, z, w, h, d, levelCount, sizeInBytes, dataLength;
 	FNA3D_CubeMapFace cubeMapFace;
@@ -150,6 +146,57 @@ static uint8_t replay(const char *filename)
 	FNA3D_BufferUsage usage;
 	uint8_t isRenderTarget, dynamic;
 	void* miscBuffer;
+
+	/* Objects */
+	FNA3D_Texture *texture;
+	FNA3D_Renderbuffer *renderbuffer;
+	FNA3D_Buffer *buffer;
+	FNA3D_Effect *effect;
+	MOJOSHADER_effect *effectData;
+	FNA3D_Query *query;
+
+	/* Trace Objects */
+	FNA3D_Texture **traceTexture = NULL;
+	uint64_t traceTextureCount = 0;
+	FNA3D_Renderbuffer **traceRenderbuffer = NULL;
+	uint64_t traceRenderbufferCount = 0;
+	FNA3D_Buffer **traceVertexBuffer = NULL;
+	uint64_t traceVertexBufferCount = 0;
+	FNA3D_Buffer **traceIndexBuffer = NULL;
+	uint64_t traceIndexBufferCount = 0;
+	FNA3D_Effect **traceEffect = NULL;
+	MOJOSHADER_effect **traceEffectData = NULL;
+	uint64_t traceEffectCount = 0;
+	FNA3D_Query **traceQuery = NULL;
+	uint64_t traceQueryCount = 0;
+	uint64_t i;
+	#define FETCH_OBJECT(type, object) \
+		for (i = 0; i < trace##type##Count; i += 1) \
+		{ \
+			if (object == trace##type[i]) \
+			{ \
+				break; \
+			} \
+		} \
+		SDL_assert(i < trace##type##Count);
+	#define REGISTER_OBJECT(array, type, object) \
+		for (i = 0; i < trace##array##Count; i += 1) \
+		{ \
+			if (trace##array[i] == NULL) \
+			{ \
+				trace##array[i] = object; \
+				break; \
+			} \
+		} \
+		if (i == trace##array##Count) \
+		{ \
+			trace##array##Count += 1; \
+			trace##array = SDL_realloc( \
+				trace##array, \
+				sizeof(FNA3D_##type*) * trace##array##Count \
+			); \
+			trace##array[i] = object; \
+		}
 
 	/* Check for the trace file */
 	ops = SDL_RWFromFile(filename, "rb");
@@ -391,7 +438,7 @@ static uint8_t replay(const char *filename)
 			READ(h);
 			READ(levelCount);
 			READ(isRenderTarget);
-			/* TODO: */ FNA3D_CreateTexture2D(
+			texture = FNA3D_CreateTexture2D(
 				device,
 				format,
 				w,
@@ -399,6 +446,7 @@ static uint8_t replay(const char *filename)
 				levelCount,
 				isRenderTarget
 			);
+			REGISTER_OBJECT(Texture, Texture, texture)
 			break;
 		case MARK_CREATETEXTURE3D:
 			READ(format);
@@ -406,7 +454,7 @@ static uint8_t replay(const char *filename)
 			READ(h);
 			READ(d);
 			READ(levelCount);
-			/* TODO: */ FNA3D_CreateTexture3D(
+			texture = FNA3D_CreateTexture3D(
 				device,
 				format,
 				w,
@@ -414,19 +462,21 @@ static uint8_t replay(const char *filename)
 				d,
 				levelCount
 			);
+			REGISTER_OBJECT(Texture, Texture, texture)
 			break;
 		case MARK_CREATETEXTURECUBE:
 			READ(format);
 			READ(w);
 			READ(levelCount);
 			READ(isRenderTarget);
-			/* TODO: */ FNA3D_CreateTextureCube(
+			texture = FNA3D_CreateTextureCube(
 				device,
 				format,
 				w,
 				levelCount,
 				isRenderTarget
 			);
+			REGISTER_OBJECT(Texture, Texture, texture)
 			break;
 		case MARK_ADDDISPOSETEXTURE:
 			break;
@@ -454,12 +504,13 @@ static uint8_t replay(const char *filename)
 			READ(dynamic);
 			READ(usage);
 			READ(sizeInBytes);
-			/* TODO: */ FNA3D_GenVertexBuffer(
+			buffer = FNA3D_GenVertexBuffer(
 				device,
 				dynamic,
 				usage,
 				sizeInBytes
 			);
+			REGISTER_OBJECT(VertexBuffer, Buffer, buffer)
 			break;
 		case MARK_ADDDISPOSEVERTEXBUFFER:
 			break;
@@ -471,12 +522,13 @@ static uint8_t replay(const char *filename)
 			READ(dynamic);
 			READ(usage);
 			READ(sizeInBytes);
-			/* TODO: */ FNA3D_GenIndexBuffer(
+			buffer = FNA3D_GenIndexBuffer(
 				device,
 				dynamic,
 				usage,
 				sizeInBytes
 			);
+			REGISTER_OBJECT(IndexBuffer, Buffer, buffer)
 			break;
 		case MARK_ADDDISPOSEINDEXBUFFER:
 			break;
@@ -496,6 +548,29 @@ static uint8_t replay(const char *filename)
 				&effectData
 			);
 			SDL_free(miscBuffer);
+			for (i = 0; i < traceEffectCount; i += 1)
+			{
+				if (traceEffect[i] == NULL)
+				{
+					traceEffect[i] = effect;
+					traceEffectData[i] = effectData;
+					break;
+				}
+			}
+			if (i == traceEffectCount)
+			{
+				traceEffectCount += 1;
+				traceEffect = SDL_realloc(
+					traceEffect,
+					sizeof(FNA3D_Effect*) * traceEffectCount
+				);
+				traceEffectData = SDL_realloc(
+					traceEffectData,
+					sizeof(MOJOSHADER_effect*) * traceEffectCount
+				);
+				traceEffect[i] = effect;
+				traceEffectData[i] = effectData;
+			}
 			break;
 		case MARK_CLONEEFFECT:
 			break;
@@ -510,7 +585,8 @@ static uint8_t replay(const char *filename)
 		case MARK_ENDPASSRESTORE:
 			break;
 		case MARK_CREATEQUERY:
-			/* TODO: */ FNA3D_CreateQuery(device);
+			query = FNA3D_CreateQuery(device);
+			REGISTER_OBJECT(Query, Query, query)
 			break;
 		case MARK_ADDDISPOSEQUERY:
 			break;
@@ -540,10 +616,41 @@ static uint8_t replay(const char *filename)
 
 	/* Clean up. We out. */
 	ops->close(ops);
+	#define FREE_TRACES(type) \
+		if (trace##type##Count > 0) \
+		{ \
+			for (i = 0; i < trace##type##Count; i += 1) \
+			{ \
+				if (trace##type[i] != NULL) \
+				{ \
+					FNA3D_AddDispose##type( \
+						device, \
+						trace##type[i] \
+					); \
+				} \
+			} \
+			SDL_free(trace##type); \
+			trace##type = NULL; \
+			trace##type##Count = 0; \
+		}
+	FREE_TRACES(Texture)
+	FREE_TRACES(Renderbuffer)
+	FREE_TRACES(VertexBuffer)
+	FREE_TRACES(IndexBuffer)
+	FREE_TRACES(Effect)
+	FREE_TRACES(Query)
+	if (traceEffectData != NULL)
+	{
+		SDL_free(traceEffectData);
+		traceEffectData = NULL;
+	}
+	#undef FREE_TRACES
 	FNA3D_DestroyDevice(device);
 	SDL_DestroyWindow(presentationParameters.deviceWindowHandle);
 	return !run;
 
+	#undef REGISTER_OBJECT
+	#undef FETCH_OBJECT
 	#undef READ
 }
 
