@@ -1160,7 +1160,16 @@ static uint8_t replay(const char *filename)
 		case MARK_APPLYEFFECT:
 			READ(i);
 			READ(pass);
-			/* TODO: Read effect parameter buffer here! */
+			effectData = traceEffectData[i];
+			for (vi = 0; vi < effectData->param_count; vi += 1)
+			{
+				ops->read(
+					ops,
+					effectData->params[vi].value.values,
+					effectData->params[vi].value.value_count * 4,
+					1
+				);
+			}
 			FNA3D_ApplyEffect(
 				device,
 				traceEffect[i],

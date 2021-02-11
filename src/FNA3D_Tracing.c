@@ -1405,16 +1405,27 @@ void FNA3D_Trace_ApplyEffect(
 ) {
 	SDL_RWops *ops;
 	uint64_t obj;
+	MOJOSHADER_effect *effectData;
+	int i;
 	if (!traceEnabled)
 	{
 		return;
 	}
 	obj = FNA3D_Trace_FetchEffect(effect);
+	effectData = traceEffectData[obj];
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_APPLYEFFECT);
 	WRITE(obj);
 	WRITE(pass);
-	/* TODO: Capture effect parameter buffers here! */
+	for (i = 0; i < effectData->param_count; i += 1)
+	{
+		ops->write(
+			ops,
+			effectData->params[i].value.values,
+			effectData->params[i].value.value_count * 4,
+			1
+		);
+	}
 	ops->close(ops);
 }
 
