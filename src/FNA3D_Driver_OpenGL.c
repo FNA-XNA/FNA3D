@@ -819,7 +819,7 @@ static void FNA3D_ExecuteCommand(
 	{
 		case FNA3D_COMMAND_CREATEEFFECT:
 			device->CreateEffect(
-				device,
+				device->driverData,
 				cmd->createEffect.effectCode,
 				cmd->createEffect.effectCodeLength,
 				cmd->createEffect.effect,
@@ -828,7 +828,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_CLONEEFFECT:
 			device->CloneEffect(
-				device,
+				device->driverData,
 				cmd->cloneEffect.cloneSource,
 				cmd->cloneEffect.effect,
 				cmd->cloneEffect.effectData
@@ -836,7 +836,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_GENVERTEXBUFFER:
 			cmd->genVertexBuffer.retval = device->GenVertexBuffer(
-				device,
+				device->driverData,
 				cmd->genVertexBuffer.dynamic,
 				cmd->genVertexBuffer.usage,
 				cmd->genVertexBuffer.sizeInBytes
@@ -844,7 +844,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_GENINDEXBUFFER:
 			cmd->genIndexBuffer.retval = device->GenIndexBuffer(
-				device,
+				device->driverData,
 				cmd->genIndexBuffer.dynamic,
 				cmd->genIndexBuffer.usage,
 				cmd->genIndexBuffer.sizeInBytes
@@ -852,7 +852,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_SETVERTEXBUFFERDATA:
 			device->SetVertexBufferData(
-				device,
+				device->driverData,
 				cmd->setVertexBufferData.buffer,
 				cmd->setVertexBufferData.offsetInBytes,
 				cmd->setVertexBufferData.data,
@@ -864,7 +864,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_SETINDEXBUFFERDATA:
 			device->SetIndexBufferData(
-				device,
+				device->driverData,
 				cmd->setIndexBufferData.buffer,
 				cmd->setIndexBufferData.offsetInBytes,
 				cmd->setIndexBufferData.data,
@@ -874,7 +874,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_GETVERTEXBUFFERDATA:
 			device->GetVertexBufferData(
-				device,
+				device->driverData,
 				cmd->getVertexBufferData.buffer,
 				cmd->getVertexBufferData.offsetInBytes,
 				cmd->getVertexBufferData.data,
@@ -885,7 +885,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_GETINDEXBUFFERDATA:
 			device->GetIndexBufferData(
-				device,
+				device->driverData,
 				cmd->getIndexBufferData.buffer,
 				cmd->getIndexBufferData.offsetInBytes,
 				cmd->getIndexBufferData.data,
@@ -894,7 +894,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_CREATETEXTURE2D:
 			cmd->createTexture2D.retval = device->CreateTexture2D(
-				device,
+				device->driverData,
 				cmd->createTexture2D.format,
 				cmd->createTexture2D.width,
 				cmd->createTexture2D.height,
@@ -904,7 +904,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_CREATETEXTURE3D:
 			cmd->createTexture3D.retval = device->CreateTexture3D(
-				device,
+				device->driverData,
 				cmd->createTexture3D.format,
 				cmd->createTexture3D.width,
 				cmd->createTexture3D.height,
@@ -914,7 +914,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_CREATETEXTURECUBE:
 			cmd->createTextureCube.retval = device->CreateTextureCube(
-				device,
+				device->driverData,
 				cmd->createTextureCube.format,
 				cmd->createTextureCube.size,
 				cmd->createTextureCube.levelCount,
@@ -923,7 +923,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_SETTEXTUREDATA2D:
 			device->SetTextureData2D(
-				device,
+				device->driverData,
 				cmd->setTextureData2D.texture,
 				cmd->setTextureData2D.x,
 				cmd->setTextureData2D.y,
@@ -936,7 +936,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_SETTEXTUREDATA3D:
 			device->SetTextureData3D(
-				device,
+				device->driverData,
 				cmd->setTextureData3D.texture,
 				cmd->setTextureData3D.x,
 				cmd->setTextureData3D.y,
@@ -951,7 +951,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_SETTEXTUREDATACUBE:
 			device->SetTextureDataCube(
-				device,
+				device->driverData,
 				cmd->setTextureDataCube.texture,
 				cmd->setTextureDataCube.x,
 				cmd->setTextureDataCube.y,
@@ -965,7 +965,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_GETTEXTUREDATA2D:
 			device->GetTextureData2D(
-				device,
+				device->driverData,
 				cmd->getTextureData2D.texture,
 				cmd->getTextureData2D.x,
 				cmd->getTextureData2D.y,
@@ -978,7 +978,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_GETTEXTUREDATA3D:
 			device->GetTextureData3D(
-				device,
+				device->driverData,
 				cmd->getTextureData3D.texture,
 				cmd->getTextureData3D.x,
 				cmd->getTextureData3D.y,
@@ -993,7 +993,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_GETTEXTUREDATACUBE:
 			device->GetTextureDataCube(
-				device,
+				device->driverData,
 				cmd->getTextureDataCube.texture,
 				cmd->getTextureDataCube.x,
 				cmd->getTextureDataCube.y,
@@ -1007,7 +1007,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_GENCOLORRENDERBUFFER:
 			cmd->genColorRenderbuffer.retval = device->GenColorRenderbuffer(
-				device,
+				device->driverData,
 				cmd->genColorRenderbuffer.width,
 				cmd->genColorRenderbuffer.height,
 				cmd->genColorRenderbuffer.format,
@@ -1017,7 +1017,7 @@ static void FNA3D_ExecuteCommand(
 			break;
 		case FNA3D_COMMAND_GENDEPTHRENDERBUFFER:
 			cmd->genDepthStencilRenderbuffer.retval = device->GenDepthStencilRenderbuffer(
-				device,
+				device->driverData,
 				cmd->genDepthStencilRenderbuffer.width,
 				cmd->genDepthStencilRenderbuffer.height,
 				cmd->genDepthStencilRenderbuffer.format,
