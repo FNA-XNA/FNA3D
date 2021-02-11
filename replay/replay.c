@@ -25,6 +25,7 @@
  */
 
 #include <SDL.h>
+#include <mojoshader.h>
 #include <FNA3D.h>
 
 #define MARK_CREATEDEVICE			0
@@ -169,8 +170,25 @@ static uint8_t replay(const char *filename)
 	/* ResolveTarget */
 	FNA3D_RenderTargetBinding resolveTarget;
 
+	/* Gen*Renderbuffer */
+	int32_t multiSampleCount;
+
+	/* *BufferData */
+	int32_t offsetInBytes;
+	int32_t elementCount;
+	int32_t elementSizeInBytes;
+	int32_t vertexStride;
+	FNA3D_SetDataOptions dataOptions;
+
+	/* SetEffectTechnique */
+	int32_t technique;
+
+	/* ApplyEffect */
+	uint32_t pass;
+	MOJOSHADER_effectStateChanges changes;
+
 	/* Miscellaneous allocations, dimensions, blah blah... */
-	int32_t x, y, z, w, h, d, levelCount, sizeInBytes, dataLength;
+	int32_t x, y, z, w, h, d, level, levelCount, sizeInBytes, dataLength;
 	FNA3D_CubeMapFace cubeMapFace;
 	FNA3D_SurfaceFormat format;
 	FNA3D_BufferUsage usage;
@@ -200,7 +218,7 @@ static uint8_t replay(const char *filename)
 	uint64_t traceEffectCount = 0;
 	FNA3D_Query **traceQuery = NULL;
 	uint64_t traceQueryCount = 0;
-	uint64_t i;
+	uint64_t i, j, k;
 	#define REGISTER_OBJECT(array, type, object) \
 		for (i = 0; i < trace##array##Count; i += 1) \
 		{ \
@@ -728,22 +746,215 @@ static uint8_t replay(const char *filename)
 			traceTexture[i] = NULL;
 			break;
 		case MARK_SETTEXTUREDATA2D:
+			READ(i);
+			READ(x);
+			READ(y);
+			READ(w);
+			READ(h);
+			READ(level);
+			READ(dataLength);
+			miscBuffer = SDL_malloc(dataLength);
+			ops->read(ops, miscBuffer, dataLength, 1);
+			FNA3D_SetTextureData2D(
+				device,
+				traceTexture[i],
+				x,
+				y,
+				w,
+				h,
+				level,
+				miscBuffer,
+				dataLength
+			);
+			SDL_free(miscBuffer);
 			break;
 		case MARK_SETTEXTUREDATA3D:
+			READ(i);
+			READ(x);
+			READ(y);
+			READ(z);
+			READ(w);
+			READ(h);
+			READ(d);
+			READ(level);
+			READ(dataLength);
+			miscBuffer = SDL_malloc(dataLength);
+			ops->read(ops, miscBuffer, dataLength, 1);
+			FNA3D_SetTextureData3D(
+				device,
+				traceTexture[i],
+				x,
+				y,
+				z,
+				w,
+				h,
+				d,
+				level,
+				miscBuffer,
+				dataLength
+			);
+			SDL_free(miscBuffer);
 			break;
 		case MARK_SETTEXTUREDATACUBE:
+			READ(i);
+			READ(x);
+			READ(y);
+			READ(w);
+			READ(h);
+			READ(cubeMapFace);
+			READ(level);
+			READ(dataLength);
+			miscBuffer = SDL_malloc(dataLength);
+			ops->read(ops, miscBuffer, dataLength, 1);
+			FNA3D_SetTextureDataCube(
+				device,
+				traceTexture[i],
+				x,
+				y,
+				w,
+				h,
+				cubeMapFace,
+				level,
+				miscBuffer,
+				dataLength
+			);
+			SDL_free(miscBuffer);
 			break;
 		case MARK_SETTEXTUREDATAYUV:
+			READ(i);
+			READ(j);
+			READ(k);
+			READ(x);
+			READ(y);
+			READ(w);
+			READ(h);
+			READ(dataLength);
+			miscBuffer = SDL_malloc(dataLength);
+			ops->read(ops, miscBuffer, dataLength, 1);
+			FNA3D_SetTextureDataYUV(
+				device,
+				traceTexture[i],
+				traceTexture[j],
+				traceTexture[k],
+				x,
+				y,
+				w,
+				h,
+				miscBuffer,
+				dataLength
+			);
+			SDL_free(miscBuffer);
 			break;
 		case MARK_GETTEXTUREDATA2D:
+			READ(i);
+			READ(x);
+			READ(y);
+			READ(w);
+			READ(h);
+			READ(level);
+			READ(dataLength);
+			miscBuffer = SDL_malloc(dataLength);
+			FNA3D_GetTextureData2D(
+				device,
+				traceTexture[i],
+				x,
+				y,
+				w,
+				h,
+				level,
+				miscBuffer,
+				dataLength
+			);
+			SDL_free(miscBuffer);
 			break;
 		case MARK_GETTEXTUREDATA3D:
+			READ(i);
+			READ(x);
+			READ(y);
+			READ(z);
+			READ(w);
+			READ(h);
+			READ(d);
+			READ(level);
+			READ(dataLength);
+			miscBuffer = SDL_malloc(dataLength);
+			FNA3D_GetTextureData3D(
+				device,
+				traceTexture[i],
+				x,
+				y,
+				z,
+				w,
+				h,
+				d,
+				level,
+				miscBuffer,
+				dataLength
+			);
+			SDL_free(miscBuffer);
 			break;
 		case MARK_GETTEXTUREDATACUBE:
+			READ(i);
+			READ(x);
+			READ(y);
+			READ(w);
+			READ(h);
+			READ(cubeMapFace);
+			READ(level);
+			READ(dataLength);
+			miscBuffer = SDL_malloc(dataLength);
+			FNA3D_GetTextureDataCube(
+				device,
+				traceTexture[i],
+				x,
+				y,
+				w,
+				h,
+				cubeMapFace,
+				level,
+				miscBuffer,
+				dataLength
+			);
+			SDL_free(miscBuffer);
 			break;
 		case MARK_GENCOLORRENDERBUFFER:
+			READ(w);
+			READ(h);
+			READ(format);
+			READ(multiSampleCount);
+			READ(nonNull);
+			if (nonNull)
+			{
+				READ(i);
+				texture = traceTexture[i];
+			}
+			else
+			{
+				texture = NULL;
+			}
+			renderbuffer = FNA3D_GenColorRenderbuffer(
+				device,
+				w,
+				h,
+				format,
+				multiSampleCount,
+				texture
+			);
+			REGISTER_OBJECT(Renderbuffer, Renderbuffer, renderbuffer)
 			break;
 		case MARK_GENDEPTHSTENCILRENDERBUFFER:
+			READ(w);
+			READ(h);
+			READ(depthFormat);
+			READ(multiSampleCount);
+			renderbuffer = FNA3D_GenDepthStencilRenderbuffer(
+				device,
+				w,
+				h,
+				format,
+				multiSampleCount
+			);
+			REGISTER_OBJECT(Renderbuffer, Renderbuffer, renderbuffer)
 			break;
 		case MARK_ADDDISPOSERENDERBUFFER:
 			READ(i);
@@ -774,8 +985,43 @@ static uint8_t replay(const char *filename)
 			traceVertexBuffer[i] = NULL;
 			break;
 		case MARK_SETVERTEXBUFFERDATA:
+			READ(i);
+			READ(offsetInBytes);
+			READ(elementCount);
+			READ(elementSizeInBytes);
+			READ(vertexStride);
+			READ(dataOptions);
+			miscBuffer = SDL_malloc(vertexStride * elementCount);
+			ops->read(ops, miscBuffer, vertexStride * elementCount, 1);
+			FNA3D_SetVertexBufferData(
+				device,
+				traceVertexBuffer[i],
+				offsetInBytes,
+				miscBuffer,
+				elementCount,
+				elementSizeInBytes,
+				vertexStride,
+				dataOptions
+			);
+			SDL_free(miscBuffer);
 			break;
 		case MARK_GETVERTEXBUFFERDATA:
+			READ(i);
+			READ(offsetInBytes);
+			READ(elementCount);
+			READ(elementSizeInBytes);
+			READ(vertexStride);
+			miscBuffer = SDL_malloc(vertexStride * elementCount);
+			FNA3D_GetVertexBufferData(
+				device,
+				traceVertexBuffer[i],
+				offsetInBytes,
+				miscBuffer,
+				elementCount,
+				elementSizeInBytes,
+				vertexStride
+			);
+			SDL_free(miscBuffer);
 			break;
 		case MARK_GENINDEXBUFFER:
 			READ(dynamic);
@@ -798,8 +1044,35 @@ static uint8_t replay(const char *filename)
 			traceIndexBuffer[i] = NULL;
 			break;
 		case MARK_SETINDEXBUFFERDATA:
+			READ(i);
+			READ(offsetInBytes);
+			READ(dataLength);
+			READ(dataOptions);
+			miscBuffer = SDL_malloc(dataLength);
+			ops->read(ops, miscBuffer, dataLength, 1);
+			FNA3D_SetIndexBufferData(
+				device,
+				traceIndexBuffer[i],
+				offsetInBytes,
+				miscBuffer,
+				dataLength,
+				dataOptions
+			);
+			SDL_free(miscBuffer);
 			break;
 		case MARK_GETINDEXBUFFERDATA:
+			READ(i);
+			READ(offsetInBytes);
+			READ(dataLength);
+			miscBuffer = SDL_malloc(dataLength);
+			FNA3D_GetIndexBufferData(
+				device,
+				traceIndexBuffer[i],
+				offsetInBytes,
+				miscBuffer,
+				dataLength
+			);
+			SDL_free(miscBuffer);
 			break;
 		case MARK_CREATEEFFECT:
 			READ(dataLength);
@@ -838,6 +1111,36 @@ static uint8_t replay(const char *filename)
 			}
 			break;
 		case MARK_CLONEEFFECT:
+			READ(i);
+			FNA3D_CloneEffect(
+				device,
+				traceEffect[i],
+				&effect,
+				&effectData
+			);
+			for (i = 0; i < traceEffectCount; i += 1)
+			{
+				if (traceEffect[i] == NULL)
+				{
+					traceEffect[i] = effect;
+					traceEffectData[i] = effectData;
+					break;
+				}
+			}
+			if (i == traceEffectCount)
+			{
+				traceEffectCount += 1;
+				traceEffect = SDL_realloc(
+					traceEffect,
+					sizeof(FNA3D_Effect*) * traceEffectCount
+				);
+				traceEffectData = SDL_realloc(
+					traceEffectData,
+					sizeof(MOJOSHADER_effect*) * traceEffectCount
+				);
+				traceEffect[i] = effect;
+				traceEffectData[i] = effectData;
+			}
 			break;
 		case MARK_ADDDISPOSEEFFECT:
 			READ(i);
@@ -846,12 +1149,36 @@ static uint8_t replay(const char *filename)
 			traceEffectData[i] = NULL;
 			break;
 		case MARK_SETEFFECTTECHNIQUE:
+			READ(i);
+			READ(technique);
+			FNA3D_SetEffectTechnique(
+				device,
+				traceEffect[i],
+				&traceEffectData[i]->techniques[technique]
+			);
 			break;
 		case MARK_APPLYEFFECT:
+			READ(i);
+			READ(pass);
+			/* TODO: Read effect parameter buffer here! */
+			FNA3D_ApplyEffect(
+				device,
+				traceEffect[i],
+				pass,
+				&changes
+			);
 			break;
 		case MARK_BEGINPASSRESTORE:
+			READ(i);
+			FNA3D_BeginPassRestore(
+				device,
+				traceEffect[i],
+				&changes
+			);
 			break;
 		case MARK_ENDPASSRESTORE:
+			READ(i);
+			FNA3D_EndPassRestore(device, traceEffect[i]);
 			break;
 		case MARK_CREATEQUERY:
 			query = FNA3D_CreateQuery(device);
@@ -863,10 +1190,20 @@ static uint8_t replay(const char *filename)
 			traceQuery[i] = NULL;
 			break;
 		case MARK_QUERYBEGIN:
+			READ(i);
+			FNA3D_QueryBegin(device, traceQuery[i]);
 			break;
 		case MARK_QUERYEND:
+			READ(i);
+			FNA3D_QueryEnd(device, traceQuery[i]);
 			break;
 		case MARK_QUERYPIXELCOUNT:
+			READ(i);
+			while (!FNA3D_QueryComplete(device, traceQuery[i]))
+			{
+				SDL_Delay(0);
+			}
+			FNA3D_QueryBegin(device, traceQuery[i]);
 			break;
 		case MARK_SETSTRINGMARKER:
 			READ(dataLength);

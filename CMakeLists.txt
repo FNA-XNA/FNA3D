@@ -127,6 +127,9 @@ add_library(mojoshader STATIC
 if(TRACING_SUPPORT)
 	add_executable(fna3d_replay replay/replay.c)
 	target_link_libraries(fna3d_replay FNA3D)
+	target_include_directories(fna3d_replay PUBLIC
+		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/MojoShader>
+	)
 endif()
 
 # Build flags
