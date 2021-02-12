@@ -149,7 +149,8 @@ void FNA3D_Trace_CreateTexture2D(
 	int32_t width,
 	int32_t height,
 	int32_t levelCount,
-	uint8_t isRenderTarget
+	uint8_t isRenderTarget,
+	FNA3D_Texture *retval
 );
 
 void FNA3D_Trace_CreateTexture3D(
@@ -157,14 +158,16 @@ void FNA3D_Trace_CreateTexture3D(
 	int32_t width,
 	int32_t height,
 	int32_t depth,
-	int32_t levelCount
+	int32_t levelCount,
+	FNA3D_Texture *retval
 );
 
 void FNA3D_Trace_CreateTextureCube(
 	FNA3D_SurfaceFormat format,
 	int32_t size,
 	int32_t levelCount,
-	uint8_t isRenderTarget
+	uint8_t isRenderTarget,
+	FNA3D_Texture *retval
 );
 
 void FNA3D_Trace_AddDisposeTexture(
@@ -257,14 +260,16 @@ void FNA3D_Trace_GenColorRenderbuffer(
 	int32_t height,
 	FNA3D_SurfaceFormat format,
 	int32_t multiSampleCount,
-	FNA3D_Texture *texture
+	FNA3D_Texture *texture,
+	FNA3D_Renderbuffer *retval
 );
 
 void FNA3D_Trace_GenDepthStencilRenderbuffer(
 	int32_t width,
 	int32_t height,
 	FNA3D_DepthFormat format,
-	int32_t multiSampleCount
+	int32_t multiSampleCount,
+	FNA3D_Renderbuffer *retval
 );
 
 void FNA3D_Trace_AddDisposeRenderbuffer(
@@ -274,7 +279,8 @@ void FNA3D_Trace_AddDisposeRenderbuffer(
 void FNA3D_Trace_GenVertexBuffer(
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t sizeInBytes
+	int32_t sizeInBytes,
+	FNA3D_Buffer *retval
 );
 
 void FNA3D_Trace_AddDisposeVertexBuffer(
@@ -302,7 +308,8 @@ void FNA3D_Trace_GetVertexBufferData(
 void FNA3D_Trace_GenIndexBuffer(
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t sizeInBytes
+	int32_t sizeInBytes,
+	FNA3D_Buffer *retval
 );
 
 void FNA3D_Trace_AddDisposeIndexBuffer(
@@ -325,11 +332,15 @@ void FNA3D_Trace_GetIndexBufferData(
 
 void FNA3D_Trace_CreateEffect(
 	uint8_t *effectCode,
-	uint32_t effectCodeLength
+	uint32_t effectCodeLength,
+	FNA3D_Effect *retval,
+	MOJOSHADER_effect *retvalData
 );
 
 void FNA3D_Trace_CloneEffect(
-	FNA3D_Effect *cloneSource
+	FNA3D_Effect *cloneSource,
+	FNA3D_Effect *retval,
+	MOJOSHADER_effect *retvalData
 );
 
 void FNA3D_Trace_AddDisposeEffect(
@@ -354,7 +365,7 @@ void FNA3D_Trace_EndPassRestore(
 	FNA3D_Effect *effect
 );
 
-void FNA3D_Trace_CreateQuery(void);
+void FNA3D_Trace_CreateQuery(FNA3D_Query *retval);
 
 void FNA3D_Trace_AddDisposeQuery(FNA3D_Query *query);
 
@@ -367,18 +378,6 @@ void FNA3D_Trace_QueryPixelCount(
 );
 
 void FNA3D_Trace_SetStringMarker(const char *text);
-
-void FNA3D_Trace_RegisterTexture(FNA3D_Texture *texture);
-
-void FNA3D_Trace_RegisterRenderbuffer(FNA3D_Renderbuffer *renderbuffer);
-
-void FNA3D_Trace_RegisterVertexBuffer(FNA3D_Buffer *buffer);
-
-void FNA3D_Trace_RegisterIndexBuffer(FNA3D_Buffer *buffer);
-
-void FNA3D_Trace_RegisterQuery(FNA3D_Query *query);
-
-void FNA3D_Trace_RegisterEffect(FNA3D_Effect *effect, MOJOSHADER_effect *effectData);
 
 #define TRACE_CREATEDEVICE FNA3D_Trace_CreateDevice(presentationParameters, debugMode);
 #define TRACE_DESTROYDEVICE FNA3D_Trace_DestroyDevice();
@@ -402,9 +401,9 @@ void FNA3D_Trace_RegisterEffect(FNA3D_Effect *effect, MOJOSHADER_effect *effectD
 #define TRACE_RESOLVETARGET FNA3D_Trace_ResolveTarget(target);
 #define TRACE_RESETBACKBUFFER FNA3D_Trace_ResetBackbuffer(presentationParameters);
 #define TRACE_READBACKBUFFER FNA3D_Trace_ReadBackbuffer(x, y, w, h, dataLength);
-#define TRACE_CREATETEXTURE2D FNA3D_Trace_CreateTexture2D(format, width, height, levelCount, isRenderTarget);
-#define TRACE_CREATETEXTURE3D FNA3D_Trace_CreateTexture3D(format, width, height, depth, levelCount);
-#define TRACE_CREATETEXTURECUBE FNA3D_Trace_CreateTextureCube(format, size, levelCount, isRenderTarget);
+#define TRACE_CREATETEXTURE2D FNA3D_Trace_CreateTexture2D(format, width, height, levelCount, isRenderTarget, result);
+#define TRACE_CREATETEXTURE3D FNA3D_Trace_CreateTexture3D(format, width, height, depth, levelCount, result);
+#define TRACE_CREATETEXTURECUBE FNA3D_Trace_CreateTextureCube(format, size, levelCount, isRenderTarget, result);
 #define TRACE_ADDDISPOSETEXTURE FNA3D_Trace_AddDisposeTexture(texture);
 #define TRACE_SETTEXTUREDATA2D FNA3D_Trace_SetTextureData2D(texture, x,  y, w, h, level, data, dataLength);
 #define TRACE_SETTEXTUREDATA3D FNA3D_Trace_SetTextureData3D(texture, x, y, z, w, h, d, level, data, dataLength);
@@ -413,36 +412,30 @@ void FNA3D_Trace_RegisterEffect(FNA3D_Effect *effect, MOJOSHADER_effect *effectD
 #define TRACE_GETTEXTUREDATA2D FNA3D_Trace_GetTextureData2D(texture, x, y, w, h, level, dataLength);
 #define TRACE_GETTEXTUREDATA3D FNA3D_Trace_GetTextureData3D(texture, x, y, z, w, h, d, level, dataLength);
 #define TRACE_GETTEXTUREDATACUBE FNA3D_Trace_GetTextureDataCube(texture, x, y, w, h, cubeMapFace, level, dataLength);
-#define TRACE_GENCOLORRENDERBUFFER FNA3D_Trace_GenColorRenderbuffer(width, height, format, multiSampleCount, texture);
-#define TRACE_GENDEPTHSTENCILRENDERBUFFER FNA3D_Trace_GenDepthStencilRenderbuffer(width, height, format, multiSampleCount);
+#define TRACE_GENCOLORRENDERBUFFER FNA3D_Trace_GenColorRenderbuffer(width, height, format, multiSampleCount, texture, result);
+#define TRACE_GENDEPTHSTENCILRENDERBUFFER FNA3D_Trace_GenDepthStencilRenderbuffer(width, height, format, multiSampleCount, result);
 #define TRACE_ADDDISPOSERENDERBUFFER FNA3D_Trace_AddDisposeRenderbuffer(renderbuffer);
-#define TRACE_GENVERTEXBUFFER FNA3D_Trace_GenVertexBuffer(dynamic, usage, sizeInBytes);
+#define TRACE_GENVERTEXBUFFER FNA3D_Trace_GenVertexBuffer(dynamic, usage, sizeInBytes, result);
 #define TRACE_ADDDISPOSEVERTEXBUFFER FNA3D_Trace_AddDisposeVertexBuffer(buffer);
 #define TRACE_SETVERTEXBUFFERDATA FNA3D_Trace_SetVertexBufferData(buffer, offsetInBytes, data, elementCount, elementSizeInBytes, vertexStride, options);
 #define TRACE_GETVERTEXBUFFERDATA FNA3D_Trace_GetVertexBufferData(buffer, offsetInBytes, elementCount, elementSizeInBytes, vertexStride);
-#define TRACE_GENINDEXBUFFER FNA3D_Trace_GenIndexBuffer(dynamic, usage, sizeInBytes);
+#define TRACE_GENINDEXBUFFER FNA3D_Trace_GenIndexBuffer(dynamic, usage, sizeInBytes, result);
 #define TRACE_ADDDISPOSEINDEXBUFFER FNA3D_Trace_AddDisposeIndexBuffer(buffer);
 #define TRACE_SETINDEXBUFFERDATA FNA3D_Trace_SetIndexBufferData(buffer, offsetInBytes, data, dataLength, options);
 #define TRACE_GETINDEXBUFFERDATA FNA3D_Trace_GetIndexBufferData(buffer, offsetInBytes, dataLength);
-#define TRACE_CREATEEFFECT FNA3D_Trace_CreateEffect(effectCode, effectCodeLength);
-#define TRACE_CLONEEFFECT FNA3D_Trace_CloneEffect(cloneSource);
+#define TRACE_CREATEEFFECT FNA3D_Trace_CreateEffect(effectCode, effectCodeLength, *effect, *effectData);
+#define TRACE_CLONEEFFECT FNA3D_Trace_CloneEffect(cloneSource, *effect, *effectData);
 #define TRACE_ADDDISPOSEEFFECT FNA3D_Trace_AddDisposeEffect(effect);
 #define TRACE_SETEFFECTTECHNIQUE FNA3D_Trace_SetEffectTechnique(effect, technique);
 #define TRACE_APPLYEFFECT FNA3D_Trace_ApplyEffect(effect, pass);
 #define TRACE_BEGINPASSRESTORE FNA3D_Trace_BeginPassRestore(effect);
 #define TRACE_ENDPASSRESTORE FNA3D_Trace_EndPassRestore(effect);
-#define TRACE_CREATEQUERY FNA3D_Trace_CreateQuery();
+#define TRACE_CREATEQUERY FNA3D_Trace_CreateQuery(result);
 #define TRACE_ADDDISPOSEQUERY FNA3D_Trace_AddDisposeQuery(query);
 #define TRACE_QUERYBEGIN FNA3D_Trace_QueryBegin(query);
 #define TRACE_QUERYEND FNA3D_Trace_QueryEnd(query);
 #define TRACE_QUERYPIXELCOUNT FNA3D_Trace_QueryPixelCount(query);
 #define TRACE_SETSTRINGMARKER FNA3D_Trace_SetStringMarker(text);
-#define TRACE_REGISTERTEXTURE FNA3D_Trace_RegisterTexture(result);
-#define TRACE_REGISTERRENDERBUFFER FNA3D_Trace_RegisterRenderbuffer(result);
-#define TRACE_REGISTERVERTEXBUFFER FNA3D_Trace_RegisterVertexBuffer(result);
-#define TRACE_REGISTERINDEXBUFFER FNA3D_Trace_RegisterIndexBuffer(result);
-#define TRACE_REGISTERQUERY FNA3D_Trace_RegisterQuery(result);
-#define TRACE_REGISTEREFFECT FNA3D_Trace_RegisterEffect(*effect, *effectData);
 
 #else
 
@@ -503,11 +496,5 @@ void FNA3D_Trace_RegisterEffect(FNA3D_Effect *effect, MOJOSHADER_effect *effectD
 #define TRACE_QUERYEND
 #define TRACE_QUERYPIXELCOUNT
 #define TRACE_SETSTRINGMARKER
-#define TRACE_REGISTERTEXTURE
-#define TRACE_REGISTERRENDERBUFFER
-#define TRACE_REGISTERVERTEXBUFFER
-#define TRACE_REGISTERINDEXBUFFER
-#define TRACE_REGISTEREFFECT
-#define TRACE_REGISTERQUERY
 
 #endif /* FNA3D_TRACING */

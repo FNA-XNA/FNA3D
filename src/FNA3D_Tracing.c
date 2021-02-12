@@ -105,7 +105,7 @@ static const uint8_t MARK_SETSTRINGMARKER		= 56;
 		SDL_assert(0 && "Trace object is missing!"); \
 		return 0; \
 	} \
-	void FNA3D_Trace_Register##array(FNA3D_##type *object) \
+	static void FNA3D_Trace_Register##array(FNA3D_##type *object) \
 	{ \
 		uint64_t i; \
 		for (i = 0; i < trace##array##Count; i += 1) \
@@ -792,13 +792,15 @@ void FNA3D_Trace_CreateTexture2D(
 	int32_t width,
 	int32_t height,
 	int32_t levelCount,
-	uint8_t isRenderTarget
+	uint8_t isRenderTarget,
+	FNA3D_Texture *retval
 ) {
 	SDL_RWops *ops;
 	if (!traceEnabled)
 	{
 		return;
 	}
+	FNA3D_Trace_RegisterTexture(retval);
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_CREATETEXTURE2D);
 	WRITE(format);
@@ -814,13 +816,15 @@ void FNA3D_Trace_CreateTexture3D(
 	int32_t width,
 	int32_t height,
 	int32_t depth,
-	int32_t levelCount
+	int32_t levelCount,
+	FNA3D_Texture *retval
 ) {
 	SDL_RWops *ops;
 	if (!traceEnabled)
 	{
 		return;
 	}
+	FNA3D_Trace_RegisterTexture(retval);
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_CREATETEXTURE3D);
 	WRITE(format);
@@ -835,13 +839,15 @@ void FNA3D_Trace_CreateTextureCube(
 	FNA3D_SurfaceFormat format,
 	int32_t size,
 	int32_t levelCount,
-	uint8_t isRenderTarget
+	uint8_t isRenderTarget,
+	FNA3D_Texture *retval
 ) {
 	SDL_RWops *ops;
 	if (!traceEnabled)
 	{
 		return;
 	}
+	FNA3D_Trace_RegisterTexture(retval);
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_CREATETEXTURECUBE);
 	WRITE(format);
@@ -1093,7 +1099,8 @@ void FNA3D_Trace_GenColorRenderbuffer(
 	int32_t height,
 	FNA3D_SurfaceFormat format,
 	int32_t multiSampleCount,
-	FNA3D_Texture *texture
+	FNA3D_Texture *texture,
+	FNA3D_Renderbuffer *retval
 ) {
 	SDL_RWops *ops;
 	uint64_t obj;
@@ -1102,6 +1109,7 @@ void FNA3D_Trace_GenColorRenderbuffer(
 	{
 		return;
 	}
+	FNA3D_Trace_RegisterRenderbuffer(retval);
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_GENCOLORRENDERBUFFER);
 	WRITE(width);
@@ -1122,13 +1130,15 @@ void FNA3D_Trace_GenDepthStencilRenderbuffer(
 	int32_t width,
 	int32_t height,
 	FNA3D_DepthFormat format,
-	int32_t multiSampleCount
+	int32_t multiSampleCount,
+	FNA3D_Renderbuffer *retval
 ) {
 	SDL_RWops *ops;
 	if (!traceEnabled)
 	{
 		return;
 	}
+	FNA3D_Trace_RegisterRenderbuffer(retval);
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_GENDEPTHSTENCILRENDERBUFFER);
 	WRITE(width);
@@ -1158,13 +1168,15 @@ void FNA3D_Trace_AddDisposeRenderbuffer(
 void FNA3D_Trace_GenVertexBuffer(
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t sizeInBytes
+	int32_t sizeInBytes,
+	FNA3D_Buffer *retval
 ) {
 	SDL_RWops *ops;
 	if (!traceEnabled)
 	{
 		return;
 	}
+	FNA3D_Trace_RegisterVertexBuffer(retval);
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_GENVERTEXBUFFER);
 	WRITE(dynamic);
@@ -1245,13 +1257,15 @@ void FNA3D_Trace_GetVertexBufferData(
 void FNA3D_Trace_GenIndexBuffer(
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t sizeInBytes
+	int32_t sizeInBytes,
+	FNA3D_Buffer *retval
 ) {
 	SDL_RWops *ops;
 	if (!traceEnabled)
 	{
 		return;
 	}
+	FNA3D_Trace_RegisterIndexBuffer(retval);
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_GENINDEXBUFFER);
 	WRITE(dynamic);
@@ -1323,13 +1337,16 @@ void FNA3D_Trace_GetIndexBufferData(
 
 void FNA3D_Trace_CreateEffect(
 	uint8_t *effectCode,
-	uint32_t effectCodeLength
+	uint32_t effectCodeLength,
+	FNA3D_Effect *retval,
+	MOJOSHADER_effect *retvalData
 ) {
 	SDL_RWops *ops;
 	if (!traceEnabled)
 	{
 		return;
 	}
+	FNA3D_Trace_RegisterEffect(retval, retvalData);
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_CREATEEFFECT);
 	WRITE(effectCodeLength);
@@ -1338,7 +1355,9 @@ void FNA3D_Trace_CreateEffect(
 }
 
 void FNA3D_Trace_CloneEffect(
-	FNA3D_Effect *cloneSource
+	FNA3D_Effect *cloneSource,
+	FNA3D_Effect *retval,
+	MOJOSHADER_effect *retvalData
 ) {
 	SDL_RWops *ops;
 	uint64_t obj;
@@ -1346,6 +1365,7 @@ void FNA3D_Trace_CloneEffect(
 	{
 		return;
 	}
+	FNA3D_Trace_RegisterEffect(retval, retvalData);
 	obj = FNA3D_Trace_FetchEffect(cloneSource);
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_CLONEEFFECT);
@@ -1461,13 +1481,14 @@ void FNA3D_Trace_EndPassRestore(
 	ops->close(ops);
 }
 
-void FNA3D_Trace_CreateQuery(void)
+void FNA3D_Trace_CreateQuery(FNA3D_Query *retval)
 {
 	SDL_RWops *ops;
 	if (!traceEnabled)
 	{
 		return;
 	}
+	FNA3D_Trace_RegisterQuery(retval);
 	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_CREATEQUERY);
 	ops->close(ops);

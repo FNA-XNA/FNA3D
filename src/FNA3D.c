@@ -634,8 +634,10 @@ FNA3D_Texture* FNA3D_CreateTexture2D(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
+	/* We're stuck tracing _after_ the call instead of _before_, because
+	 * of threading issues. This can cause timing issues!
+	 */
 	FNA3D_Texture *result;
-	TRACE_CREATETEXTURE2D
 	if (device == NULL)
 	{
 		return NULL;
@@ -648,7 +650,7 @@ FNA3D_Texture* FNA3D_CreateTexture2D(
 		levelCount,
 		isRenderTarget
 	);
-	TRACE_REGISTERTEXTURE
+	TRACE_CREATETEXTURE2D
 	return result;
 }
 
@@ -660,8 +662,10 @@ FNA3D_Texture* FNA3D_CreateTexture3D(
 	int32_t depth,
 	int32_t levelCount
 ) {
+	/* We're stuck tracing _after_ the call instead of _before_, because
+	 * of threading issues. This can cause timing issues!
+	 */
 	FNA3D_Texture *result;
-	TRACE_CREATETEXTURE3D
 	if (device == NULL)
 	{
 		return NULL;
@@ -674,7 +678,7 @@ FNA3D_Texture* FNA3D_CreateTexture3D(
 		depth,
 		levelCount
 	);
-	TRACE_REGISTERTEXTURE
+	TRACE_CREATETEXTURE3D
 	return result;
 }
 
@@ -685,8 +689,10 @@ FNA3D_Texture* FNA3D_CreateTextureCube(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
+	/* We're stuck tracing _after_ the call instead of _before_, because
+	 * of threading issues. This can cause timing issues!
+	 */
 	FNA3D_Texture *result;
-	TRACE_CREATETEXTURECUBE
 	if (device == NULL)
 	{
 		return NULL;
@@ -698,7 +704,7 @@ FNA3D_Texture* FNA3D_CreateTextureCube(
 		levelCount,
 		isRenderTarget
 	);
-	TRACE_REGISTERTEXTURE
+	TRACE_CREATETEXTURECUBE
 	return result;
 }
 
@@ -941,8 +947,10 @@ FNA3D_Renderbuffer* FNA3D_GenColorRenderbuffer(
 	int32_t multiSampleCount,
 	FNA3D_Texture *texture
 ) {
+	/* We're stuck tracing _after_ the call instead of _before_, because
+	 * of threading issues. This can cause timing issues!
+	 */
 	FNA3D_Renderbuffer *result;
-	TRACE_GENCOLORRENDERBUFFER
 	if (device == NULL)
 	{
 		return NULL;
@@ -955,7 +963,7 @@ FNA3D_Renderbuffer* FNA3D_GenColorRenderbuffer(
 		multiSampleCount,
 		texture
 	);
-	TRACE_REGISTERRENDERBUFFER
+	TRACE_GENCOLORRENDERBUFFER
 	return result;
 }
 
@@ -966,8 +974,10 @@ FNA3D_Renderbuffer* FNA3D_GenDepthStencilRenderbuffer(
 	FNA3D_DepthFormat format,
 	int32_t multiSampleCount
 ) {
+	/* We're stuck tracing _after_ the call instead of _before_, because
+	 * of threading issues. This can cause timing issues!
+	 */
 	FNA3D_Renderbuffer *result;
-	TRACE_GENDEPTHSTENCILRENDERBUFFER
 	if (device == NULL)
 	{
 		return NULL;
@@ -979,7 +989,7 @@ FNA3D_Renderbuffer* FNA3D_GenDepthStencilRenderbuffer(
 		format,
 		multiSampleCount
 	);
-	TRACE_REGISTERRENDERBUFFER
+	TRACE_GENDEPTHSTENCILRENDERBUFFER
 	return result;
 }
 
@@ -1006,8 +1016,10 @@ FNA3D_Buffer* FNA3D_GenVertexBuffer(
 	FNA3D_BufferUsage usage,
 	int32_t sizeInBytes
 ) {
+	/* We're stuck tracing _after_ the call instead of _before_, because
+	 * of threading issues. This can cause timing issues!
+	 */
 	FNA3D_Buffer *result;
-	TRACE_GENVERTEXBUFFER
 	if (device == NULL)
 	{
 		return NULL;
@@ -1018,7 +1030,7 @@ FNA3D_Buffer* FNA3D_GenVertexBuffer(
 		usage,
 		sizeInBytes
 	);
-	TRACE_REGISTERVERTEXBUFFER
+	TRACE_GENVERTEXBUFFER
 	return result;
 }
 
@@ -1094,8 +1106,10 @@ FNA3D_Buffer* FNA3D_GenIndexBuffer(
 	FNA3D_BufferUsage usage,
 	int32_t sizeInBytes
 ) {
+	/* We're stuck tracing _after_ the call instead of _before_, because
+	 * of threading issues. This can cause timing issues!
+	 */
 	FNA3D_Buffer *result;
-	TRACE_GENINDEXBUFFER
 	if (device == NULL)
 	{
 		return NULL;
@@ -1106,7 +1120,7 @@ FNA3D_Buffer* FNA3D_GenIndexBuffer(
 		usage,
 		sizeInBytes
 	);
-	TRACE_REGISTERINDEXBUFFER
+	TRACE_GENINDEXBUFFER
 	return result;
 }
 
@@ -1175,7 +1189,9 @@ void FNA3D_CreateEffect(
 	FNA3D_Effect **effect,
 	MOJOSHADER_effect **effectData
 ) {
-	TRACE_CREATEEFFECT
+	/* We're stuck tracing _after_ the call instead of _before_, because
+	 * of threading issues. This can cause timing issues!
+	 */
 	if (device == NULL)
 	{
 		*effect = NULL;
@@ -1189,7 +1205,7 @@ void FNA3D_CreateEffect(
 		effect,
 		effectData
 	);
-	TRACE_REGISTEREFFECT
+	TRACE_CREATEEFFECT
 }
 
 void FNA3D_CloneEffect(
@@ -1198,7 +1214,9 @@ void FNA3D_CloneEffect(
 	FNA3D_Effect **effect,
 	MOJOSHADER_effect **effectData
 ) {
-	TRACE_CLONEEFFECT
+	/* We're stuck tracing _after_ the call instead of _before_, because
+	 * of threading issues. This can cause timing issues!
+	 */
 	if (device == NULL)
 	{
 		*effect = NULL;
@@ -1211,7 +1229,7 @@ void FNA3D_CloneEffect(
 		effect,
 		effectData
 	);
-	TRACE_REGISTEREFFECT
+	TRACE_CLONEEFFECT
 }
 
 void FNA3D_AddDisposeEffect(
@@ -1291,14 +1309,16 @@ void FNA3D_EndPassRestore(
 
 FNA3D_Query* FNA3D_CreateQuery(FNA3D_Device *device)
 {
+	/* We're stuck tracing _after_ the call instead of _before_, because
+	 * of threading issues. This can cause timing issues!
+	 */
 	FNA3D_Query *result;
-	TRACE_CREATEQUERY
 	if (device == NULL)
 	{
 		return NULL;
 	}
 	result = device->CreateQuery(device->driverData);
-	TRACE_REGISTERQUERY
+	TRACE_CREATEQUERY
 	return result;
 }
 
