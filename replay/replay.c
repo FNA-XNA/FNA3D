@@ -553,7 +553,7 @@ static uint8_t replay(const char *filename)
 				);
 				for (ri = 0; ri < numRenderTargets; ri += 1)
 				{
-					target = &renderTargets[i];
+					target = &renderTargets[ri];
 					READ(target->type);
 					if (target->type == FNA3D_RENDERTARGET_TYPE_2D)
 					{
