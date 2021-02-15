@@ -951,7 +951,7 @@ static uint8_t replay(const char *filename)
 				device,
 				w,
 				h,
-				format,
+				depthFormat,
 				multiSampleCount
 			);
 			REGISTER_OBJECT(Renderbuffer, Renderbuffer, renderbuffer)
