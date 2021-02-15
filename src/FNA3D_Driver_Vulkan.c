@@ -8596,7 +8596,7 @@ static void VULKAN_SetRenderTargets(
 	renderer->depthStencilAttachment = NULL;
 	renderer->multiSampleCount = renderer->fauxBackbufferMultiSampleCount;
 
-	if (renderTargets == NULL)
+	if (numRenderTargets <= 0)
 	{
 		renderer->colorAttachments[0] = renderer->fauxBackbufferColor.handle;
 		renderer->attachmentCubeFaces[0] = (FNA3D_CubeMapFace) 0;

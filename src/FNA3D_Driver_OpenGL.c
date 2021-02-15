@@ -2536,7 +2536,7 @@ static void OPENGL_SetRenderTargets(
 	GLuint handle;
 
 	/* Bind the right framebuffer, if needed */
-	if (renderTargets == NULL)
+	if (numRenderTargets <= 0)
 	{
 		BindFramebuffer(
 			renderer,

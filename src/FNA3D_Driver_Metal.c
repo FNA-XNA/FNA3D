@@ -2796,7 +2796,7 @@ static void METAL_SetRenderTargets(
 	renderer->currentSampleCount = 0;
 
 	/* Bind the backbuffer, if applicable */
-	if (renderTargets == NULL)
+	if (numRenderTargets <= 0)
 	{
 		bb = renderer->backbuffer;
 		renderer->currentAttachments[0] = bb->colorBuffer;
