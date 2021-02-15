@@ -541,49 +541,56 @@ static uint8_t replay(const char *filename)
 			break;
 		case MARK_SETRENDERTARGETS:
 			READ(numRenderTargets);
-			renderTargets = (FNA3D_RenderTargetBinding*) SDL_malloc(
-				sizeof(FNA3D_RenderTargetBinding) *
-				numRenderTargets
-			);
-			for (ri = 0; ri < numRenderTargets; ri += 1)
+			if (numRenderTargets == 0)
 			{
-				target = &renderTargets[i];
-				READ(target->type);
-				if (target->type == FNA3D_RENDERTARGET_TYPE_2D)
+				renderTargets = NULL;
+			}
+			else
+			{
+				renderTargets = (FNA3D_RenderTargetBinding*) SDL_malloc(
+					sizeof(FNA3D_RenderTargetBinding) *
+					numRenderTargets
+				);
+				for (ri = 0; ri < numRenderTargets; ri += 1)
 				{
-					READ(target->twod.width);
-					READ(target->twod.height);
-				}
-				else
-				{
-					SDL_assert(target->type == FNA3D_RENDERTARGET_TYPE_CUBE);
-					READ(target->cube.size);
-					READ(target->cube.face);
-				}
+					target = &renderTargets[i];
+					READ(target->type);
+					if (target->type == FNA3D_RENDERTARGET_TYPE_2D)
+					{
+						READ(target->twod.width);
+						READ(target->twod.height);
+					}
+					else
+					{
+						SDL_assert(target->type == FNA3D_RENDERTARGET_TYPE_CUBE);
+						READ(target->cube.size);
+						READ(target->cube.face);
+					}
 
-				READ(target->levelCount);
-				READ(target->multiSampleCount);
+					READ(target->levelCount);
+					READ(target->multiSampleCount);
 
-				READ(nonNull);
-				if (nonNull)
-				{
-					READ(i);
-					target->texture = traceTexture[i];
-				}
-				else
-				{
-					target->texture = NULL;
-				}
+					READ(nonNull);
+					if (nonNull)
+					{
+						READ(i);
+						target->texture = traceTexture[i];
+					}
+					else
+					{
+						target->texture = NULL;
+					}
 
-				READ(nonNull);
-				if (nonNull)
-				{
-					READ(i);
-					target->colorBuffer = traceRenderbuffer[i];
-				}
-				else
-				{
-					target->colorBuffer = NULL;
+					READ(nonNull);
+					if (nonNull)
+					{
+						READ(i);
+						target->colorBuffer = traceRenderbuffer[i];
+					}
+					else
+					{
+						target->colorBuffer = NULL;
+					}
 				}
 			}
 
