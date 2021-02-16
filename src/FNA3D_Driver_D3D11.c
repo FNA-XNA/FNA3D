@@ -2223,7 +2223,7 @@ static void D3D11_SetRenderTargets(
 	int32_t i;
 
 	/* Bind the backbuffer, if applicable */
-	if (renderTargetCount <= 0)
+	if (numRenderTargets <= 0)
 	{
 		views[0] = renderer->backbuffer.colorView;
 		renderer->currentDepthFormat = renderer->backbuffer.depthFormat;
