@@ -8335,7 +8335,23 @@ static void VULKAN_SetDepthStencilState(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 
-	if (SDL_memcmp(&renderer->depthStencilState, depthStencilState, sizeof(FNA3D_DepthStencilState)) != 0)
+	/* TODO: Arrange these checks in an optimized priority */
+	if (	renderer->depthStencilState.depthBufferEnable != depthStencilState->depthBufferEnable ||
+		renderer->depthStencilState.depthBufferWriteEnable != depthStencilState->depthBufferWriteEnable ||
+		renderer->depthStencilState.depthBufferFunction != depthStencilState->depthBufferFunction ||
+		renderer->depthStencilState.stencilEnable != depthStencilState->stencilEnable ||
+		renderer->depthStencilState.stencilMask != depthStencilState->stencilMask ||
+		renderer->depthStencilState.stencilWriteMask != depthStencilState->stencilWriteMask ||
+		renderer->depthStencilState.twoSidedStencilMode != depthStencilState->twoSidedStencilMode ||
+		renderer->depthStencilState.stencilFail != depthStencilState->stencilFail ||
+		renderer->depthStencilState.stencilDepthBufferFail != depthStencilState->stencilDepthBufferFail ||
+		renderer->depthStencilState.stencilPass != depthStencilState->stencilPass ||
+		renderer->depthStencilState.stencilFunction != depthStencilState->stencilFunction ||
+		renderer->depthStencilState.ccwStencilFail != depthStencilState->ccwStencilFail ||
+		renderer->depthStencilState.ccwStencilDepthBufferFail != depthStencilState->ccwStencilDepthBufferFail ||
+		renderer->depthStencilState.ccwStencilPass != depthStencilState->ccwStencilPass ||
+		renderer->depthStencilState.ccwStencilFunction != depthStencilState->ccwStencilFunction ||
+		renderer->depthStencilState.referenceStencil != depthStencilState->referenceStencil	)
 	{
 		renderer->needNewPipeline = 1;
 
