@@ -1177,7 +1177,8 @@ typedef struct VulkanRenderer
 	VulkanStagingBuffer *textureStagingBuffer;
 
 	uint32_t numVertexBindings;
-	FNA3D_VertexBufferBinding *vertexBindings;
+	FNA3D_VertexBufferBinding vertexBindings[MAX_BOUND_VERTEX_BUFFERS];
+	FNA3D_VertexElement vertexElements[MAX_BOUND_VERTEX_BUFFERS][MAX_VERTEX_ATTRIBUTES];
 	VkBuffer boundVertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
 	VkDeviceSize boundVertexBufferOffsets[MAX_BOUND_VERTEX_BUFFERS];
 
@@ -8505,6 +8506,7 @@ static void VULKAN_ApplyVertexBufferBindings(
 	int32_t i, bindingsIndex;
 	uint32_t hash;
 	void* bindingsResult;
+	FNA3D_VertexBufferBinding *src, *dst;
 	VulkanBuffer *vertexBuffer;
 	VulkanSubBuffer *subbuf;
 	VkDeviceSize offset;
@@ -8530,8 +8532,25 @@ static void VULKAN_ApplyVertexBufferBindings(
 		);
 	}
 
-	renderer->vertexBindings = bindings;
-	renderer->numVertexBindings = numBindings;
+	if (bindingsUpdated)
+	{
+		renderer->numVertexBindings = numBindings;
+		for (i = 0; i < renderer->numVertexBindings; i += 1)
+		{
+			src = &bindings[i];
+			dst = &renderer->vertexBindings[i];
+			dst->vertexBuffer = src->vertexBuffer;
+			dst->vertexOffset = src->vertexOffset;
+			dst->instanceFrequency = src->instanceFrequency;
+			dst->vertexDeclaration.vertexStride = src->vertexDeclaration.vertexStride;
+			dst->vertexDeclaration.elementCount = src->vertexDeclaration.elementCount;
+			SDL_memcpy(
+				dst->vertexDeclaration.elements,
+				src->vertexDeclaration.elements,
+				sizeof(FNA3D_VertexElement) * src->vertexDeclaration.elementCount
+			);
+		}
+	}
 
 	if (bindingsIndex != renderer->currentVertexBufferBindingsIndex)
 	{
@@ -11007,6 +11026,11 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		-1,
 		sizeof(renderer->multiSampleMask) /* AKA 0xFFFFFFFF */
 	);
+	for (i = 0; i < MAX_BOUND_VERTEX_BUFFERS; i += 1)
+	{
+		renderer->vertexBindings[i].vertexDeclaration.elements =
+			renderer->vertexElements[i];
+	}
 
 	/*
 	 * Create query pool
