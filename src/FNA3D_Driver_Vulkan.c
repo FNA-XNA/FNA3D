@@ -10353,7 +10353,7 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 	uint8_t result;
 
 	/* Required for MoltenVK support */
-	SDL_SetHint("MVK_CONFIG_FULL_IMAGE_VIEW_SWIZZLE", "1");
+	SDL_setenv("MVK_CONFIG_FULL_IMAGE_VIEW_SWIZZLE", "1", 1);
 
 	if (SDL_Vulkan_LoadLibrary(NULL) < 0)
 	{
