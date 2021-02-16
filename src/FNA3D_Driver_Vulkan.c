@@ -10352,6 +10352,9 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 	uint32_t deviceExtensionCountFinal = deviceExtensionCount;
 	uint8_t result;
 
+	/* Required for MoltenVK support */
+	SDL_SetHint("MVK_CONFIG_FULL_IMAGE_VIEW_SWIZZLE", "1");
+
 	if (SDL_Vulkan_LoadLibrary(NULL) < 0)
 	{
 		FNA3D_LogWarn("Vulkan: SDL_Vulkan_LoadLibrary failed!");
