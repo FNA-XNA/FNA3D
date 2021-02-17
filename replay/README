@@ -2,7 +2,6 @@ This is the replay tool for FNA3D trace files.
 
 About
 -----
-
 Traces are made with a custom FNA3D binary that writes the entire call stream,
 including texture and buffer data, and contains no backend information of any
 kind. This ensures that traces made from any platform can be played back on
@@ -10,7 +9,6 @@ every other platform, and can be rendered with any backend that FNA3D provides.
 
 How to Use
 ----------
-
 To enable tracing, set -DTRACING_SUPPORT=ON when configuring via CMake. Place
 the FNA3D library where appropriate, then run your application for as long as is
 appropriate. Note that you will want both a lot of disk space as well as good
