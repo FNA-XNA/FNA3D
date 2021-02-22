@@ -10932,6 +10932,19 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	if (pipelineCacheBytes != NULL)
 	{
 		SDL_free(pipelineCacheBytes);
+
+		/* The pipeline cache was invalid, try again with no input data */
+		if (vulkanResult != VK_SUCCESS)
+		{
+			pipelineCacheCreateInfo.initialDataSize = 0;
+			pipelineCacheCreateInfo.pInitialData = NULL;
+			vulkanResult = renderer->vkCreatePipelineCache(
+				renderer->logicalDevice,
+				&pipelineCacheCreateInfo,
+				NULL,
+				&renderer->pipelineCache
+			);
+		}
 	}
 
 	VULKAN_ERROR_CHECK(vulkanResult, vkCreatePipelineCache, NULL)
