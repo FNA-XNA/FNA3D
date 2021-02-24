@@ -10936,6 +10936,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		/* The pipeline cache was invalid, try again with no input data */
 		if (vulkanResult != VK_SUCCESS)
 		{
+			FNA3D_LogWarn("Pipeline cache preload failed, ignoring");
 			pipelineCacheCreateInfo.initialDataSize = 0;
 			pipelineCacheCreateInfo.pInitialData = NULL;
 			vulkanResult = renderer->vkCreatePipelineCache(
