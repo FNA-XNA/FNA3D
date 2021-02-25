@@ -3993,32 +3993,53 @@ static void VULKAN_INTERNAL_CopyToStagingBuffer(
 	uint32_t uploadLength,
 	uint32_t copyLength,
 	VulkanSubBuffer **pStagingBuffer,
-	VkDeviceSize *pOffset
+	VkDeviceSize *pOffset,
+	FNA3D_SurfaceFormat format
 ) {
 	VulkanSubBuffer *stagingSubBuffer;
 	VkDeviceSize offset;
 	uint8_t *stagingBufferPointer;
+	uint8_t fallToSlowBuffer;
+	int32_t fmtSize = Texture_GetFormatSize(format);
 
 	VULKAN_INTERNAL_WaitForStagingTransfers(renderer);
 
-	if (	renderer->textureStagingBuffer->fastBuffer != NULL &&
-		renderer->textureStagingBuffer->fastBufferOffset + uploadLength < renderer->textureStagingBuffer->fastBuffer->size	)
+	if (renderer->textureStagingBuffer->fastBuffer != NULL)
 	{
-		stagingSubBuffer = renderer->textureStagingBuffer->fastBuffer->subBuffers[0];
 		offset = renderer->textureStagingBuffer->fastBufferOffset;
-		renderer->textureStagingBuffer->fastBufferOffset += uploadLength;
+		offset += fmtSize - (offset % fmtSize);
+		if (offset + uploadLength < renderer->textureStagingBuffer->fastBuffer->size)
+		{
+			stagingSubBuffer = renderer->textureStagingBuffer->fastBuffer->subBuffers[0];
+			renderer->textureStagingBuffer->fastBufferOffset = offset + uploadLength;
+
+			fallToSlowBuffer = 0;
+		}
+		else
+		{
+			fallToSlowBuffer = 1;
+		}
 	}
 	else
 	{
-		if (renderer->textureStagingBuffer->slowBufferOffset + uploadLength > renderer->textureStagingBuffer->slowBuffer->size)
+		fallToSlowBuffer = 1;
+	}
+
+	if (fallToSlowBuffer)
+	{
+		offset = renderer->textureStagingBuffer->slowBufferOffset;
+		offset += fmtSize - (offset % fmtSize);
+		if (offset + uploadLength > renderer->textureStagingBuffer->slowBuffer->size)
 		{
 			VULKAN_INTERNAL_FlushCommands(renderer, 1);
 			VULKAN_INTERNAL_ExpandSlowStagingBuffer(renderer, uploadLength);
+
+			offset = renderer->textureStagingBuffer->slowBufferOffset;
+			offset += fmtSize - (offset % fmtSize);
 		}
 
 		stagingSubBuffer = renderer->textureStagingBuffer->slowBuffer->subBuffers[0];
-		offset = renderer->textureStagingBuffer->slowBufferOffset;
-		renderer->textureStagingBuffer->slowBufferOffset += uploadLength;
+		renderer->textureStagingBuffer->slowBufferOffset = offset + uploadLength;
 	}
 
 	stagingBufferPointer =
@@ -9103,7 +9124,8 @@ static void VULKAN_INTERNAL_SetTextureData(
 		uploadLength,
 		copyLength,
 		&stagingSubBuffer,
-		&offset
+		&offset,
+		texture->colorFormat
 	);
 
 	VULKAN_INTERNAL_ImageMemoryBarrier(
@@ -9272,7 +9294,8 @@ static void VULKAN_SetTextureDataYUV(
 		uploadLength,
 		copyLength,
 		&stagingSubBuffer,
-		&offset
+		&offset,
+		FNA3D_SURFACEFORMAT_ALPHA8
 	);
 
 	/* Initialize values that are the same for Y, U, and V */
