@@ -4025,8 +4025,8 @@ static void VULKAN_INTERNAL_CopyToStagingBuffer(
 	FNA3D_SurfaceFormat format
 ) {
 	VulkanSubBuffer *stagingSubBuffer;
-	VkDeviceSize offset;
 	uint8_t *stagingBufferPointer;
+	VkDeviceSize offset = 0;
 	int32_t fmtSize = Texture_GetFormatSize(format);
 
 	VULKAN_INTERNAL_WaitForStagingTransfers(renderer);
