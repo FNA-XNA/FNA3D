@@ -3991,6 +3991,30 @@ static void VULKAN_INTERNAL_WaitForStagingTransfers(
 	}
 }
 
+static inline uint8_t VULKAN_INTERNAL_GetBufferOffset(
+	VulkanBuffer *stagingBuffer,
+	VkDeviceSize *finalOffset,
+	VkDeviceSize *stagingOffset,
+	uint32_t uploadLength,
+	int32_t fmtSize
+) {
+	if (stagingBuffer == NULL)
+	{
+		return 0;
+	}
+
+	/* Offset needs to be aligned to the texel size */
+	*stagingOffset = *finalOffset;
+	*stagingOffset += fmtSize - (*stagingOffset % fmtSize);
+
+	if ((*stagingOffset + uploadLength) < stagingBuffer->size)
+	{
+		*finalOffset = *stagingOffset + uploadLength;
+		return 1;
+	}
+	return 0;
+}
+
 static void VULKAN_INTERNAL_CopyToStagingBuffer(
 	VulkanRenderer *renderer,
 	void* data,
@@ -4003,47 +4027,45 @@ static void VULKAN_INTERNAL_CopyToStagingBuffer(
 	VulkanSubBuffer *stagingSubBuffer;
 	VkDeviceSize offset;
 	uint8_t *stagingBufferPointer;
-	uint8_t fallToSlowBuffer;
 	int32_t fmtSize = Texture_GetFormatSize(format);
 
 	VULKAN_INTERNAL_WaitForStagingTransfers(renderer);
 
-	if (renderer->textureStagingBuffer->fastBuffer != NULL)
-	{
-		offset = renderer->textureStagingBuffer->fastBufferOffset;
-		offset += fmtSize - (offset % fmtSize);
-		if (offset + uploadLength < renderer->textureStagingBuffer->fastBuffer->size)
-		{
-			stagingSubBuffer = renderer->textureStagingBuffer->fastBuffer->subBuffers[0];
-			renderer->textureStagingBuffer->fastBufferOffset = offset + uploadLength;
-
-			fallToSlowBuffer = 0;
-		}
-		else
-		{
-			fallToSlowBuffer = 1;
-		}
+	/* Where will we be staging this data? */
+	if (VULKAN_INTERNAL_GetBufferOffset(
+		renderer->textureStagingBuffer->fastBuffer,
+		&renderer->textureStagingBuffer->fastBufferOffset,
+		&offset,
+		uploadLength,
+		fmtSize
+	)) {
+		/* We have access to a fast buffer! */
+		stagingSubBuffer = renderer->textureStagingBuffer->fastBuffer->subBuffers[0];
 	}
 	else
 	{
-		fallToSlowBuffer = 1;
-	}
-
-	if (fallToSlowBuffer)
-	{
-		offset = renderer->textureStagingBuffer->slowBufferOffset;
-		offset += fmtSize - (offset % fmtSize);
-		if (offset + uploadLength > renderer->textureStagingBuffer->slowBuffer->size)
-		{
+		/* We had to fall back to a slow buffer... */
+		if (!VULKAN_INTERNAL_GetBufferOffset(
+			renderer->textureStagingBuffer->slowBuffer,
+			&renderer->textureStagingBuffer->slowBufferOffset,
+			&offset,
+			uploadLength,
+			fmtSize
+		)) {
+			/* ... and it ran out of space, good grief */
 			VULKAN_INTERNAL_FlushCommands(renderer, 1);
 			VULKAN_INTERNAL_ExpandSlowStagingBuffer(renderer, uploadLength);
 
-			offset = renderer->textureStagingBuffer->slowBufferOffset;
-			offset += fmtSize - (offset % fmtSize);
+			SDL_assert(VULKAN_INTERNAL_GetBufferOffset(
+				renderer->textureStagingBuffer->slowBuffer,
+				&renderer->textureStagingBuffer->slowBufferOffset,
+				&offset,
+				uploadLength,
+				fmtSize
+			));
 		}
 
 		stagingSubBuffer = renderer->textureStagingBuffer->slowBuffer->subBuffers[0];
-		renderer->textureStagingBuffer->slowBufferOffset = offset + uploadLength;
 	}
 
 	stagingBufferPointer =
