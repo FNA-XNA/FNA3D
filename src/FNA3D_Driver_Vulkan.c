@@ -2344,10 +2344,14 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 	if (renderer->debugMode)
 	{
 		createInfo.enabledLayerCount = SDL_arraysize(layerNames);
-		if (!VULKAN_INTERNAL_CheckValidationLayers(
+		if (VULKAN_INTERNAL_CheckValidationLayers(
 			layerNames,
 			createInfo.enabledLayerCount
 		)) {
+			FNA3D_LogInfo("Vulkan validation enabled! Expect debug-level performance!");
+		}
+		else
+		{
 			FNA3D_LogWarn("Validation layers not found, continuing without validation");
 			createInfo.enabledLayerCount = 0;
 		}
