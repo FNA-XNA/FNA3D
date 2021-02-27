@@ -4056,13 +4056,13 @@ static void VULKAN_INTERNAL_CopyToStagingBuffer(
 			VULKAN_INTERNAL_FlushCommands(renderer, 1);
 			VULKAN_INTERNAL_ExpandSlowStagingBuffer(renderer, uploadLength);
 
-			SDL_assert(VULKAN_INTERNAL_GetBufferOffset(
+			VULKAN_INTERNAL_GetBufferOffset(
 				renderer->textureStagingBuffer->slowBuffer,
 				&renderer->textureStagingBuffer->slowBufferOffset,
 				&offset,
 				uploadLength,
 				fmtSize
-			));
+			);
 		}
 
 		stagingSubBuffer = renderer->textureStagingBuffer->slowBuffer->subBuffers[0];
