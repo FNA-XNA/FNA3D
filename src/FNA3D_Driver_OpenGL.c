@@ -30,7 +30,11 @@
 #include "FNA3D_Driver_OpenGL.h"
 
 #include <SDL.h>
+
+/* We only use this to detect UIKit, for backbuffer creation */
+#if SDL_VIDEO_UIKIT
 #include <SDL_syswm.h>
+#endif /* SDL_VIDEO_UIKIT */
 
 /* Internal Structures */
 
@@ -5698,13 +5702,15 @@ FNA3D_Device* OPENGL_CreateDevice(
 ) {
 	int32_t flags;
 	int32_t depthSize, stencilSize;
-	SDL_SysWMinfo wmInfo;
 	const char *rendererStr, *versionStr, *vendorStr;
 	char driverInfo[256];
 	int32_t i;
 	int32_t numExtensions, numSamplers, numAttributes, numAttachments;
 	OpenGLRenderer *renderer;
 	FNA3D_Device *result;
+#if SDL_VIDEO_UIKIT
+	SDL_SysWMinfo wmInfo;
+#endif
 
 	/* Create the FNA3D_Device */
 	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
@@ -5782,12 +5788,12 @@ FNA3D_Device* OPENGL_CreateDevice(
 	}
 
 	/* UIKit needs special treatment for backbuffer behavior */
+#ifdef SDL_VIDEO_UIKIT
 	SDL_VERSION(&wmInfo.version);
 	SDL_GetWindowWMInfo(
 		(SDL_Window*) presentationParameters->deviceWindowHandle,
 		&wmInfo
 	);
-#ifdef SDL_VIDEO_UIKIT
 	if (wmInfo.subsystem == SDL_SYSWM_UIKIT)
 	{
 		renderer->realBackbufferFBO = wmInfo.info.uikit.framebuffer;
