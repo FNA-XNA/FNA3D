@@ -32,7 +32,7 @@
 #include <SDL.h>
 
 /* We only use this to detect UIKit, for backbuffer creation */
-#if SDL_VIDEO_UIKIT
+#ifdef SDL_VIDEO_UIKIT
 #include <SDL_syswm.h>
 #endif /* SDL_VIDEO_UIKIT */
 
@@ -5708,7 +5708,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	int32_t numExtensions, numSamplers, numAttributes, numAttachments;
 	OpenGLRenderer *renderer;
 	FNA3D_Device *result;
-#if SDL_VIDEO_UIKIT
+#ifdef SDL_VIDEO_UIKIT
 	SDL_SysWMinfo wmInfo;
 #endif
 
