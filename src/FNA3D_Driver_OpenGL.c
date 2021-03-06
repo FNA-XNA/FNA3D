@@ -32,9 +32,9 @@
 #include <SDL.h>
 
 /* We only use this to detect UIKit, for backbuffer creation */
-#ifdef SDL_VIDEO_UIKIT
+#ifdef SDL_VIDEO_DRIVER_UIKIT
 #include <SDL_syswm.h>
-#endif /* SDL_VIDEO_UIKIT */
+#endif /* SDL_VIDEO_DRIVER_UIKIT */
 
 /* Internal Structures */
 
@@ -5708,9 +5708,9 @@ FNA3D_Device* OPENGL_CreateDevice(
 	int32_t numExtensions, numSamplers, numAttributes, numAttachments;
 	OpenGLRenderer *renderer;
 	FNA3D_Device *result;
-#ifdef SDL_VIDEO_UIKIT
+#ifdef SDL_VIDEO_DRIVER_UIKIT
 	SDL_SysWMinfo wmInfo;
-#endif /* SDL_VIDEO_UIKIT */
+#endif /* SDL_VIDEO_DRIVER_UIKIT */
 
 	/* Create the FNA3D_Device */
 	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
@@ -5788,7 +5788,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	}
 
 	/* UIKit needs special treatment for backbuffer behavior */
-#ifdef SDL_VIDEO_UIKIT
+#ifdef SDL_VIDEO_DRIVER_UIKIT
 	SDL_VERSION(&wmInfo.version);
 	SDL_GetWindowWMInfo(
 		(SDL_Window*) presentationParameters->deviceWindowHandle,
@@ -5799,7 +5799,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 		renderer->realBackbufferFBO = wmInfo.info.uikit.framebuffer;
 		renderer->realBackbufferRBO = wmInfo.info.uikit.colorbuffer;
 	}
-#endif /* SDL_VIDEO_UIKIT */
+#endif /* SDL_VIDEO_DRIVER_UIKIT */
 
 	/* Print GL information */
 #pragma GCC diagnostic push
