@@ -5710,7 +5710,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	FNA3D_Device *result;
 #ifdef SDL_VIDEO_UIKIT
 	SDL_SysWMinfo wmInfo;
-#endif
+#endif /* SDL_VIDEO_UIKIT */
 
 	/* Create the FNA3D_Device */
 	result = (FNA3D_Device*) SDL_malloc(sizeof(FNA3D_Device));
