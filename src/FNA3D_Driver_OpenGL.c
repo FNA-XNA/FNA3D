@@ -126,6 +126,7 @@ typedef struct OpenGLBackbuffer
 	#define BACKBUFFER_TYPE_OPENGL 1
 	uint8_t type;
 
+	uint8_t isSrgb;
 	int32_t width;
 	int32_t height;
 	FNA3D_DepthFormat depthFormat;
@@ -349,6 +350,7 @@ static int32_t XNAToGL_TextureFormat[] =
 	GL_RGBA,			/* SurfaceFormat.HalfVector4 */
 	GL_RGBA,			/* SurfaceFormat.HdrBlendable */
 	GL_BGRA,			/* SurfaceFormat.ColorBgraEXT */
+	GL_RGBA,			/* SurfaceFormat.ColorSrgbEXT */
 };
 
 static int32_t XNAToGL_TextureInternalFormat[] =
@@ -373,7 +375,8 @@ static int32_t XNAToGL_TextureInternalFormat[] =
 	GL_RG16F,				/* SurfaceFormat.HalfVector2 */
 	GL_RGBA16F,				/* SurfaceFormat.HalfVector4 */
 	GL_RGBA16F,				/* SurfaceFormat.HdrBlendable */
-	GL_RGBA8				/* SurfaceFormat.ColorBgraEXT */
+	GL_RGBA8,				/* SurfaceFormat.ColorBgraEXT */
+	GL_SRGB_ALPHA_EXT		/* SurfaceFormat.ColorSrgbEXT */
 };
 
 static int32_t XNAToGL_TextureDataType[] =
@@ -398,7 +401,8 @@ static int32_t XNAToGL_TextureDataType[] =
 	GL_HALF_FLOAT,			/* SurfaceFormat.HalfVector2 */
 	GL_HALF_FLOAT,			/* SurfaceFormat.HalfVector4 */
 	GL_HALF_FLOAT,			/* SurfaceFormat.HdrBlendable */
-	GL_UNSIGNED_BYTE		/* SurfaceFormat.ColorBgraEXT */
+	GL_UNSIGNED_BYTE,		/* SurfaceFormat.ColorBgraEXT */
+	GL_UNSIGNED_BYTE		/* SurfaceFormat.ColorSrgbEXT */
 };
 
 static int32_t XNAToGL_BlendMode[] =
@@ -2549,11 +2553,26 @@ static void OPENGL_SetRenderTargets(
 				renderer->realBackbufferFBO
 		);
 		renderer->renderTargetBound = 0;
+		/* The driver is able and willing to provide us a sRGB backbuffer even if we don't ask for one,
+		 * so we need to disable FRAMEBUFFER_SRGB if we don't actually want sRGB blending/sampling
+		 */
+		if (renderer->backbuffer->isSrgb)
+		{
+			renderer->glEnable(GL_FRAMEBUFFER_SRGB_EXT);
+		}
+		else
+		{
+			renderer->glDisable(GL_FRAMEBUFFER_SRGB_EXT);
+		}
 		return;
 	}
 	else
 	{
 		BindFramebuffer(renderer, renderer->targetFramebuffer);
+		/* Unlike the backbuffer, our format will be sRGB or non-sRGB as we expect so we can leave
+		 * this flag on universally and the blending will be configured based on the format
+		 */
+		renderer->glEnable(GL_FRAMEBUFFER_SRGB_EXT);
 		renderer->renderTargetBound = 1;
 	}
 
@@ -2852,6 +2871,7 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 			renderer->backbuffer->width = parameters->backBufferWidth;
 			renderer->backbuffer->height = parameters->backBufferHeight;
 			renderer->backbuffer->depthFormat = parameters->depthStencilFormat;
+			renderer->backbuffer->isSrgb = parameters->backBufferFormat == FNA3D_SURFACEFORMAT_COLORSRGB_EXT;
 			renderer->backbuffer->multiSampleCount = parameters->multiSampleCount;
 			renderer->backbuffer->opengl.texture = 0;
 
@@ -2971,6 +2991,7 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 		{
 			renderer->backbuffer->width = parameters->backBufferWidth;
 			renderer->backbuffer->height = parameters->backBufferHeight;
+			renderer->backbuffer->isSrgb = parameters->backBufferFormat == FNA3D_SURFACEFORMAT_COLORSRGB_EXT;
 			renderer->backbuffer->multiSampleCount = parameters->multiSampleCount;
 			if (renderer->backbuffer->opengl.texture != 0)
 			{
@@ -3142,6 +3163,7 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 			);
 			renderer->backbuffer->type = BACKBUFFER_TYPE_NULL;
 		}
+		renderer->backbuffer->isSrgb = parameters->backBufferFormat == FNA3D_SURFACEFORMAT_COLORSRGB_EXT;
 		renderer->backbuffer->width = parameters->backBufferWidth;
 		renderer->backbuffer->height = parameters->backBufferHeight;
 		renderer->backbuffer->depthFormat = renderer->windowDepthFormat;
