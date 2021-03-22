@@ -3145,6 +3145,7 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 		renderer->backbuffer->width = parameters->backBufferWidth;
 		renderer->backbuffer->height = parameters->backBufferHeight;
 		renderer->backbuffer->depthFormat = renderer->windowDepthFormat;
+		renderer->backbuffer->multiSampleCount = 0;
 	}
 }
 
