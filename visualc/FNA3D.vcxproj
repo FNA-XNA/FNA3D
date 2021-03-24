@@ -113,6 +113,7 @@
     <ClCompile Include="..\src\FNA3D_Image.c" />
     <ClCompile Include="..\src\FNA3D_Driver_OpenGL.c" />
     <ClCompile Include="..\src\FNA3D_PipelineCache.c" />
+    <ClCompile Include="..\src\FNA3D_Tracing.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\FNA3D.h" />
