@@ -792,7 +792,7 @@ void FNA3D_Trace_ResetBackbuffer(
 	SDL_assert(presentationParameters->deviceWindowHandle == windowHandle);
 
 	SDL_LockMutex(traceLock);
-	ops = SDL_RWFromFile("FNA3D_Trace.bin", "wb");
+	ops = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
 	WRITE(MARK_RESETBACKBUFFER);
 	WRITE(presentationParameters->backBufferWidth);
 	WRITE(presentationParameters->backBufferHeight);
