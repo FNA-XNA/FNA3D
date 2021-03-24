@@ -571,6 +571,7 @@ static int32_t XNAToGL_VertexAttribType[] =
 static uint8_t XNAToGL_VertexAttribNormalized(FNA3D_VertexElement *element)
 {
 	return (	element->vertexElementUsage == FNA3D_VERTEXELEMENTUSAGE_COLOR ||
+			element->vertexElementFormat == FNA3D_VERTEXELEMENTFORMAT_COLOR ||
 			element->vertexElementFormat == FNA3D_VERTEXELEMENTFORMAT_NORMALIZEDSHORT2 ||
 			element->vertexElementFormat == FNA3D_VERTEXELEMENTFORMAT_NORMALIZEDSHORT4	);
 }
