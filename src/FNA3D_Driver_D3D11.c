@@ -2073,8 +2073,11 @@ static void D3D11_ApplyVertexBufferBindings(
 	int32_t i, stride, offset;
 	uint32_t hash;
 
+	SDL_LockMutex(renderer->ctxLock);
+
 	if (!bindingsUpdated && !renderer->effectApplied)
 	{
+		SDL_UnlockMutex(renderer->ctxLock);
 		return;
 	}
 
@@ -2085,8 +2088,6 @@ static void D3D11_ApplyVertexBufferBindings(
 		numBindings,
 		&hash
 	);
-
-	SDL_LockMutex(renderer->ctxLock);
 
 	if (renderer->inputLayout != inputLayout)
 	{
@@ -2129,10 +2130,10 @@ static void D3D11_ApplyVertexBufferBindings(
 		}
 	}
 
-	SDL_UnlockMutex(renderer->ctxLock);
-
 	MOJOSHADER_d3d11ProgramReady((unsigned long long) hash);
 	renderer->effectApplied = 0;
+
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 /* Render Targets */
@@ -2660,6 +2661,7 @@ static void D3D11_ReadBackbuffer(
 	if (renderer->backbuffer.multiSampleCount > 1)
 	{
 		/* We have to resolve the backbuffer first. */
+		SDL_LockMutex(renderer->ctxLock);
 		ID3D11DeviceContext_ResolveSubresource(
 			renderer->context,
 			(ID3D11Resource*) renderer->backbuffer.resolveBuffer,
@@ -2668,6 +2670,7 @@ static void D3D11_ReadBackbuffer(
 			0,
 			XNAToD3D_TextureFormat[renderer->backbuffer.surfaceFormat]
 		);
+		SDL_UnlockMutex(renderer->ctxLock);
 	}
 
 	/* Create a pseudo-texture we can feed to GetTextureData2D.
@@ -4199,8 +4202,8 @@ static void D3D11_ApplyEffect(
 	const MOJOSHADER_effectTechnique *technique = effectData->current_technique;
 	uint32_t whatever;
 
-	renderer->effectApplied = 1;
 	SDL_LockMutex(renderer->ctxLock);
+	renderer->effectApplied = 1;
 	if (effectData == renderer->currentEffect)
 	{
 		if (	technique == renderer->currentTechnique &&
@@ -4253,8 +4256,8 @@ static void D3D11_BeginPassRestore(
 		stateChanges
 	);
 	MOJOSHADER_effectBeginPass(effectData, 0);
-	SDL_UnlockMutex(renderer->ctxLock);
 	renderer->effectApplied = 1;
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_EndPassRestore(
@@ -4266,8 +4269,8 @@ static void D3D11_EndPassRestore(
 	SDL_LockMutex(renderer->ctxLock);
 	MOJOSHADER_effectEndPass(effectData);
 	MOJOSHADER_effectEnd(effectData);
-	SDL_UnlockMutex(renderer->ctxLock);
 	renderer->effectApplied = 1;
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 /* Queries */
