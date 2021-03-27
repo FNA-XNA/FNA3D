@@ -2522,6 +2522,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	SDL_zero(deviceFeatures);
 	deviceFeatures.occlusionQueryPrecise = VK_TRUE;
 	deviceFeatures.fillModeNonSolid = VK_TRUE;
+	deviceFeatures.samplerAnisotropy = VK_TRUE;
 
 #ifdef VK_ENABLE_BETA_EXTENSIONS
 	portabilityFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR;
