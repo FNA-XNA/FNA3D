@@ -9130,6 +9130,8 @@ static void VULKAN_INTERNAL_SetTextureData(
 	int32_t copyLength = SDL_min(dataLength, uploadLength);
 	VulkanSubBuffer *stagingSubBuffer;
 	VkDeviceSize offset;
+	int32_t bufferRowLength = w;
+	int32_t bufferImageHeight = h;
 
 	if (dataLength > uploadLength)
 	{
@@ -9170,6 +9172,15 @@ static void VULKAN_INTERNAL_SetTextureData(
 		&texture->resourceAccessType
 	);
 
+	/* DXT texture buffers must be at least 4x4 */
+	if (	texture->colorFormat == FNA3D_SURFACEFORMAT_DXT1 ||
+		texture->colorFormat == FNA3D_SURFACEFORMAT_DXT3 ||
+		texture->colorFormat == FNA3D_SURFACEFORMAT_DXT5	)
+	{
+		bufferRowLength = SDL_max(4, w);
+		bufferImageHeight = SDL_max(4, h);
+	}
+
 	imageCopy.imageExtent.width = w;
 	imageCopy.imageExtent.height = h;
 	imageCopy.imageExtent.depth = d;
@@ -9181,8 +9192,8 @@ static void VULKAN_INTERNAL_SetTextureData(
 	imageCopy.imageSubresource.layerCount = 1;
 	imageCopy.imageSubresource.mipLevel = level;
 	imageCopy.bufferOffset = offset;
-	imageCopy.bufferRowLength = w;
-	imageCopy.bufferImageHeight = h;
+	imageCopy.bufferRowLength = bufferRowLength;
+	imageCopy.bufferImageHeight = bufferImageHeight;
 
 	RECORD_CMD(renderer->vkCmdCopyBufferToImage(
 		renderer->currentCommandBuffer,
