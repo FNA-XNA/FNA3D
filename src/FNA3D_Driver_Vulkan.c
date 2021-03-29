@@ -6032,11 +6032,18 @@ static void VULKAN_INTERNAL_SetViewportCommand(VulkanRenderer *renderer)
 
 	/* Flipping the viewport for compatibility with D3D */
 	vulkanViewport.x = (float) renderer->viewport.x;
-	vulkanViewport.y = (float) (renderer->viewport.y + renderer->viewport.h);
 	vulkanViewport.width = (float) renderer->viewport.w;
-	vulkanViewport.height = (float) -renderer->viewport.h;
 	vulkanViewport.minDepth = renderer->viewport.minDepth;
 	vulkanViewport.maxDepth = renderer->viewport.maxDepth;
+#ifdef __APPLE__
+	/* For MoltenVK we just disable viewport flipping, bypassing the Vulkan spec */
+	vulkanViewport.y = (float) renderer->viewport.y;
+	vulkanViewport.height = (float) renderer->viewport.h;
+#else
+	/* For everyone else, we have KHR_maintenance1 to do the flipping for us */
+	vulkanViewport.y = (float) (renderer->viewport.y + renderer->viewport.h);
+	vulkanViewport.height = (float) -renderer->viewport.h;
+#endif
 
 	RECORD_CMD(renderer->vkCmdSetViewport(
 		renderer->currentCommandBuffer,
@@ -10418,6 +10425,7 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 
 	/* Required for MoltenVK support */
 	SDL_setenv("MVK_CONFIG_FULL_IMAGE_VIEW_SWIZZLE", "1", 1);
+	SDL_setenv("MVK_CONFIG_SHADER_CONVERSION_FLIP_VERTEX_Y", "0", 1);
 
 	if (SDL_Vulkan_LoadLibrary(NULL) < 0)
 	{
