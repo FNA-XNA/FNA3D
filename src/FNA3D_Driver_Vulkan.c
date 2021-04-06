@@ -939,6 +939,9 @@ static inline void PipelineLayoutHashArray_Insert(
 }
 
 typedef struct VulkanMemoryAllocation VulkanMemoryAllocation;
+typedef struct VulkanBuffer VulkanBuffer;
+typedef struct VulkanSubBuffer VulkanSubBuffer;
+typedef struct VulkanTexture VulkanTexture;
 
 typedef struct VulkanMemoryFreeRegion /* FIXME: unify this with MemoryUsedRegion */
 {
@@ -954,6 +957,13 @@ typedef struct VulkanMemoryUsedRegion
 	VulkanMemoryAllocation *allocation;
 	VkDeviceSize offset;
 	VkDeviceSize size;
+	uint8_t isBuffer;
+	/* used to copy resource */
+	FNA3DNAMELESS union
+	{
+		VulkanSubBuffer *vulkanSubBuffer;
+		VulkanTexture *vulkanTexture;
+	};
 } VulkanMemoryUsedRegion;
 
 typedef struct VulkanMemorySubAllocator
@@ -987,10 +997,9 @@ typedef struct VulkanMemoryAllocator
 	VulkanMemorySubAllocator subAllocators[VK_MAX_MEMORY_TYPES];
 } VulkanMemoryAllocator;
 
-typedef struct VulkanTexture /* Cast from FNA3D_Texture* */
+struct VulkanTexture /* Cast from FNA3D_Texture* */
 {
 	VulkanMemoryUsedRegion *usedRegion;
-
 	VkImage image;
 	VkImageView view;
 	VkImageView rtViews[6];
@@ -1001,12 +1010,13 @@ typedef struct VulkanTexture /* Cast from FNA3D_Texture* */
 	uint32_t layerCount;
 	uint32_t levelCount;
 	VulkanResourceAccessType resourceAccessType;
+	VkImageCreateInfo imageCreateInfo; /* used for resource copy */
 	FNA3DNAMELESS union
 	{
 		FNA3D_SurfaceFormat colorFormat;
 		FNA3D_DepthFormat depthStencilFormat;
 	};
-} VulkanTexture;
+};
 
 static VulkanTexture NullTexture =
 {
@@ -1022,15 +1032,14 @@ static VulkanTexture NullTexture =
 	RESOURCE_ACCESS_NONE
 };
 
-typedef struct VulkanBuffer VulkanBuffer;
-
-typedef struct VulkanSubBuffer
+struct VulkanSubBuffer
 {
 	VulkanMemoryUsedRegion *usedRegion;
 	VkBuffer buffer;
 	VulkanResourceAccessType resourceAccessType;
 	int8_t bound;
-} VulkanSubBuffer;
+	VkBufferCreateInfo bufferCreateInfo; /* used for resource copy */
+};
 
 /*
  * Our VulkanBuffer is actually a series of sub-buffers
@@ -1047,7 +1056,7 @@ struct VulkanBuffer /* cast from FNA3D_Buffer */
 	uint8_t bound;
 	uint8_t boundSubmitted;
 	VkBufferUsageFlags usage;
-	uint8_t isDeviceLocal;
+	uint8_t preferDeviceLocal;
 };
 
 typedef struct VulkanStagingBuffer
@@ -1552,6 +1561,16 @@ static inline uint8_t DepthFormatContainsStencil(VkFormat format)
 			SDL_assert(0 && "Invalid depth pixel format");
 			return 0;
 	}
+}
+
+static inline uint8_t IsDepthFormat(VkFormat format)
+{
+	return
+		format == VK_FORMAT_D16_UNORM ||
+		format == VK_FORMAT_D16_UNORM_S8_UINT ||
+		format == VK_FORMAT_D24_UNORM_S8_UINT ||
+		format == VK_FORMAT_D32_SFLOAT ||
+		format == VK_FORMAT_D32_SFLOAT_S8_UINT;
 }
 
 static VkBlendFactor XNAToVK_BlendFactor[] =
@@ -2614,6 +2633,101 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	return 1;
 }
 
+/* Vulkan: Command Buffers */
+
+static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer)
+{
+	VkCommandBufferAllocateInfo allocateInfo;
+	VkCommandBufferBeginInfo beginInfo;
+	VkResult result;
+
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.pNext = NULL;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	beginInfo.pInheritanceInfo = NULL;
+
+	/* If we are out of unused command buffers, allocate some more */
+	if (renderer->inactiveCommandBufferCount == 0)
+	{
+		renderer->activeCommandBuffers = SDL_realloc(
+			renderer->activeCommandBuffers,
+			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
+		);
+
+		renderer->inactiveCommandBuffers = SDL_realloc(
+			renderer->inactiveCommandBuffers,
+			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
+		);
+
+		renderer->submittedCommandBuffers = SDL_realloc(
+			renderer->submittedCommandBuffers,
+			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
+		);
+
+		allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+		allocateInfo.pNext = NULL;
+		allocateInfo.commandPool = renderer->commandPool;
+		allocateInfo.commandBufferCount = renderer->allocatedCommandBufferCount;
+		allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+		result = renderer->vkAllocateCommandBuffers(
+			renderer->logicalDevice,
+			&allocateInfo,
+			renderer->inactiveCommandBuffers
+		);
+		VULKAN_ERROR_CHECK(result, vkAllocateCommandBuffers,)
+
+		renderer->inactiveCommandBufferCount = renderer->allocatedCommandBufferCount;
+		renderer->allocatedCommandBufferCount *= 2;
+	}
+
+	renderer->currentCommandBuffer =
+		renderer->inactiveCommandBuffers[renderer->inactiveCommandBufferCount - 1];
+
+	renderer->activeCommandBuffers[renderer->activeCommandBufferCount] = renderer->currentCommandBuffer;
+
+	renderer->activeCommandBufferCount += 1;
+	renderer->inactiveCommandBufferCount -= 1;
+
+	result = renderer->vkBeginCommandBuffer(
+		renderer->currentCommandBuffer,
+		&beginInfo
+	);
+	VULKAN_ERROR_CHECK(result, vkBeginCommandBuffer,)
+}
+
+static void VULKAN_INTERNAL_EndCommandBuffer(
+	VulkanRenderer *renderer,
+	uint8_t startNext,
+	uint8_t allowFlush
+) {
+	VkResult result;
+
+	if (renderer->renderPassInProgress)
+	{
+		VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
+		renderer->needNewRenderPass = 1;
+	}
+
+	result = renderer->vkEndCommandBuffer(
+		renderer->currentCommandBuffer
+	);
+	VULKAN_ERROR_CHECK(result, vkEndCommandBuffer,)
+
+	renderer->currentCommandBuffer = NULL;
+	renderer->numActiveCommands = 0;
+
+	if (allowFlush)
+	{
+		/* TODO: Figure out how to properly submit commands mid-frame */
+	}
+
+	if (startNext)
+	{
+		VULKAN_INTERNAL_BeginCommandBuffer(renderer);
+	}
+}
+
 /* Vulkan: Memory Allocation */
 
 static inline VkDeviceSize VULKAN_INTERNAL_NextHighestAlignment(
@@ -2621,64 +2735,6 @@ static inline VkDeviceSize VULKAN_INTERNAL_NextHighestAlignment(
 	VkDeviceSize align
 ) {
 	return align * ((n + align - 1) / align);
-}
-
-static VulkanMemoryUsedRegion* VULKAN_INTERNAL_NewMemoryUsedRegion(
-	VulkanMemoryAllocation *allocation,
-	VkDeviceSize offset,
-	VkDeviceSize size
-) {
-	VulkanMemoryUsedRegion *memoryUsedRegion;
-
-	if (allocation->usedRegionCount == allocation->usedRegionCapacity)
-	{
-		allocation->usedRegionCapacity *= 2;
-		allocation->usedRegions = SDL_realloc(
-			allocation->usedRegions,
-			allocation->usedRegionCapacity * sizeof(VulkanMemoryUsedRegion*)
-		);
-	}
-
-	memoryUsedRegion = SDL_malloc(sizeof(VulkanMemoryUsedRegion));
-	memoryUsedRegion->allocation = allocation;
-	memoryUsedRegion->offset = offset;
-	memoryUsedRegion->size = size;
-
-	allocation->usedRegions[allocation->usedRegionCount] = memoryUsedRegion;
-	allocation->usedRegionCount += 1;
-
-	return memoryUsedRegion;
-}
-
-static void VULKAN_INTERNAL_RemoveMemoryUsedRegion(
-	VulkanMemoryUsedRegion *usedRegion
-) {
-	uint32_t i;
-
-	/* FIXME: use an index lookup table instead of looping */
-	for (i = 0; i < usedRegion->allocation->usedRegionCount; i += 1)
-	{
-		if (usedRegion->allocation->usedRegions[i] == usedRegion)
-		{
-			/* plug the hole */
-			if (i != usedRegion->allocation->usedRegionCount - 1) 
-			{
-				usedRegion->allocation->usedRegions[i] = usedRegion->allocation->usedRegions[usedRegion->allocation->usedRegionCount];
-			}
-
-			break;
-		}
-	}
-
-	usedRegion->allocation->usedRegionCount -= 1;
-
-	VULKAN_INTERNAL_NewMemoryFreeRegion(
-		usedRegion->allocation,
-		usedRegion->offset,
-		usedRegion->size
-	);
-
-	SDL_free(usedRegion);
 }
 
 static void VULKAN_INTERNAL_RemoveMemoryFreeRegion(
@@ -2803,6 +2859,81 @@ static void VULKAN_INTERNAL_NewMemoryFreeRegion(
 	allocation->allocator->sortedFreeRegionCount += 1;
 	allocation->allocator->sortedFreeRegions[insertionIndex] = newFreeRegion;
 	newFreeRegion->sortedIndex = insertionIndex;
+}
+
+static VulkanMemoryUsedRegion* VULKAN_INTERNAL_NewMemoryUsedRegion(
+	VulkanMemoryAllocation *allocation,
+	VkDeviceSize offset,
+	VkDeviceSize size,
+	VkBuffer buffer, /* can be VK_NULL_HANDLE */
+	VkImage image /* can be VK_NULL_HANDLE */
+) {
+	VulkanMemoryUsedRegion *memoryUsedRegion;
+
+	if (allocation->usedRegionCount == allocation->usedRegionCapacity)
+	{
+		allocation->usedRegionCapacity *= 2;
+		allocation->usedRegions = SDL_realloc(
+			allocation->usedRegions,
+			allocation->usedRegionCapacity * sizeof(VulkanMemoryUsedRegion*)
+		);
+	}
+
+	memoryUsedRegion = SDL_malloc(sizeof(VulkanMemoryUsedRegion));
+	memoryUsedRegion->allocation = allocation;
+	memoryUsedRegion->offset = offset;
+	memoryUsedRegion->size = size;
+
+	if (buffer != VK_NULL_HANDLE)
+	{
+		memoryUsedRegion->isBuffer = 1;
+	}
+	else if (image != VK_NULL_HANDLE)
+	{
+		memoryUsedRegion->isBuffer = 0;
+	}
+	else
+	{
+		FNA3D_LogError("Must provide either a buffer or image to NewMemoryUsedRegion!");
+		SDL_free(memoryUsedRegion);
+		return NULL;
+	}
+
+	allocation->usedRegions[allocation->usedRegionCount] = memoryUsedRegion;
+	allocation->usedRegionCount += 1;
+
+	return memoryUsedRegion;
+}
+
+static void VULKAN_INTERNAL_RemoveMemoryUsedRegion(
+	VulkanMemoryUsedRegion *usedRegion
+) {
+	uint32_t i;
+
+	/* FIXME: use an index lookup table instead of looping */
+	for (i = 0; i < usedRegion->allocation->usedRegionCount; i += 1)
+	{
+		if (usedRegion->allocation->usedRegions[i] == usedRegion)
+		{
+			/* plug the hole */
+			if (i != usedRegion->allocation->usedRegionCount - 1)
+			{
+				usedRegion->allocation->usedRegions[i] = usedRegion->allocation->usedRegions[usedRegion->allocation->usedRegionCount];
+			}
+
+			break;
+		}
+	}
+
+	usedRegion->allocation->usedRegionCount -= 1;
+
+	VULKAN_INTERNAL_NewMemoryFreeRegion(
+		usedRegion->allocation,
+		usedRegion->offset,
+		usedRegion->size
+	);
+
+	SDL_free(usedRegion);
 }
 
 static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
@@ -3076,7 +3207,56 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 	return 1;
 }
 
-static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
+static uint8_t VULKAN_INTERNAL_PerformBindMemory(
+	VulkanRenderer *renderer,
+	VulkanMemoryUsedRegion *usedRegion,
+	VkBuffer buffer, /* may be VK_NULL_HANDLE */
+	VkImage image /* may be VK_NULL_HANDLE */
+) {
+	VkResult vulkanResult;
+
+	if (buffer != VK_NULL_HANDLE)
+	{
+		SDL_LockMutex(usedRegion->allocation->mapLock);
+
+		vulkanResult = renderer->vkBindBufferMemory(
+			renderer->logicalDevice,
+			buffer,
+			usedRegion->allocation->memory,
+			usedRegion->offset
+		);
+
+		SDL_UnlockMutex(usedRegion->allocation->mapLock);
+
+		VULKAN_ERROR_CHECK(vulkanResult, vkBindBufferMemory, 0)
+
+		return 1;
+	}
+	else if (image != VK_NULL_HANDLE)
+	{
+		SDL_LockMutex(usedRegion->allocation->mapLock);
+
+		vulkanResult = renderer->vkBindImageMemory(
+			renderer->logicalDevice,
+			image,
+			usedRegion->allocation->memory,
+			usedRegion->offset
+		);
+
+		SDL_UnlockMutex(usedRegion->allocation->mapLock);
+
+		VULKAN_ERROR_CHECK(vulkanResult, vkBindBufferMemory, 0)
+
+		return 1;
+	}
+	else
+	{
+		FNA3D_LogError("PerformBindMemory must have either a buffer or image to bind!");
+		return 0;
+	}
+}
+
+static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 	VulkanRenderer* renderer,
 	uint32_t memoryTypeIndex,
 	VkMemoryRequirements2KHR* memoryRequirements,
@@ -3134,7 +3314,13 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 				);
 			}
 
-			*pMemoryUsedRegion = VULKAN_INTERNAL_NewMemoryUsedRegion(allocation, alignedOffset, requiredSize);
+			usedRegion = VULKAN_INTERNAL_NewMemoryUsedRegion(
+				allocation,
+				alignedOffset,
+				requiredSize,
+				buffer,
+				image
+			);
 
 			newRegionSize = region->size - ((alignedOffset - region->offset) + requiredSize);
 			newRegionOffset = alignedOffset + requiredSize;
@@ -3154,6 +3340,16 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 
 			SDL_UnlockMutex(renderer->allocatorLock);
 
+			if (!VULKAN_INTERNAL_PerformBindMemory(
+				renderer,
+				usedRegion,
+				buffer,
+				VK_NULL_HANDLE
+			)) {
+				return 0;
+			}
+
+			*pMemoryUsedRegion = usedRegion;
 			return 1;
 		}
 	}
@@ -3209,7 +3405,13 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 		renderer->deviceLocalHeapUsage += allocationSize;
 	}
 
-	*pMemoryUsedRegion = VULKAN_INTERNAL_NewMemoryUsedRegion(allocation, 0, requiredSize);
+	usedRegion = VULKAN_INTERNAL_NewMemoryUsedRegion(
+		allocation,
+		0,
+		requiredSize,
+		buffer,
+		image
+	);
 
 	region = allocation->freeRegions[0];
 
@@ -3229,120 +3431,38 @@ static uint8_t VULKAN_INTERNAL_FindAvailableMemory(
 
 	SDL_UnlockMutex(renderer->allocatorLock);
 
+	if (!VULKAN_INTERNAL_PerformBindMemory(
+		renderer,
+		usedRegion,
+		buffer,
+		VK_NULL_HANDLE
+	)) {
+		return 0;
+	}
+
+	*pMemoryUsedRegion = usedRegion;
 	return 1;
 }
 
-static uint8_t VULKAN_INTERNAL_FindAvailableBufferMemory(
-	VulkanRenderer *renderer,
-	VkBuffer buffer,
-	uint8_t isDeviceLocal,
-	VulkanMemoryUsedRegion **pMemoryUsedRegion
-) {
-	uint32_t memoryTypeIndex;
-	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
-	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
-	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
-	{
-		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
-		NULL
-	};
-	VkMemoryRequirements2KHR memoryRequirements =
-	{
-		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
-		&dedicatedRequirements
-	};
-
-	requiredMemoryPropertyFlags =
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-	if (isDeviceLocal)
-	{
-		requiredMemoryPropertyFlags |=
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-	}
-	ignoredMemoryPropertyFlags = 0;
-	if (!VULKAN_INTERNAL_FindBufferMemoryRequirements(
-		renderer,
-		buffer,
-		requiredMemoryPropertyFlags,
-		ignoredMemoryPropertyFlags,
-		&memoryRequirements,
-		&memoryTypeIndex
-	)) {
-		return isDeviceLocal ? 2 : 0;
-	}
-
-	return VULKAN_INTERNAL_FindAvailableMemory(
-		renderer,
-		memoryTypeIndex,
-		&memoryRequirements,
-		&dedicatedRequirements,
-		buffer,
-		VK_NULL_HANDLE,
-		pMemoryUsedRegion
-	);
-}
-
-static uint8_t VULKAN_INTERNAL_FindAvailableTextureMemory(
-	VulkanRenderer *renderer,
-	VkImage image,
-	uint8_t isDeviceLocal,
-	VulkanMemoryUsedRegion **pMemoryUsedRegion
-) {
-	uint32_t memoryTypeIndex;
-	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
-	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
-	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
-	{
-		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
-		NULL
-	};
-	VkMemoryRequirements2KHR memoryRequirements =
-	{
-		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
-		&dedicatedRequirements
-	};
-
-	if (isDeviceLocal)
-	{
-		requiredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-		ignoredMemoryPropertyFlags = 0;
-	}
-	else
-	{
-		requiredMemoryPropertyFlags = 0;
-		ignoredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-	}
-
-	if (!VULKAN_INTERNAL_FindImageMemoryRequirements(
-		renderer,
-		image,
-		requiredMemoryPropertyFlags,
-		ignoredMemoryPropertyFlags,
-		&memoryRequirements,
-		&memoryTypeIndex
-	)) {
-		return isDeviceLocal ? 2 : 0;
-	}
-
-	return VULKAN_INTERNAL_FindAvailableMemory(
-		renderer,
-		memoryTypeIndex,
-		&memoryRequirements,
-		&dedicatedRequirements,
-		VK_NULL_HANDLE,
-		image,
-		pMemoryUsedRegion
-	);
-}
-
-VULKAN_INTERNAL_DefragmentMemory(
+static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 	VulkanRenderer *renderer
 ) {
 	VulkanMemorySubAllocator *allocator;
 	VulkanMemoryAllocation *defragmentedAllocation;
-	uint32_t i, j, k;
+	VulkanMemoryUsedRegion *currentRegion;
+	VkBuffer copyBuffer;
+	VkBufferCopy bufferCopy;
+	VkImage copyImage;
+	VkImageCopy *imageCopyRegions;
+	VkImageAspectFlags aspectFlags;
+	VkResult result;
+	uint32_t i, j, k, level;
 	uint8_t isHostVisible;
+
+	VULKAN_INTERNAL_BeginCommandBuffer(renderer);
+
+	// TODO: KEEP TRACK OF OLD VKIMAGE/VKBUFFER RESOURCES TO BE FREED
+	// TODO: KEEP TRACK OF OLD MEMORY ALLOCATIONS TO BE FREED
 
 	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
 	{
@@ -3369,19 +3489,108 @@ VULKAN_INTERNAL_DefragmentMemory(
 						)
 					) {
 						FNA3D_LogWarn("Could not allocate space for defragmentation!");
-						return;
+						return 0;
 					}
 				}
 
 				for (k = 0; k < allocator->allocations[j]->usedRegionCount; k += 1)
 				{
-					// TODO: PERFORM COPIES HERE
-					// TODO: KEEP TRACK OF OLD VKIMAGE/VKBUFFER RESOURCES TO BE FREED
-					// TODO: KEEP TRACK OF OLD MEMORY ALLOCATIONS TO BE FREED
+					currentRegion = allocator->allocations[j]->usedRegions[k];
+
+					if (currentRegion->isBuffer)
+					{
+						result = renderer->vkCreateBuffer(
+							renderer->logicalDevice,
+							&currentRegion->vulkanSubBuffer->bufferCreateInfo,
+							NULL,
+							&copyBuffer
+						);
+						VULKAN_ERROR_CHECK(result, vkCreateBuffer, 0)
+
+						bufferCopy.srcOffset = 0;
+						bufferCopy.dstOffset = 0;
+						bufferCopy.size = currentRegion->size;
+
+						renderer->vkCmdCopyBuffer(
+							renderer->currentCommandBuffer,
+							currentRegion->vulkanSubBuffer->buffer,
+							copyBuffer,
+							1,
+							&bufferCopy
+						);
+
+						currentRegion->vulkanSubBuffer->buffer = copyBuffer;
+					}
+					else
+					{
+						result = renderer->vkCreateImage(
+							renderer->logicalDevice,
+							&currentRegion->vulkanTexture->imageCreateInfo,
+							NULL,
+							&copyImage
+						);
+
+						VULKAN_ERROR_CHECK(result, vkCreateImage, 0)
+
+						if (IsDepthFormat(currentRegion->vulkanTexture->surfaceFormat))
+						{
+							aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+							if (DepthFormatContainsStencil(currentRegion->vulkanTexture->surfaceFormat))
+							{
+								aspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
+							}
+						}
+						else
+						{
+							aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+						}
+
+						imageCopyRegions = SDL_stack_alloc(VkImageCopy, currentRegion->vulkanTexture->levelCount);
+
+						for (level = 0; level < currentRegion->vulkanTexture->levelCount; level += 1)
+						{
+							imageCopyRegions[level].srcOffset.x = 0;
+							imageCopyRegions[level].srcOffset.y = 0;
+							imageCopyRegions[level].srcOffset.z = 0;
+							imageCopyRegions[level].srcSubresource.aspectMask = aspectFlags;
+							imageCopyRegions[level].srcSubresource.baseArrayLayer = 0;
+							imageCopyRegions[level].srcSubresource.layerCount = currentRegion->vulkanTexture->layerCount;
+							imageCopyRegions[level].srcSubresource.mipLevel = level;
+							imageCopyRegions[level].extent.width = currentRegion->vulkanTexture->dimensions.width;
+							imageCopyRegions[level].extent.height = currentRegion->vulkanTexture->dimensions.height;
+							imageCopyRegions[level].extent.depth = currentRegion->vulkanTexture->depth;
+							imageCopyRegions[level].dstOffset.x = 0;
+							imageCopyRegions[level].dstOffset.y = 0;
+							imageCopyRegions[level].dstOffset.z = 0;
+							imageCopyRegions[level].dstSubresource.aspectMask = aspectFlags;
+							imageCopyRegions[level].dstSubresource.baseArrayLayer = 0;
+							imageCopyRegions[level].dstSubresource.layerCount = currentRegion->vulkanTexture->layerCount;
+							imageCopyRegions[level].dstSubresource.mipLevel = level;
+						}
+
+						renderer->vkCmdCopyImage(
+							renderer->currentCommandBuffer,
+							currentRegion->vulkanTexture->image,
+							AccessMap[currentRegion->vulkanTexture->resourceAccessType].imageLayout,
+							copyImage,
+							VK_IMAGE_LAYOUT_UNDEFINED,
+							currentRegion->vulkanTexture->levelCount,
+							imageCopyRegions
+						);
+
+						SDL_stack_free(imageCopyRegions);
+
+						currentRegion->vulkanTexture->image = copyImage;
+					}
 				}
 			}
 		}
 	}
+
+	VULKAN_INTERNAL_FlushCommands(renderer, 0);
+
+	return 1;
 }
 
 /* Vulkan: Resource Disposal */
@@ -3416,6 +3625,12 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 
 	for (i = 0; i < buffer->subBufferCount; i += 1)
 	{
+		renderer->vkDestroyBuffer(
+			renderer->logicalDevice,
+			buffer->subBuffers[i]->buffer,
+			NULL
+		);
+
 		if (buffer->subBuffers[i]->usedRegion->allocation->dedicated)
 		{
 			renderer->vkFreeMemory(
@@ -3442,12 +3657,6 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 			SDL_UnlockMutex(renderer->allocatorLock);
 		}
 
-		renderer->vkDestroyBuffer(
-			renderer->logicalDevice,
-			buffer->subBuffers[i]->buffer,
-			NULL
-		);
-
 		SDL_free(buffer->subBuffers[i]);
 	}
 
@@ -3467,32 +3676,6 @@ static void VULKAN_INTERNAL_DestroyTexture(
 	{
 		SDL_free(texture);
 		return;
-	}
-
-	if (texture->usedRegion->allocation->dedicated)
-	{
-		renderer->vkFreeMemory(
-			renderer->logicalDevice,
-			texture->usedRegion->allocation->memory,
-			NULL
-		);
-
-		SDL_DestroyMutex(texture->usedRegion->allocation->mapLock);
-
-		SDL_free(texture->usedRegion->allocation->freeRegions);
-		SDL_free(texture->usedRegion->allocation->usedRegions);
-		SDL_free(texture->usedRegion->allocation);
-		SDL_free(texture->usedRegion);
-	}
-	else
-	{
-		SDL_LockMutex(renderer->allocatorLock);
-
-		VULKAN_INTERNAL_RemoveMemoryUsedRegion(
-			texture->usedRegion
-		);
-
-		SDL_UnlockMutex(renderer->allocatorLock);
 	}
 
 	renderer->vkDestroyImageView(
@@ -3528,6 +3711,32 @@ static void VULKAN_INTERNAL_DestroyTexture(
 		texture->image,
 		NULL
 	);
+
+	if (texture->usedRegion->allocation->dedicated)
+	{
+		renderer->vkFreeMemory(
+			renderer->logicalDevice,
+			texture->usedRegion->allocation->memory,
+			NULL
+		);
+
+		SDL_DestroyMutex(texture->usedRegion->allocation->mapLock);
+
+		SDL_free(texture->usedRegion->allocation->freeRegions);
+		SDL_free(texture->usedRegion->allocation->usedRegions);
+		SDL_free(texture->usedRegion->allocation);
+		SDL_free(texture->usedRegion);
+	}
+	else
+	{
+		SDL_LockMutex(renderer->allocatorLock);
+
+		VULKAN_INTERNAL_RemoveMemoryUsedRegion(
+			texture->usedRegion
+		);
+
+		SDL_UnlockMutex(renderer->allocatorLock);
+	}
 
 	SDL_free(texture);
 }
@@ -3700,101 +3909,6 @@ static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer *renderer)
 	renderer->texturesToDestroyCount = 0;
 
 	SDL_UnlockMutex(renderer->disposeLock);
-}
-
-/* Vulkan: Command Buffers */
-
-static void VULKAN_INTERNAL_BeginCommandBuffer(VulkanRenderer *renderer)
-{
-	VkCommandBufferAllocateInfo allocateInfo;
-	VkCommandBufferBeginInfo beginInfo;
-	VkResult result;
-
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.pNext = NULL;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	beginInfo.pInheritanceInfo = NULL;
-
-	/* If we are out of unused command buffers, allocate some more */
-	if (renderer->inactiveCommandBufferCount == 0)
-	{
-		renderer->activeCommandBuffers = SDL_realloc(
-			renderer->activeCommandBuffers,
-			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
-		);
-
-		renderer->inactiveCommandBuffers = SDL_realloc(
-			renderer->inactiveCommandBuffers,
-			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
-		);
-
-		renderer->submittedCommandBuffers = SDL_realloc(
-			renderer->submittedCommandBuffers,
-			sizeof(VkCommandBuffer) * renderer->allocatedCommandBufferCount * 2
-		);
-
-		allocateInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-		allocateInfo.pNext = NULL;
-		allocateInfo.commandPool = renderer->commandPool;
-		allocateInfo.commandBufferCount = renderer->allocatedCommandBufferCount;
-		allocateInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-
-		result = renderer->vkAllocateCommandBuffers(
-			renderer->logicalDevice,
-			&allocateInfo,
-			renderer->inactiveCommandBuffers
-		);
-		VULKAN_ERROR_CHECK(result, vkAllocateCommandBuffers,)
-
-		renderer->inactiveCommandBufferCount = renderer->allocatedCommandBufferCount;
-		renderer->allocatedCommandBufferCount *= 2;
-	}
-
-	renderer->currentCommandBuffer =
-		renderer->inactiveCommandBuffers[renderer->inactiveCommandBufferCount - 1];
-
-	renderer->activeCommandBuffers[renderer->activeCommandBufferCount] = renderer->currentCommandBuffer;
-
-	renderer->activeCommandBufferCount += 1;
-	renderer->inactiveCommandBufferCount -= 1;
-
-	result = renderer->vkBeginCommandBuffer(
-		renderer->currentCommandBuffer,
-		&beginInfo
-	);
-	VULKAN_ERROR_CHECK(result, vkBeginCommandBuffer,)
-}
-
-static void VULKAN_INTERNAL_EndCommandBuffer(
-	VulkanRenderer *renderer,
-	uint8_t startNext,
-	uint8_t allowFlush
-) {
-	VkResult result;
-
-	if (renderer->renderPassInProgress)
-	{
-		VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 0);
-		renderer->needNewRenderPass = 1;
-	}
-
-	result = renderer->vkEndCommandBuffer(
-		renderer->currentCommandBuffer
-	);
-	VULKAN_ERROR_CHECK(result, vkEndCommandBuffer,)
-
-	renderer->currentCommandBuffer = NULL;
-	renderer->numActiveCommands = 0;
-
-	if (allowFlush)
-	{
-		/* TODO: Figure out how to properly submit commands mid-frame */
-	}
-
-	if (startNext)
-	{
-		VULKAN_INTERNAL_BeginCommandBuffer(renderer);
-	}
 }
 
 /* Vulkan: Memory Barriers */
@@ -3978,18 +4092,43 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 
 static uint8_t VULKAN_INTERNAL_AllocateSubBuffer(
 	VulkanRenderer *renderer,
-	VulkanBuffer *buffer
+	VulkanBuffer *vulkanBuffer
 ) {
-	VkBufferCreateInfo bufferCreateInfo;
-	VkResult vulkanResult;
-	uint8_t findMemoryResult;
 	VulkanSubBuffer *subBuffer = SDL_malloc(sizeof(VulkanSubBuffer));
+	uint32_t memoryTypeIndex;
+	VkBufferCreateInfo bufferCreateInfo;
+	VkBuffer buffer;
+	VkResult vulkanResult;
+	uint32_t bindResult = 0;
+	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
+	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
+	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
+		NULL
+	};
+	VkMemoryRequirements2KHR memoryRequirements =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
+		&dedicatedRequirements
+	};
+
+	requiredMemoryPropertyFlags =
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+	if (vulkanBuffer->preferDeviceLocal)
+	{
+		requiredMemoryPropertyFlags |=
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+	}
+	ignoredMemoryPropertyFlags = 0;
 
 	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufferCreateInfo.pNext = NULL;
 	bufferCreateInfo.flags = 0;
-	bufferCreateInfo.size = buffer->size;
-	bufferCreateInfo.usage = buffer->usage;
+	bufferCreateInfo.size = vulkanBuffer->size;
+	bufferCreateInfo.usage = vulkanBuffer->usage;
 	bufferCreateInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 	bufferCreateInfo.queueFamilyIndexCount = 1;
 	bufferCreateInfo.pQueueFamilyIndices = &renderer->queueFamilyIndex;
@@ -3998,75 +4137,85 @@ static uint8_t VULKAN_INTERNAL_AllocateSubBuffer(
 		renderer->logicalDevice,
 		&bufferCreateInfo,
 		NULL,
-		&subBuffer->buffer
+		&buffer
 	);
 	VULKAN_ERROR_CHECK(vulkanResult, vkCreateBuffer, 0)
 
-	findMemoryResult = VULKAN_INTERNAL_FindAvailableBufferMemory(
-		renderer,
-		subBuffer->buffer,
-		buffer->isDeviceLocal,
-		&subBuffer->usedRegion
-	);
+	subBuffer->bufferCreateInfo = bufferCreateInfo;
 
-	/* No BAR memory available, just try CPU memory */
-	if (buffer->isDeviceLocal && findMemoryResult == 2)
-	{
-		findMemoryResult = VULKAN_INTERNAL_FindAvailableBufferMemory(
+	/* Attempt to bind memory */
+	if (VULKAN_INTERNAL_FindBufferMemoryRequirements(
+		renderer,
+		buffer,
+		requiredMemoryPropertyFlags,
+		ignoredMemoryPropertyFlags,
+		&memoryRequirements,
+		&memoryTypeIndex
+	)) {
+		bindResult = VULKAN_INTERNAL_BindResourceMemory(
 			renderer,
-			subBuffer->buffer,
-			0,
+			memoryTypeIndex,
+			&memoryRequirements,
+			&dedicatedRequirements,
+			buffer,
+			VK_NULL_HANDLE,
 			&subBuffer->usedRegion
 		);
 	}
 
-	/* We're out of available memory */
-	if (findMemoryResult == 2)
+	/* Bind failed, try again if originally preferred device local */
+	if (bindResult != 1 && vulkanBuffer->preferDeviceLocal)
 	{
-		SDL_free(subBuffer);
-		FNA3D_LogWarn("Out of buffer memory!");
-		return 2;
+		requiredMemoryPropertyFlags =
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+		if (VULKAN_INTERNAL_FindBufferMemoryRequirements(
+			renderer,
+			buffer,
+			requiredMemoryPropertyFlags,
+			ignoredMemoryPropertyFlags,
+			&memoryRequirements,
+			&memoryTypeIndex
+		)) {
+			bindResult = VULKAN_INTERNAL_BindResourceMemory(
+				renderer,
+				memoryTypeIndex,
+				&memoryRequirements,
+				&dedicatedRequirements,
+				buffer,
+				VK_NULL_HANDLE,
+				&subBuffer->usedRegion
+			);
+		}
 	}
-	else if (findMemoryResult == 0)
+
+	/* Binding failed, bail out! */
+	if (bindResult != 1)
 	{
-		SDL_free(subBuffer);
-		FNA3D_LogError("Failed to find buffer memory!");
-		return 0;
+		return bindResult;
 	}
 
-	SDL_LockMutex(subBuffer->usedRegion->allocation->mapLock);
-
-	vulkanResult = renderer->vkBindBufferMemory(
-		renderer->logicalDevice,
-		subBuffer->buffer,
-		subBuffer->usedRegion->allocation->memory,
-		subBuffer->usedRegion->offset
-	);
-
-	SDL_UnlockMutex(subBuffer->usedRegion->allocation->mapLock);
-
-	VULKAN_ERROR_CHECK(vulkanResult, vkBindBufferMemory, 0)
-
-	subBuffer->resourceAccessType = buffer->resourceAccessType;
+	subBuffer->resourceAccessType = vulkanBuffer->resourceAccessType;
 	subBuffer->bound = -1;
 
 	/* Reallocate the subbuffer array if we're at max capacity */
-	if (buffer->subBufferCount == buffer->subBufferCapacity)
+	if (vulkanBuffer->subBufferCount == vulkanBuffer->subBufferCapacity)
 	{
-		buffer->subBufferCapacity *= 2;
-		buffer->subBuffers = SDL_realloc(
-			buffer->subBuffers,
-			sizeof(VulkanSubBuffer) * buffer->subBufferCapacity
+		vulkanBuffer->subBufferCapacity *= 2;
+		vulkanBuffer->subBuffers = SDL_realloc(
+			vulkanBuffer->subBuffers,
+			sizeof(VulkanSubBuffer) * vulkanBuffer->subBufferCapacity
 		);
 	}
 
-	buffer->subBuffers[buffer->subBufferCount] = subBuffer;
-	buffer->subBufferCount += 1;
+	vulkanBuffer->subBuffers[vulkanBuffer->subBufferCount] = subBuffer;
+	vulkanBuffer->subBufferCount += 1;
 
 	VULKAN_INTERNAL_BufferMemoryBarrier(
 		renderer,
-		buffer->resourceAccessType,
-		buffer,
+		vulkanBuffer->resourceAccessType,
+		vulkanBuffer,
 		subBuffer
 	);
 
@@ -4093,7 +4242,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	buffer->boundSubmitted = 0;
 	buffer->resourceAccessType = resourceAccessType;
 	buffer->usage = usage;
-	buffer->isDeviceLocal = isDeviceLocal;
+	buffer->preferDeviceLocal = isDeviceLocal;
 
 	buffer->subBufferCount = 0;
 	buffer->subBufferCapacity = subBufferCount;
@@ -5972,11 +6121,24 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	VulkanTexture *texture
 ) {
 	VkResult result;
+	uint32_t bindResult = 0;
 	VkImageCreateInfo imageCreateInfo;
 	VkImageViewCreateInfo imageViewCreateInfo;
 	uint8_t layerCount = isCube ? 6 : 1;
+	uint32_t memoryTypeIndex;
+	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
+	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
+	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
+		NULL
+	};
+	VkMemoryRequirements2KHR memoryRequirements =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
+		&dedicatedRequirements
+	};
 	uint32_t i;
-	uint8_t findMemoryResult;
 
 	imageCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageCreateInfo.pNext = NULL;
@@ -6004,17 +6166,37 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	);
 	VULKAN_ERROR_CHECK(result, vkCreateImage, 0)
 
+	texture->imageCreateInfo = imageCreateInfo;
+
 	/* Prefer GPU allocation */
-	findMemoryResult = VULKAN_INTERNAL_FindAvailableTextureMemory(
+	requiredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+	ignoredMemoryPropertyFlags = 0;
+
+	if (VULKAN_INTERNAL_FindImageMemoryRequirements(
 		renderer,
 		texture->image,
-		1,
-		&texture->usedRegion
-	);
+		requiredMemoryPropertyFlags,
+		ignoredMemoryPropertyFlags,
+		&memoryRequirements,
+		&memoryTypeIndex
+	)) {
+		bindResult = VULKAN_INTERNAL_BindResourceMemory(
+			renderer,
+			memoryTypeIndex,
+			&memoryRequirements,
+			&dedicatedRequirements,
+			VK_NULL_HANDLE,
+			texture->image,
+			&texture->usedRegion
+		);
+	}
 
-	/* No device local memory available */
-	if (findMemoryResult == 2)
+	/* Bind failed, try again without device local */
+	if (bindResult != 1)
 	{
+		requiredMemoryPropertyFlags = 0;
+		ignoredMemoryPropertyFlags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
+
 		if (isRenderTarget)
 		{
 			FNA3D_LogWarn("RenderTarget is allocated in host memory, pre-allocate your targets!");
@@ -6022,39 +6204,31 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 
 		FNA3D_LogWarn("Out of device local memory, falling back to host memory");
 
-		/* Attempt CPU allocation */
-		findMemoryResult = VULKAN_INTERNAL_FindAvailableTextureMemory(
+		if (VULKAN_INTERNAL_FindImageMemoryRequirements(
 			renderer,
 			texture->image,
-			0,
-			&texture->usedRegion
-		);
-
-		/* Memory alloc completely failed, time to die */
-		if (findMemoryResult == 0)
-		{
-			FNA3D_LogError("Something went very wrong allocating memory!");
-			return 0;
-		}
-		else if (findMemoryResult == 2)
-		{
-			FNA3D_LogError("Out of memory!");
-			return 0;
+			requiredMemoryPropertyFlags,
+			ignoredMemoryPropertyFlags,
+			&memoryRequirements,
+			&memoryTypeIndex
+		)) {
+			bindResult = VULKAN_INTERNAL_BindResourceMemory(
+				renderer,
+				memoryTypeIndex,
+				&memoryRequirements,
+				&dedicatedRequirements,
+				VK_NULL_HANDLE,
+				texture->image,
+				&texture->usedRegion
+			);
 		}
 	}
 
-	SDL_LockMutex(texture->usedRegion->allocation->mapLock);
-
-	result = renderer->vkBindImageMemory(
-		renderer->logicalDevice,
-		texture->image,
-		texture->usedRegion->allocation->memory,
-		texture->usedRegion->offset
-	);
-
-	SDL_UnlockMutex(texture->usedRegion->allocation->mapLock);
-
-	VULKAN_ERROR_CHECK(result, vkBindImageMemory, 0)
+	/* Binding failed, bail out! */
+	if (bindResult != 1)
+	{
+		return bindResult;
+	}
 
 	imageViewCreateInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	imageViewCreateInfo.pNext = NULL;
