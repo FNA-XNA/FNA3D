@@ -940,13 +940,13 @@ static inline void PipelineLayoutHashArray_Insert(
 
 typedef struct VulkanMemoryAllocation VulkanMemoryAllocation;
 
-typedef struct VulkanMemoryFreeRegion
+typedef struct VulkanMemoryFreeRegion /* FIXME: unify this with MemoryUsedRegion */
 {
 	VulkanMemoryAllocation *allocation;
 	VkDeviceSize offset;
 	VkDeviceSize size;
-	uint32_t allocationIndex;
-	uint32_t sortedIndex;
+	uint32_t allocationIndex; /* FIXME: keep track of this on the allocation */
+	uint32_t sortedIndex; /* FIXME: keep track of this on the sub-allocator */
 } VulkanMemoryFreeRegion;
 
 typedef struct VulkanMemoryUsedRegion
