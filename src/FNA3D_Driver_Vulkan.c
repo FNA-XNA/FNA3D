@@ -52,9 +52,9 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
 
 /* vkInstance/vkDevice function typedefs */
 
-#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
+#define VULKAN_INSTANCE_FUNCTION(ret, func, params) \
 	typedef ret (VKAPI_CALL *vkfntype_##func) params;
-#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
+#define VULKAN_DEVICE_FUNCTION(ret, func, params) \
 	typedef ret (VKAPI_CALL *vkfntype_##func) params;
 #include "FNA3D_Driver_Vulkan_vkfuncs.h"
 
@@ -1325,9 +1325,9 @@ typedef struct VulkanRenderer
 	SDL_mutex *allocatorLock;
 	SDL_mutex *stagingLock;
 
-	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
+	#define VULKAN_INSTANCE_FUNCTION(ret, func, params) \
 		vkfntype_##func func;
-	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
+	#define VULKAN_DEVICE_FUNCTION(ret, func, params) \
 		vkfntype_##func func;
 	#include "FNA3D_Driver_Vulkan_vkfuncs.h"
 } VulkanRenderer;
@@ -2571,7 +2571,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 
 	/* Load vkDevice entry points */
 
-	#define VULKAN_DEVICE_FUNCTION(ext, ret, func, params) \
+	#define VULKAN_DEVICE_FUNCTION(ret, func, params) \
 		renderer->func = (vkfntype_##func) \
 			renderer->vkGetDeviceProcAddr( \
 				renderer->logicalDevice, \
@@ -10500,7 +10500,7 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 		return 0;
 	}
 
-	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
+	#define VULKAN_INSTANCE_FUNCTION(ret, func, params) \
 		renderer->func = (vkfntype_##func) vkGetInstanceProcAddr(renderer->instance, #func);
 	#include "FNA3D_Driver_Vulkan_vkfuncs.h"
 
@@ -10634,7 +10634,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	 * Get vkInstance entry points
 	 */
 
-	#define VULKAN_INSTANCE_FUNCTION(ext, ret, func, params) \
+	#define VULKAN_INSTANCE_FUNCTION(ret, func, params) \
 		renderer->func = (vkfntype_##func) vkGetInstanceProcAddr(renderer->instance, #func);
 	#include "FNA3D_Driver_Vulkan_vkfuncs.h"
 
