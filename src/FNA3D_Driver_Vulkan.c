@@ -1146,6 +1146,9 @@ typedef struct VulkanRenderer
 	VkCommandBuffer currentCommandBuffer;
 	uint32_t numActiveCommands;
 
+	/* Special command buffer for performing defrag copies */
+	VkCommandBuffer defragCommandBuffer;
+
 	/* Queries */
 	VkQueryPool queryPool;
 	int8_t freeQueryIndexStack[MAX_QUERIES];
@@ -3624,11 +3627,26 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 	VkImage copyImage;
 	VkImageCopy *imageCopyRegions;
 	VkImageAspectFlags aspectFlags;
+	VkCommandBufferBeginInfo beginInfo;
+	VkSubmitInfo submitInfo;
 	VkResult result;
 	uint32_t i, j, k, level;
 	uint8_t isHostVisible;
 
-	VULKAN_INTERNAL_BeginCommandBuffer(renderer);
+	renderer->vkResetCommandBuffer(
+		renderer->defragCommandBuffer,
+		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+	);
+
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.pNext = NULL;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	beginInfo.pInheritanceInfo = NULL;
+
+	renderer->vkBeginCommandBuffer(
+		renderer->defragCommandBuffer,
+		&beginInfo
+	);
 
 	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
 	{
@@ -3679,7 +3697,7 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 							currentRegion->alignment,
 							currentRegion->resourceSize,
 							copyBuffer,
-							NULL,
+							VK_NULL_HANDLE,
 							&newRegion
 						))
 						{
@@ -3828,7 +3846,26 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 		}
 	}
 
-	VULKAN_INTERNAL_FlushCommands(renderer, 0);
+	renderer->vkEndCommandBuffer(
+		renderer->defragCommandBuffer
+	);
+
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.pNext = NULL;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &renderer->defragCommandBuffer;
+	submitInfo.waitSemaphoreCount = 0;
+	submitInfo.pWaitSemaphores = NULL;
+	submitInfo.pWaitDstStageMask = NULL;
+	submitInfo.signalSemaphoreCount = 0;
+	submitInfo.pSignalSemaphores = NULL;
+
+	renderer->vkQueueSubmit(
+		renderer->unifiedQueue,
+		1,
+		&submitInfo,
+		VK_NULL_HANDLE
+	);
 
 	return 1;
 }
@@ -11667,6 +11704,14 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	VULKAN_ERROR_CHECK(vulkanResult, vkAllocateCommandBuffers, NULL)
 
 	renderer->currentCommandCount = 0;
+
+	commandBufferAllocateInfo.commandBufferCount = 1;
+
+	vulkanResult = renderer->vkAllocateCommandBuffers(
+		renderer->logicalDevice,
+		&commandBufferAllocateInfo,
+		&renderer->defragCommandBuffer
+	);
 
 	VULKAN_INTERNAL_BeginCommandBuffer(renderer);
 
