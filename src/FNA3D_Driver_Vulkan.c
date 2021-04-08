@@ -3118,14 +3118,15 @@ static void VULKAN_INTERNAL_DeallocateMemory(
 
 	for (i = 0; i < allocation->freeRegionCount; i += 1)
 	{
-		SDL_free(allocation->freeRegions[i]);
+		VULKAN_INTERNAL_RemoveMemoryFreeRegion(
+			allocation->freeRegions[i]
+		);
 	}
 	SDL_free(allocation->freeRegions);
 
-	for (i = 0; i < allocation->usedRegionCount; i += 1)
-	{
-		SDL_free(allocation->usedRegions[i]);
-	}
+	/* no need to iterate used regions because deallocate
+	 * only happens when there are 0 used regions
+	 */
 	SDL_free(allocation->usedRegions);
 
 	renderer->vkFreeMemory(
@@ -3141,6 +3142,8 @@ static void VULKAN_INTERNAL_DeallocateMemory(
 	{
 		allocator->allocations[allocationIndex] = allocator->allocations[allocator->allocationCount - 1];
 	}
+
+	allocator->allocationCount -= 1;
 }
 
 static uint8_t VULKAN_INTERNAL_AllocateMemory(
@@ -4370,13 +4373,11 @@ static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer *renderer)
 		{
 			if (allocator->allocations[j]->usedRegionCount == 0)
 			{
-				/*
 				VULKAN_INTERNAL_DeallocateMemory(
 					renderer,
 					allocator,
 					j
 				);
-				*/
 			}
 		}
 	}
