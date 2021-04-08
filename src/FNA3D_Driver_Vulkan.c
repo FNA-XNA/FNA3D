@@ -943,13 +943,13 @@ typedef struct VulkanBuffer VulkanBuffer;
 typedef struct VulkanSubBuffer VulkanSubBuffer;
 typedef struct VulkanTexture VulkanTexture;
 
-typedef struct VulkanMemoryFreeRegion /* FIXME: unify this with MemoryUsedRegion */
+typedef struct VulkanMemoryFreeRegion
 {
 	VulkanMemoryAllocation *allocation;
 	VkDeviceSize offset;
 	VkDeviceSize size;
-	uint32_t allocationIndex; /* FIXME: keep track of this on the allocation */
-	uint32_t sortedIndex; /* FIXME: keep track of this on the sub-allocator */
+	uint32_t allocationIndex;
+	uint32_t sortedIndex;
 } VulkanMemoryFreeRegion;
 
 typedef struct VulkanMemoryUsedRegion
