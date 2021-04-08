@@ -1014,6 +1014,7 @@ struct VulkanTexture /* Cast from FNA3D_Texture* */
 	uint32_t levelCount;
 	VulkanResourceAccessType resourceAccessType;
 	VkImageCreateInfo imageCreateInfo; /* used for resource copy */
+	VkImageViewCreateInfo viewCreateInfo; /* used for resource copy */
 	FNA3DNAMELESS union
 	{
 		FNA3D_SurfaceFormat colorFormat;
@@ -3636,14 +3637,6 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 	VulkanResourceAccessType copyResourceAccessType = RESOURCE_ACCESS_NONE;
 	VulkanResourceAccessType originalSourceAccessType;
 
-	renderer->vkWaitForFences(
-		renderer->logicalDevice,
-		1,
-		&renderer->defragFence,
-		VK_TRUE,
-		UINT64_MAX
-	);
-
 	renderer->vkResetCommandBuffer(
 		renderer->defragCommandBuffer,
 		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
@@ -3758,9 +3751,13 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 							renderer->defragmentedBuffersToDestroyCount
 						] = currentRegion->vulkanSubBuffer->buffer;
 
+						renderer->defragmentedBuffersToDestroyCount += 1;
+
 						renderer->usedRegionsToDestroy[
 							renderer->usedRegionsToDestroyCount
 						] = currentRegion;
+
+						renderer->usedRegionsToDestroyCount += 1;
 
 						newRegion->isBuffer = 1;
 						newRegion->vulkanSubBuffer = currentRegion->vulkanSubBuffer;
@@ -3885,6 +3882,15 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 							&currentRegion->vulkanTexture->resourceAccessType
 						);
 
+						currentRegion->vulkanTexture->viewCreateInfo.image = copyImage;
+
+						renderer->vkCreateImageView(
+							renderer->logicalDevice,
+							&currentRegion->vulkanTexture->viewCreateInfo,
+							NULL,
+							&currentRegion->vulkanTexture->view
+						);
+
 						if (renderer->defragmentedImagesToDestroyCount >= renderer->defragmentedImagesToDestroyCapacity)
 						{
 							renderer->defragmentedImagesToDestroyCapacity *= 2;
@@ -3894,13 +3900,26 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 							);
 						}
 
+						if (renderer->usedRegionsToDestroyCount >= renderer->usedRegionsToDestroyCapacity)
+						{
+							renderer->usedRegionsToDestroyCapacity *= 2;
+							renderer->usedRegionsToDestroy = SDL_realloc(
+								renderer->usedRegionsToDestroy,
+								sizeof(VulkanMemoryUsedRegion*) * renderer->usedRegionsToDestroyCapacity
+							);
+						}
+
 						renderer->defragmentedImagesToDestroy[
 							renderer->defragmentedImagesToDestroyCount
 						] = currentRegion->vulkanTexture->image;
 
+						renderer->defragmentedImagesToDestroyCount += 1;
+
 						renderer->usedRegionsToDestroy[
 							renderer->usedRegionsToDestroyCount
 						] = currentRegion;
+
+						renderer->usedRegionsToDestroyCount += 1;
 
 						newRegion->isBuffer = 0;
 						newRegion->vulkanTexture = currentRegion->vulkanTexture;
@@ -5726,6 +5745,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	VulkanRenderer *renderer,
 	uint8_t present
 ) {
+	VkFence fences[2];
 	VkSubmitInfo submitInfo;
 	uint32_t i, j;
 	VkResult result, acquireResult, presentResult = VK_SUCCESS;
@@ -5810,11 +5830,14 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		submitInfo.pSignalSemaphores = NULL;
 	}
 
+	fences[0] = renderer->inFlightFence;
+	fences[1] = renderer->defragFence;
+
 	/* Wait for the previous submission to complete */
 	result = renderer->vkWaitForFences(
 		renderer->logicalDevice,
-		1,
-		&renderer->inFlightFence,
+		2,
+		fences,
 		VK_TRUE,
 		UINT64_MAX
 	);
@@ -5931,9 +5954,6 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 	renderer->activeCommandBufferCount = 0;
 
-	/* Trigger memory defragmentation */
-	VULKAN_INTERNAL_DefragmentMemory(renderer);
-
 	/* Present, if applicable */
 	if (present && acquireSuccess)
 	{
@@ -5993,6 +6013,9 @@ static void VULKAN_INTERNAL_SubmitCommands(
 			FNA3D_LogInfo("Failed to acquire swapchain image, not presenting");
 		}
 	}
+
+	/* Trigger memory defragmentation */
+	VULKAN_INTERNAL_DefragmentMemory(renderer);
 
 	/* Activate the next command buffer */
 	VULKAN_INTERNAL_BeginCommandBuffer(renderer);
@@ -6673,6 +6696,8 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 		&texture->view
 	);
 	VULKAN_ERROR_CHECK(result, vkCreateImageView, 0)
+
+	texture->viewCreateInfo = imageViewCreateInfo;
 
 	/* FIXME: Reduce this memset to the minimum necessary for init! */
 	SDL_memset(texture->rtViews, '\0', sizeof(texture->rtViews));
