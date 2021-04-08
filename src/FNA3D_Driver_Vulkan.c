@@ -3120,8 +3120,13 @@ static void VULKAN_INTERNAL_DeallocateMemory(
 	{
 		SDL_free(allocation->freeRegions[i]);
 	}
-
 	SDL_free(allocation->freeRegions);
+
+	for (i = 0; i < allocation->usedRegionCount; i += 1)
+	{
+		SDL_free(allocation->usedRegions[i]);
+	}
+	SDL_free(allocation->usedRegions);
 
 	renderer->vkFreeMemory(
 		renderer->logicalDevice,
@@ -3348,7 +3353,7 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 	SDL_LockMutex(renderer->allocatorLock);
 
 	/* find the largest free region and use it */
-	if (allocator->sortedFreeRegionCount > 0)
+	if (!shouldAllocDedicated && allocator->sortedFreeRegionCount > 0)
 	{
 		region = allocator->sortedFreeRegions[0];
 		allocation = region->allocation;
@@ -3796,6 +3801,7 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 
 						newRegion->isBuffer = 1;
 						newRegion->vulkanSubBuffer = currentRegion->vulkanSubBuffer;
+						newRegion->vulkanSubBuffer->usedRegion = newRegion; /* lol */
 						newRegion->vulkanSubBuffer->buffer = copyBuffer;
 						newRegion->vulkanSubBuffer->resourceAccessType = copyResourceAccessType;
 					}
@@ -3958,7 +3964,9 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 						renderer->usedRegionsToDestroyCount += 1;
 
 						newRegion->isBuffer = 0;
+
 						newRegion->vulkanTexture = currentRegion->vulkanTexture;
+						newRegion->vulkanTexture->usedRegion = newRegion; /* lol */
 						newRegion->vulkanTexture->image = copyImage;
 						newRegion->vulkanTexture->resourceAccessType = copyResourceAccessType;
 					}
@@ -4362,11 +4370,13 @@ static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer *renderer)
 		{
 			if (allocator->allocations[j]->usedRegionCount == 0)
 			{
+				/*
 				VULKAN_INTERNAL_DeallocateMemory(
 					renderer,
 					allocator,
 					j
 				);
+				*/
 			}
 		}
 	}
