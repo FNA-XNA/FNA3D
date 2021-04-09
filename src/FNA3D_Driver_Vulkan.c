@@ -972,6 +972,7 @@ typedef struct VulkanMemoryUsedRegion
 
 typedef struct VulkanMemorySubAllocator
 {
+	uint32_t memoryTypeIndex;
 	VkDeviceSize nextAllocationSize;
 	VulkanMemoryAllocation **allocations;
 	uint32_t allocationCount;
@@ -3039,8 +3040,11 @@ static void VULKAN_INTERNAL_DeallocateMemory(
 	uint32_t allocationIndex
 ) {
 	uint32_t i;
-	VulkanMemoryAllocation *allocation = allocator->allocations[allocationIndex];
+	uint8_t isDeviceLocal =
+		(renderer->memoryProperties.memoryTypes[allocator->memoryTypeIndex].propertyFlags &
+		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
 
+	VulkanMemoryAllocation *allocation = allocator->allocations[allocationIndex];
 	for (i = 0; i < allocation->freeRegionCount; i += 1)
 	{
 		VULKAN_INTERNAL_RemoveMemoryFreeRegion(
@@ -3059,6 +3063,11 @@ static void VULKAN_INTERNAL_DeallocateMemory(
 		allocation->memory,
 		NULL
 	);
+
+	if (isDeviceLocal)
+	{
+		renderer->deviceLocalHeapUsage -= allocation->size;
+	}
 
 	SDL_DestroyMutex(allocation->mapLock);
 	SDL_free(allocation);
@@ -3645,7 +3654,6 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 	VkSubmitInfo submitInfo;
 	VkResult result;
 	uint32_t i, j, k, level;
-	uint8_t isHostVisible;
 	VulkanResourceAccessType copyResourceAccessType = RESOURCE_ACCESS_NONE;
 	VulkanResourceAccessType originalSourceAccessType;
 
@@ -3669,10 +3677,6 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
 	{
 		allocator = &renderer->memoryAllocator->subAllocators[i];
-
-		isHostVisible =
-			(renderer->memoryProperties.memoryTypes[i].propertyFlags &
-				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
 
 		for (j = 0; j < allocator->allocationCount; j += 1)
 		{
@@ -11483,6 +11487,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
 	{
+		renderer->memoryAllocator->subAllocators[i].memoryTypeIndex = i;
 		renderer->memoryAllocator->subAllocators[i].nextAllocationSize = STARTING_ALLOCATION_SIZE;
 		renderer->memoryAllocator->subAllocators[i].allocations = NULL;
 		renderer->memoryAllocator->subAllocators[i].allocationCount = 0;
