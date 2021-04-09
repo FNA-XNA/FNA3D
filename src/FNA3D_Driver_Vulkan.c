@@ -991,6 +991,8 @@ struct VulkanMemoryAllocation
 	uint32_t freeRegionCount;
 	uint32_t freeRegionCapacity;
 	uint8_t dedicated;
+	VkDeviceSize freeSpace;
+	VkDeviceSize usedSpace;
 	uint8_t *mapPointer;
 	SDL_mutex *mapLock;
 };
@@ -2800,6 +2802,8 @@ static void VULKAN_INTERNAL_RemoveMemoryFreeRegion(
 
 	freeRegion->allocation->freeRegionCount -= 1;
 
+	freeRegion->allocation->freeSpace -= freeRegion->size;
+
 	SDL_free(freeRegion);
 }
 
@@ -2854,6 +2858,8 @@ static void VULKAN_INTERNAL_NewMemoryFreeRegion(
 	newFreeRegion->offset = offset;
 	newFreeRegion->size = size;
 	newFreeRegion->allocation = allocation;
+
+	allocation->freeSpace += size;
 
 	allocation->freeRegions[allocation->freeRegionCount - 1] = newFreeRegion;
 	newFreeRegion->allocationIndex = allocation->freeRegionCount - 1;
@@ -2920,6 +2926,8 @@ static VulkanMemoryUsedRegion* VULKAN_INTERNAL_NewMemoryUsedRegion(
 	memoryUsedRegion->resourceSize = resourceSize;
 	memoryUsedRegion->alignment = alignment;
 
+	allocation->usedSpace += size;
+
 	allocation->usedRegions[allocation->usedRegionCount] = memoryUsedRegion;
 	allocation->usedRegionCount += 1;
 
@@ -2944,6 +2952,8 @@ static void VULKAN_INTERNAL_RemoveMemoryUsedRegion(
 			break;
 		}
 	}
+
+	usedRegion->allocation->usedSpace -= usedRegion->size;
 
 	usedRegion->allocation->usedRegionCount -= 1;
 
@@ -3172,6 +3182,8 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 
 	allocation = SDL_malloc(sizeof(VulkanMemoryAllocation));
 	allocation->size = allocationSize;
+	allocation->freeSpace = 0; /* added by FreeRegions */
+	allocation->usedSpace = 0; /* added by UsedRegions */
 	allocation->mapLock = SDL_CreateMutex();
 
 	if (dedicated)
@@ -3689,6 +3701,24 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 		{
 			if (allocator->allocations[j]->freeRegionCount > 1)
 			{
+				/* Try to find an existing allocation that has enough free space for copies */
+				if (defragmentedAllocation == NULL)
+				{
+					for (k = 0; k < allocator->allocationCount; k += 1)
+					{
+						if (j == k)
+						{
+							continue;
+						}
+
+						if (allocator->allocations[k]->freeSpace > allocator->allocations[j]->usedSpace)
+						{
+							defragmentedAllocation = allocator->allocations[k];
+						}
+					}
+				}
+
+				/* If no existing allocation has enough free space, make a new allocation */
 				if (defragmentedAllocation == NULL)
 				{
 					if (
