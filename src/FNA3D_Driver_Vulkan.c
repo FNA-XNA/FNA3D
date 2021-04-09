@@ -1320,6 +1320,10 @@ typedef struct VulkanRenderer
 	uint32_t defragmentedImagesToDestroyCount;
 	uint32_t defragmentedImagesToDestroyCapacity;
 
+	VkImageView *defragmentedImageViewsToDestroy;
+	uint32_t defragmentedImageViewsToDestroyCount;
+	uint32_t defragmentedImageViewsToDestroyCapacity;
+
 	VulkanMemoryUsedRegion **usedRegionsToDestroy;
 	uint32_t usedRegionsToDestroyCount;
 	uint32_t usedRegionsToDestroyCapacity;
@@ -3927,21 +3931,21 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 							&currentRegion->vulkanTexture->resourceAccessType
 						);
 
-						currentRegion->vulkanTexture->viewCreateInfo.image = copyImage;
-
-						renderer->vkCreateImageView(
-							renderer->logicalDevice,
-							&currentRegion->vulkanTexture->viewCreateInfo,
-							NULL,
-							&currentRegion->vulkanTexture->view
-						);
-
 						if (renderer->defragmentedImagesToDestroyCount >= renderer->defragmentedImagesToDestroyCapacity)
 						{
 							renderer->defragmentedImagesToDestroyCapacity *= 2;
 							renderer->defragmentedImagesToDestroy = SDL_realloc(
 								renderer->defragmentedImagesToDestroy,
 								sizeof(VkImage) * renderer->defragmentedImagesToDestroyCapacity
+							);
+						}
+
+						if (renderer->defragmentedImageViewsToDestroyCount >= renderer->defragmentedImageViewsToDestroyCapacity)
+						{
+							renderer->defragmentedImageViewsToDestroyCapacity *= 2;
+							renderer->defragmentedImageViewsToDestroy = SDL_realloc(
+								renderer->defragmentedImageViewsToDestroy,
+								sizeof(VkImageView) * renderer->defragmentedImageViewsToDestroyCapacity
 							);
 						}
 
@@ -3960,11 +3964,26 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 
 						renderer->defragmentedImagesToDestroyCount += 1;
 
+						renderer->defragmentedImageViewsToDestroy[
+							renderer->defragmentedImageViewsToDestroyCount
+						] = currentRegion->vulkanTexture->view;
+
+						renderer->defragmentedImageViewsToDestroyCount += 1;
+
 						renderer->usedRegionsToDestroy[
 							renderer->usedRegionsToDestroyCount
 						] = currentRegion;
 
 						renderer->usedRegionsToDestroyCount += 1;
+
+						currentRegion->vulkanTexture->viewCreateInfo.image = copyImage;
+
+						renderer->vkCreateImageView(
+							renderer->logicalDevice,
+							&currentRegion->vulkanTexture->viewCreateInfo,
+							NULL,
+							&currentRegion->vulkanTexture->view
+						);
 
 						newRegion->isBuffer = 0;
 
@@ -4238,6 +4257,17 @@ static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer *renderer)
 	}
 
 	renderer->defragmentedImagesToDestroyCount = 0;
+
+	for (i = 0; i < renderer->defragmentedImageViewsToDestroyCount; i += 1)
+	{
+		renderer->vkDestroyImageView(
+			renderer->logicalDevice,
+			renderer->defragmentedImageViewsToDestroy[i],
+			NULL
+		);
+	}
+
+	renderer->defragmentedImageViewsToDestroyCount = 0;
 
 	for (i = 0; i < renderer->usedRegionsToDestroyCount; i += 1)
 	{
@@ -11742,6 +11772,14 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->defragmentedImagesToDestroy = (VkImage*) SDL_malloc(
 		sizeof(VkImage) *
 		renderer->defragmentedImagesToDestroyCapacity
+	);
+
+	renderer->defragmentedImageViewsToDestroyCapacity = 16;
+	renderer->defragmentedImageViewsToDestroyCount = 0;
+
+	renderer->defragmentedImageViewsToDestroy = (VkImageView*) SDL_malloc(
+		sizeof(VkImageView) *
+		renderer->defragmentedImageViewsToDestroyCapacity
 	);
 
 	renderer->usedRegionsToDestroyCapacity = 16;
