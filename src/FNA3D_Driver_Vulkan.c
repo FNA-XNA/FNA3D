@@ -90,6 +90,7 @@ static const uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames)
 #define MAX_UNIFORM_DESCRIPTOR_SETS 1024
 #define COMMAND_LIMIT 100
 #define STARTING_ALLOCATION_SIZE 64000000 /* 64MB */
+#define ALLOCATION_INCREMENT 16000000 /* 16MB */
 #define MAX_ALLOCATION_SIZE 256000000 /* 256MB */
 #define FAST_TEXTURE_STAGING_SIZE 64000000 /* 64MB */
 #define STARTING_SLOW_TEXTURE_STAGING_SIZE 16000000 /* 16MB */
@@ -3457,14 +3458,13 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 	}
 	else if (requiredSize > allocator->nextAllocationSize)
 	{
-		/* allocate a page of required size aligned to STARTING_ALLOCATION_SIZE increments */
+		/* allocate a page of required size aligned to ALLOCATION_INCREMENT increments */
 		allocationSize =
-			VULKAN_INTERNAL_NextHighestAlignment(requiredSize, STARTING_ALLOCATION_SIZE);
+			VULKAN_INTERNAL_NextHighestAlignment(requiredSize, ALLOCATION_INCREMENT);
 	}
 	else
 	{
 		allocationSize = allocator->nextAllocationSize;
-		allocator->nextAllocationSize = SDL_min(allocator->nextAllocationSize * 2, MAX_ALLOCATION_SIZE);
 	}
 
 	if (	isDeviceLocal &&
