@@ -3314,7 +3314,7 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 				memoryRequirements->memoryRequirements.alignment
 			);
 
-			usedRegion->isBuffer = buffer != NULL;
+			usedRegion->isBuffer = buffer != VK_NULL_HANDLE;
 
 			newRegionSize = region->size - ((alignedOffset - region->offset) + requiredSize);
 			newRegionOffset = alignedOffset + requiredSize;
