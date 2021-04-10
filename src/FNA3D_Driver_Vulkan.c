@@ -3474,7 +3474,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 	uint8_t isRenderTarget,
 	VulkanMemoryUsedRegion** usedRegion
 ) {
-	uint32_t bindResult = 0;
+	uint8_t bindResult = 0;
 	uint32_t memoryTypeIndex;
 	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
 	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
@@ -3728,7 +3728,7 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 
 						VULKAN_INTERNAL_BufferMemoryBarrier(
 							renderer,
-							copyResourceAccessType,
+							RESOURCE_ACCESS_TRANSFER_WRITE,
 							copyBuffer,
 							&copyResourceAccessType
 						);
@@ -4576,7 +4576,7 @@ static uint8_t VULKAN_INTERNAL_AllocateSubBuffer(
 	VulkanSubBuffer *subBuffer = SDL_malloc(sizeof(VulkanSubBuffer));
 	VkBufferCreateInfo bufferCreateInfo;
 	VkResult vulkanResult;
-	uint32_t bindResult = 0;
+	uint8_t bindResult = 0;
 
 	subBuffer->parent = vulkanBuffer;
 
@@ -4775,13 +4775,17 @@ static void VULKAN_INTERNAL_WaitForStagingTransfers(
 	VulkanRenderer *renderer
 ) {
 	VkResult result;
+	VkFence fences[2];
 
 	if (renderer->textureStagingBuffer->transferInProgress)
 	{
+		fences[0] = renderer->inFlightFence;
+		fences[1] = renderer->defragFence;
+
 		result = renderer->vkWaitForFences(
 			renderer->logicalDevice,
-			1,
-			&renderer->inFlightFence,
+			2,
+			fences,
 			VK_TRUE,
 			UINT64_MAX
 		);
@@ -6038,7 +6042,7 @@ static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync
 
 		result = renderer->vkWaitForFences(
 			renderer->logicalDevice,
-			1,
+			2,
 			fences,
 			VK_TRUE,
 			UINT64_MAX
@@ -6554,7 +6558,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	VulkanTexture *texture
 ) {
 	VkResult result;
-	uint32_t bindResult = 0;
+	uint8_t bindResult = 0;
 	VkImageCreateInfo imageCreateInfo;
 	VkImageViewCreateInfo imageViewCreateInfo;
 	uint8_t layerCount = isCube ? 6 : 1;
