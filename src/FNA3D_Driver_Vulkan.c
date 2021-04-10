@@ -2958,9 +2958,9 @@ static VulkanMemoryUsedRegion* VULKAN_INTERNAL_NewMemoryUsedRegion(
 	allocation->usedRegions[allocation->usedRegionCount] = memoryUsedRegion;
 	allocation->usedRegionCount += 1;
 
-	return memoryUsedRegion;
-
 	SDL_UnlockMutex(renderer->allocatorLock);
+
+	return memoryUsedRegion;
 }
 
 static void VULKAN_INTERNAL_RemoveMemoryUsedRegion(
@@ -3139,6 +3139,16 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 	allocation->usedSpace = 0; /* added by UsedRegions */
 	allocation->mapLock = SDL_CreateMutex();
 
+	allocator->allocationCount += 1;
+	allocator->allocations = SDL_realloc(
+		allocator->allocations,
+		sizeof(VulkanMemoryAllocation*) * allocator->allocationCount
+	);
+
+	allocator->allocations[
+		allocator->allocationCount - 1
+	] = allocation;
+
 	if (dedicated)
 	{
 		dedicatedInfo.sType =
@@ -3148,23 +3158,11 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 		dedicatedInfo.image = image;
 
 		allocInfo.pNext = &dedicatedInfo;
-
 		allocation->dedicated = 1;
 	}
 	else
 	{
 		allocInfo.pNext = NULL;
-
-		allocator->allocationCount += 1;
-		allocator->allocations = SDL_realloc(
-			allocator->allocations,
-			sizeof(VulkanMemoryAllocation*) * allocator->allocationCount
-		);
-
-		allocator->allocations[
-			allocator->allocationCount - 1
-		] = allocation;
-
 		allocation->dedicated = 0;
 	}
 
@@ -8457,7 +8455,8 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	ShaderResources *shaderResources;
 	PipelineHashArray hashArray;
 	VulkanMemorySubAllocator *allocator;
-	uint32_t i, j, k;
+	uint32_t i;
+	int32_t j, k;
 	VkResult waitResult, pipelineCacheResult;
 	size_t pipelineCacheSize;
 	uint8_t *pipelineCacheData;
@@ -8729,26 +8728,24 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	{
 		allocator = &renderer->memoryAllocator->subAllocators[i];
 
-		for (j = 0; j < allocator->allocationCount; j += 1)
+		for (j = allocator->allocationCount - 1; j >= 0; j -= 1)
 		{
-			for (k = 0; k < allocator->allocations[j]->freeRegionCount; k += 1)
+			for (k = allocator->allocations[j]->usedRegionCount - 1; k >= 0; k -= 1)
 			{
-				SDL_free(allocator->allocations[j]->freeRegions[k]);
+				VULKAN_INTERNAL_RemoveMemoryUsedRegion(
+					renderer,
+					allocator->allocations[j]->usedRegions[k]
+				);
 			}
-			SDL_free(allocator->allocations[j]->freeRegions);
 
-			renderer->vkFreeMemory(
-				renderer->logicalDevice,
-				allocator->allocations[j]->memory,
-				NULL
+			VULKAN_INTERNAL_DeallocateMemory(
+				renderer,
+				allocator,
+				j
 			);
-
-			SDL_DestroyMutex(allocator->allocations[j]->mapLock);
-			SDL_free(allocator->allocations[j]);
 		}
-		SDL_free(allocator->allocations);
-		SDL_free(allocator->sortedFreeRegions);
 	}
+
 	SDL_free(renderer->memoryAllocator);
 
 	SDL_DestroyMutex(renderer->commandLock);
