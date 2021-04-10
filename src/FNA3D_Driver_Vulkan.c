@@ -2780,23 +2780,29 @@ static inline VkDeviceSize VULKAN_INTERNAL_NextHighestAlignment(
 }
 
 static void VULKAN_INTERNAL_RemoveMemoryFreeRegion(
+	VulkanRenderer *renderer,
 	VulkanMemoryFreeRegion *freeRegion
 ) {
 	uint32_t i;
 
-	/* close the gap in the sorted list */
-	if (freeRegion->allocation->allocator->sortedFreeRegionCount > 1)
+	SDL_LockMutex(renderer->allocatorLock);
+
+	if (!freeRegion->allocation->dedicated)
 	{
-		for (i = freeRegion->sortedIndex; i < freeRegion->allocation->allocator->sortedFreeRegionCount - 1; i += 1)
+		/* close the gap in the sorted list */
+		if (freeRegion->allocation->allocator->sortedFreeRegionCount > 1)
 		{
-			freeRegion->allocation->allocator->sortedFreeRegions[i] =
-				freeRegion->allocation->allocator->sortedFreeRegions[i + 1];
+			for (i = freeRegion->sortedIndex; i < freeRegion->allocation->allocator->sortedFreeRegionCount - 1; i += 1)
+			{
+				freeRegion->allocation->allocator->sortedFreeRegions[i] =
+					freeRegion->allocation->allocator->sortedFreeRegions[i + 1];
 
-			freeRegion->allocation->allocator->sortedFreeRegions[i]->sortedIndex = i;
+				freeRegion->allocation->allocator->sortedFreeRegions[i]->sortedIndex = i;
+			}
 		}
-	}
 
-	freeRegion->allocation->allocator->sortedFreeRegionCount -= 1;
+		freeRegion->allocation->allocator->sortedFreeRegionCount -= 1;
+	}
 
 	/* close the gap in the buffer list */
 	if (freeRegion->allocation->freeRegionCount > 1 && freeRegion->allocationIndex != freeRegion->allocation->freeRegionCount - 1)
@@ -2813,9 +2819,12 @@ static void VULKAN_INTERNAL_RemoveMemoryFreeRegion(
 	freeRegion->allocation->freeSpace -= freeRegion->size;
 
 	SDL_free(freeRegion);
+
+	SDL_UnlockMutex(renderer->allocatorLock);
 }
 
 static void VULKAN_INTERNAL_NewMemoryFreeRegion(
+	VulkanRenderer *renderer,
 	VulkanMemoryAllocation *allocation,
 	VkDeviceSize offset,
 	VkDeviceSize size
@@ -2824,6 +2833,8 @@ static void VULKAN_INTERNAL_NewMemoryFreeRegion(
 	VkDeviceSize newOffset, newSize;
 	int32_t insertionIndex = 0;
 	int32_t i;
+
+	SDL_LockMutex(renderer->allocatorLock);
 
 	/* look for an adjacent region to merge */
 	for (i = allocation->freeRegionCount - 1; i >= 0; i -= 1)
@@ -2834,8 +2845,8 @@ static void VULKAN_INTERNAL_NewMemoryFreeRegion(
 			newOffset = allocation->freeRegions[i]->offset;
 			newSize = allocation->freeRegions[i]->size + size;
 
-			VULKAN_INTERNAL_RemoveMemoryFreeRegion(allocation->freeRegions[i]);
-			VULKAN_INTERNAL_NewMemoryFreeRegion(allocation, newOffset, newSize);
+			VULKAN_INTERNAL_RemoveMemoryFreeRegion(renderer, allocation->freeRegions[i]);
+			VULKAN_INTERNAL_NewMemoryFreeRegion(renderer, allocation, newOffset, newSize);
 			return;
 		}
 
@@ -2845,8 +2856,8 @@ static void VULKAN_INTERNAL_NewMemoryFreeRegion(
 			newOffset = offset;
 			newSize = allocation->freeRegions[i]->size + size;
 
-			VULKAN_INTERNAL_RemoveMemoryFreeRegion(allocation->freeRegions[i]);
-			VULKAN_INTERNAL_NewMemoryFreeRegion(allocation, newOffset, newSize);
+			VULKAN_INTERNAL_RemoveMemoryFreeRegion(renderer, allocation->freeRegions[i]);
+			VULKAN_INTERNAL_NewMemoryFreeRegion(renderer, allocation, newOffset, newSize);
 			return;
 		}
 	}
@@ -2872,42 +2883,48 @@ static void VULKAN_INTERNAL_NewMemoryFreeRegion(
 	allocation->freeRegions[allocation->freeRegionCount - 1] = newFreeRegion;
 	newFreeRegion->allocationIndex = allocation->freeRegionCount - 1;
 
-	for (i = 0; i < allocation->allocator->sortedFreeRegionCount; i += 1)
+	if (!allocation->dedicated)
 	{
-		if (allocation->allocator->sortedFreeRegions[i]->size < size)
+		for (i = 0; i < allocation->allocator->sortedFreeRegionCount; i += 1)
 		{
-			/* this is where the new region should go */
-			break;
+			if (allocation->allocator->sortedFreeRegions[i]->size < size)
+			{
+				/* this is where the new region should go */
+				break;
+			}
+
+			insertionIndex += 1;
 		}
 
-		insertionIndex += 1;
-	}
-
-	if (allocation->allocator->sortedFreeRegionCount + 1 > allocation->allocator->sortedFreeRegionCapacity)
-	{
-		allocation->allocator->sortedFreeRegionCapacity *= 2;
-		allocation->allocator->sortedFreeRegions = SDL_realloc(
-			allocation->allocator->sortedFreeRegions,
-			sizeof(VulkanMemoryFreeRegion*) * allocation->allocator->sortedFreeRegionCapacity
-		);
-	}
-
-	/* perform insertion sort */
-	if (allocation->allocator->sortedFreeRegionCount > 0 && insertionIndex != allocation->allocator->sortedFreeRegionCount)
-	{
-		for (i = allocation->allocator->sortedFreeRegionCount; i > insertionIndex && i > 0; i -= 1)
+		if (allocation->allocator->sortedFreeRegionCount + 1 > allocation->allocator->sortedFreeRegionCapacity)
 		{
-			allocation->allocator->sortedFreeRegions[i] = allocation->allocator->sortedFreeRegions[i - 1];
-			allocation->allocator->sortedFreeRegions[i]->sortedIndex = i;
+			allocation->allocator->sortedFreeRegionCapacity *= 2;
+			allocation->allocator->sortedFreeRegions = SDL_realloc(
+				allocation->allocator->sortedFreeRegions,
+				sizeof(VulkanMemoryFreeRegion*) * allocation->allocator->sortedFreeRegionCapacity
+			);
 		}
+
+		/* perform insertion sort */
+		if (allocation->allocator->sortedFreeRegionCount > 0 && insertionIndex != allocation->allocator->sortedFreeRegionCount)
+		{
+			for (i = allocation->allocator->sortedFreeRegionCount; i > insertionIndex && i > 0; i -= 1)
+			{
+				allocation->allocator->sortedFreeRegions[i] = allocation->allocator->sortedFreeRegions[i - 1];
+				allocation->allocator->sortedFreeRegions[i]->sortedIndex = i;
+			}
+		}
+
+		allocation->allocator->sortedFreeRegionCount += 1;
+		allocation->allocator->sortedFreeRegions[insertionIndex] = newFreeRegion;
+		newFreeRegion->sortedIndex = insertionIndex;
 	}
 
-	allocation->allocator->sortedFreeRegionCount += 1;
-	allocation->allocator->sortedFreeRegions[insertionIndex] = newFreeRegion;
-	newFreeRegion->sortedIndex = insertionIndex;
+	SDL_UnlockMutex(renderer->allocatorLock);
 }
 
 static VulkanMemoryUsedRegion* VULKAN_INTERNAL_NewMemoryUsedRegion(
+	VulkanRenderer *renderer,
 	VulkanMemoryAllocation *allocation,
 	VkDeviceSize offset,
 	VkDeviceSize size,
@@ -2915,6 +2932,8 @@ static VulkanMemoryUsedRegion* VULKAN_INTERNAL_NewMemoryUsedRegion(
 	VkDeviceSize resourceSize,
 	VkDeviceSize alignment
 ) {
+	SDL_LockMutex(renderer->allocatorLock);
+
 	VulkanMemoryUsedRegion *memoryUsedRegion;
 
 	if (allocation->usedRegionCount == allocation->usedRegionCapacity)
@@ -2940,11 +2959,16 @@ static VulkanMemoryUsedRegion* VULKAN_INTERNAL_NewMemoryUsedRegion(
 	allocation->usedRegionCount += 1;
 
 	return memoryUsedRegion;
+
+	SDL_UnlockMutex(renderer->allocatorLock);
 }
 
 static void VULKAN_INTERNAL_RemoveMemoryUsedRegion(
+	VulkanRenderer *renderer,
 	VulkanMemoryUsedRegion *usedRegion
 ) {
+	SDL_LockMutex(renderer->allocatorLock);
+
 	uint32_t i;
 
 	for (i = 0; i < usedRegion->allocation->usedRegionCount; i += 1)
@@ -2966,12 +2990,15 @@ static void VULKAN_INTERNAL_RemoveMemoryUsedRegion(
 	usedRegion->allocation->usedRegionCount -= 1;
 
 	VULKAN_INTERNAL_NewMemoryFreeRegion(
+		renderer,
 		usedRegion->allocation,
 		usedRegion->offset,
 		usedRegion->size
 	);
 
 	SDL_free(usedRegion);
+
+	SDL_UnlockMutex(renderer->allocatorLock);
 }
 
 static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
@@ -3045,9 +3072,13 @@ static void VULKAN_INTERNAL_DeallocateMemory(
 		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
 
 	VulkanMemoryAllocation *allocation = allocator->allocations[allocationIndex];
+
+	SDL_LockMutex(renderer->allocatorLock);
+
 	for (i = 0; i < allocation->freeRegionCount; i += 1)
 	{
 		VULKAN_INTERNAL_RemoveMemoryFreeRegion(
+			renderer,
 			allocation->freeRegions[i]
 		);
 	}
@@ -3078,6 +3109,8 @@ static void VULKAN_INTERNAL_DeallocateMemory(
 	}
 
 	allocator->allocationCount -= 1;
+
+	SDL_UnlockMutex(renderer->allocatorLock);
 }
 
 static uint8_t VULKAN_INTERNAL_AllocateMemory(
@@ -3188,6 +3221,7 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 	}
 
 	VULKAN_INTERNAL_NewMemoryFreeRegion(
+		renderer,
 		allocation,
 		0,
 		allocation->size
@@ -3306,6 +3340,7 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 		if (alignedOffset + requiredSize <= region->offset + region->size)
 		{
 			usedRegion = VULKAN_INTERNAL_NewMemoryUsedRegion(
+				renderer,
 				allocation,
 				region->offset,
 				requiredSize + (alignedOffset - region->offset),
@@ -3320,12 +3355,13 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 			newRegionOffset = alignedOffset + requiredSize;
 
 			/* remove and add modified region to re-sort */
-			VULKAN_INTERNAL_RemoveMemoryFreeRegion(region);
+			VULKAN_INTERNAL_RemoveMemoryFreeRegion(renderer, region);
 
 			/* if size is 0, no need to re-insert */
 			if (newRegionSize != 0)
 			{
 				VULKAN_INTERNAL_NewMemoryFreeRegion(
+					renderer,
 					allocation,
 					newRegionOffset,
 					newRegionSize
@@ -3413,6 +3449,7 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 	}
 
 	usedRegion = VULKAN_INTERNAL_NewMemoryUsedRegion(
+		renderer,
 		allocation,
 		0,
 		requiredSize,
@@ -3428,11 +3465,12 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 	newRegionOffset = region->offset + requiredSize;
 	newRegionSize = region->size - requiredSize;
 
-	VULKAN_INTERNAL_RemoveMemoryFreeRegion(region);
+	VULKAN_INTERNAL_RemoveMemoryFreeRegion(renderer, region);
 
 	if (newRegionSize != 0)
 	{
 		VULKAN_INTERNAL_NewMemoryFreeRegion(
+			renderer,
 			allocation,
 			newRegionOffset,
 			newRegionSize
@@ -4043,31 +4081,10 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 			NULL
 		);
 
-		if (buffer->subBuffers[i]->usedRegion->allocation->dedicated)
-		{
-			renderer->vkFreeMemory(
-				renderer->logicalDevice,
-				buffer->subBuffers[i]->usedRegion->allocation->memory,
-				NULL
-			);
-
-			SDL_DestroyMutex(buffer->subBuffers[i]->usedRegion->allocation->mapLock);
-
-			SDL_free(buffer->subBuffers[i]->usedRegion->allocation->freeRegions);
-			SDL_free(buffer->subBuffers[i]->usedRegion->allocation->usedRegions);
-			SDL_free(buffer->subBuffers[i]->usedRegion->allocation);
-			SDL_free(buffer->subBuffers[i]->usedRegion);
-		}
-		else
-		{
-			SDL_LockMutex(renderer->allocatorLock);
-
-			VULKAN_INTERNAL_RemoveMemoryUsedRegion(
-				buffer->subBuffers[i]->usedRegion
-			);
-
-			SDL_UnlockMutex(renderer->allocatorLock);
-		}
+		VULKAN_INTERNAL_RemoveMemoryUsedRegion(
+			renderer,
+			buffer->subBuffers[i]->usedRegion
+		);
 
 		SDL_free(buffer->subBuffers[i]);
 	}
@@ -4124,31 +4141,10 @@ static void VULKAN_INTERNAL_DestroyTexture(
 		NULL
 	);
 
-	if (texture->usedRegion->allocation->dedicated)
-	{
-		renderer->vkFreeMemory(
-			renderer->logicalDevice,
-			texture->usedRegion->allocation->memory,
-			NULL
-		);
-
-		SDL_DestroyMutex(texture->usedRegion->allocation->mapLock);
-
-		SDL_free(texture->usedRegion->allocation->freeRegions);
-		SDL_free(texture->usedRegion->allocation->usedRegions);
-		SDL_free(texture->usedRegion->allocation);
-		SDL_free(texture->usedRegion);
-	}
-	else
-	{
-		SDL_LockMutex(renderer->allocatorLock);
-
-		VULKAN_INTERNAL_RemoveMemoryUsedRegion(
-			texture->usedRegion
-		);
-
-		SDL_UnlockMutex(renderer->allocatorLock);
-	}
+	VULKAN_INTERNAL_RemoveMemoryUsedRegion(
+		renderer,
+		texture->usedRegion
+	);
 
 	SDL_free(texture);
 }
@@ -4247,6 +4243,7 @@ static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer *renderer)
 	for (i = 0; i < renderer->usedRegionsToDestroyCount; i += 1)
 	{
 		VULKAN_INTERNAL_RemoveMemoryUsedRegion(
+			renderer,
 			renderer->usedRegionsToDestroy[i]
 		);
 	}
