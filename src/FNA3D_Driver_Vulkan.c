@@ -8204,6 +8204,7 @@ static void VULKAN_INTERNAL_MaybeEndRenderPass(
 		RECORD_CMD(renderer->vkCmdEndRenderPass(renderer->currentCommandBuffer));
 
 		renderer->renderPassInProgress = 0;
+		renderer->needNewRenderPass = 1;
 		renderer->drawCallMadeThisPass = 0;
 
 		/* Unlocking long-term lock */
