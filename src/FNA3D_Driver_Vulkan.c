@@ -1067,6 +1067,7 @@ struct VulkanBuffer /* cast from FNA3D_Buffer */
 	uint8_t boundSubmitted;
 	VkBufferUsageFlags usage;
 	uint8_t preferDeviceLocal;
+	uint8_t isStagingBuffer;
 };
 
 typedef struct VulkanStagingBuffer
@@ -3601,6 +3602,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 	VkBuffer buffer,
 	VkDeviceSize size,
 	uint8_t preferDeviceLocal,
+	uint8_t isStagingBuffer,
 	VulkanMemoryUsedRegion** usedRegion
 ) {
 	uint8_t bindResult = 0;
@@ -3643,7 +3645,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 			memoryTypeIndex,
 			&memoryRequirements,
 			&dedicatedRequirements,
-			0,
+			isStagingBuffer,
 			size,
 			buffer,
 			VK_NULL_HANDLE,
@@ -3671,7 +3673,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 				memoryTypeIndex,
 				&memoryRequirements,
 				&dedicatedRequirements,
-				0,
+				isStagingBuffer,
 				size,
 				buffer,
 				VK_NULL_HANDLE,
@@ -3749,6 +3751,7 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 								copyBuffer,
 								currentRegion->resourceSize,
 								currentRegion->vulkanSubBuffer->parent->preferDeviceLocal,
+								0,
 								&newRegion
 							) != 1)
 						{
@@ -3939,19 +3942,6 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 						);
 
 						SDL_stack_free(imageCopyRegions);
-
-						VULKAN_INTERNAL_ImageMemoryBarrier(
-							renderer,
-							originalSourceAccessType,
-							aspectFlags,
-							0,
-							currentRegion->vulkanTexture->layerCount,
-							0,
-							currentRegion->vulkanTexture->levelCount,
-							0,
-							currentRegion->vulkanTexture->image,
-							&currentRegion->vulkanTexture->resourceAccessType
-						);
 
 						if (renderer->defragmentedImagesToDestroyCount >= renderer->defragmentedImagesToDestroyCapacity)
 						{
@@ -4614,6 +4604,7 @@ static uint8_t VULKAN_INTERNAL_AllocateSubBuffer(
 		subBuffer->buffer,
 		vulkanBuffer->size,
 		vulkanBuffer->preferDeviceLocal,
+		vulkanBuffer->isStagingBuffer,
 		&subBuffer->usedRegion
 	);
 
@@ -4663,6 +4654,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	VulkanResourceAccessType resourceAccessType,
 	VkBufferUsageFlags usage,
 	uint8_t isDeviceLocal,
+	uint8_t isStagingBuffer,
 	uint32_t subBufferCount
 ) {
 	uint32_t i;
@@ -4678,6 +4670,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	buffer->resourceAccessType = resourceAccessType;
 	buffer->usage = usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 	buffer->preferDeviceLocal = isDeviceLocal;
+	buffer->isStagingBuffer = isStagingBuffer;
 
 	buffer->subBufferCount = 0;
 	buffer->subBufferCapacity = subBufferCount;
@@ -4731,6 +4724,7 @@ static void VULKAN_INTERNAL_CreateFastStagingBuffer(
 		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 		1,
+		1,
 		1
 	);
 }
@@ -4745,6 +4739,7 @@ static void VULKAN_INTERNAL_CreateSlowStagingBuffer(
 		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
 		0,
+		1,
 		1
 	);
 
@@ -4787,7 +4782,7 @@ static void VULKAN_INTERNAL_WaitForStagingTransfers(
 	VkResult result;
 	VkFence fences[2];
 
-	if (renderer->textureStagingBuffer->transferInProgress)
+	if (renderer->textureStagingBuffer->transferInProgress || renderer->bufferDefragInProgress)
 	{
 		fences[0] = renderer->inFlightFence;
 		fences[1] = renderer->defragFence;
@@ -8902,6 +8897,13 @@ static void VULKAN_DrawInstancedPrimitives(
 
 	/* Note that minVertexIndex/numVertices are NOT used! */
 
+	VULKAN_INTERNAL_BufferMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_INDEX_BUFFER,
+		subbuf->buffer,
+		&subbuf->resourceAccessType
+	);
+
 	VULKAN_INTERNAL_MarkAsBound(renderer, indexBuffer);
 
 	if (primitiveType != renderer->currentPrimitiveType)
@@ -9477,6 +9479,13 @@ static void VULKAN_ApplyVertexBufferBindings(
 
 		renderer->boundVertexBuffers[i] = subbuf->buffer;
 		renderer->boundVertexBufferOffsets[i] = offset;
+
+		VULKAN_INTERNAL_BufferMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_VERTEX_BUFFER,
+			subbuf->buffer,
+			&subbuf->resourceAccessType
+		);
 
 		VULKAN_INTERNAL_MarkAsBound(renderer, vertexBuffer);
 	}
@@ -10540,6 +10549,7 @@ static FNA3D_Buffer* VULKAN_GenVertexBuffer(
 		RESOURCE_ACCESS_VERTEX_BUFFER,
 		VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
 		0,
+		0,
 		1
 	);
 }
@@ -10647,6 +10657,7 @@ static FNA3D_Buffer* VULKAN_GenIndexBuffer(
 		sizeInBytes,
 		RESOURCE_ACCESS_INDEX_BUFFER,
 		VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
+		0,
 		0,
 		1
 	);
@@ -12180,6 +12191,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER,
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
 		0,
+		0,
 		1
 	);
 	VULKAN_INTERNAL_SetBufferData(
@@ -12195,6 +12207,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		1,
 		RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER,
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
+		0,
 		0,
 		1
 	);
