@@ -2851,6 +2851,8 @@ static void VULKAN_INTERNAL_NewMemoryFreeRegion(
 
 			VULKAN_INTERNAL_RemoveMemoryFreeRegion(renderer, allocation->freeRegions[i]);
 			VULKAN_INTERNAL_NewMemoryFreeRegion(renderer, allocation, newOffset, newSize);
+
+			SDL_UnlockMutex(renderer->allocatorLock);
 			return;
 		}
 
@@ -2862,6 +2864,8 @@ static void VULKAN_INTERNAL_NewMemoryFreeRegion(
 
 			VULKAN_INTERNAL_RemoveMemoryFreeRegion(renderer, allocation->freeRegions[i]);
 			VULKAN_INTERNAL_NewMemoryFreeRegion(renderer, allocation, newOffset, newSize);
+
+			SDL_UnlockMutex(renderer->allocatorLock);
 			return;
 		}
 	}
@@ -3426,6 +3430,7 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 		(renderer->deviceLocalHeapUsage + allocationSize > renderer->maxDeviceLocalHeapUsage)	)
 	{
 		/* we are oversubscribing device local memory */
+		SDL_UnlockMutex(renderer->allocatorLock);
 		return 2;
 	}
 
