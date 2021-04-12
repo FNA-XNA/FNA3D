@@ -1272,6 +1272,10 @@ typedef struct VulkanRenderer
 	VkSemaphore imageAvailableSemaphore;
 	VkSemaphore renderFinishedSemaphore;
 
+	uint8_t bufferDefragInProgress;
+	uint8_t needDefrag;
+	int32_t defragTimer;
+
 	/* MojoShader Interop */
 	MOJOSHADER_vkContext *mojoshaderContext;
 	MOJOSHADER_effect *currentEffect;
@@ -2996,6 +3000,12 @@ static void VULKAN_INTERNAL_RemoveMemoryUsedRegion(
 		usedRegion->size
 	);
 
+	if (!usedRegion->allocation->dedicated)
+	{
+		renderer->needDefrag = 1;
+		renderer->defragTimer = 0;
+	}
+
 	SDL_free(usedRegion);
 
 	SDL_UnlockMutex(renderer->allocatorLock);
@@ -3823,6 +3833,8 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 						newRegion->vulkanSubBuffer->usedRegion = newRegion; /* lol */
 						newRegion->vulkanSubBuffer->buffer = copyBuffer;
 						newRegion->vulkanSubBuffer->resourceAccessType = copyResourceAccessType;
+
+						renderer->bufferDefragInProgress = 1;
 					}
 					else
 					{
@@ -4037,6 +4049,9 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 
 	renderer->currentCommandBuffer = NULL;
 	renderer->numActiveCommands = 0;
+
+	renderer->needDefrag = 0;
+	renderer->defragTimer = 0;
 
 	return 1;
 }
@@ -4792,6 +4807,7 @@ static void VULKAN_INTERNAL_WaitForStagingTransfers(
 		}
 
 		renderer->textureStagingBuffer->transferInProgress = 0;
+		renderer->bufferDefragInProgress = 0;
 	}
 }
 
@@ -5852,6 +5868,8 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	/* Cleanup */
 	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
 
+	renderer->bufferDefragInProgress = 0;
+
 	renderer->submitCounter = (renderer->submitCounter + 1) % 2;
 
 	/* Mark sub buffers of previously submitted buffers as unbound */
@@ -6012,8 +6030,16 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		}
 	}
 
-	/* Trigger memory defragmentation */
-	VULKAN_INTERNAL_DefragmentMemory(renderer);
+	if (renderer->needDefrag)
+	{
+		renderer->defragTimer += 1;
+
+		if (renderer->defragTimer > 60)
+		{
+			/* Trigger memory defragmentation */
+			VULKAN_INTERNAL_DefragmentMemory(renderer);
+		}
+	}
 
 	/* Activate the next command buffer */
 	VULKAN_INTERNAL_BeginCommandBuffer(renderer);
@@ -6048,6 +6074,8 @@ static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync
 		{
 			FNA3D_LogWarn("vkWaitForFences: %s", VkErrorMessages(result));
 		}
+
+		renderer->bufferDefragInProgress = 0;
 	}
 
 	SDL_UnlockMutex(renderer->passLock);
@@ -6514,6 +6542,19 @@ static void VULKAN_INTERNAL_SetBufferData(
 			FNA3D_LogError("Failed to allocate VulkanSubBuffer!");
 			return;
 		}
+	}
+
+	if (renderer->bufferDefragInProgress)
+	{
+		renderer->vkWaitForFences(
+			renderer->logicalDevice,
+			1,
+			&renderer->defragFence,
+			VK_TRUE,
+			UINT64_MAX
+		);
+
+		renderer->bufferDefragInProgress = 0;
 	}
 
 	/* If options is NONE and buffer was bound, copy the previous data into the new buffer */
@@ -12318,6 +12359,10 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer->textures[MAX_TEXTURE_SAMPLERS + i] = &NullTexture;
 		renderer->samplers[MAX_TEXTURE_SAMPLERS + i] = renderer->dummyVertSamplerState;
 	}
+
+	renderer->bufferDefragInProgress = 0;
+	renderer->needDefrag = 0;
+	renderer->defragTimer = 0;
 
 	renderer->submitCounter = 0;
 
