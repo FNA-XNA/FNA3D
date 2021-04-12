@@ -1274,7 +1274,6 @@ typedef struct VulkanRenderer
 
 	uint8_t bufferDefragInProgress;
 	uint8_t needDefrag;
-	int32_t defragTimer;
 
 	/* MojoShader Interop */
 	MOJOSHADER_vkContext *mojoshaderContext;
@@ -3003,7 +3002,6 @@ static void VULKAN_INTERNAL_RemoveMemoryUsedRegion(
 	if (!usedRegion->allocation->dedicated)
 	{
 		renderer->needDefrag = 1;
-		renderer->defragTimer = 0;
 	}
 
 	SDL_free(usedRegion);
@@ -3835,6 +3833,7 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 						newRegion->vulkanSubBuffer->resourceAccessType = copyResourceAccessType;
 
 						renderer->bufferDefragInProgress = 1;
+						renderer->needDefrag = 1;
 					}
 					else
 					{
@@ -4014,6 +4013,8 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 						newRegion->vulkanTexture->usedRegion = newRegion; /* lol */
 						newRegion->vulkanTexture->image = copyImage;
 						newRegion->vulkanTexture->resourceAccessType = copyResourceAccessType;
+
+						renderer->needDefrag = 1;
 					}
 				}
 			}
@@ -4051,7 +4052,6 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 	renderer->numActiveCommands = 0;
 
 	renderer->needDefrag = 0;
-	renderer->defragTimer = 0;
 
 	return 1;
 }
@@ -6032,13 +6032,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 	if (renderer->needDefrag)
 	{
-		renderer->defragTimer += 1;
-
-		if (renderer->defragTimer > 60)
-		{
-			/* Trigger memory defragmentation */
-			VULKAN_INTERNAL_DefragmentMemory(renderer);
-		}
+		VULKAN_INTERNAL_DefragmentMemory(renderer);
 	}
 
 	/* Activate the next command buffer */
@@ -12362,7 +12356,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	renderer->bufferDefragInProgress = 0;
 	renderer->needDefrag = 0;
-	renderer->defragTimer = 0;
 
 	renderer->submitCounter = 0;
 
