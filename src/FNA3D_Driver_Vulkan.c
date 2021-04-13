@@ -1289,6 +1289,8 @@ typedef struct VulkanRenderer
 
 	uint8_t bufferDefragInProgress;
 	uint8_t needDefrag;
+	uint32_t defragTimer;
+	uint8_t resourceFreed;
 
 	/* MojoShader Interop */
 	MOJOSHADER_vkContext *mojoshaderContext;
@@ -1842,6 +1844,8 @@ static void VULKAN_INTERNAL_MaybeEndRenderPass(VulkanRenderer *renderer, uint8_t
 static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync);
 
 static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer *renderer);
+
+static void ShaderResources_InvalidateDescriptorSet(VulkanRenderer* renderer, VkImageView view);
 
 /* Vulkan: Internal Implementation */
 
@@ -3054,6 +3058,7 @@ static void VULKAN_INTERNAL_RemoveMemoryUsedRegion(
 
 	SDL_free(usedRegion);
 
+	renderer->resourceFreed = 1;
 	SDL_UnlockMutex(renderer->allocatorLock);
 }
 
@@ -3265,7 +3270,7 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 			renderer->logicalDevice,
 			allocation->memory,
 			0,
-			allocation->size,
+			VK_WHOLE_SIZE,
 			0,
 			(void**) &allocation->mapPointer
 		);
@@ -3434,6 +3439,11 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 					alignedOffset,
 					buffer
 				)) {
+					VULKAN_INTERNAL_RemoveMemoryUsedRegion(
+						renderer,
+						usedRegion
+					);
+
 					return 0;
 				}
 			}
@@ -3445,6 +3455,11 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 					alignedOffset,
 					image
 				)) {
+					VULKAN_INTERNAL_RemoveMemoryUsedRegion(
+						renderer,
+						usedRegion
+					);
+
 					return 0;
 				}
 			}
@@ -3544,6 +3559,11 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 			0,
 			buffer
 		)) {
+			VULKAN_INTERNAL_RemoveMemoryUsedRegion(
+				renderer,
+				usedRegion
+			);
+
 			return 0;
 		}
 	}
@@ -3555,6 +3575,11 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 			0,
 			image
 		)) {
+			VULKAN_INTERNAL_RemoveMemoryUsedRegion(
+				renderer,
+				usedRegion
+			);
+
 			return 0;
 		}
 	}
@@ -3773,35 +3798,38 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 	VkImageCopy *imageCopyRegions;
 	VkImageAspectFlags aspectFlags;
 	VkCommandBufferBeginInfo beginInfo;
-	VkPipelineStageFlags waitFlags = VK_PIPELINE_STAGE_TRANSFER_BIT;
+	VkPipelineStageFlags waitFlags = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
 	VkSubmitInfo submitInfo;
 	VkResult result;
 	uint32_t i, level;
 	VulkanResourceAccessType copyResourceAccessType = RESOURCE_ACCESS_NONE;
 	VulkanResourceAccessType originalSourceAccessType;
 
+	uint32_t bufferCopyCount = 0;
+	uint32_t imageCopyCount = 0;
+
 	renderer->needDefrag = 0;
+
+	renderer->vkResetCommandBuffer(
+		renderer->defragCommandBuffer,
+		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+	);
+
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.pNext = NULL;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	beginInfo.pInheritanceInfo = NULL;
+
+	renderer->vkBeginCommandBuffer(
+		renderer->defragCommandBuffer,
+		&beginInfo
+	);
 
 	if (VULKAN_INTERNAL_FindAllocationToDefragment(
 		renderer,
 		&allocator,
 		&allocationIndexToDefrag
 	)) {
-		renderer->vkResetCommandBuffer(
-			renderer->defragCommandBuffer,
-			VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
-		);
-
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.pNext = NULL;
-		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-		beginInfo.pInheritanceInfo = NULL;
-
-		renderer->vkBeginCommandBuffer(
-			renderer->defragCommandBuffer,
-			&beginInfo
-		);
-
 		renderer->currentCommandBuffer = renderer->defragCommandBuffer; /* FIXME: this is a kludge!! */
 
 		allocation = allocator.allocations[allocationIndexToDefrag];
@@ -3913,6 +3941,8 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 
 				renderer->bufferDefragInProgress = 1;
 				renderer->needDefrag = 1;
+
+				bufferCopyCount += 1;
 			}
 			else
 			{
@@ -4081,29 +4111,35 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 				newRegion->vulkanTexture->resourceAccessType = copyResourceAccessType;
 
 				renderer->needDefrag = 1;
+
+				imageCopyCount += 1;
 			}
 		}
+	}
 
-		renderer->vkEndCommandBuffer(
-			renderer->defragCommandBuffer
-		);
+	FNA3D_LogInfo("Image copy count: %u", imageCopyCount);
+	FNA3D_LogInfo("Buffer copy count: %u", bufferCopyCount);
 
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.pNext = NULL;
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &renderer->defragCommandBuffer;
-		submitInfo.waitSemaphoreCount = 1;
-		submitInfo.pWaitSemaphores = &renderer->defragSemaphore;
-		submitInfo.pWaitDstStageMask = &waitFlags;
-		submitInfo.signalSemaphoreCount = 0;
-		submitInfo.pSignalSemaphores = NULL;
+	renderer->vkEndCommandBuffer(
+		renderer->defragCommandBuffer
+	);
 
-		result = renderer->vkResetFences(
-			renderer->logicalDevice,
-			1,
-			&renderer->defragFence
-		);
-		VULKAN_ERROR_CHECK(result, vkResetFences, 0)
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.pNext = NULL;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &renderer->defragCommandBuffer;
+	submitInfo.waitSemaphoreCount = 1;
+	submitInfo.pWaitSemaphores = &renderer->defragSemaphore;
+	submitInfo.pWaitDstStageMask = &waitFlags;
+	submitInfo.signalSemaphoreCount = 0;
+	submitInfo.pSignalSemaphores = NULL;
+
+	result = renderer->vkResetFences(
+		renderer->logicalDevice,
+		1,
+		&renderer->defragFence
+	);
+	VULKAN_ERROR_CHECK(result, vkResetFences, 0)
 
 		result = renderer->vkQueueSubmit(
 			renderer->unifiedQueue,
@@ -4111,11 +4147,12 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 			&submitInfo,
 			renderer->defragFence
 		);
-		VULKAN_ERROR_CHECK(result, vkQueueSubmit, 0)
+	VULKAN_ERROR_CHECK(result, vkQueueSubmit, 0)
 
 		renderer->currentCommandBuffer = NULL;
-		renderer->numActiveCommands = 0;
-	}
+	renderer->numActiveCommands = 0;
+
+	renderer->defragTimer = 0;
 
 	return 1;
 }
@@ -4172,7 +4209,23 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 	SDL_free(buffer);
 }
 
-/* When an image view is destroyed we need to invalidate
+static void VULKAN_INTERNAL_DestroyImageView(
+	VulkanRenderer* renderer,
+	VkImageView imageView
+) {
+	ShaderResources_InvalidateDescriptorSet(
+		renderer,
+		imageView
+	);
+
+	renderer->vkDestroyImageView(
+		renderer->logicalDevice,
+		imageView,
+		NULL
+	);
+}
+
+/* When a render target image view is destroyed we need to invalidate
  * the framebuffers and descriptor sets that reference it */
 static void VULKAN_INTERNAL_RemoveViewFramebuffer(
 	VulkanRenderer *renderer,
@@ -4220,6 +4273,12 @@ static void VULKAN_INTERNAL_RemoveViewFramebuffer(
 			}
 		}
 	}
+
+	renderer->vkDestroyImageView(
+		renderer->logicalDevice,
+		imageView,
+		NULL
+	);
 }
 
 static void VULKAN_INTERNAL_DestroyTexture(
@@ -5536,12 +5595,88 @@ static VkDescriptorSet ShaderResources_FetchDescriptorSet(
 	return newDescriptorSet;
 }
 
+static void ShaderResources_DeactivateDescriptorSet(
+	ShaderResources* shaderResources,
+	uint32_t index
+) {
+	uint32_t j;
+	SamplerDescriptorSetHashArray* arr;
+
+	arr = &shaderResources->buckets[shaderResources->elements[index].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
+
+	/* remove index from bucket */
+	for (j = 0; j < arr->count; j += 1)
+	{
+		if (arr->elements[j] == index)
+		{
+			if (j < arr->count - 1)
+			{
+				arr->elements[j] = arr->elements[arr->count - 1];
+			}
+
+			arr->count -= 1;
+			break;
+		}
+	}
+
+	/* remove element from table and place in inactive sets */
+
+	shaderResources->inactiveDescriptorSets[shaderResources->inactiveDescriptorSetCount] = shaderResources->elements[index].descriptorSet;
+	shaderResources->inactiveDescriptorSetCount += 1;
+
+	/* move another descriptor set to fill the hole */
+	if (index < shaderResources->count - 1)
+	{
+		shaderResources->elements[index] = shaderResources->elements[shaderResources->count - 1];
+
+		/* update index in bucket */
+		arr = &shaderResources->buckets[shaderResources->elements[index].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
+
+		for (j = 0; j < arr->count; j += 1)
+		{
+			if (arr->elements[j] == shaderResources->count - 1)
+			{
+				arr->elements[j] = index;
+				break;
+			}
+		}
+	}
+
+	shaderResources->count -= 1;
+
+}
+
+static void ShaderResources_InvalidateDescriptorSet(
+	VulkanRenderer *renderer,
+	VkImageView view
+) {
+	int32_t i, j, m, n;
+	ShaderResources* shaderResources;
+
+	for (i = 0; i < NUM_SHADER_RESOURCES_BUCKETS; i += 1)
+	{
+		for (j = 0; j < renderer->shaderResourcesHashTable.buckets[i].count; j += 1)
+		{
+			shaderResources = renderer->shaderResourcesHashTable.buckets[i].elements[j].value;
+
+			for (m = shaderResources->count - 1; m >= 0; m -= 1)
+			{
+				for (n = 0; n < MAX_TEXTURE_SAMPLERS; n += 1)
+				{
+					if (shaderResources->elements[m].descriptorSetData.descriptorImageInfo[n].imageView == view)
+					{
+						ShaderResources_DeactivateDescriptorSet(shaderResources, m);
+					}
+				}
+			}
+		}
+	}
+}
 
 static void ShaderResources_DeactivateUnusedDescriptorSets(
 	ShaderResources *shaderResources
 ) {
-	int32_t i, j;
-	SamplerDescriptorSetHashArray *arr;
+	int32_t i;
 
 	for (i = shaderResources->count - 1; i >= 0; i -= 1)
 	{
@@ -5549,47 +5684,7 @@ static void ShaderResources_DeactivateUnusedDescriptorSets(
 
 		if (shaderResources->elements[i].inactiveFrameCount + 1 > DESCRIPTOR_SET_DEACTIVATE_FRAMES)
 		{
-			arr = &shaderResources->buckets[shaderResources->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
-
-			/* remove index from bucket */
-			for (j = 0; j < arr->count; j += 1)
-			{
-				if (arr->elements[j] == i)
-				{
-					if (j < arr->count - 1)
-					{
-						arr->elements[j] = arr->elements[arr->count - 1];
-					}
-
-					arr->count -= 1;
-					break;
-				}
-			}
-
-			/* remove element from table and place in inactive sets */
-
-			shaderResources->inactiveDescriptorSets[shaderResources->inactiveDescriptorSetCount] = shaderResources->elements[i].descriptorSet;
-			shaderResources->inactiveDescriptorSetCount += 1;
-
-			/* move another descriptor set to fill the hole */
-			if (i < shaderResources->count - 1)
-			{
-				shaderResources->elements[i] = shaderResources->elements[shaderResources->count - 1];
-
-				/* update index in bucket */
-				arr = &shaderResources->buckets[shaderResources->elements[i].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
-
-				for (j = 0; j < arr->count; j += 1)
-				{
-					if (arr->elements[j] == shaderResources->count - 1)
-					{
-						arr->elements[j] = i;
-						break;
-					}
-				}
-			}
-
-			shaderResources->count -= 1;
+			ShaderResources_DeactivateDescriptorSet(shaderResources, i);
 		}
 	}
 }
@@ -5885,6 +5980,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	uint32_t i, j;
 	VkResult result, acquireResult, presentResult = VK_SUCCESS;
 	uint8_t acquireSuccess = 0;
+	uint8_t performDefrag = 0;
 	uint32_t swapChainImageIndex;
 
 	FNA3D_Rect *sourceRectangle, *destinationRectangle;
@@ -5940,9 +6036,6 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		VULKAN_INTERNAL_EndCommandBuffer(renderer, 0, 0);
 	}
 
-	/* Reset descriptor set data */
-	VULKAN_INTERNAL_ResetDescriptorSetData(renderer);
-
 	fences[0] = renderer->inFlightFence;
 	fences[1] = renderer->defragFence;
 
@@ -5963,6 +6056,9 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		FNA3D_LogWarn("vkWaitForFences: %s", VkErrorMessages(result));
 		return;
 	}
+
+	/* Reset descriptor set data */
+	VULKAN_INTERNAL_ResetDescriptorSetData(renderer);
 
 	/* Cleanup */
 	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
@@ -6038,6 +6134,23 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 	renderer->submittedCommandBufferCount = 0;
 
+	/* Decide if we will be defragmenting */
+	if (renderer->resourceFreed)
+	{
+		renderer->defragTimer = 0;
+	}
+	renderer->resourceFreed = 0;
+
+	if (renderer->needDefrag)
+	{
+		renderer->defragTimer += 1;
+
+		if (renderer->defragTimer > 5)
+		{
+			performDefrag = 1;
+		}
+	}
+
 	/* Prepare the command buffer fence for submission */
 	renderer->vkResetFences(
 		renderer->logicalDevice,
@@ -6065,11 +6178,9 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		submitInfo.waitSemaphoreCount = 0;
 		submitInfo.pWaitSemaphores = NULL;
 		submitInfo.pWaitDstStageMask = NULL;
-		submitInfo.signalSemaphoreCount = 0;
-		submitInfo.pSignalSemaphores = NULL;
 	}
 
-	if (renderer->needDefrag)
+	if (performDefrag)
 	{
 		semaphores[submitInfo.signalSemaphoreCount] = renderer->defragSemaphore;
 		submitInfo.signalSemaphoreCount += 1;
@@ -6161,7 +6272,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		}
 	}
 
-	if (renderer->needDefrag)
+	if (performDefrag)
 	{
 		VULKAN_INTERNAL_DefragmentMemory(renderer);
 	}
@@ -10144,6 +10255,13 @@ static void VULKAN_INTERNAL_SetTextureData(
 		texture->colorFormat
 	);
 
+	VULKAN_INTERNAL_BufferMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_TRANSFER_READ,
+		stagingSubBuffer->buffer,
+		&stagingSubBuffer->resourceAccessType
+	);
+
 	VULKAN_INTERNAL_ImageMemoryBarrier(
 		renderer,
 		RESOURCE_ACCESS_TRANSFER_WRITE,
@@ -10321,6 +10439,13 @@ static void VULKAN_SetTextureDataYUV(
 		&stagingSubBuffer,
 		&offset,
 		FNA3D_SURFACEFORMAT_ALPHA8
+	);
+
+	VULKAN_INTERNAL_BufferMemoryBarrier(
+		renderer,
+		RESOURCE_ACCESS_TRANSFER_READ,
+		stagingSubBuffer->buffer,
+		&stagingSubBuffer->resourceAccessType
 	);
 
 	/* Initialize values that are the same for Y, U, and V */
@@ -12519,6 +12644,8 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	renderer->bufferDefragInProgress = 0;
 	renderer->needDefrag = 0;
+	renderer->defragTimer = 0;
+	renderer->resourceFreed = 0;
 
 	renderer->submitCounter = 0;
 
