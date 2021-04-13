@@ -735,6 +735,18 @@ static inline void FramebufferHashArray_Insert(
 	arr->count += 1;
 }
 
+static inline void FramebufferHashArray_Remove(
+	FramebufferHashArray *arr,
+	uint32_t index
+) {
+	if (index != arr->count - 1)
+	{
+		arr->elements[index] = arr->elements[arr->count - 1];
+	}
+
+	arr->count -= 1;
+}
+
 typedef struct SamplerStateHashMap
 {
 	PackedState key;
@@ -993,6 +1005,7 @@ struct VulkanMemoryAllocation
 	uint32_t freeRegionCount;
 	uint32_t freeRegionCapacity;
 	uint8_t dedicated;
+	uint8_t availableForAllocation;
 	VkDeviceSize freeSpace;
 	VkDeviceSize usedSpace;
 	uint8_t *mapPointer;
@@ -1272,6 +1285,7 @@ typedef struct VulkanRenderer
 	VkFence defragFence;
 	VkSemaphore imageAvailableSemaphore;
 	VkSemaphore renderFinishedSemaphore;
+	VkSemaphore defragSemaphore;
 
 	uint8_t bufferDefragInProgress;
 	uint8_t needDefrag;
@@ -2783,6 +2797,35 @@ static inline VkDeviceSize VULKAN_INTERNAL_NextHighestAlignment(
 	return align * ((n + align - 1) / align);
 }
 
+static void VULKAN_INTERNAL_MakeMemoryUnavailable(
+	VulkanRenderer* renderer,
+	VulkanMemoryAllocation *allocation
+) {
+	uint32_t i, j;
+	VulkanMemoryFreeRegion *freeRegion;
+
+	allocation->availableForAllocation = 0;
+
+	for (i = 0; i < allocation->freeRegionCount; i += 1)
+	{
+		freeRegion = allocation->freeRegions[i];
+
+		/* close the gap in the sorted list */
+		if (allocation->allocator->sortedFreeRegionCount > 1)
+		{
+			for (j = freeRegion->sortedIndex; j < allocation->allocator->sortedFreeRegionCount - 1; j += 1)
+			{
+				allocation->allocator->sortedFreeRegions[j] =
+					allocation->allocator->sortedFreeRegions[j + 1];
+
+				allocation->allocator->sortedFreeRegions[j]->sortedIndex = j;
+			}
+		}
+
+		allocation->allocator->sortedFreeRegionCount -= 1;
+	}
+}
+
 static void VULKAN_INTERNAL_RemoveMemoryFreeRegion(
 	VulkanRenderer *renderer,
 	VulkanMemoryFreeRegion *freeRegion
@@ -2791,7 +2834,7 @@ static void VULKAN_INTERNAL_RemoveMemoryFreeRegion(
 
 	SDL_LockMutex(renderer->allocatorLock);
 
-	if (!freeRegion->allocation->dedicated)
+	if (freeRegion->allocation->availableForAllocation)
 	{
 		/* close the gap in the sorted list */
 		if (freeRegion->allocation->allocator->sortedFreeRegionCount > 1)
@@ -2891,7 +2934,7 @@ static void VULKAN_INTERNAL_NewMemoryFreeRegion(
 	allocation->freeRegions[allocation->freeRegionCount - 1] = newFreeRegion;
 	newFreeRegion->allocationIndex = allocation->freeRegionCount - 1;
 
-	if (!allocation->dedicated)
+	if (allocation->availableForAllocation)
 	{
 		for (i = 0; i < allocation->allocator->sortedFreeRegionCount; i += 1)
 		{
@@ -3172,11 +3215,13 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 
 		allocInfo.pNext = &dedicatedInfo;
 		allocation->dedicated = 1;
+		allocation->availableForAllocation = 0;
 	}
 	else
 	{
 		allocInfo.pNext = NULL;
 		allocation->dedicated = 0;
+		allocation->availableForAllocation = 1;
 	}
 
 	allocation->usedRegions = SDL_malloc(sizeof(VulkanMemoryUsedRegion*));
@@ -3690,10 +3735,36 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 	return bindResult;
 }
 
+static uint8_t VULKAN_INTERNAL_FindAllocationToDefragment(
+	VulkanRenderer *renderer,
+	VulkanMemorySubAllocator *allocator,
+	uint32_t *allocationIndexToDefrag
+) {
+	uint32_t i, j;
+
+	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
+	{
+		*allocator = renderer->memoryAllocator->subAllocators[i];
+
+		for (j = 0; j < allocator->allocationCount; j += 1)
+		{
+			if (allocator->allocations[j]->freeRegionCount > 1)
+			{
+				*allocationIndexToDefrag = j;
+				return 1;
+			}
+		}
+	}
+
+	return 0;
+}
+
 static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 	VulkanRenderer *renderer
 ) {
-	VulkanMemorySubAllocator *allocator;
+	VulkanMemorySubAllocator allocator;
+	VulkanMemoryAllocation *allocation;
+	uint32_t allocationIndexToDefrag;
 	VulkanMemoryUsedRegion *currentRegion;
 	VulkanMemoryUsedRegion *newRegion;
 	VkBuffer copyBuffer;
@@ -3702,351 +3773,349 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 	VkImageCopy *imageCopyRegions;
 	VkImageAspectFlags aspectFlags;
 	VkCommandBufferBeginInfo beginInfo;
+	VkPipelineStageFlags waitFlags = VK_PIPELINE_STAGE_TRANSFER_BIT;
 	VkSubmitInfo submitInfo;
 	VkResult result;
-	uint32_t i, j, k, level;
+	uint32_t i, level;
 	VulkanResourceAccessType copyResourceAccessType = RESOURCE_ACCESS_NONE;
 	VulkanResourceAccessType originalSourceAccessType;
 
-	renderer->vkResetCommandBuffer(
-		renderer->defragCommandBuffer,
-		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
-	);
+	renderer->needDefrag = 0;
 
-	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-	beginInfo.pNext = NULL;
-	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-	beginInfo.pInheritanceInfo = NULL;
+	if (VULKAN_INTERNAL_FindAllocationToDefragment(
+		renderer,
+		&allocator,
+		&allocationIndexToDefrag
+	)) {
+		renderer->vkResetCommandBuffer(
+			renderer->defragCommandBuffer,
+			VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
+		);
 
-	renderer->vkBeginCommandBuffer(
-		renderer->defragCommandBuffer,
-		&beginInfo
-	);
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.pNext = NULL;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		beginInfo.pInheritanceInfo = NULL;
 
-	renderer->currentCommandBuffer = renderer->defragCommandBuffer; /* FIXME: this is a kludge!! */
+		renderer->vkBeginCommandBuffer(
+			renderer->defragCommandBuffer,
+			&beginInfo
+		);
 
-	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
-	{
-		allocator = &renderer->memoryAllocator->subAllocators[i];
+		renderer->currentCommandBuffer = renderer->defragCommandBuffer; /* FIXME: this is a kludge!! */
 
-		for (j = 0; j < allocator->allocationCount; j += 1)
+		allocation = allocator.allocations[allocationIndexToDefrag];
+
+		VULKAN_INTERNAL_MakeMemoryUnavailable(
+			renderer,
+			allocation
+		);
+
+		for (i = 0; i < allocation->usedRegionCount; i += 1)
 		{
-			if (allocator->allocations[j]->freeRegionCount > 1)
+			currentRegion = allocation->usedRegions[i];
+			copyResourceAccessType = RESOURCE_ACCESS_NONE;
+
+			if (currentRegion->isBuffer)
 			{
-				for (k = 0; k < allocator->allocations[j]->usedRegionCount; k += 1)
+				currentRegion->vulkanSubBuffer->bufferCreateInfo.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+				result = renderer->vkCreateBuffer(
+					renderer->logicalDevice,
+					&currentRegion->vulkanSubBuffer->bufferCreateInfo,
+					NULL,
+					&copyBuffer
+				);
+				VULKAN_ERROR_CHECK(result, vkCreateBuffer, 0)
+
+				if (
+					VULKAN_INTERNAL_BindMemoryForBuffer(
+						renderer,
+						copyBuffer,
+						currentRegion->resourceSize,
+						currentRegion->vulkanSubBuffer->parent->preferDeviceLocal,
+						0,
+						&newRegion
+					) != 1)
 				{
-					currentRegion = allocator->allocations[j]->usedRegions[k];
-					copyResourceAccessType = RESOURCE_ACCESS_NONE;
+					/* Out of memory, abort */
+					renderer->vkDestroyBuffer(
+						renderer->logicalDevice,
+						copyBuffer,
+						NULL
+					);
+					break;
+				}
 
-					if (currentRegion->isBuffer)
+				originalSourceAccessType = currentRegion->vulkanSubBuffer->resourceAccessType;
+
+				VULKAN_INTERNAL_BufferMemoryBarrier(
+					renderer,
+					RESOURCE_ACCESS_TRANSFER_READ,
+					currentRegion->vulkanSubBuffer->buffer,
+					&currentRegion->vulkanSubBuffer->resourceAccessType
+				);
+
+				VULKAN_INTERNAL_BufferMemoryBarrier(
+					renderer,
+					RESOURCE_ACCESS_TRANSFER_WRITE,
+					copyBuffer,
+					&copyResourceAccessType
+				);
+
+				bufferCopy.srcOffset = 0;
+				bufferCopy.dstOffset = 0;
+				bufferCopy.size = currentRegion->resourceSize;
+
+				renderer->vkCmdCopyBuffer(
+					renderer->defragCommandBuffer,
+					currentRegion->vulkanSubBuffer->buffer,
+					copyBuffer,
+					1,
+					&bufferCopy
+				);
+
+				if (renderer->defragmentedBuffersToDestroyCount >= renderer->defragmentedBuffersToDestroyCapacity)
+				{
+					renderer->defragmentedBuffersToDestroyCapacity *= 2;
+					renderer->defragmentedBuffersToDestroy = SDL_realloc(
+						renderer->defragmentedBuffersToDestroy,
+						sizeof(VkBuffer) * renderer->defragmentedBuffersToDestroyCapacity
+					);
+				}
+
+				if (renderer->usedRegionsToDestroyCount >= renderer->usedRegionsToDestroyCapacity)
+				{
+					renderer->usedRegionsToDestroyCapacity *= 2;
+					renderer->usedRegionsToDestroy = SDL_realloc(
+						renderer->usedRegionsToDestroy,
+						sizeof(VulkanMemoryUsedRegion*) * renderer->usedRegionsToDestroyCapacity
+					);
+				}
+
+				renderer->defragmentedBuffersToDestroy[
+					renderer->defragmentedBuffersToDestroyCount
+				] = currentRegion->vulkanSubBuffer->buffer;
+
+				renderer->defragmentedBuffersToDestroyCount += 1;
+
+				renderer->usedRegionsToDestroy[
+					renderer->usedRegionsToDestroyCount
+				] = currentRegion;
+
+				renderer->usedRegionsToDestroyCount += 1;
+
+				newRegion->isBuffer = 1;
+				newRegion->vulkanSubBuffer = currentRegion->vulkanSubBuffer;
+				newRegion->vulkanSubBuffer->usedRegion = newRegion; /* lol */
+				newRegion->vulkanSubBuffer->buffer = copyBuffer;
+				newRegion->vulkanSubBuffer->resourceAccessType = copyResourceAccessType;
+
+				renderer->bufferDefragInProgress = 1;
+				renderer->needDefrag = 1;
+			}
+			else
+			{
+				result = renderer->vkCreateImage(
+					renderer->logicalDevice,
+					&currentRegion->vulkanTexture->imageCreateInfo,
+					NULL,
+					&copyImage
+				);
+
+				VULKAN_ERROR_CHECK(result, vkCreateImage, 0)
+
+				if (VULKAN_INTERNAL_BindMemoryForImage(
+					renderer,
+					copyImage,
+					0,
+					&newRegion
+				) != 1)
+				{
+					/* Out of memory, abort */
+					renderer->vkDestroyImage(
+						renderer->logicalDevice,
+						copyImage,
+						NULL
+					);
+
+					break;
+				}
+
+				if (IsDepthFormat(currentRegion->vulkanTexture->surfaceFormat))
+				{
+					aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
+
+					if (DepthFormatContainsStencil(currentRegion->vulkanTexture->surfaceFormat))
 					{
-						currentRegion->vulkanSubBuffer->bufferCreateInfo.usage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-
-						result = renderer->vkCreateBuffer(
-							renderer->logicalDevice,
-							&currentRegion->vulkanSubBuffer->bufferCreateInfo,
-							NULL,
-							&copyBuffer
-						);
-						VULKAN_ERROR_CHECK(result, vkCreateBuffer, 0)
-
-						if (
-							VULKAN_INTERNAL_BindMemoryForBuffer(
-								renderer,
-								copyBuffer,
-								currentRegion->resourceSize,
-								currentRegion->vulkanSubBuffer->parent->preferDeviceLocal,
-								0,
-								&newRegion
-							) != 1)
-						{
-							/* Out of memory, abort */
-							renderer->vkDestroyBuffer(
-								renderer->logicalDevice,
-								copyBuffer,
-								NULL
-							);
-							break;
-						}
-
-						originalSourceAccessType = currentRegion->vulkanSubBuffer->resourceAccessType;
-
-						VULKAN_INTERNAL_BufferMemoryBarrier(
-							renderer,
-							RESOURCE_ACCESS_TRANSFER_READ,
-							currentRegion->vulkanSubBuffer->buffer,
-							&currentRegion->vulkanSubBuffer->resourceAccessType
-						);
-
-						VULKAN_INTERNAL_BufferMemoryBarrier(
-							renderer,
-							RESOURCE_ACCESS_TRANSFER_WRITE,
-							copyBuffer,
-							&copyResourceAccessType
-						);
-
-						bufferCopy.srcOffset = 0;
-						bufferCopy.dstOffset = 0;
-						bufferCopy.size = currentRegion->resourceSize;
-
-						renderer->vkCmdCopyBuffer(
-							renderer->defragCommandBuffer,
-							currentRegion->vulkanSubBuffer->buffer,
-							copyBuffer,
-							1,
-							&bufferCopy
-						);
-
-						VULKAN_INTERNAL_BufferMemoryBarrier(
-							renderer,
-							originalSourceAccessType,
-							currentRegion->vulkanSubBuffer->buffer,
-							&currentRegion->vulkanSubBuffer->resourceAccessType
-						);
-
-						if (renderer->defragmentedBuffersToDestroyCount >= renderer->defragmentedBuffersToDestroyCapacity)
-						{
-							renderer->defragmentedBuffersToDestroyCapacity *= 2;
-							renderer->defragmentedBuffersToDestroy = SDL_realloc(
-								renderer->defragmentedBuffersToDestroy,
-								sizeof(VkBuffer) * renderer->defragmentedBuffersToDestroyCapacity
-							);
-						}
-
-						if (renderer->usedRegionsToDestroyCount >= renderer->usedRegionsToDestroyCapacity)
-						{
-							renderer->usedRegionsToDestroyCapacity *= 2;
-							renderer->usedRegionsToDestroy = SDL_realloc(
-								renderer->usedRegionsToDestroy,
-								sizeof(VulkanMemoryUsedRegion*) * renderer->usedRegionsToDestroyCapacity
-							);
-						}
-
-						renderer->defragmentedBuffersToDestroy[
-							renderer->defragmentedBuffersToDestroyCount
-						] = currentRegion->vulkanSubBuffer->buffer;
-
-						renderer->defragmentedBuffersToDestroyCount += 1;
-
-						renderer->usedRegionsToDestroy[
-							renderer->usedRegionsToDestroyCount
-						] = currentRegion;
-
-						renderer->usedRegionsToDestroyCount += 1;
-
-						newRegion->isBuffer = 1;
-						newRegion->vulkanSubBuffer = currentRegion->vulkanSubBuffer;
-						newRegion->vulkanSubBuffer->usedRegion = newRegion; /* lol */
-						newRegion->vulkanSubBuffer->buffer = copyBuffer;
-						newRegion->vulkanSubBuffer->resourceAccessType = copyResourceAccessType;
-
-						renderer->bufferDefragInProgress = 1;
-						renderer->needDefrag = 1;
-					}
-					else
-					{
-						result = renderer->vkCreateImage(
-							renderer->logicalDevice,
-							&currentRegion->vulkanTexture->imageCreateInfo,
-							NULL,
-							&copyImage
-						);
-
-						VULKAN_ERROR_CHECK(result, vkCreateImage, 0)
-
-						if (VULKAN_INTERNAL_BindMemoryForImage(
-							renderer,
-							copyImage,
-							0,
-							&newRegion
-						) != 1)
-						{
-							/* Out of memory, abort */
-							renderer->vkDestroyImage(
-								renderer->logicalDevice,
-								copyImage,
-								NULL
-							);
-
-							break;
-						}
-
-						if (IsDepthFormat(currentRegion->vulkanTexture->surfaceFormat))
-						{
-							aspectFlags = VK_IMAGE_ASPECT_DEPTH_BIT;
-
-							if (DepthFormatContainsStencil(currentRegion->vulkanTexture->surfaceFormat))
-							{
-								aspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
-							}
-						}
-						else
-						{
-							aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
-						}
-
-						originalSourceAccessType = currentRegion->vulkanTexture->resourceAccessType;
-
-						VULKAN_INTERNAL_ImageMemoryBarrier(
-							renderer,
-							RESOURCE_ACCESS_TRANSFER_READ,
-							aspectFlags,
-							0,
-							currentRegion->vulkanTexture->layerCount,
-							0,
-							currentRegion->vulkanTexture->levelCount,
-							0,
-							currentRegion->vulkanTexture->image,
-							&currentRegion->vulkanTexture->resourceAccessType
-						);
-
-						VULKAN_INTERNAL_ImageMemoryBarrier(
-							renderer,
-							RESOURCE_ACCESS_TRANSFER_WRITE,
-							aspectFlags,
-							0,
-							currentRegion->vulkanTexture->layerCount,
-							0,
-							currentRegion->vulkanTexture->levelCount,
-							0,
-							copyImage,
-							&copyResourceAccessType
-						);
-
-						imageCopyRegions = SDL_stack_alloc(VkImageCopy, currentRegion->vulkanTexture->levelCount);
-
-						for (level = 0; level < currentRegion->vulkanTexture->levelCount; level += 1)
-						{
-							imageCopyRegions[level].srcOffset.x = 0;
-							imageCopyRegions[level].srcOffset.y = 0;
-							imageCopyRegions[level].srcOffset.z = 0;
-							imageCopyRegions[level].srcSubresource.aspectMask = aspectFlags;
-							imageCopyRegions[level].srcSubresource.baseArrayLayer = 0;
-							imageCopyRegions[level].srcSubresource.layerCount = currentRegion->vulkanTexture->layerCount;
-							imageCopyRegions[level].srcSubresource.mipLevel = level;
-							imageCopyRegions[level].extent.width = currentRegion->vulkanTexture->dimensions.width >> level;
-							imageCopyRegions[level].extent.height = currentRegion->vulkanTexture->dimensions.height >> level;
-							imageCopyRegions[level].extent.depth = currentRegion->vulkanTexture->depth;
-							imageCopyRegions[level].dstOffset.x = 0;
-							imageCopyRegions[level].dstOffset.y = 0;
-							imageCopyRegions[level].dstOffset.z = 0;
-							imageCopyRegions[level].dstSubresource.aspectMask = aspectFlags;
-							imageCopyRegions[level].dstSubresource.baseArrayLayer = 0;
-							imageCopyRegions[level].dstSubresource.layerCount = currentRegion->vulkanTexture->layerCount;
-							imageCopyRegions[level].dstSubresource.mipLevel = level;
-						}
-
-						renderer->vkCmdCopyImage(
-							renderer->defragCommandBuffer,
-							currentRegion->vulkanTexture->image,
-							AccessMap[currentRegion->vulkanTexture->resourceAccessType].imageLayout,
-							copyImage,
-							AccessMap[copyResourceAccessType].imageLayout,
-							currentRegion->vulkanTexture->levelCount,
-							imageCopyRegions
-						);
-
-						SDL_stack_free(imageCopyRegions);
-
-						if (renderer->defragmentedImagesToDestroyCount >= renderer->defragmentedImagesToDestroyCapacity)
-						{
-							renderer->defragmentedImagesToDestroyCapacity *= 2;
-							renderer->defragmentedImagesToDestroy = SDL_realloc(
-								renderer->defragmentedImagesToDestroy,
-								sizeof(VkImage) * renderer->defragmentedImagesToDestroyCapacity
-							);
-						}
-
-						if (renderer->defragmentedImageViewsToDestroyCount >= renderer->defragmentedImageViewsToDestroyCapacity)
-						{
-							renderer->defragmentedImageViewsToDestroyCapacity *= 2;
-							renderer->defragmentedImageViewsToDestroy = SDL_realloc(
-								renderer->defragmentedImageViewsToDestroy,
-								sizeof(VkImageView) * renderer->defragmentedImageViewsToDestroyCapacity
-							);
-						}
-
-						if (renderer->usedRegionsToDestroyCount >= renderer->usedRegionsToDestroyCapacity)
-						{
-							renderer->usedRegionsToDestroyCapacity *= 2;
-							renderer->usedRegionsToDestroy = SDL_realloc(
-								renderer->usedRegionsToDestroy,
-								sizeof(VulkanMemoryUsedRegion*) * renderer->usedRegionsToDestroyCapacity
-							);
-						}
-
-						renderer->defragmentedImagesToDestroy[
-							renderer->defragmentedImagesToDestroyCount
-						] = currentRegion->vulkanTexture->image;
-
-						renderer->defragmentedImagesToDestroyCount += 1;
-
-						renderer->defragmentedImageViewsToDestroy[
-							renderer->defragmentedImageViewsToDestroyCount
-						] = currentRegion->vulkanTexture->view;
-
-						renderer->defragmentedImageViewsToDestroyCount += 1;
-
-						renderer->usedRegionsToDestroy[
-							renderer->usedRegionsToDestroyCount
-						] = currentRegion;
-
-						renderer->usedRegionsToDestroyCount += 1;
-
-						currentRegion->vulkanTexture->viewCreateInfo.image = copyImage;
-
-						renderer->vkCreateImageView(
-							renderer->logicalDevice,
-							&currentRegion->vulkanTexture->viewCreateInfo,
-							NULL,
-							&currentRegion->vulkanTexture->view
-						);
-
-						newRegion->isBuffer = 0;
-
-						newRegion->vulkanTexture = currentRegion->vulkanTexture;
-						newRegion->vulkanTexture->usedRegion = newRegion; /* lol */
-						newRegion->vulkanTexture->image = copyImage;
-						newRegion->vulkanTexture->resourceAccessType = copyResourceAccessType;
-
-						renderer->needDefrag = 1;
+						aspectFlags |= VK_IMAGE_ASPECT_STENCIL_BIT;
 					}
 				}
+				else
+				{
+					aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
+				}
+
+				originalSourceAccessType = currentRegion->vulkanTexture->resourceAccessType;
+
+				VULKAN_INTERNAL_ImageMemoryBarrier(
+					renderer,
+					RESOURCE_ACCESS_TRANSFER_READ,
+					aspectFlags,
+					0,
+					currentRegion->vulkanTexture->layerCount,
+					0,
+					currentRegion->vulkanTexture->levelCount,
+					0,
+					currentRegion->vulkanTexture->image,
+					&currentRegion->vulkanTexture->resourceAccessType
+				);
+
+				VULKAN_INTERNAL_ImageMemoryBarrier(
+					renderer,
+					RESOURCE_ACCESS_TRANSFER_WRITE,
+					aspectFlags,
+					0,
+					currentRegion->vulkanTexture->layerCount,
+					0,
+					currentRegion->vulkanTexture->levelCount,
+					0,
+					copyImage,
+					&copyResourceAccessType
+				);
+
+				imageCopyRegions = SDL_stack_alloc(VkImageCopy, currentRegion->vulkanTexture->levelCount);
+
+				for (level = 0; level < currentRegion->vulkanTexture->levelCount; level += 1)
+				{
+					imageCopyRegions[level].srcOffset.x = 0;
+					imageCopyRegions[level].srcOffset.y = 0;
+					imageCopyRegions[level].srcOffset.z = 0;
+					imageCopyRegions[level].srcSubresource.aspectMask = aspectFlags;
+					imageCopyRegions[level].srcSubresource.baseArrayLayer = 0;
+					imageCopyRegions[level].srcSubresource.layerCount = currentRegion->vulkanTexture->layerCount;
+					imageCopyRegions[level].srcSubresource.mipLevel = level;
+					imageCopyRegions[level].extent.width = currentRegion->vulkanTexture->dimensions.width >> level;
+					imageCopyRegions[level].extent.height = currentRegion->vulkanTexture->dimensions.height >> level;
+					imageCopyRegions[level].extent.depth = currentRegion->vulkanTexture->depth;
+					imageCopyRegions[level].dstOffset.x = 0;
+					imageCopyRegions[level].dstOffset.y = 0;
+					imageCopyRegions[level].dstOffset.z = 0;
+					imageCopyRegions[level].dstSubresource.aspectMask = aspectFlags;
+					imageCopyRegions[level].dstSubresource.baseArrayLayer = 0;
+					imageCopyRegions[level].dstSubresource.layerCount = currentRegion->vulkanTexture->layerCount;
+					imageCopyRegions[level].dstSubresource.mipLevel = level;
+				}
+
+				renderer->vkCmdCopyImage(
+					renderer->defragCommandBuffer,
+					currentRegion->vulkanTexture->image,
+					AccessMap[currentRegion->vulkanTexture->resourceAccessType].imageLayout,
+					copyImage,
+					AccessMap[copyResourceAccessType].imageLayout,
+					currentRegion->vulkanTexture->levelCount,
+					imageCopyRegions
+				);
+
+				SDL_stack_free(imageCopyRegions);
+
+				if (renderer->defragmentedImagesToDestroyCount >= renderer->defragmentedImagesToDestroyCapacity)
+				{
+					renderer->defragmentedImagesToDestroyCapacity *= 2;
+					renderer->defragmentedImagesToDestroy = SDL_realloc(
+						renderer->defragmentedImagesToDestroy,
+						sizeof(VkImage) * renderer->defragmentedImagesToDestroyCapacity
+					);
+				}
+
+				if (renderer->defragmentedImageViewsToDestroyCount >= renderer->defragmentedImageViewsToDestroyCapacity)
+				{
+					renderer->defragmentedImageViewsToDestroyCapacity *= 2;
+					renderer->defragmentedImageViewsToDestroy = SDL_realloc(
+						renderer->defragmentedImageViewsToDestroy,
+						sizeof(VkImageView) * renderer->defragmentedImageViewsToDestroyCapacity
+					);
+				}
+
+				if (renderer->usedRegionsToDestroyCount >= renderer->usedRegionsToDestroyCapacity)
+				{
+					renderer->usedRegionsToDestroyCapacity *= 2;
+					renderer->usedRegionsToDestroy = SDL_realloc(
+						renderer->usedRegionsToDestroy,
+						sizeof(VulkanMemoryUsedRegion*) * renderer->usedRegionsToDestroyCapacity
+					);
+				}
+
+				renderer->defragmentedImagesToDestroy[
+					renderer->defragmentedImagesToDestroyCount
+				] = currentRegion->vulkanTexture->image;
+
+				renderer->defragmentedImagesToDestroyCount += 1;
+
+				renderer->defragmentedImageViewsToDestroy[
+					renderer->defragmentedImageViewsToDestroyCount
+				] = currentRegion->vulkanTexture->view;
+
+				renderer->defragmentedImageViewsToDestroyCount += 1;
+
+				renderer->usedRegionsToDestroy[
+					renderer->usedRegionsToDestroyCount
+				] = currentRegion;
+
+				renderer->usedRegionsToDestroyCount += 1;
+
+				currentRegion->vulkanTexture->viewCreateInfo.image = copyImage;
+
+				renderer->vkCreateImageView(
+					renderer->logicalDevice,
+					&currentRegion->vulkanTexture->viewCreateInfo,
+					NULL,
+					&currentRegion->vulkanTexture->view
+				);
+
+				newRegion->isBuffer = 0;
+
+				newRegion->vulkanTexture = currentRegion->vulkanTexture;
+				newRegion->vulkanTexture->usedRegion = newRegion; /* lol */
+				newRegion->vulkanTexture->image = copyImage;
+				newRegion->vulkanTexture->resourceAccessType = copyResourceAccessType;
+
+				renderer->needDefrag = 1;
 			}
 		}
+
+		renderer->vkEndCommandBuffer(
+			renderer->defragCommandBuffer
+		);
+
+		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+		submitInfo.pNext = NULL;
+		submitInfo.commandBufferCount = 1;
+		submitInfo.pCommandBuffers = &renderer->defragCommandBuffer;
+		submitInfo.waitSemaphoreCount = 1;
+		submitInfo.pWaitSemaphores = &renderer->defragSemaphore;
+		submitInfo.pWaitDstStageMask = &waitFlags;
+		submitInfo.signalSemaphoreCount = 0;
+		submitInfo.pSignalSemaphores = NULL;
+
+		result = renderer->vkResetFences(
+			renderer->logicalDevice,
+			1,
+			&renderer->defragFence
+		);
+		VULKAN_ERROR_CHECK(result, vkResetFences, 0)
+
+		result = renderer->vkQueueSubmit(
+			renderer->unifiedQueue,
+			1,
+			&submitInfo,
+			renderer->defragFence
+		);
+		VULKAN_ERROR_CHECK(result, vkQueueSubmit, 0)
+
+		renderer->currentCommandBuffer = NULL;
+		renderer->numActiveCommands = 0;
 	}
-
-	renderer->vkEndCommandBuffer(
-		renderer->defragCommandBuffer
-	);
-
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.pNext = NULL;
-	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &renderer->defragCommandBuffer;
-	submitInfo.waitSemaphoreCount = 0;
-	submitInfo.pWaitSemaphores = NULL;
-	submitInfo.pWaitDstStageMask = NULL;
-	submitInfo.signalSemaphoreCount = 0;
-	submitInfo.pSignalSemaphores = NULL;
-
-	renderer->vkResetFences(
-		renderer->logicalDevice,
-		1,
-		&renderer->defragFence
-	);
-
-	renderer->vkQueueSubmit(
-		renderer->unifiedQueue,
-		1,
-		&submitInfo,
-		renderer->defragFence
-	);
-
-	renderer->currentCommandBuffer = NULL;
-	renderer->numActiveCommands = 0;
-
-	renderer->needDefrag = 0;
 
 	return 1;
 }
@@ -4103,6 +4172,56 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 	SDL_free(buffer);
 }
 
+/* When an image view is destroyed we need to invalidate
+ * the framebuffers and descriptor sets that reference it */
+static void VULKAN_INTERNAL_RemoveViewFramebuffer(
+	VulkanRenderer *renderer,
+	VkImageView imageView
+) {
+	int32_t i, j;
+
+	for (i = renderer->framebufferArray.count - 1; i >= 0; i -= 1)
+	{
+		if (renderer->framebufferArray.elements[i].key.depthStencilAttachmentView == imageView)
+		{
+			renderer->vkDestroyFramebuffer(
+				renderer->logicalDevice,
+				renderer->framebufferArray.elements[i].value,
+				NULL
+			);
+
+			FramebufferHashArray_Remove(
+				&renderer->framebufferArray,
+				i
+			);
+		}
+		else
+		{
+			for (j = 0; j < MAX_RENDERTARGET_BINDINGS; j += 1)
+			{
+				if (
+					renderer->framebufferArray.elements[i].key.colorAttachmentViews[j] == imageView ||
+					renderer->framebufferArray.elements[i].key.colorMultiSampleAttachmentViews[j] == imageView
+				)
+				{
+					renderer->vkDestroyFramebuffer(
+						renderer->logicalDevice,
+						renderer->framebufferArray.elements[i].value,
+						NULL
+					);
+
+					FramebufferHashArray_Remove(
+						&renderer->framebufferArray,
+						i
+					);
+
+					break;
+				}
+			}
+		}
+	}
+}
+
 static void VULKAN_INTERNAL_DestroyTexture(
 	VulkanRenderer *renderer,
 	VulkanTexture *texture
@@ -4121,25 +4240,26 @@ static void VULKAN_INTERNAL_DestroyTexture(
 		NULL
 	);
 
-	if (texture->rtViews[0] != texture->view)
+	if (texture->isRenderTarget)
 	{
-		renderer->vkDestroyImageView(
-			renderer->logicalDevice,
-			texture->rtViews[0],
-			NULL
-		);
-	}
-
-	if (texture->rtViews[1] != VK_NULL_HANDLE)
-	{
-		/* Free all the other cube RT views */
-		for (i = 1; i < 6; i += 1)
+		if (texture->rtViews[0] != texture->view)
 		{
-			renderer->vkDestroyImageView(
-				renderer->logicalDevice,
-				texture->rtViews[i],
-				NULL
+			VULKAN_INTERNAL_RemoveViewFramebuffer(
+				renderer,
+				texture->rtViews[0]
 			);
+		}
+
+		if (texture->rtViews[1] != VK_NULL_HANDLE)
+		{
+			/* Free all the other cube RT views */
+			for (i = 1; i < 6; i += 1)
+			{
+				VULKAN_INTERNAL_RemoveViewFramebuffer(
+					renderer,
+					texture->rtViews[i]
+				);
+			}
 		}
 	}
 
@@ -5760,6 +5880,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	uint8_t present
 ) {
 	VkFence fences[2];
+	VkSemaphore semaphores[2];
 	VkSubmitInfo submitInfo;
 	uint32_t i, j;
 	VkResult result, acquireResult, presentResult = VK_SUCCESS;
@@ -5821,28 +5942,6 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 	/* Reset descriptor set data */
 	VULKAN_INTERNAL_ResetDescriptorSetData(renderer);
-
-	/* Prepare the command buffer for submission */
-	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-	submitInfo.pNext = NULL;
-	submitInfo.commandBufferCount = renderer->activeCommandBufferCount;
-	submitInfo.pCommandBuffers = renderer->activeCommandBuffers;
-	if (present && acquireSuccess)
-	{
-		submitInfo.waitSemaphoreCount = 1;
-		submitInfo.pWaitSemaphores = &renderer->imageAvailableSemaphore;
-		submitInfo.pWaitDstStageMask = &waitStages;
-		submitInfo.signalSemaphoreCount = 1;
-		submitInfo.pSignalSemaphores = &renderer->renderFinishedSemaphore;
-	}
-	else
-	{
-		submitInfo.waitSemaphoreCount = 0;
-		submitInfo.pWaitSemaphores = NULL;
-		submitInfo.pWaitDstStageMask = NULL;
-		submitInfo.signalSemaphoreCount = 0;
-		submitInfo.pSignalSemaphores = NULL;
-	}
 
 	fences[0] = renderer->inFlightFence;
 	fences[1] = renderer->defragFence;
@@ -5945,6 +6044,38 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		1,
 		&renderer->inFlightFence
 	);
+
+	/* Prepare command submission */
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.pNext = NULL;
+	submitInfo.commandBufferCount = renderer->activeCommandBufferCount;
+	submitInfo.pCommandBuffers = renderer->activeCommandBuffers;
+	submitInfo.signalSemaphoreCount = 0;
+
+	if (present && acquireSuccess)
+	{
+		submitInfo.waitSemaphoreCount = 1;
+		submitInfo.pWaitSemaphores = &renderer->imageAvailableSemaphore;
+		submitInfo.pWaitDstStageMask = &waitStages;
+		semaphores[submitInfo.signalSemaphoreCount] = renderer->renderFinishedSemaphore;
+		submitInfo.signalSemaphoreCount += 1;
+	}
+	else
+	{
+		submitInfo.waitSemaphoreCount = 0;
+		submitInfo.pWaitSemaphores = NULL;
+		submitInfo.pWaitDstStageMask = NULL;
+		submitInfo.signalSemaphoreCount = 0;
+		submitInfo.pSignalSemaphores = NULL;
+	}
+
+	if (renderer->needDefrag)
+	{
+		semaphores[submitInfo.signalSemaphoreCount] = renderer->defragSemaphore;
+		submitInfo.signalSemaphoreCount += 1;
+	}
+
+	submitInfo.pSignalSemaphores = semaphores;
 
 	/* Submit the commands, finally. */
 	result = renderer->vkQueueSubmit(
@@ -8594,6 +8725,12 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	renderer->vkDestroySemaphore(
 		renderer->logicalDevice,
 		renderer->renderFinishedSemaphore,
+		NULL
+	);
+
+	renderer->vkDestroySemaphore(
+		renderer->logicalDevice,
+		renderer->defragSemaphore,
 		NULL
 	);
 
@@ -11771,6 +11908,14 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		&semaphoreInfo,
 		NULL,
 		&renderer->renderFinishedSemaphore
+	);
+	VULKAN_ERROR_CHECK(vulkanResult, vkCreateSemaphore, NULL)
+
+	vulkanResult = renderer->vkCreateSemaphore(
+		renderer->logicalDevice,
+		&semaphoreInfo,
+		NULL,
+		&renderer->defragSemaphore
 	);
 	VULKAN_ERROR_CHECK(vulkanResult, vkCreateSemaphore, NULL)
 
