@@ -4274,10 +4274,9 @@ static void VULKAN_INTERNAL_RemoveViewFramebuffer(
 		}
 	}
 
-	renderer->vkDestroyImageView(
-		renderer->logicalDevice,
-		imageView,
-		NULL
+	VULKAN_INTERNAL_DestroyImageView(
+		renderer,
+		imageView
 	);
 }
 
@@ -4293,10 +4292,9 @@ static void VULKAN_INTERNAL_DestroyTexture(
 		return;
 	}
 
-	renderer->vkDestroyImageView(
-		renderer->logicalDevice,
-		texture->view,
-		NULL
+	VULKAN_INTERNAL_DestroyImageView(
+		renderer,
+		texture->view
 	);
 
 	if (texture->isRenderTarget)
@@ -4418,10 +4416,9 @@ static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer *renderer)
 
 	for (i = 0; i < renderer->defragmentedImageViewsToDestroyCount; i += 1)
 	{
-		renderer->vkDestroyImageView(
-			renderer->logicalDevice,
-			renderer->defragmentedImageViewsToDestroy[i],
-			NULL
+		VULKAN_INTERNAL_DestroyImageView(
+			renderer,
+			renderer->defragmentedImageViewsToDestroy[i]
 		);
 	}
 
