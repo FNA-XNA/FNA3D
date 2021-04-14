@@ -3803,7 +3803,6 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 	VkResult result;
 	uint32_t i, level;
 	VulkanResourceAccessType copyResourceAccessType = RESOURCE_ACCESS_NONE;
-	VulkanResourceAccessType originalSourceAccessType;
 
 	renderer->needDefrag = 0;
 
@@ -3871,8 +3870,6 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 					);
 					break;
 				}
-
-				originalSourceAccessType = currentRegion->vulkanSubBuffer->resourceAccessType;
 
 				VULKAN_INTERNAL_BufferMemoryBarrier(
 					renderer,
@@ -3980,8 +3977,6 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 				{
 					aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
 				}
-
-				originalSourceAccessType = currentRegion->vulkanTexture->resourceAccessType;
 
 				VULKAN_INTERNAL_ImageMemoryBarrier(
 					renderer,
