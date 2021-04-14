@@ -3805,9 +3805,6 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 	VulkanResourceAccessType copyResourceAccessType = RESOURCE_ACCESS_NONE;
 	VulkanResourceAccessType originalSourceAccessType;
 
-	uint32_t bufferCopyCount = 0;
-	uint32_t imageCopyCount = 0;
-
 	renderer->needDefrag = 0;
 
 	renderer->vkResetCommandBuffer(
@@ -3941,8 +3938,6 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 
 				renderer->bufferDefragInProgress = 1;
 				renderer->needDefrag = 1;
-
-				bufferCopyCount += 1;
 			}
 			else
 			{
@@ -4111,14 +4106,9 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 				newRegion->vulkanTexture->resourceAccessType = copyResourceAccessType;
 
 				renderer->needDefrag = 1;
-
-				imageCopyCount += 1;
 			}
 		}
 	}
-
-	FNA3D_LogInfo("Image copy count: %u", imageCopyCount);
-	FNA3D_LogInfo("Buffer copy count: %u", bufferCopyCount);
 
 	renderer->vkEndCommandBuffer(
 		renderer->defragCommandBuffer
