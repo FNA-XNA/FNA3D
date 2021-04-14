@@ -95,7 +95,6 @@ static const uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames)
 #define FAST_TEXTURE_STAGING_SIZE 64000000 /* 64MB */
 #define STARTING_SLOW_TEXTURE_STAGING_SIZE 16000000 /* 16MB */
 #define MAX_SLOW_TEXTURE_STAGING_SIZE 256000000 /* 256MB */
-#define DEVICE_LOCAL_HEAP_USAGE_FACTOR 0.8
 
 /* Should be equivalent to the number of values in FNA3D_PrimitiveType */
 #define PRIMITIVE_TYPES_COUNT 5
@@ -2479,6 +2478,8 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	uint32_t physicalDeviceCount, i, suitableIndex;
 	uint32_t queueFamilyIndex, suitableQueueFamilyIndex;
 	VkDeviceSize deviceLocalHeapSize;
+	const char *deviceLocalHeapUsageFactorStr;
+	float deviceLocalHeapUsageFactor = 1.0f;
 	uint8_t deviceRank, highestRank;
 
 	vulkanResult = renderer->vkEnumeratePhysicalDevices(
@@ -2595,7 +2596,13 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 		}
 	}
 
-	renderer->maxDeviceLocalHeapUsage = deviceLocalHeapSize * DEVICE_LOCAL_HEAP_USAGE_FACTOR;
+	deviceLocalHeapUsageFactorStr = SDL_GetHint("FNA3D_VULKAN_DEVICE_LOCAL_HEAP_USAGE_FACTOR");
+	if (deviceLocalHeapUsageFactorStr != NULL)
+	{
+		deviceLocalHeapUsageFactor = SDL_max(0, SDL_min(1.0, SDL_atof(deviceLocalHeapUsageFactorStr)));
+	}
+
+	renderer->maxDeviceLocalHeapUsage = deviceLocalHeapSize * deviceLocalHeapUsageFactor;
 	renderer->deviceLocalHeapUsage = 0;
 
 	SDL_stack_free(physicalDevices);
