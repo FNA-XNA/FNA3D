@@ -3376,10 +3376,8 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 	allocator = &renderer->memoryAllocator->subAllocators[memoryTypeIndex];
 	requiredSize = memoryRequirements->memoryRequirements.size;
 
-	if (
-		(buffer == VK_NULL_HANDLE && image == VK_NULL_HANDLE) ||
-		(buffer != VK_NULL_HANDLE && image != VK_NULL_HANDLE)
-	)
+	if (	(buffer == VK_NULL_HANDLE && image == VK_NULL_HANDLE) ||
+		(buffer != VK_NULL_HANDLE && image != VK_NULL_HANDLE)	)
 	{
 		FNA3D_LogError("BindResourceMemory must be given either a VulkanSubBuffer or a VulkanTexture");
 		return 0;
