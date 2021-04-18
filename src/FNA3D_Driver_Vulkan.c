@@ -2599,7 +2599,11 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	deviceLocalHeapUsageFactorStr = SDL_GetHint("FNA3D_VULKAN_DEVICE_LOCAL_HEAP_USAGE_FACTOR");
 	if (deviceLocalHeapUsageFactorStr != NULL)
 	{
-		deviceLocalHeapUsageFactor = SDL_max(0, SDL_min(1.0, SDL_atof(deviceLocalHeapUsageFactorStr)));
+		double factor = SDL_atof(deviceLocalHeapUsageFactorStr);
+		if (factor > 0.0 && factor < 1.0)
+		{
+			deviceLocalHeapUsageFactor = factor;
+		}
 	}
 
 	renderer->maxDeviceLocalHeapUsage = deviceLocalHeapSize * deviceLocalHeapUsageFactor;
