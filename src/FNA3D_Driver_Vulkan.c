@@ -2214,9 +2214,6 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	VkBool32 supportsPresent;
 	uint8_t querySuccess, foundSuitableDevice = 0;
 	VkPhysicalDeviceProperties deviceProperties;
-	VkPhysicalDeviceMemoryProperties memoryProperties;
-	const char *memoryRequirementStr;
-	VkDeviceSize memoryRequirement;
 
 	*queueFamilyIndex = UINT32_MAX;
 	*deviceRank = 0;
@@ -2295,44 +2292,7 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 			&deviceProperties
 		);
 		*deviceRank = DEVICE_PRIORITY[deviceProperties.deviceType];
-
-		/* By default we require a _minimum_ of 4GB VRAM. This will
-		 * either be dedicated GPU VRAM or a GPU using unified memory.
-		 *
-		 * We do NOT fall back to integrated if we find a dedicated GPU
-		 * that does not meet the VRAM requirement!
-		 */
-#ifdef __APPLE__
-		memoryRequirement = 1; /* Metal marshals memory behind our back */
-#else
-		memoryRequirement = 4;
-#endif
-		memoryRequirementStr = SDL_GetHint("FNA3D_VULKAN_MEMORY_REQUIREMENT");
-		if (memoryRequirementStr != NULL)
-		{
-			memoryRequirement = SDL_atoi(memoryRequirementStr);
-		}
-		/* For the record: I wish these were 1024, but numbers below the
-		 * GB mark seem to be all over the place. So we'll be nice...
-		 * -flibit
-		 */
-		memoryRequirement *= 1000 * 1000 * 1000;
-		renderer->vkGetPhysicalDeviceMemoryProperties(
-			physicalDevice,
-			&memoryProperties
-		);
-		for (i = 0; i < memoryProperties.memoryHeapCount; i += 1)
-		{
-			const VkMemoryHeap *heap = &memoryProperties.memoryHeaps[i];
-			if (	heap->flags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT &&
-				heap->size >= memoryRequirement	)
-			{
-				return 1;
-			}
-		}
-
-		/* Not enough VRAM, forget it! */
-		return 0;
+		return 1;
 	}
 
 	/* This device is useless for us, next! */
