@@ -4946,7 +4946,7 @@ static inline uint8_t VULKAN_INTERNAL_GetBufferOffset(
 	VkDeviceSize *finalOffset,
 	VkDeviceSize *stagingOffset,
 	uint32_t uploadLength,
-	int32_t fmtSize
+	VkDeviceSize alignment
 ) {
 	if (stagingBuffer == NULL)
 	{
@@ -4955,7 +4955,7 @@ static inline uint8_t VULKAN_INTERNAL_GetBufferOffset(
 
 	/* Offset needs to be aligned to the texel size */
 	*stagingOffset = *finalOffset;
-	*stagingOffset += fmtSize - (*stagingOffset % fmtSize);
+	*stagingOffset += alignment - (*stagingOffset % alignment);
 
 	if ((*stagingOffset + uploadLength) < stagingBuffer->size)
 	{
@@ -4977,7 +4977,7 @@ static void VULKAN_INTERNAL_CopyToStagingBuffer(
 	VulkanSubBuffer *stagingSubBuffer;
 	uint8_t *stagingBufferPointer;
 	VkDeviceSize offset = 0;
-	int32_t fmtSize = VULKAN_INTERNAL_NextHighestAlignment(
+	VkDeviceSize fmtAlignment = VULKAN_INTERNAL_NextHighestAlignment(
 		Texture_GetFormatSize(format),
 		renderer->physicalDeviceProperties.properties.limits.optimalBufferCopyOffsetAlignment
 	);
@@ -4990,7 +4990,7 @@ static void VULKAN_INTERNAL_CopyToStagingBuffer(
 		&renderer->textureStagingBuffer->fastBufferOffset,
 		&offset,
 		uploadLength,
-		fmtSize
+		fmtAlignment
 	)) {
 		/* We have access to a fast buffer! */
 		stagingSubBuffer = renderer->textureStagingBuffer->fastBuffer->subBuffers[0];
@@ -5003,7 +5003,7 @@ static void VULKAN_INTERNAL_CopyToStagingBuffer(
 			&renderer->textureStagingBuffer->slowBufferOffset,
 			&offset,
 			uploadLength,
-			fmtSize
+			fmtAlignment
 		)) {
 			/* ... and it ran out of space, good grief */
 			VULKAN_INTERNAL_FlushCommands(renderer, 1);
@@ -5014,7 +5014,7 @@ static void VULKAN_INTERNAL_CopyToStagingBuffer(
 				&renderer->textureStagingBuffer->slowBufferOffset,
 				&offset,
 				uploadLength,
-				fmtSize
+				fmtAlignment
 			);
 		}
 
