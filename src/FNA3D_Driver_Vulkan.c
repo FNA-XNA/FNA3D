@@ -4977,7 +4977,10 @@ static void VULKAN_INTERNAL_CopyToStagingBuffer(
 	VulkanSubBuffer *stagingSubBuffer;
 	uint8_t *stagingBufferPointer;
 	VkDeviceSize offset = 0;
-	int32_t fmtSize = Texture_GetFormatSize(format);
+	int32_t fmtSize = VULKAN_INTERNAL_NextHighestAlignment(
+		Texture_GetFormatSize(format),
+		renderer->physicalDeviceProperties.properties.limits.optimalBufferCopyOffsetAlignment
+	);
 
 	VULKAN_INTERNAL_WaitForStagingTransfers(renderer);
 
