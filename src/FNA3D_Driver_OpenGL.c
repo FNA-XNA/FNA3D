@@ -159,6 +159,9 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	uint8_t useES3;
 	uint8_t useCoreProfile;
 
+	/* FIXME: https://github.com/KhronosGroup/EGL-Registry/pull/113 */
+	uint8_t isEGL;
+
 	/* The Faux-Backbuffer */
 	OpenGLBackbuffer *backbuffer;
 	FNA3D_DepthFormat windowDepthFormat;
@@ -3241,18 +3244,16 @@ static uint8_t OPENGL_INTERNAL_ReadTargetIfApplicable(
 }
 
 static void OPENGL_INTERNAL_SetPresentationInterval(
-	FNA3D_PresentInterval presentInterval
+	FNA3D_PresentInterval presentInterval,
+	uint8_t isEGL
 ) {
-	const char *osVersion;
 	int32_t disableLateSwapTear;
 
 	if (	presentInterval == FNA3D_PRESENTINTERVAL_DEFAULT ||
 		presentInterval == FNA3D_PRESENTINTERVAL_ONE	)
 	{
-		osVersion = SDL_GetPlatform();
 		disableLateSwapTear = (
-			(SDL_strcmp(osVersion, "Mac OS X") == 0) ||
-			(SDL_strcmp(osVersion, "WinRT") == 0) ||
+			isEGL ||
 			SDL_GetHintBoolean("FNA3D_DISABLE_LATESWAPTEAR", 0)
 		);
 		if (disableLateSwapTear)
@@ -3302,7 +3303,8 @@ static void OPENGL_ResetBackbuffer(
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OPENGL_INTERNAL_CreateBackbuffer(renderer, presentationParameters);
 	OPENGL_INTERNAL_SetPresentationInterval(
-		presentationParameters->presentationInterval
+		presentationParameters->presentationInterval,
+		renderer->isEGL
 	);
 }
 
@@ -5755,14 +5757,15 @@ FNA3D_Device* OPENGL_CreateDevice(
 	renderer->context = SDL_GL_CreateContext(
 		(SDL_Window*) presentationParameters->deviceWindowHandle
 	);
-	OPENGL_INTERNAL_SetPresentationInterval(
-		presentationParameters->presentationInterval
-	);
 
 	/* Check for a possible ES/Core context */
 	SDL_GL_GetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, &flags);
 	renderer->useES3 = (flags & SDL_GL_CONTEXT_PROFILE_ES) != 0;
 	renderer->useCoreProfile = (flags & SDL_GL_CONTEXT_PROFILE_CORE) != 0;
+
+	/* Check for EGL-based contexts */
+	renderer->isEGL = (	renderer->useES3 ||
+				SDL_strcmp(SDL_GetCurrentVideoDriver(), "wayland") == 0	);
 
 	/* Check for a possible debug context */
 	SDL_GL_GetAttribute(SDL_GL_CONTEXT_FLAGS, &flags);
@@ -5804,6 +5807,12 @@ FNA3D_Device* OPENGL_CreateDevice(
 		);
 		renderer->windowDepthFormat = FNA3D_DEPTHFORMAT_D24S8;
 	}
+
+	/* Set the swap interval now that we know enough about the GL context */
+	OPENGL_INTERNAL_SetPresentationInterval(
+		presentationParameters->presentationInterval,
+		renderer->isEGL
+	);
 
 	/* UIKit needs special treatment for backbuffer behavior */
 #ifdef SDL_VIDEO_DRIVER_UIKIT
