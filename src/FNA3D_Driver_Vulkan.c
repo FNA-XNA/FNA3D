@@ -6303,23 +6303,32 @@ static inline VkExtent2D ChooseSwapExtent(
 	VkExtent2D actualExtent;
 	int32_t drawableWidth, drawableHeight;
 
-	if (capabilities.currentExtent.width != UINT32_MAX)
+	SDL_Vulkan_GetDrawableSize(
+		(SDL_Window*) windowHandle,
+		&drawableWidth,
+		&drawableHeight
+	);
+	if (	drawableWidth < capabilities.minImageExtent.width ||
+		drawableWidth > capabilities.maxImageExtent.width ||
+		drawableHeight < capabilities.minImageExtent.height ||
+		drawableHeight > capabilities.maxImageExtent.height	)
 	{
-		return capabilities.currentExtent;
-	}
-	else
-	{
-		SDL_Vulkan_GetDrawableSize(
-			(SDL_Window*) windowHandle,
-			&drawableWidth,
-			&drawableHeight
-		);
+		FNA3D_LogWarn("Drawable size not possible for this VkSurface!");
 
-		actualExtent.width = drawableWidth;
-		actualExtent.height = drawableHeight;
-
-		return actualExtent;
+		if (capabilities.currentExtent.width != UINT32_MAX)
+		{
+			FNA3D_LogWarn("Falling back to currentExtent.");
+			return capabilities.currentExtent;
+		}
+		else
+		{
+			FNA3D_LogError("No fallback swapchain size available!");
+		}
 	}
+
+	actualExtent.width = drawableWidth;
+	actualExtent.height = drawableHeight;
+	return actualExtent;
 }
 
 static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
