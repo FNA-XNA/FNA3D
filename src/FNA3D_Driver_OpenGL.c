@@ -313,6 +313,9 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	OpenGLQuery *disposeQueries;
 	SDL_mutex *disposeQueriesLock;
 
+	/* Overrides options in SetVertexBufferData */
+	uint8_t force_vbo_discard;
+
 	/* GL entry points */
 	glfntype_glGetString glGetString; /* Loaded early! */
 	#define GL_PROC(ext, ret, func, parms) \
@@ -4564,7 +4567,7 @@ static void OPENGL_SetVertexBufferData(
 
 	/* FIXME: Staging buffer for elementSizeInBytes < vertexStride! */
 
-	if (options == FNA3D_SETDATAOPTIONS_DISCARD)
+	if (options == FNA3D_SETDATAOPTIONS_DISCARD || renderer->force_vbo_discard)
 	{
 		renderer->glBufferData(
 			GL_ARRAY_BUFFER,
@@ -5886,6 +5889,10 @@ FNA3D_Device* OPENGL_CreateDevice(
 	renderer->backbufferScaleMode = SDL_GetHintBoolean(
 		"FNA3D_BACKBUFFER_SCALE_NEAREST", 0
 	) ? GL_NEAREST : GL_LINEAR;
+
+	/* Overrides options in SetVertexBufferData */
+	renderer->force_vbo_discard = SDL_GetHintBoolean(
+		"FNA3D_OPENGL_FORCE_VBO_DISCARD", 0);
 
 	/* Load the extension list, initialize extension-dependent components */
 	renderer->supports_s3tc = 0;
