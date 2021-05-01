@@ -9021,6 +9021,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 	SDL_free(renderer->renderPassArray.elements);
 	SDL_free(renderer->samplerStateArray.elements);
+	SDL_free(renderer->vertexBufferBindingsCache.elements);
 
 	SDL_free(renderer->submittedRenderbuffersToDestroy);
 	SDL_free(renderer->submittedBuffersToDestroy);
