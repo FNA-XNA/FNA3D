@@ -6605,6 +6605,9 @@ static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer, uint8_t 
 		swapChainSupportDetails.capabilities
 	);
 
+	SDL_free(swapChainSupportDetails.formats);
+	SDL_free(swapChainSupportDetails.presentModes);
+
 	if (extent.width == 0 || extent.height == 0)
 	{
 		return;
@@ -8989,6 +8992,11 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 				allocator,
 				j
 			);
+		}
+
+		if (renderer->memoryAllocator->subAllocators[i].allocations != NULL)
+		{
+			SDL_free(renderer->memoryAllocator->subAllocators[i].allocations);
 		}
 
 		SDL_free(renderer->memoryAllocator->subAllocators[i].sortedFreeRegions);
