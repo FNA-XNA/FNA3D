@@ -5615,7 +5615,7 @@ static void ShaderResources_InvalidateDescriptorSet(
 
 			for (m = shaderResources->count - 1; m >= 0; m -= 1)
 			{
-				for (n = 0; n < MAX_TEXTURE_SAMPLERS; n += 1)
+				for (n = 0; n < shaderResources->samplerCount; n += 1)
 				{
 					if (shaderResources->elements[m].descriptorSetData.descriptorImageInfo[n].imageView == view)
 					{
@@ -8990,6 +8990,8 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 				j
 			);
 		}
+
+		SDL_free(renderer->memoryAllocator->subAllocators[i].sortedFreeRegions);
 	}
 
 	SDL_free(renderer->memoryAllocator);
@@ -9011,6 +9013,15 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 	SDL_free(renderer->renderPassArray.elements);
 	SDL_free(renderer->samplerStateArray.elements);
+
+	SDL_free(renderer->submittedRenderbuffersToDestroy);
+	SDL_free(renderer->submittedBuffersToDestroy);
+	SDL_free(renderer->submittedTexturesToDestroy);
+
+	SDL_free(renderer->defragmentedBuffersToDestroy);
+	SDL_free(renderer->defragmentedImagesToDestroy);
+	SDL_free(renderer->defragmentedImageViewsToDestroy);
+	SDL_free(renderer->usedRegionsToDestroy);
 
 	SDL_free(renderer->renderbuffersToDestroy);
 	SDL_free(renderer->buffersToDestroy);
