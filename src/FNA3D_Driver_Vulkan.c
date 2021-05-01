@@ -9011,6 +9011,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	SDL_DestroyMutex(renderer->stagingLock);
 
 	SDL_free(renderer->buffersInUse);
+	SDL_free(renderer->submittedBuffers);
 
 	SDL_free(renderer->inactiveCommandBuffers);
 	SDL_free(renderer->activeCommandBuffers);
@@ -9037,9 +9038,6 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	SDL_free(renderer->buffersToDestroy);
 	SDL_free(renderer->effectsToDestroy);
 	SDL_free(renderer->texturesToDestroy);
-
-	SDL_free(renderer->buffersInUse);
-	SDL_free(renderer->submittedBuffers);
 
 	SDL_free(renderer);
 	SDL_free(device);
