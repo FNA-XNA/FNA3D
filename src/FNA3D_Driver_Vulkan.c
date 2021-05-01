@@ -9025,6 +9025,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	SDL_free(renderer->submittedRenderbuffersToDestroy);
 	SDL_free(renderer->submittedBuffersToDestroy);
 	SDL_free(renderer->submittedTexturesToDestroy);
+	SDL_free(renderer->submittedEffectsToDestroy);
 
 	SDL_free(renderer->defragmentedBuffersToDestroy);
 	SDL_free(renderer->defragmentedImagesToDestroy);
@@ -9035,6 +9036,9 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	SDL_free(renderer->buffersToDestroy);
 	SDL_free(renderer->effectsToDestroy);
 	SDL_free(renderer->texturesToDestroy);
+
+	SDL_free(renderer->buffersInUse);
+	SDL_free(renderer->submittedBuffers);
 
 	SDL_free(renderer);
 	SDL_free(device);
@@ -11603,6 +11607,7 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 		renderer->surface,
 		NULL
 	);
+	renderer->vkDestroyInstance(renderer->instance, NULL);
 	SDL_DestroyWindow(dummyWindowHandle);
 	SDL_free(renderer);
 
