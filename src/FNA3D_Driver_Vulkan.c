@@ -5939,6 +5939,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 	FNA3D_Rect *sourceRectangle, *destinationRectangle;
 
+	SDL_DisplayMode mode;
 	VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	VkPresentInfoKHR presentInfo;
 	struct
@@ -5956,11 +5957,18 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 	if (present)
 	{
+		SDL_GetCurrentDisplayMode(
+			SDL_GetWindowDisplayIndex(
+				renderer->presentOverrideWindowHandle
+			),
+			&mode
+		);
+
 		/* Begin next frame */
 		acquireResult = renderer->vkAcquireNextImageKHR(
 			renderer->logicalDevice,
 			renderer->swapChain,
-			UINT64_MAX,
+			10000000000 / mode.refresh_rate, /* ~10 frames, so we'll progress even if throttled to zero. */
 			renderer->imageAvailableSemaphore,
 			VK_NULL_HANDLE,
 			&swapChainImageIndex
