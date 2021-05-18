@@ -185,7 +185,7 @@ static inline MOJOSHADER_usage VertexAttribUsage(
 			FNA3D_LogError(
 				"Unrecognized VertexElementUsage!"
 			);
-			return 0;
+			return (MOJOSHADER_usage) 0;
 	}
 }
 
