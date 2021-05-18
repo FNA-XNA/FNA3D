@@ -664,8 +664,7 @@ static FNA3D_Buffer* TEMPLATE_GenVertexBuffer(
 	FNA3D_Renderer *driverData,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t vertexCount,
-	int32_t vertexStride
+	int32_t sizeInBytes
 ) {
 	return NULL;
 }
@@ -705,8 +704,7 @@ static FNA3D_Buffer* TEMPLATE_GenIndexBuffer(
 	FNA3D_Renderer *driverData,
 	uint8_t dynamic,
 	FNA3D_BufferUsage usage,
-	int32_t indexCount,
-	FNA3D_IndexElementSize indexElementSize
+	int32_t sizeInBytes
 ) {
 	return NULL;
 }
