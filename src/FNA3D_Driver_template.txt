@@ -312,28 +312,6 @@ static void TEMPLATE_DrawPrimitives(
 ) {
 }
 
-static void TEMPLATE_DrawUserIndexedPrimitives(
-	FNA3D_Renderer *driverData,
-	FNA3D_PrimitiveType primitiveType,
-	void* vertexData,
-	int32_t vertexOffset,
-	int32_t numVertices,
-	void* indexData,
-	int32_t indexOffset,
-	FNA3D_IndexElementSize indexElementSize,
-	int32_t primitiveCount
-) {
-}
-
-static void TEMPLATE_DrawUserPrimitives(
-	FNA3D_Renderer *driverData,
-	FNA3D_PrimitiveType primitiveType,
-	void* vertexData,
-	int32_t vertexOffset,
-	int32_t primitiveCount
-) {
-}
-
 /* Mutable Render States */
 
 static void TEMPLATE_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewport)
@@ -418,14 +396,6 @@ static void TEMPLATE_ApplyVertexBufferBindings(
 	int32_t numBindings,
 	uint8_t bindingsUpdated,
 	int32_t baseVertex
-) {
-}
-
-static void TEMPLATE_ApplyVertexDeclaration(
-	FNA3D_Renderer *driverData,
-	FNA3D_VertexDeclaration *vertexDeclaration,
-	void* vertexData,
-	int32_t vertexOffset
 ) {
 }
 
