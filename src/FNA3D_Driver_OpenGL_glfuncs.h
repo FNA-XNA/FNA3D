@@ -24,6 +24,28 @@
  *
  */
 
+/* Extensions used by FNA3D */
+GL_EXT(BaseGL)
+GL_EXT(CoreGL)
+GL_EXT(3DTexture)
+GL_EXT(DoublePrecisionDepth)
+GL_EXT(OES_single_precision)
+GL_EXT(ARB_occlusion_query)
+GL_EXT(NonES3)
+GL_EXT(NonES3NonCore)
+GL_EXT(ARB_framebuffer_object)
+GL_EXT(EXT_framebuffer_blit)
+GL_EXT(EXT_framebuffer_multisample)
+GL_EXT(ARB_internalformat_query)
+GL_EXT(ARB_invalidate_subdata)
+GL_EXT(ARB_draw_instanced)
+GL_EXT(ARB_instanced_arrays)
+GL_EXT(ARB_draw_elements_base_vertex)
+GL_EXT(EXT_draw_buffers2)
+GL_EXT(ARB_texture_multisample)
+GL_EXT(KHR_debug)
+GL_EXT(GREMEDY_string_marker)
+
 /* Basic entry points. If you don't have these, you're screwed. */
 GL_PROC(BaseGL, void, glActiveTexture, (GLenum a))
 GL_PROC(BaseGL, void, glBindBuffer, (GLenum a, GLuint b))
@@ -155,5 +177,10 @@ GL_PROC_EXT(KHR_debug, KHR, void, glDebugMessageControl, (GLenum a, GLenum b, GL
 
 /* Nice feature for apitrace */
 GL_PROC(GREMEDY_string_marker, void, glStringMarkerGREMEDY, (GLsizei a, const GLchar *b))
+
+/* Redefine these every time you include this header! */
+#undef GL_EXT
+#undef GL_PROC
+#undef GL_PROC_EXT
 
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */

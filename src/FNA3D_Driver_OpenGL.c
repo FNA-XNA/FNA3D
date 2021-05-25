@@ -173,26 +173,6 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	GLuint vao;
 
 	/* Capabilities */
-	uint8_t supports_BaseGL;
-	uint8_t supports_CoreGL;
-	uint8_t supports_3DTexture;
-	uint8_t supports_DoublePrecisionDepth;
-	uint8_t supports_OES_single_precision;
-	uint8_t supports_ARB_occlusion_query;
-	uint8_t supports_NonES3;
-	uint8_t supports_NonES3NonCore;
-	uint8_t supports_ARB_framebuffer_object;
-	uint8_t supports_EXT_framebuffer_blit;
-	uint8_t supports_EXT_framebuffer_multisample;
-	uint8_t supports_ARB_internalformat_query;
-	uint8_t supports_ARB_invalidate_subdata;
-	uint8_t supports_ARB_draw_instanced;
-	uint8_t supports_ARB_instanced_arrays;
-	uint8_t supports_ARB_draw_elements_base_vertex;
-	uint8_t supports_EXT_draw_buffers2;
-	uint8_t supports_ARB_texture_multisample;
-	uint8_t supports_KHR_debug;
-	uint8_t supports_GREMEDY_string_marker;
 	uint8_t supports_s3tc;
 	uint8_t supports_dxt1;
 	int32_t maxMultiSampleCount;
@@ -318,13 +298,13 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 
 	/* GL entry points */
 	glfntype_glGetString glGetString; /* Loaded early! */
+	#define GL_EXT(ext) \
+		uint8_t supports_##ext;
 	#define GL_PROC(ext, ret, func, parms) \
 		glfntype_##func func;
 	#define GL_PROC_EXT(ext, fallback, ret, func, parms) \
 		glfntype_##func func;
 	#include "FNA3D_Driver_OpenGL_glfuncs.h"
-	#undef GL_PROC
-	#undef GL_PROC_EXT
 } OpenGLRenderer;
 
 /* XNA->OpenGL Translation Arrays */
@@ -5324,27 +5304,8 @@ static inline void LoadEntryPoints(
 			"OpenGL 2.1 support is required!"
 	);
 
-	renderer->supports_BaseGL = 1;
-	renderer->supports_CoreGL = 1;
-	renderer->supports_3DTexture = 1;
-	renderer->supports_DoublePrecisionDepth = 1;
-	renderer->supports_OES_single_precision = 1;
-	renderer->supports_ARB_occlusion_query = 1;
-	renderer->supports_NonES3 = 1;
-	renderer->supports_NonES3NonCore = 1;
-	renderer->supports_ARB_framebuffer_object = 1;
-	renderer->supports_EXT_framebuffer_blit = 1;
-	renderer->supports_EXT_framebuffer_multisample = 1;
-	renderer->supports_ARB_internalformat_query = 1;
-	renderer->supports_ARB_invalidate_subdata = 1;
-	renderer->supports_ARB_draw_instanced = 1;
-	renderer->supports_ARB_instanced_arrays = 1;
-	renderer->supports_ARB_draw_elements_base_vertex = 1;
-	renderer->supports_EXT_draw_buffers2 = 1;
-	renderer->supports_ARB_texture_multisample = 1;
-	renderer->supports_KHR_debug = 1;
-	renderer->supports_GREMEDY_string_marker = 1;
-
+	#define GL_EXT(ext) \
+		renderer->supports_##ext = 1;
 	#define GL_PROC(ext, ret, func, parms) \
 		renderer->func = (glfntype_##func) SDL_GL_GetProcAddress(#func); \
 		if (renderer->func == NULL) \
@@ -5365,8 +5326,6 @@ static inline void LoadEntryPoints(
 #pragma GCC diagnostic ignored "-Wpedantic"
 	#include "FNA3D_Driver_OpenGL_glfuncs.h"
 #pragma GCC diagnostic pop
-	#undef GL_PROC
-	#undef GL_PROC_EXT
 
 	/* Weeding out the GeForce FX cards... */
 	if (!renderer->supports_BaseGL)
