@@ -60,7 +60,7 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
 
 /* Required extensions */
 
-static const char* deviceExtensionNames[] =
+static const char* requiredDeviceExtensions[] =
 {
 	/* Globally supported */
 	VK_KHR_SWAPCHAIN_EXTENSION_NAME,
@@ -70,6 +70,9 @@ static const char* deviceExtensionNames[] =
 	VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
 	/* Core since 1.2 */
 	VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,
+
+	/* FIXME: Make everything below this line optional! */
+
 	/* EXT, probably not going to be Core */
 	VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,
 	/* Beta extensions */
@@ -80,7 +83,7 @@ static const char* deviceExtensionNames[] =
 	/* Vendor-specific extensions */
 	"VK_GGP_frame_token"
 };
-static const uint32_t deviceExtensionCount = SDL_arraysize(deviceExtensionNames);
+static const uint32_t requiredDeviceExtensionCount = SDL_arraysize(requiredDeviceExtensions);
 
 /* Constants/Limits */
 
@@ -1915,13 +1918,12 @@ static uint8_t VULKAN_INTERNAL_CheckInstanceExtensions(
 
 static uint8_t VULKAN_INTERNAL_CheckDeviceExtensions(
 	VulkanRenderer *renderer,
-	VkPhysicalDevice physicalDevice,
-	const char** requiredExtensions,
-	uint32_t requiredExtensionsLength
+	VkPhysicalDevice physicalDevice
 ) {
 	uint32_t extensionCount, i;
 	VkExtensionProperties *availableExtensions;
 	uint8_t allExtensionsSupported = 1;
+	uint32_t requiredExtensionCount = requiredDeviceExtensionCount;
 
 	renderer->vkEnumerateDeviceExtensionProperties(
 		physicalDevice,
@@ -1940,10 +1942,14 @@ static uint8_t VULKAN_INTERNAL_CheckDeviceExtensions(
 		availableExtensions
 	);
 
-	for (i = 0; i < requiredExtensionsLength; i += 1)
+	if (SDL_strcmp(SDL_GetPlatform(), "Stadia") == 0)
+	{
+		requiredExtensionCount -= 1;
+	}
+	for (i = 0; i < requiredExtensionCount; i += 1)
 	{
 		if (!SupportsExtension(
-			requiredExtensions[i],
+			requiredDeviceExtensions[i],
 			availableExtensions,
 			extensionCount
 		)) {
@@ -2202,8 +2208,6 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	VulkanRenderer *renderer,
 	VkPhysicalDevice physicalDevice,
-	const char** requiredExtensionNames,
-	uint32_t requiredExtensionNamesLength,
 	VkSurfaceKHR surface,
 	uint32_t *queueFamilyIndex,
 	uint8_t *deviceRank
@@ -2222,12 +2226,8 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	 * one that supports our features would be fine
 	 */
 
-	if (!VULKAN_INTERNAL_CheckDeviceExtensions(
-		renderer,
-		physicalDevice,
-		requiredExtensionNames,
-		requiredExtensionNamesLength
-	)) {
+	if (!VULKAN_INTERNAL_CheckDeviceExtensions(renderer, physicalDevice))
+	{
 		return 0;
 	}
 
@@ -2428,11 +2428,8 @@ create_instance_fail:
 	return 0;
 }
 
-static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
-	VulkanRenderer *renderer,
-	const char **deviceExtensionNames,
-	uint32_t deviceExtensionCount
-) {
+static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer)
+{
 	VkResult vulkanResult;
 	VkPhysicalDevice *physicalDevices;
 	uint32_t physicalDeviceCount, i, suitableIndex;
@@ -2482,8 +2479,6 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 		const uint8_t suitable = VULKAN_INTERNAL_IsDeviceSuitable(
 			renderer,
 			physicalDevices[i],
-			deviceExtensionNames,
-			deviceExtensionCount,
 			renderer->surface,
 			&queueFamilyIndex,
 			&deviceRank
@@ -2573,11 +2568,8 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(
 	return 1;
 }
 
-static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
-	VulkanRenderer *renderer,
-	const char **deviceExtensionNames,
-	uint32_t deviceExtensionCount
-) {
+static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(VulkanRenderer *renderer)
+{
 	VkResult vulkanResult;
 	VkDeviceCreateInfo deviceCreateInfo;
 	VkPhysicalDeviceFeatures deviceFeatures;
@@ -2636,8 +2628,12 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(
 	deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
 	deviceCreateInfo.enabledLayerCount = 0;
 	deviceCreateInfo.ppEnabledLayerNames = NULL;
-	deviceCreateInfo.enabledExtensionCount = deviceExtensionCount;
-	deviceCreateInfo.ppEnabledExtensionNames = deviceExtensionNames;
+	deviceCreateInfo.enabledExtensionCount = requiredDeviceExtensionCount;
+	if (SDL_strcmp(SDL_GetPlatform(), "Stadia") == 0)
+	{
+		deviceCreateInfo.enabledExtensionCount -= 1;
+	}
+	deviceCreateInfo.ppEnabledExtensionNames = requiredDeviceExtensions;
 	deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
 
 	vulkanResult = renderer->vkCreateDevice(
@@ -11515,7 +11511,6 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 	SDL_Window *dummyWindowHandle;
 	FNA3D_PresentationParameters presentationParameters;
 	VulkanRenderer *renderer;
-	uint32_t deviceExtensionCountFinal = deviceExtensionCount;
 	uint8_t result;
 
 	/* Required for MoltenVK support */
@@ -11599,15 +11594,7 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 		renderer->func = (vkfntype_##func) vkGetInstanceProcAddr(renderer->instance, #func);
 	#include "FNA3D_Driver_Vulkan_vkfuncs.h"
 
-	if (SDL_strcmp(SDL_GetPlatform(), "Stadia") != 0)
-	{
-		deviceExtensionCountFinal -= 1;
-	}
-	result = VULKAN_INTERNAL_DeterminePhysicalDevice(
-		renderer,
-		deviceExtensionNames,
-		deviceExtensionCountFinal
-	);
+	result = VULKAN_INTERNAL_DeterminePhysicalDevice(renderer);
 
 	renderer->vkDestroySurfaceKHR(
 		renderer->instance,
@@ -11640,7 +11627,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 ) {
 	uint32_t i;
 	VkResult vulkanResult;
-	uint32_t deviceExtensionCountFinal = deviceExtensionCount;
 
 	/* Variables: Create the FNA3D_Device */
 	FNA3D_Device *result;
@@ -11738,15 +11724,8 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	 * Choose/Create vkDevice
 	 */
 
-	if (SDL_strcmp(SDL_GetPlatform(), "Stadia") != 0)
+	if (!VULKAN_INTERNAL_DeterminePhysicalDevice(renderer))
 	{
-		deviceExtensionCountFinal -= 1;
-	}
-	if (!VULKAN_INTERNAL_DeterminePhysicalDevice(
-		renderer,
-		deviceExtensionNames,
-		deviceExtensionCountFinal
-	)) {
 		FNA3D_LogError("Failed to determine a suitable physical device");
 		return NULL;
 	}
@@ -11773,11 +11752,8 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
 	);
 
-	if (!VULKAN_INTERNAL_CreateLogicalDevice(
-		renderer,
-		deviceExtensionNames,
-		deviceExtensionCountFinal
-	)) {
+	if (!VULKAN_INTERNAL_CreateLogicalDevice(renderer))
+	{
 		FNA3D_LogError("Failed to create logical device");
 		return NULL;
 	}
