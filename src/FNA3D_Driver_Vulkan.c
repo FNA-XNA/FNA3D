@@ -26,12 +26,8 @@
 
 #if FNA3D_DRIVER_VULKAN
 
-/* FIXME: Needed for VK_KHR_portability_subset, but MoltenVK does not actually
- * "support" this as you would expect - this is just for validation, for now.
- */
-#if defined(__APPLE__) && 0
+/* Needed for VK_KHR_portability_subset */
 #define VK_ENABLE_BETA_EXTENSIONS
-#endif /* __APPLE__ */
 
 #define VK_NO_PROTOTYPES
 #include "vulkan/vulkan.h"
@@ -58,32 +54,102 @@ static PFN_vkGetInstanceProcAddr vkGetInstanceProcAddr = NULL;
 	typedef ret (VKAPI_CALL *vkfntype_##func) params;
 #include "FNA3D_Driver_Vulkan_vkfuncs.h"
 
-/* Required extensions */
+/* Vulkan Extensions */
 
-static const char* requiredDeviceExtensions[] =
+typedef struct VulkanExtensions
 {
+	/* These extensions are required! */
+
 	/* Globally supported */
-	VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+	uint8_t KHR_swapchain;
 	/* Core since 1.1 */
-	VK_KHR_MAINTENANCE1_EXTENSION_NAME,
-	VK_KHR_DEDICATED_ALLOCATION_EXTENSION_NAME,
-	VK_KHR_GET_MEMORY_REQUIREMENTS_2_EXTENSION_NAME,
-	/* Core since 1.2 */
-	VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,
+	uint8_t KHR_maintenance1;
+	uint8_t KHR_dedicated_allocation;
+	uint8_t KHR_get_memory_requirements2;
 
-	/* FIXME: Make everything below this line optional! */
+	/* These extensions are optional! */
 
+	/* Core since 1.2, but requires annoying paperwork to implement */
+	uint8_t KHR_driver_properties;
 	/* EXT, probably not going to be Core */
-	VK_EXT_VERTEX_ATTRIBUTE_DIVISOR_EXTENSION_NAME,
-	/* Beta extensions */
-#ifdef VK_ENABLE_BETA_EXTENSIONS
-	/* FIXME: https://github.com/KhronosGroup/Vulkan-Portability/issues/14 */
-	VK_KHR_PORTABILITY_SUBSET_EXTENSION_NAME,
-#endif /* VK_ENABLE_BETA_EXTENSIONS */
+	uint8_t EXT_vertex_attribute_divisor;
+	/* Only required for special implementations (i.e. MoltenVK) */
+	uint8_t KHR_portability_subset;
 	/* Vendor-specific extensions */
-	"VK_GGP_frame_token"
-};
-static const uint32_t requiredDeviceExtensionCount = SDL_arraysize(requiredDeviceExtensions);
+	uint8_t GGP_frame_token;
+} VulkanExtensions;
+
+static inline uint8_t CheckDeviceExtensions(
+	VkExtensionProperties *extensions,
+	uint32_t numExtensions,
+	VulkanExtensions *supports
+) {
+	uint32_t i;
+
+	SDL_memset(supports, '\0', sizeof(VulkanExtensions));
+	for (i = 0; i < numExtensions; i += 1)
+	{
+		const char *name = extensions[i].extensionName;
+		#define CHECK(ext) \
+			if (SDL_strcmp(name, "VK_" #ext) == 0) \
+			{ \
+				supports->ext = 1; \
+			}
+		CHECK(KHR_swapchain)
+		else CHECK(KHR_maintenance1)
+		else CHECK(KHR_dedicated_allocation)
+		else CHECK(KHR_get_memory_requirements2)
+		else CHECK(KHR_driver_properties)
+		else CHECK(EXT_vertex_attribute_divisor)
+		else CHECK(KHR_portability_subset)
+		else CHECK(GGP_frame_token)
+		#undef CHECK
+	}
+
+	return (	supports->KHR_swapchain &&
+			supports->KHR_maintenance1 &&
+			supports->KHR_dedicated_allocation &&
+			supports->KHR_get_memory_requirements2	);
+}
+
+static inline void CreateDeviceExtensionArray(
+	VulkanExtensions *supports,
+	uint32_t *extensionCount,
+	const char **extensions
+) {
+	uint8_t cur;
+	if (extensions != NULL)
+	{
+		cur = 0;
+		#define CHECK(ext) \
+			if (supports->ext) \
+			{ \
+				extensions[cur++] = "VK_" #ext; \
+			}
+		CHECK(KHR_swapchain)
+		CHECK(KHR_maintenance1)
+		CHECK(KHR_dedicated_allocation)
+		CHECK(KHR_get_memory_requirements2)
+		CHECK(KHR_driver_properties)
+		CHECK(EXT_vertex_attribute_divisor)
+		CHECK(KHR_portability_subset)
+		CHECK(GGP_frame_token)
+		#undef CHECK
+	}
+	else
+	{
+		*extensionCount = (
+			supports->KHR_swapchain +
+			supports->KHR_maintenance1 +
+			supports->KHR_dedicated_allocation +
+			supports->KHR_get_memory_requirements2 +
+			supports->KHR_driver_properties +
+			supports->EXT_vertex_attribute_divisor +
+			supports->KHR_portability_subset +
+			supports->GGP_frame_token
+		);
+	}
+}
 
 /* Constants/Limits */
 
@@ -1379,6 +1445,7 @@ typedef struct VulkanRenderer
 	uint8_t supportsS3tc;
 	uint8_t supportsDebugUtils;
 	uint8_t debugMode;
+	VulkanExtensions supports;
 
 	/* Submission */
 	FNA3D_Rect *presentSourceRectangle;
@@ -1853,7 +1920,7 @@ static void ShaderResources_InvalidateDescriptorSet(VulkanRenderer* renderer, Vk
 
 /* Vulkan: Extensions */
 
-static inline uint8_t SupportsExtension(
+static inline uint8_t SupportsInstanceExtension(
 	const char *ext,
 	VkExtensionProperties *availableExtensions,
 	uint32_t numAvailableExtensions
@@ -1883,9 +1950,8 @@ static uint8_t VULKAN_INTERNAL_CheckInstanceExtensions(
 		&extensionCount,
 		NULL
 	);
-	availableExtensions = SDL_stack_alloc(
-		VkExtensionProperties,
-		extensionCount
+	availableExtensions = SDL_malloc(
+		extensionCount * sizeof(VkExtensionProperties)
 	);
 	vkEnumerateInstanceExtensionProperties(
 		NULL,
@@ -1895,7 +1961,7 @@ static uint8_t VULKAN_INTERNAL_CheckInstanceExtensions(
 
 	for (i = 0; i < requiredExtensionsLength; i += 1)
 	{
-		if (!SupportsExtension(
+		if (!SupportsInstanceExtension(
 			requiredExtensions[i],
 			availableExtensions,
 			extensionCount
@@ -1906,24 +1972,24 @@ static uint8_t VULKAN_INTERNAL_CheckInstanceExtensions(
 	}
 
 	/* This is optional, but nice to have! */
-	*supportsDebugUtils = SupportsExtension(
+	*supportsDebugUtils = SupportsInstanceExtension(
 		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 		availableExtensions,
 		extensionCount
 	);
 
-	SDL_stack_free(availableExtensions);
+	SDL_free(availableExtensions);
 	return allExtensionsSupported;
 }
 
 static uint8_t VULKAN_INTERNAL_CheckDeviceExtensions(
 	VulkanRenderer *renderer,
-	VkPhysicalDevice physicalDevice
+	VkPhysicalDevice physicalDevice,
+	VulkanExtensions *physicalDeviceExtensions
 ) {
-	uint32_t extensionCount, i;
+	uint32_t extensionCount;
 	VkExtensionProperties *availableExtensions;
-	uint8_t allExtensionsSupported = 1;
-	uint32_t requiredExtensionCount = requiredDeviceExtensionCount;
+	uint8_t allExtensionsSupported;
 
 	renderer->vkEnumerateDeviceExtensionProperties(
 		physicalDevice,
@@ -1931,9 +1997,8 @@ static uint8_t VULKAN_INTERNAL_CheckDeviceExtensions(
 		&extensionCount,
 		NULL
 	);
-	availableExtensions = SDL_stack_alloc(
-		VkExtensionProperties,
-		extensionCount
+	availableExtensions = (VkExtensionProperties*) SDL_malloc(
+		extensionCount * sizeof(VkExtensionProperties)
 	);
 	renderer->vkEnumerateDeviceExtensionProperties(
 		physicalDevice,
@@ -1942,23 +2007,13 @@ static uint8_t VULKAN_INTERNAL_CheckDeviceExtensions(
 		availableExtensions
 	);
 
-	if (SDL_strcmp(SDL_GetPlatform(), "Stadia") == 0)
-	{
-		requiredExtensionCount -= 1;
-	}
-	for (i = 0; i < requiredExtensionCount; i += 1)
-	{
-		if (!SupportsExtension(
-			requiredDeviceExtensions[i],
-			availableExtensions,
-			extensionCount
-		)) {
-			allExtensionsSupported = 0;
-			break;
-		}
-	}
+	allExtensionsSupported = CheckDeviceExtensions(
+		availableExtensions,
+		extensionCount,
+		physicalDeviceExtensions
+	);
 
-	SDL_stack_free(availableExtensions);
+	SDL_free(availableExtensions);
 	return allExtensionsSupported;
 }
 
@@ -1974,7 +2029,9 @@ static uint8_t VULKAN_INTERNAL_CheckValidationLayers(
 	uint8_t layerFound;
 
 	vkEnumerateInstanceLayerProperties(&layerCount, NULL);
-	availableLayers = SDL_stack_alloc(VkLayerProperties, layerCount);
+	availableLayers = (VkLayerProperties*) SDL_malloc(
+		layerCount * sizeof(VkLayerProperties)
+	);
 	vkEnumerateInstanceLayerProperties(&layerCount, availableLayers);
 
 	for (i = 0; i < validationLayersLength; i += 1)
@@ -1996,7 +2053,7 @@ static uint8_t VULKAN_INTERNAL_CheckValidationLayers(
 		}
 	}
 
-	SDL_stack_free(availableLayers);
+	SDL_free(availableLayers);
 	return layerFound;
 }
 
@@ -2208,6 +2265,7 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	VulkanRenderer *renderer,
 	VkPhysicalDevice physicalDevice,
+	VulkanExtensions *physicalDeviceExtensions,
 	VkSurfaceKHR surface,
 	uint32_t *queueFamilyIndex,
 	uint8_t *deviceRank
@@ -2226,8 +2284,11 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	 * one that supports our features would be fine
 	 */
 
-	if (!VULKAN_INTERNAL_CheckDeviceExtensions(renderer, physicalDevice))
-	{
+	if (!VULKAN_INTERNAL_CheckDeviceExtensions(
+		renderer,
+		physicalDevice,
+		physicalDeviceExtensions
+	)) {
 		return 0;
 	}
 
@@ -2432,6 +2493,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer)
 {
 	VkResult vulkanResult;
 	VkPhysicalDevice *physicalDevices;
+	VulkanExtensions *physicalDeviceExtensions;
 	uint32_t physicalDeviceCount, i, suitableIndex;
 	uint32_t queueFamilyIndex, suitableQueueFamilyIndex;
 	VkDeviceSize deviceLocalHeapSize;
@@ -2453,6 +2515,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer)
 	}
 
 	physicalDevices = SDL_stack_alloc(VkPhysicalDevice, physicalDeviceCount);
+	physicalDeviceExtensions = SDL_stack_alloc(VulkanExtensions, physicalDeviceCount);
 
 	vulkanResult = renderer->vkEnumeratePhysicalDevices(
 		renderer->instance,
@@ -2467,6 +2530,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer)
 			VkErrorMessages(vulkanResult)
 		);
 		SDL_stack_free(physicalDevices);
+		SDL_stack_free(physicalDeviceExtensions);
 		return 0;
 	}
 
@@ -2479,6 +2543,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer)
 		const uint8_t suitable = VULKAN_INTERNAL_IsDeviceSuitable(
 			renderer,
 			physicalDevices[i],
+			&physicalDeviceExtensions[i],
 			renderer->surface,
 			&queueFamilyIndex,
 			&deviceRank
@@ -2510,23 +2575,32 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer)
 
 	if (suitableIndex != -1)
 	{
+		renderer->supports = physicalDeviceExtensions[suitableIndex];
 		renderer->physicalDevice = physicalDevices[suitableIndex];
 		renderer->queueFamilyIndex = suitableQueueFamilyIndex;
 	}
 	else
 	{
 		SDL_stack_free(physicalDevices);
+		SDL_stack_free(physicalDeviceExtensions);
 		return 0;
 	}
 
-	renderer->physicalDeviceDriverProperties.sType =
-		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR;
-	renderer->physicalDeviceDriverProperties.pNext = NULL;
-
 	renderer->physicalDeviceProperties.sType =
 		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-	renderer->physicalDeviceProperties.pNext =
-		&renderer->physicalDeviceDriverProperties;
+	if (renderer->supports.KHR_driver_properties)
+	{
+		renderer->physicalDeviceDriverProperties.sType =
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR;
+		renderer->physicalDeviceDriverProperties.pNext = NULL;
+
+		renderer->physicalDeviceProperties.pNext =
+			&renderer->physicalDeviceDriverProperties;
+	}
+	else
+	{
+		renderer->physicalDeviceProperties.pNext = NULL;
+	}
 
 	renderer->vkGetPhysicalDeviceProperties2KHR(
 		renderer->physicalDevice,
@@ -2565,6 +2639,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer)
 	renderer->deviceLocalHeapUsage = 0;
 
 	SDL_stack_free(physicalDevices);
+	SDL_stack_free(physicalDeviceExtensions);
 	return 1;
 }
 
@@ -2573,9 +2648,8 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(VulkanRenderer *renderer)
 	VkResult vulkanResult;
 	VkDeviceCreateInfo deviceCreateInfo;
 	VkPhysicalDeviceFeatures deviceFeatures;
-#ifdef VK_ENABLE_BETA_EXTENSIONS
 	VkPhysicalDevicePortabilitySubsetFeaturesKHR portabilityFeatures;
-#endif /* VK_ENABLE_BETA_EXTENSIONS */
+	const char **deviceExtensions;
 
 	VkDeviceQueueCreateInfo queueCreateInfo;
 	float queuePriority = 1.0f;
@@ -2595,45 +2669,54 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(VulkanRenderer *renderer)
 	deviceFeatures.fillModeNonSolid = VK_TRUE;
 	deviceFeatures.samplerAnisotropy = VK_TRUE;
 
-#ifdef VK_ENABLE_BETA_EXTENSIONS
-	portabilityFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR;
-	portabilityFeatures.pNext = NULL;
-	portabilityFeatures.constantAlphaColorBlendFactors = VK_FALSE;
-	portabilityFeatures.events = VK_FALSE;
-	portabilityFeatures.imageViewFormatReinterpretation = VK_FALSE;
-	portabilityFeatures.imageViewFormatSwizzle = VK_TRUE;
-	portabilityFeatures.imageView2DOn3DImage = VK_FALSE;
-	portabilityFeatures.multisampleArrayImage = VK_FALSE;
-	portabilityFeatures.mutableComparisonSamplers = VK_FALSE;
-	portabilityFeatures.pointPolygons = VK_FALSE;
-	portabilityFeatures.samplerMipLodBias = VK_FALSE; /* Technically should be true, but eh */
-	portabilityFeatures.separateStencilMaskRef = VK_FALSE;
-	portabilityFeatures.shaderSampleRateInterpolationFunctions = VK_FALSE;
-	portabilityFeatures.tessellationIsolines = VK_FALSE;
-	portabilityFeatures.tessellationPointMode = VK_FALSE;
-	portabilityFeatures.triangleFans = VK_FALSE;
-	portabilityFeatures.vertexAttributeAccessBeyondStride = VK_FALSE;
-#endif /* VK_ENABLE_BETA_EXTENSIONS */
-
-	/* creating the logical device */
+	/* Creating the logical device */
 
 	deviceCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-#ifdef VK_ENABLE_BETA_EXTENSIONS
-	deviceCreateInfo.pNext = &portabilityFeatures;
-#else
-	deviceCreateInfo.pNext = NULL;
-#endif /* VK_ENABLE_BETA_EXTENSIONS */
+	if (renderer->supports.KHR_portability_subset)
+	{
+		portabilityFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PORTABILITY_SUBSET_FEATURES_KHR;
+		portabilityFeatures.pNext = NULL;
+		portabilityFeatures.constantAlphaColorBlendFactors = VK_FALSE;
+		portabilityFeatures.events = VK_FALSE;
+		portabilityFeatures.imageViewFormatReinterpretation = VK_FALSE;
+		portabilityFeatures.imageViewFormatSwizzle = VK_TRUE;
+		portabilityFeatures.imageView2DOn3DImage = VK_FALSE;
+		portabilityFeatures.multisampleArrayImage = VK_FALSE;
+		portabilityFeatures.mutableComparisonSamplers = VK_FALSE;
+		portabilityFeatures.pointPolygons = VK_FALSE;
+		portabilityFeatures.samplerMipLodBias = VK_FALSE; /* Technically should be true, but eh */
+		portabilityFeatures.separateStencilMaskRef = VK_FALSE;
+		portabilityFeatures.shaderSampleRateInterpolationFunctions = VK_FALSE;
+		portabilityFeatures.tessellationIsolines = VK_FALSE;
+		portabilityFeatures.tessellationPointMode = VK_FALSE;
+		portabilityFeatures.triangleFans = VK_FALSE;
+		portabilityFeatures.vertexAttributeAccessBeyondStride = VK_FALSE;
+		deviceCreateInfo.pNext = &portabilityFeatures;
+	}
+	else
+	{
+		deviceCreateInfo.pNext = NULL;
+	}
 	deviceCreateInfo.flags = 0;
 	deviceCreateInfo.queueCreateInfoCount = 1;
 	deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
 	deviceCreateInfo.enabledLayerCount = 0;
 	deviceCreateInfo.ppEnabledLayerNames = NULL;
-	deviceCreateInfo.enabledExtensionCount = requiredDeviceExtensionCount;
-	if (SDL_strcmp(SDL_GetPlatform(), "Stadia") == 0)
-	{
-		deviceCreateInfo.enabledExtensionCount -= 1;
-	}
-	deviceCreateInfo.ppEnabledExtensionNames = requiredDeviceExtensions;
+	CreateDeviceExtensionArray(
+		&renderer->supports,
+		&deviceCreateInfo.enabledExtensionCount,
+		NULL
+	);
+	deviceExtensions = SDL_stack_alloc(
+		const char*,
+		deviceCreateInfo.enabledExtensionCount
+	);
+	CreateDeviceExtensionArray(
+		&renderer->supports,
+		&deviceCreateInfo.enabledExtensionCount,
+		deviceExtensions
+	);
+	deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions;
 	deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
 
 	vulkanResult = renderer->vkCreateDevice(
@@ -2642,6 +2725,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(VulkanRenderer *renderer)
 		NULL,
 		&renderer->logicalDevice
 	);
+	SDL_stack_free(deviceExtensions);
 	VULKAN_ERROR_CHECK(vulkanResult, vkCreateDevice, 0)
 
 	/* Load vkDevice entry points */
@@ -6173,7 +6257,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	/* Present, if applicable */
 	if (present && acquireSuccess)
 	{
-		if (renderer->physicalDeviceDriverProperties.driverID == VK_DRIVER_ID_GGP_PROPRIETARY)
+		if (renderer->supports.GGP_frame_token)
 		{
 			const void* token = SDL_GetWindowData(
 				(SDL_Window*) renderer->presentOverrideWindowHandle,
@@ -11376,7 +11460,8 @@ static uint8_t VULKAN_SupportsS3TC(FNA3D_Renderer *driverData)
 
 static uint8_t VULKAN_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
 {
-	return 1;
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	return renderer->supports.EXT_vertex_attribute_divisor;
 }
 
 static uint8_t VULKAN_SupportsNoOverwrite(FNA3D_Renderer *driverData)
@@ -11735,17 +11820,24 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		"Vulkan Device: %s",
 		renderer->physicalDeviceProperties.properties.deviceName
 	);
-	FNA3D_LogInfo(
-		"Vulkan Driver: %s %s",
-		renderer->physicalDeviceDriverProperties.driverName,
-		renderer->physicalDeviceDriverProperties.driverInfo
-	);
-	FNA3D_LogInfo(
-		"Vulkan Conformance: %u.%u.%u",
-		renderer->physicalDeviceDriverProperties.conformanceVersion.major,
-		renderer->physicalDeviceDriverProperties.conformanceVersion.minor,
-		renderer->physicalDeviceDriverProperties.conformanceVersion.patch
-	);
+	if (renderer->supports.KHR_driver_properties)
+	{
+		FNA3D_LogInfo(
+			"Vulkan Driver: %s %s",
+			renderer->physicalDeviceDriverProperties.driverName,
+			renderer->physicalDeviceDriverProperties.driverInfo
+		);
+		FNA3D_LogInfo(
+			"Vulkan Conformance: %u.%u.%u",
+			renderer->physicalDeviceDriverProperties.conformanceVersion.major,
+			renderer->physicalDeviceDriverProperties.conformanceVersion.minor,
+			renderer->physicalDeviceDriverProperties.conformanceVersion.patch
+		);
+	}
+	else
+	{
+		FNA3D_LogInfo("KHR_driver_properties unsupported! Bother your vendor about this!");
+	}
 	FNA3D_LogWarn(
 		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
 		"FNA3D Vulkan is still in development! You have been warned!\n"
