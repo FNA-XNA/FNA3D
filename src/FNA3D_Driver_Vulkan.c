@@ -112,43 +112,39 @@ static inline uint8_t CheckDeviceExtensions(
 			supports->KHR_get_memory_requirements2	);
 }
 
+static inline uint32_t GetDeviceExtensionCount(VulkanExtensions *supports)
+{
+	return (
+		supports->KHR_swapchain +
+		supports->KHR_maintenance1 +
+		supports->KHR_dedicated_allocation +
+		supports->KHR_get_memory_requirements2 +
+		supports->KHR_driver_properties +
+		supports->EXT_vertex_attribute_divisor +
+		supports->KHR_portability_subset +
+		supports->GGP_frame_token
+	);
+}
+
 static inline void CreateDeviceExtensionArray(
 	VulkanExtensions *supports,
-	uint32_t *extensionCount,
 	const char **extensions
 ) {
-	uint8_t cur;
-	if (extensions != NULL)
-	{
-		cur = 0;
-		#define CHECK(ext) \
-			if (supports->ext) \
-			{ \
-				extensions[cur++] = "VK_" #ext; \
-			}
-		CHECK(KHR_swapchain)
-		CHECK(KHR_maintenance1)
-		CHECK(KHR_dedicated_allocation)
-		CHECK(KHR_get_memory_requirements2)
-		CHECK(KHR_driver_properties)
-		CHECK(EXT_vertex_attribute_divisor)
-		CHECK(KHR_portability_subset)
-		CHECK(GGP_frame_token)
-		#undef CHECK
-	}
-	else
-	{
-		*extensionCount = (
-			supports->KHR_swapchain +
-			supports->KHR_maintenance1 +
-			supports->KHR_dedicated_allocation +
-			supports->KHR_get_memory_requirements2 +
-			supports->KHR_driver_properties +
-			supports->EXT_vertex_attribute_divisor +
-			supports->KHR_portability_subset +
-			supports->GGP_frame_token
-		);
-	}
+	uint8_t cur = 0;
+	#define CHECK(ext) \
+		if (supports->ext) \
+		{ \
+			extensions[cur++] = "VK_" #ext; \
+		}
+	CHECK(KHR_swapchain)
+	CHECK(KHR_maintenance1)
+	CHECK(KHR_dedicated_allocation)
+	CHECK(KHR_get_memory_requirements2)
+	CHECK(KHR_driver_properties)
+	CHECK(EXT_vertex_attribute_divisor)
+	CHECK(KHR_portability_subset)
+	CHECK(GGP_frame_token)
+	#undef CHECK
 }
 
 /* Constants/Limits */
@@ -2702,20 +2698,14 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(VulkanRenderer *renderer)
 	deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
 	deviceCreateInfo.enabledLayerCount = 0;
 	deviceCreateInfo.ppEnabledLayerNames = NULL;
-	CreateDeviceExtensionArray(
-		&renderer->supports,
-		&deviceCreateInfo.enabledExtensionCount,
-		NULL
+	deviceCreateInfo.enabledExtensionCount = GetDeviceExtensionCount(
+		&renderer->supports
 	);
 	deviceExtensions = SDL_stack_alloc(
 		const char*,
 		deviceCreateInfo.enabledExtensionCount
 	);
-	CreateDeviceExtensionArray(
-		&renderer->supports,
-		&deviceCreateInfo.enabledExtensionCount,
-		deviceExtensions
-	);
+	CreateDeviceExtensionArray(&renderer->supports, deviceExtensions);
 	deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions;
 	deviceCreateInfo.pEnabledFeatures = &deviceFeatures;
 
