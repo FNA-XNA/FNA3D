@@ -1,6 +1,6 @@
 [submodule "MojoShader"]
 	path = MojoShader
-	url = git://github.com/icculus/MojoShader
+	url = git://github.com/icculus/mojoshader
 	branch = upstream
 [submodule "Vulkan-Headers"]
 	path = Vulkan-Headers
