@@ -2226,17 +2226,17 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 	uint32_t typeFilter,
 	VkMemoryPropertyFlags requiredProperties,
 	VkMemoryPropertyFlags ignoredProperties,
-	uint32_t *result
+	uint32_t *memoryTypeIndex
 ) {
 	uint32_t i;
 
-	for (i = 0; i < renderer->memoryProperties.memoryTypeCount; i += 1)
+	for (i = *memoryTypeIndex; i < renderer->memoryProperties.memoryTypeCount; i += 1)
 	{
 		if (	(typeFilter & (1 << i)) &&
 			(renderer->memoryProperties.memoryTypes[i].propertyFlags & requiredProperties) == requiredProperties &&
 			(renderer->memoryProperties.memoryTypes[i].propertyFlags & ignoredProperties) == 0	)
 		{
-			*result = i;
+			*memoryTypeIndex = i;
 			return 1;
 		}
 	}
@@ -3151,8 +3151,6 @@ static uint8_t VULKAN_INTERNAL_FindImageMemoryRequirements(
 		ignoredMemoryPropertyFlags,
 		pMemoryTypeIndex
 	);
-
-	return 1;
 }
 
 static void VULKAN_INTERNAL_DeallocateMemory(
@@ -3626,7 +3624,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 	VulkanMemoryUsedRegion** usedRegion
 ) {
 	uint8_t bindResult = 0;
-	uint32_t memoryTypeIndex;
+	uint32_t memoryTypeIndex = 0;
 	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
 	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
 	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
@@ -3644,6 +3642,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 	requiredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	ignoredMemoryPropertyFlags = 0;
 
+trynextdeviceheap:
 	if (VULKAN_INTERNAL_FindImageMemoryRequirements(
 		renderer,
 		image,
@@ -3663,11 +3662,19 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 			image,
 			usedRegion
 		);
+
+		/* Bind failed, try the next device-local heap */
+		if (bindResult != 1)
+		{
+			memoryTypeIndex += 1;
+			goto trynextdeviceheap;
+		}
 	}
 
-	/* Bind failed, try again without device local */
+	/* Bind _still_ failed, try again without device local */
 	if (bindResult != 1)
 	{
+		memoryTypeIndex = 0;
 		requiredMemoryPropertyFlags = 0;
 		ignoredMemoryPropertyFlags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
 
@@ -3678,6 +3685,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 
 		FNA3D_LogWarn("Out of device local memory, falling back to host memory");
 
+trynexthostheap:
 		if (VULKAN_INTERNAL_FindImageMemoryRequirements(
 			renderer,
 			image,
@@ -3697,6 +3705,12 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 				image,
 				usedRegion
 			);
+
+			if (bindResult != 1)
+			{
+				memoryTypeIndex += 1;
+				goto trynexthostheap;
+			}
 		}
 	}
 
@@ -3712,7 +3726,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 	VulkanMemoryUsedRegion** usedRegion
 ) {
 	uint8_t bindResult = 0;
-	uint32_t memoryTypeIndex;
+	uint32_t memoryTypeIndex = 0;
 	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
 	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
 	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
@@ -3738,6 +3752,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 	ignoredMemoryPropertyFlags = 0;
 
 	/* Attempt to bind memory */
+trynextdeviceheap:
 	if (VULKAN_INTERNAL_FindBufferMemoryRequirements(
 		renderer,
 		buffer,
@@ -3757,15 +3772,24 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 			VK_NULL_HANDLE,
 			usedRegion
 		);
+
+		/* Bind failed, try the next device-local heap */
+		if (bindResult != 1)
+		{
+			memoryTypeIndex += 1;
+			goto trynextdeviceheap;
+		}
 	}
 
 	/* Bind failed, try again if originally preferred device local */
 	if (bindResult != 1 && preferDeviceLocal)
 	{
+		memoryTypeIndex = 0;
 		requiredMemoryPropertyFlags =
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
+trynexthostheap:
 		if (VULKAN_INTERNAL_FindBufferMemoryRequirements(
 			renderer,
 			buffer,
@@ -3785,6 +3809,12 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 				VK_NULL_HANDLE,
 				usedRegion
 			);
+
+			if (bindResult != 1)
+			{
+				memoryTypeIndex += 1;
+				goto trynexthostheap;
+			}
 		}
 	}
 
