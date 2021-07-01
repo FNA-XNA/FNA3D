@@ -2600,19 +2600,6 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer)
 		&renderer->memoryProperties
 	);
 
-	deviceLocalHeapSize = 0;
-	for (i = 0; i < renderer->memoryProperties.memoryHeapCount; i += 1)
-	{
-		if (	renderer->memoryProperties.memoryHeaps[i].flags &
-			VK_MEMORY_HEAP_DEVICE_LOCAL_BIT	)
-		{
-			if (renderer->memoryProperties.memoryHeaps[i].size > deviceLocalHeapSize)
-			{
-				deviceLocalHeapSize = renderer->memoryProperties.memoryHeaps[i].size;
-			}
-		}
-	}
-
 	deviceLocalHeapUsageFactorStr = SDL_GetHint("FNA3D_VULKAN_DEVICE_LOCAL_HEAP_USAGE_FACTOR");
 	if (deviceLocalHeapUsageFactorStr != NULL)
 	{
@@ -2621,9 +2608,28 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer)
 		{
 			deviceLocalHeapUsageFactor = factor;
 		}
+
+		deviceLocalHeapSize = 0;
+		for (i = 0; i < renderer->memoryProperties.memoryHeapCount; i += 1)
+		{
+			if (	renderer->memoryProperties.memoryHeaps[i].flags &
+				VK_MEMORY_HEAP_DEVICE_LOCAL_BIT	)
+			{
+				if (renderer->memoryProperties.memoryHeaps[i].size > deviceLocalHeapSize)
+				{
+					deviceLocalHeapSize = renderer->memoryProperties.memoryHeaps[i].size;
+				}
+			}
+		}
+
+		renderer->maxDeviceLocalHeapUsage = deviceLocalHeapSize * deviceLocalHeapUsageFactor;
+	}
+	else
+	{
+		/* Don't even attempt to track this, let the driver do the work */
+		renderer->maxDeviceLocalHeapUsage = UINT64_MAX;
 	}
 
-	renderer->maxDeviceLocalHeapUsage = deviceLocalHeapSize * deviceLocalHeapUsageFactor;
 	renderer->deviceLocalHeapUsage = 0;
 
 	SDL_stack_free(physicalDevices);
