@@ -2241,6 +2241,12 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 		}
 	}
 
+	FNA3D_LogWarn(
+		"Failed to find memory type %X, required %X, ignored %X",
+		typeFilter,
+		requiredProperties,
+		ignoredProperties
+	);
 	return 0;
 }
 
