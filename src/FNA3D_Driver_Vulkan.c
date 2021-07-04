@@ -2241,12 +2241,6 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 		}
 	}
 
-	FNA3D_LogWarn(
-		"Failed to find memory type %X, required %X, ignored %X",
-		typeFilter,
-		requiredProperties,
-		ignoredProperties
-	);
 	return 0;
 }
 
@@ -3648,8 +3642,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 	requiredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	ignoredMemoryPropertyFlags = 0;
 
-trynextdeviceheap:
-	if (VULKAN_INTERNAL_FindImageMemoryRequirements(
+	while (VULKAN_INTERNAL_FindImageMemoryRequirements(
 		renderer,
 		image,
 		requiredMemoryPropertyFlags,
@@ -3669,11 +3662,13 @@ trynextdeviceheap:
 			usedRegion
 		);
 
-		/* Bind failed, try the next device-local heap */
-		if (bindResult != 1)
+		if (bindResult == 1)
+		{
+			break;
+		}
+		else /* Bind failed, try the next device-local heap */
 		{
 			memoryTypeIndex += 1;
-			goto trynextdeviceheap;
 		}
 	}
 
@@ -3691,8 +3686,7 @@ trynextdeviceheap:
 
 		FNA3D_LogWarn("Out of device local memory, falling back to host memory");
 
-trynexthostheap:
-		if (VULKAN_INTERNAL_FindImageMemoryRequirements(
+		while (VULKAN_INTERNAL_FindImageMemoryRequirements(
 			renderer,
 			image,
 			requiredMemoryPropertyFlags,
@@ -3712,10 +3706,13 @@ trynexthostheap:
 				usedRegion
 			);
 
-			if (bindResult != 1)
+			if (bindResult == 1)
+			{
+				break;
+			}
+			else /* Bind failed, try the next heap */
 			{
 				memoryTypeIndex += 1;
-				goto trynexthostheap;
 			}
 		}
 	}
@@ -3757,9 +3754,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 	}
 	ignoredMemoryPropertyFlags = 0;
 
-	/* Attempt to bind memory */
-trynextdeviceheap:
-	if (VULKAN_INTERNAL_FindBufferMemoryRequirements(
+	while (VULKAN_INTERNAL_FindBufferMemoryRequirements(
 		renderer,
 		buffer,
 		requiredMemoryPropertyFlags,
@@ -3779,11 +3774,13 @@ trynextdeviceheap:
 			usedRegion
 		);
 
-		/* Bind failed, try the next device-local heap */
-		if (bindResult != 1)
+		if (bindResult == 1)
+		{
+			break;
+		}
+		else /* Bind failed, try the next device-local heap */
 		{
 			memoryTypeIndex += 1;
-			goto trynextdeviceheap;
 		}
 	}
 
@@ -3795,8 +3792,7 @@ trynextdeviceheap:
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-trynexthostheap:
-		if (VULKAN_INTERNAL_FindBufferMemoryRequirements(
+		while (VULKAN_INTERNAL_FindBufferMemoryRequirements(
 			renderer,
 			buffer,
 			requiredMemoryPropertyFlags,
@@ -3816,10 +3812,13 @@ trynexthostheap:
 				usedRegion
 			);
 
-			if (bindResult != 1)
+			if (bindResult == 1)
+			{
+				break;
+			}
+			else /* Bind failed, try the next heap */
 			{
 				memoryTypeIndex += 1;
-				goto trynexthostheap;
 			}
 		}
 	}
