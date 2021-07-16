@@ -6171,6 +6171,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		{
 			renderer->buffersInUse[i]->bound = 0;
 			renderer->buffersInUse[i]->boundSubmitted = 1;
+			renderer->buffersInUse[i]->currentSubBufferIndex = 0;
 
 			renderer->submittedBuffers[i] = renderer->buffersInUse[i];
 			renderer->buffersInUse[i] = NULL;
