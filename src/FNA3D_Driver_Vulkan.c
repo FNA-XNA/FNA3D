@@ -8865,8 +8865,13 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 				pipelineCacheData
 			);
 
-			SDL_RWwrite(pipelineCacheFile, pipelineCacheData, sizeof(uint8_t), pipelineCacheSize);
-			SDL_RWclose(pipelineCacheFile);
+			pipelineCacheFile->write(
+				pipelineCacheFile,
+				pipelineCacheData,
+				sizeof(uint8_t),
+				pipelineCacheSize
+			);
+			pipelineCacheFile->close(pipelineCacheFile);
 
 			SDL_free(pipelineCacheData);
 		}
