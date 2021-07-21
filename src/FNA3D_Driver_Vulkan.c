@@ -12229,7 +12229,11 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	}
 	else
 	{
+#if SDL_VERSION_ATLEAST(2, 0, 10)
 		pipelineCacheBytes = SDL_LoadFile(pipelineCacheFileName, &pipelineCacheSize);
+#else
+		pipelineCacheBytes = SDL_LoadFile_RW(SDL_RWFromFile(pipelineCacheFileName, "rb"), &pipelineCacheSize, 1);
+#endif /* SDL_VERSION_ATLEAST(2, 0, 10) */
 	}
 
 	if (pipelineCacheBytes != NULL)
