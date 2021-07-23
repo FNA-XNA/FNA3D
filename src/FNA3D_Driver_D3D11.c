@@ -1520,10 +1520,13 @@ static void D3D11_SwapBuffers(
 	/* "Blit" the faux-backbuffer to the swapchain image */
 	D3D11_INTERNAL_BlitFramebuffer(renderer, drawableWidth, drawableHeight);
 
-	SDL_UnlockMutex(renderer->ctxLock);
-
 	/* Present! */
 	IDXGISwapChain_Present(renderer->swapchain, renderer->syncInterval, 0);
+
+	/* An overlay program may seize our context and render with it, so
+	 * unlock _after_ we present so the device context is safe in that time
+	 */
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 /* Drawing */
