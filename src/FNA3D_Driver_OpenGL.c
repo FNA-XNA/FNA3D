@@ -175,6 +175,7 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	/* Capabilities */
 	uint8_t supports_s3tc;
 	uint8_t supports_dxt1;
+	uint8_t supports_anisotropic_filtering;
 	int32_t maxMultiSampleCount;
 	int32_t maxMultiSampleCountFormat[21];
 
@@ -2308,13 +2309,16 @@ static void OPENGL_VerifySampler(
 				XNAToGL_MinMipFilter[tex->filter] :
 				XNAToGL_MinFilter[tex->filter]
 		);
-		renderer->glTexParameterf(
-			tex->target,
-			GL_TEXTURE_MAX_ANISOTROPY_EXT,
-			(tex->filter == FNA3D_TEXTUREFILTER_ANISOTROPIC) ?
-				SDL_max(tex->anisotropy, 1.0f) :
-				1.0f
-		);
+		if (renderer->supports_anisotropic_filtering)
+		{
+			renderer->glTexParameterf(
+				tex->target,
+				GL_TEXTURE_MAX_ANISOTROPY_EXT,
+				(tex->filter == FNA3D_TEXTUREFILTER_ANISOTROPIC) ?
+					SDL_max(tex->anisotropy, 1.0f) :
+					1.0f
+			);
+		}
 	}
 	if (sampler->maxMipLevel != tex->maxMipmapLevel)
 	{
@@ -3473,13 +3477,16 @@ static inline OpenGLTexture* OPENGL_INTERNAL_CreateTexture(
 			XNAToGL_MinMipFilter[result->filter] :
 			XNAToGL_MinFilter[result->filter]
 	);
-	renderer->glTexParameterf(
-		result->target,
-		GL_TEXTURE_MAX_ANISOTROPY_EXT,
-		(result->filter == FNA3D_TEXTUREFILTER_ANISOTROPIC) ?
-			SDL_max(result->anisotropy, 1.0f) :
-			1.0f
-	);
+	if (renderer->supports_anisotropic_filtering)
+	{
+		renderer->glTexParameterf(
+			result->target,
+			GL_TEXTURE_MAX_ANISOTROPY_EXT,
+			(result->filter == FNA3D_TEXTUREFILTER_ANISOTROPIC) ?
+				SDL_max(result->anisotropy, 1.0f) :
+				1.0f
+		);
+	}
 	renderer->glTexParameteri(
 		result->target,
 		GL_TEXTURE_BASE_LEVEL,
@@ -5147,6 +5154,12 @@ static uint8_t OPENGL_SupportsS3TC(FNA3D_Renderer *driverData)
 	return renderer->supports_s3tc;
 }
 
+static uint8_t OPENGL_SupportsAnisotropicFiltering(FNA3D_Renderer *driverData)
+{
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	return renderer->supports_anisotropic_filtering;
+}
+
 static uint8_t OPENGL_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
@@ -5519,7 +5532,8 @@ static void* MOJOSHADERCALL GLGetProcAddress(const char *ep, void* d)
 static inline void CheckExtensions(
 	const char *ext,
 	uint8_t *supportsS3tc,
-	uint8_t *supportsDxt1
+	uint8_t *supportsDxt1,
+	uint8_t *supportsAnisotropicFiltering
 ) {
 	uint8_t s3tc = (
 		SDL_strstr(ext, "GL_EXT_texture_compression_s3tc") ||
@@ -5535,6 +5549,11 @@ static inline void CheckExtensions(
 	if (s3tc || SDL_strstr(ext, "GL_EXT_texture_compression_dxt1"))
 	{
 		*supportsDxt1 = 1;
+	}
+
+	if (SDL_strstr(ext, "GL_EXT_texture_filter_anisotropic"))
+	{
+		*supportsAnisotropicFiltering = 1;
 	}
 }
 
@@ -5858,6 +5877,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	/* Load the extension list, initialize extension-dependent components */
 	renderer->supports_s3tc = 0;
 	renderer->supports_dxt1 = 0;
+	renderer->supports_anisotropic_filtering = 0;
 	if (renderer->useCoreProfile)
 	{
 		renderer->glGetIntegerv(GL_NUM_EXTENSIONS, &numExtensions);
@@ -5866,7 +5886,8 @@ FNA3D_Device* OPENGL_CreateDevice(
 			CheckExtensions(
 				(const char*) renderer->glGetStringi(GL_EXTENSIONS, i),
 				&renderer->supports_s3tc,
-				&renderer->supports_dxt1
+				&renderer->supports_dxt1,
+				&renderer->supports_anisotropic_filtering
 			);
 
 			if (renderer->supports_s3tc && renderer->supports_dxt1)
@@ -5881,7 +5902,8 @@ FNA3D_Device* OPENGL_CreateDevice(
 		CheckExtensions(
 			(const char*) renderer->glGetString(GL_EXTENSIONS),
 			&renderer->supports_s3tc,
-			&renderer->supports_dxt1
+			&renderer->supports_dxt1,
+			&renderer->supports_anisotropic_filtering
 		);
 	}
 
