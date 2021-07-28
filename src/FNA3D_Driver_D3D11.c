@@ -3523,8 +3523,10 @@ static FNA3D_Renderbuffer* D3D11_GenColorRenderbuffer(
 	desc.MipLevels = 1;
 	desc.ArraySize = 1;
 	desc.Format = XNAToD3D_TextureFormat[format];
-	desc.SampleDesc.Count = multiSampleCount;
-	desc.SampleDesc.Quality = D3D11_STANDARD_MULTISAMPLE_PATTERN;
+	desc.SampleDesc.Count = (multiSampleCount > 1 ? multiSampleCount : 1);
+	desc.SampleDesc.Quality = (
+		multiSampleCount > 1 ? D3D11_STANDARD_MULTISAMPLE_PATTERN : 0
+	);
 	desc.Usage = D3D11_USAGE_DEFAULT;
 	desc.BindFlags = D3D11_BIND_RENDER_TARGET;
 	desc.CPUAccessFlags = 0;
