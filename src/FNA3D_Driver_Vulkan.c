@@ -2286,22 +2286,6 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 		NULL
 	);
 
-	/* FIXME: Need better structure for checking vs storing support details */
-	querySuccess = VULKAN_INTERNAL_QuerySwapChainSupport(
-		renderer,
-		physicalDevice,
-		surface,
-		&swapChainSupportDetails
-	);
-	SDL_free(swapChainSupportDetails.formats);
-	SDL_free(swapChainSupportDetails.presentModes);
-	if (	querySuccess == 0 ||
-		swapChainSupportDetails.formatsLength == 0 ||
-		swapChainSupportDetails.presentModesLength == 0	)
-	{
-		return 0;
-	}
-
 	queueProps = (VkQueueFamilyProperties*) SDL_stack_alloc(
 		VkQueueFamilyProperties,
 		queueFamilyCount
@@ -2333,19 +2317,35 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 
 	SDL_stack_free(queueProps);
 
-	if (foundSuitableDevice)
+	if (!foundSuitableDevice)
 	{
-		/* Try to make sure we pick the best device available */
-		renderer->vkGetPhysicalDeviceProperties(
-			physicalDevice,
-			&deviceProperties
-		);
-		*deviceRank = DEVICE_PRIORITY[deviceProperties.deviceType];
-		return 1;
+		/* This device probably can't even present, forget it */
+		return 0;
 	}
 
-	/* This device is useless for us, next! */
-	return 0;
+	/* FIXME: Need better structure for checking vs storing support details */
+	querySuccess = VULKAN_INTERNAL_QuerySwapChainSupport(
+		renderer,
+		physicalDevice,
+		surface,
+		&swapChainSupportDetails
+	);
+	SDL_free(swapChainSupportDetails.formats);
+	SDL_free(swapChainSupportDetails.presentModes);
+	if (	querySuccess == 0 ||
+		swapChainSupportDetails.formatsLength == 0 ||
+		swapChainSupportDetails.presentModesLength == 0	)
+	{
+		return 0;
+	}
+
+	/* Try to make sure we pick the best device available */
+	renderer->vkGetPhysicalDeviceProperties(
+		physicalDevice,
+		&deviceProperties
+	);
+	*deviceRank = DEVICE_PRIORITY[deviceProperties.deviceType];
+	return 1;
 }
 
 /* Vulkan: vkInstance/vkDevice Creation */
