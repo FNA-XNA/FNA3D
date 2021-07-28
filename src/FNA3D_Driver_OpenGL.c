@@ -5154,12 +5154,6 @@ static uint8_t OPENGL_SupportsS3TC(FNA3D_Renderer *driverData)
 	return renderer->supports_s3tc;
 }
 
-static uint8_t OPENGL_SupportsAnisotropicFiltering(FNA3D_Renderer *driverData)
-{
-	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
-	return renderer->supports_anisotropic_filtering;
-}
-
 static uint8_t OPENGL_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
@@ -5541,6 +5535,10 @@ static inline void CheckExtensions(
 		SDL_strstr(ext, "GL_EXT_texture_compression_dxt3") ||
 		SDL_strstr(ext, "GL_EXT_texture_compression_dxt5")
 	);
+	uint8_t anisotropicFiltering = (
+		SDL_strstr(ext, "GL_EXT_texture_filter_anisotropic") ||
+		SDL_strstr(ext, "GL_ARB_texture_filter_anisotropic")
+	);
 
 	if (s3tc)
 	{
@@ -5550,8 +5548,7 @@ static inline void CheckExtensions(
 	{
 		*supportsDxt1 = 1;
 	}
-
-	if (SDL_strstr(ext, "GL_EXT_texture_filter_anisotropic"))
+	if (anisotropicFiltering)
 	{
 		*supportsAnisotropicFiltering = 1;
 	}
