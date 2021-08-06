@@ -11366,18 +11366,12 @@ static void VULKAN_AddDisposeShaderModule(FNA3D_Renderer *driverData, FNA3D_Shad
 	FNA3D_LogError("Not implemented");
 }
 
-static FNA3D_Shader* VULKAN_CreateShader(FNA3D_Renderer *driverData, FNA3D_ShaderModule *vertexShader, FNA3D_ShaderModule *pixelShader)
-{
-	FNA3D_LogError("Not implemented");
-	return NULL;
-}
-
-static void VULKAN_ApplyShader(FNA3D_Renderer *driverData, FNA3D_Shader *shader)
+static void VULKAN_ApplyVertexShader(FNA3D_Renderer *driverData, FNA3D_ShaderModule *shader)
 {
 	FNA3D_LogError("Not implemented");
 }
 
-static void VULKAN_AddDisposeShader(FNA3D_Renderer *driverData, FNA3D_Shader *shader)
+static void VULKAN_ApplyPixelShader(FNA3D_Renderer* driverData, FNA3D_ShaderModule* shader)
 {
 	FNA3D_LogError("Not implemented");
 }

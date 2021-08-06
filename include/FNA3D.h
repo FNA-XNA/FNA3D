@@ -58,7 +58,6 @@ typedef struct FNA3D_Buffer FNA3D_Buffer;
 typedef struct FNA3D_Renderbuffer FNA3D_Renderbuffer;
 typedef struct FNA3D_Effect FNA3D_Effect;
 typedef struct FNA3D_ShaderModule FNA3D_ShaderModule;
-typedef struct FNA3D_Shader FNA3D_Shader;
 typedef struct FNA3D_Query FNA3D_Query;
 
 /* Enumerations, should match XNA 4.0 */
@@ -1453,38 +1452,22 @@ FNA3DAPI void FNA3D_AddDisposeShaderModule(
 	FNA3D_ShaderModule *shaderModule
 );
 
-/* Constructs a shader from the given input vertex and pixel shader modules
+/* Sets the active vertex shader to be used by future draw calls
  *
- * vertexShader: The vertex shader module
- * pixelShader: The pixel shader module
- *
- * Returns an FNA3D_Shader handle to the new shader
+ * shader: The FNA3D_ShaderModule to be applied.
  */
-FNA3DAPI FNA3D_Shader* FNA3D_CreateShader(
+FNA3DAPI void FNA3D_ApplyVertexShader(
 	FNA3D_Device *device,
-	FNA3D_ShaderModule *vertexShader,
-	FNA3D_ShaderModule *pixelShader
+	FNA3D_ShaderModule *shader
 );
 
-/* Sets the active shader to be used by future draw calls
+/* Sets the active pixel shader to be used by future draw calls
  *
- * shader: The FNA3D_Shader to be applied.
+ * shader: The FNA3D_ShaderModule to be applied.
  */
-FNA3DAPI void FNA3D_ApplyShader(
+FNA3DAPI void FNA3D_ApplyPixelShader(
 	FNA3D_Device *device,
-	FNA3D_Shader *shader
-);
-
-/* Sends a shader to be destroyed by the renderer. Note that we call it
- * "AddDispose" because it may not be immediately destroyed by the renderer if
- * this is not called from the main thread (for example, if a garbage collector
- * deletes the resource instead of the programmer).
- *
- * shader: The FNA3D_Shader to be destroyed.
- */
-FNA3DAPI void FNA3D_AddDisposeShader(
-	FNA3D_Device *device,
-	FNA3D_Shader *shader
+	FNA3D_ShaderModule *shader
 );
 
 /* Sets a buffer of uniform data to be used by the current vertex shader
@@ -1507,9 +1490,9 @@ FNA3DAPI void FNA3D_MapVertexShaderUniforms(
  * dataLength: Size of the data in bytes
  */
 FNA3DAPI void FNA3D_MapPixelShaderUniforms(
-	FNA3D_Device* device,
+	FNA3D_Device *device,
 	uint32_t slot,
-	void* data,
+	void *data,
 	uint32_t dataLength
 );
 

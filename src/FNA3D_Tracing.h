@@ -377,18 +377,12 @@ void FNA3D_Trace_AddDisposeShaderModule(
 	FNA3D_ShaderModule *shader
 );
 
-void FNA3D_Trace_CreateShader(
-	FNA3D_ShaderModule *vertexShader,
-	FNA3D_ShaderModule *pixelShader,
-	FNA3D_Shader *retval
+void FNA3D_Trace_ApplyVertexShader(
+	FNA3D_ShaderModule *shader
 );
 
-void FNA3D_Trace_ApplyShader(
-	FNA3D_Shader *shader
-);
-
-void FNA3D_Trace_AddDisposeShader(
-	FNA3D_Shader* shader
+void FNA3D_Trace_ApplyPixelShader(
+	FNA3D_ShaderModule *shader
 );
 
 void FNA3D_Trace_MapVertexShaderUniforms(
@@ -470,9 +464,8 @@ void FNA3D_Trace_SetStringMarker(const char *text);
 #define TRACE_ENDPASSRESTORE FNA3D_Trace_EndPassRestore(effect);
 #define TRACE_CREATESHADERMODULE FNA3D_Trace_CreateShaderModule(shaderCode, shaderCodeLength, entryPoint, shaderStage, result);
 #define TRACE_ADDDISPOSESHADERMODULE FNA3D_Trace_AddDisposeShaderModule(shader);
-#define TRACE_CREATESHADER FNA3D_Trace_CreateShader(vertexShader, pixelShader, result);
-#define TRACE_APPLYSHADER FNA3D_Trace_ApplyShader(shader);
-#define TRACE_ADDDISPOSESHADER FNA3D_Trace_AddDisposeShader(shader);
+#define TRACE_APPLYVERTEXSHADER FNA3D_Trace_ApplyVertexShader(shader);
+#define TRACE_APPLYPIXELSHADER FNA3D_Trace_ApplyPixelShader(shader);
 #define TRACE_MAPVERTEXSHADERUNIFORMS FNA3D_Trace_MapVertexShaderUniforms(slot, data, dataLength);
 #define TRACE_MAPPIXELSHADERUNIFORMS FNA3D_Trace_MapPixelShaderUniforms(slot, data, dataLength);
 #define TRACE_CREATEQUERY FNA3D_Trace_CreateQuery(result);
@@ -537,9 +530,8 @@ void FNA3D_Trace_SetStringMarker(const char *text);
 #define TRACE_ENDPASSRESTORE
 #define TRACE_CREATESHADERMODULE
 #define TRACE_ADDDISPOSESHADERMODULE
-#define TRACE_CREATESHADER
-#define TRACE_APPLYSHADER
-#define TRACE_ADDDISPOSESHADER
+#define TRACE_APPLYVERTEXSHADER
+#define TRACE_APPLYPIXELSHADER
 #define TRACE_MAPVERTEXSHADERUNIFORMS
 #define TRACE_MAPPIXELSHADERUNIFORMS
 #define TRACE_CREATEQUERY

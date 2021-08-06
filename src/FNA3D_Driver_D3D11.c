@@ -177,12 +177,6 @@ typedef struct D3D11ShaderModule /* Cast FNA3D_ShaderModule* to this! */
 	uint8_t stage;
 } D3D11ShaderModule;
 
-typedef struct D3D11Shader /* Cast FNA3D_Shader* to this! */
-{
-	D3D11ShaderModule* vertexShader;
-	D3D11ShaderModule* pixelShader;
-} D3D11Shader;
-
 typedef struct D3D11Query /* Cast FNA3D_Query* to this! */
 {
 	ID3D11Query *handle;
@@ -290,7 +284,8 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	/* Custom shader support */
 	spvc_context spirvCompilerContext;
 	PFN_D3DCOMPILE d3dCompileFn;
-	D3D11Shader* currentShader;
+	D3D11ShaderModule* currentVertexShader;
+	D3D11ShaderModule* currentPixelShader;
 	uint8_t shaderApplied;
 
 	/* MojoShader Interop */
@@ -898,7 +893,7 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayoutCustomShader(
 	HRESULT res;
 	ID3D11InputLayout* result;
 
-	D3D11ShaderModule* vertexShader = renderer->currentShader->vertexShader;
+	D3D11ShaderModule* vertexShader = renderer->currentVertexShader;
 
 	bytecode = vertexShader->code->lpVtbl->GetBufferPointer(vertexShader->code);
 	bytecodeLength = vertexShader->code->lpVtbl->GetBufferSize(vertexShader->code);
@@ -4658,68 +4653,65 @@ static void D3D11_AddDisposeShaderModule(FNA3D_Renderer *driverData, FNA3D_Shade
 	SDL_free(d3dShaderModule);
 }
 
-static FNA3D_Shader* D3D11_CreateShader(FNA3D_Renderer *driverData, FNA3D_ShaderModule *vertexShader, FNA3D_ShaderModule *pixelShader)
+static void D3D11_ApplyVertexShader(FNA3D_Renderer *driverData, FNA3D_ShaderModule *shader)
 {
 	D3D11Renderer *renderer = (D3D11Renderer*)driverData;
-	D3D11ShaderModule *d3dVertexModule = (D3D11ShaderModule*)vertexShader;
-	D3D11ShaderModule *d3dPixelModule = (D3D11ShaderModule*)pixelShader;
-
-	D3D11Shader *shader = (D3D11Shader*)SDL_malloc(sizeof(D3D11Shader));
-	shader->vertexShader = d3dVertexModule;
-	shader->pixelShader = d3dPixelModule;
-
-	return (FNA3D_Shader*)shader;
-}
-
-static void D3D11_ApplyShader(FNA3D_Renderer *driverData, FNA3D_Shader *shader)
-{
-	D3D11Renderer *renderer = (D3D11Renderer*)driverData;
-	D3D11Shader *d3dShader = (D3D11Shader*)shader;
+	D3D11ShaderModule *d3dShader = (D3D11ShaderModule*)shader;
 
 	SDL_LockMutex(renderer->ctxLock);
 
-	ID3D11DeviceContext_VSSetShader(renderer->context, d3dShader->vertexShader->vertexShader, NULL, 0);
-	ID3D11DeviceContext_PSSetShader(renderer->context, d3dShader->pixelShader->pixelShader, NULL, 0);
+	ID3D11DeviceContext_VSSetShader(renderer->context, d3dShader->vertexShader, NULL, 0);
 
 	for (int i = 0; i < 16; i++)
 	{
-		if (d3dShader->vertexShader->ubo[i] != NULL)
+		if (d3dShader->ubo[i] != NULL)
 		{
-			ID3D11DeviceContext_VSSetConstantBuffers(renderer->context, i, 1, &d3dShader->vertexShader->ubo[i]);
-		}
-
-		if (d3dShader->pixelShader->ubo[i] != NULL)
-		{
-			ID3D11DeviceContext_PSSetConstantBuffers(renderer->context, i, 1, &d3dShader->pixelShader->ubo[i]);
+			ID3D11DeviceContext_VSSetConstantBuffers(renderer->context, i, 1, &d3dShader->ubo[i]);
 		}
 	}
 
 	renderer->effectApplied = 0;
 	renderer->shaderApplied = 1;
-	renderer->currentShader = d3dShader;
+	renderer->currentVertexShader = d3dShader;
 
 	SDL_UnlockMutex(renderer->ctxLock);
 }
 
-static void D3D11_AddDisposeShader(FNA3D_Renderer *driverData, FNA3D_Shader *shader)
+static void D3D11_ApplyPixelShader(FNA3D_Renderer *driverData, FNA3D_ShaderModule *shader)
 {
 	D3D11Renderer *renderer = (D3D11Renderer*)driverData;
-	D3D11Shader *d3dShader = (D3D11Shader*)shader;
+	D3D11ShaderModule *d3dShader = (D3D11ShaderModule*)shader;
 
-	SDL_free(d3dShader);
+	SDL_LockMutex(renderer->ctxLock);
+
+	ID3D11DeviceContext_PSSetShader(renderer->context, d3dShader->pixelShader, NULL, 0);
+
+	for (int i = 0; i < 16; i++)
+	{
+		if (d3dShader->ubo[i] != NULL)
+		{
+			ID3D11DeviceContext_PSSetConstantBuffers(renderer->context, i, 1, &d3dShader->ubo[i]);
+		}
+	}
+
+	renderer->effectApplied = 0;
+	renderer->shaderApplied = 1;
+	renderer->currentPixelShader = d3dShader;
+
+	SDL_UnlockMutex(renderer->ctxLock);
 }
 
 static void D3D11_MapVertexShaderUniforms(FNA3D_Renderer *driverData, uint32_t slot, void *data, uint32_t dataLength)
 {
 	D3D11Renderer *renderer = (D3D11Renderer*)driverData;
-	D3D11Shader *d3dShader = renderer->currentShader;
+	D3D11ShaderModule *d3dShader = renderer->currentVertexShader;
 
-	if (d3dShader->vertexShader->ubo[slot] == NULL)
+	if (d3dShader->ubo[slot] == NULL)
 	{
 		return;
 	}
 
-	ID3D11Resource* buffer = (ID3D11Resource*)d3dShader->vertexShader->ubo[slot];
+	ID3D11Resource* buffer = (ID3D11Resource*)d3dShader->ubo[slot];
 
 	SDL_LockMutex(renderer->ctxLock);
 	
@@ -4736,9 +4728,9 @@ static void D3D11_MapVertexShaderUniforms(FNA3D_Renderer *driverData, uint32_t s
 static void D3D11_MapPixelShaderUniforms(FNA3D_Renderer *driverData, uint32_t slot, void *data, uint32_t dataLength)
 {
 	D3D11Renderer *renderer = (D3D11Renderer*)driverData;
-	D3D11Shader *d3dShader = renderer->currentShader;
+	D3D11ShaderModule *d3dShader = renderer->currentPixelShader;
 
-	if (d3dShader->pixelShader->ubo[slot] == NULL)
+	if (d3dShader->ubo[slot] == NULL)
 	{
 		return;
 	}
@@ -4748,9 +4740,9 @@ static void D3D11_MapPixelShaderUniforms(FNA3D_Renderer *driverData, uint32_t sl
 	D3D11_MAPPED_SUBRESOURCE mappedResource;
 	SDL_zero(mappedResource);
 
-	ID3D11DeviceContext_Map(renderer->context, d3dShader->pixelShader->ubo[slot], 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+	ID3D11DeviceContext_Map(renderer->context, d3dShader->ubo[slot], 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
 	SDL_memcpy(mappedResource.pData, data, dataLength);
-	ID3D11DeviceContext_Unmap(renderer->context, d3dShader->pixelShader->ubo[slot], 0);
+	ID3D11DeviceContext_Unmap(renderer->context, d3dShader->ubo[slot], 0);
 
 	SDL_UnlockMutex(renderer->ctxLock);
 }

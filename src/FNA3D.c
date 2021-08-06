@@ -1335,42 +1335,27 @@ void FNA3D_AddDisposeShaderModule(FNA3D_Device *device, FNA3D_ShaderModule *shad
 	);
 }
 
-FNA3D_Shader* FNA3D_CreateShader(FNA3D_Device *device, FNA3D_ShaderModule *vertexShader, FNA3D_ShaderModule *pixelShader)
+void FNA3D_ApplyVertexShader(FNA3D_Device *device, FNA3D_ShaderModule *shader)
 {
-	/* We're stuck tracing _after_ the call instead of _before_, because
-	 * of threading issues. This can cause timing issues!
-	 */
-	FNA3D_Shader *result;
-	if (device == NULL)
-	{
-		return NULL;
-	}
-	result = device->CreateShader(device->driverData, vertexShader, pixelShader);
-	TRACE_CREATESHADER
-	return result;
-}
-
-void FNA3D_ApplyShader(FNA3D_Device *device, FNA3D_Shader *shader)
-{
-	TRACE_APPLYSHADER
+	TRACE_APPLYVERTEXSHADER
 	if (device == NULL)
 	{
 		return;
 	}
-	device->ApplyShader(
+	device->ApplyVertexShader(
 		device->driverData,
 		shader
 	);
 }
 
-void FNA3D_AddDisposeShader(FNA3D_Device *device, FNA3D_Shader *shader)
+void FNA3D_ApplyPixelShader(FNA3D_Device *device, FNA3D_ShaderModule *shader)
 {
-	TRACE_ADDDISPOSESHADER
+	TRACE_APPLYPIXELSHADER
 	if (device == NULL)
 	{
 		return;
 	}
-	device->AddDisposeShader(
+	device->ApplyPixelShader(
 		device->driverData,
 		shader
 	);
