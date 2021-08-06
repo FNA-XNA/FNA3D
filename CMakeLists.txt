@@ -55,12 +55,20 @@ add_definitions(
 	-DSUPPORT_PROFILE_BYTECODE=0
 	-DSUPPORT_PROFILE_D3D=0
 )
+add_definitions(
+	-DSPIRV_CROSS_C_API_GLSL
+	-DSPIRV_CROSS_C_API_REFLECT
+)
+if(NOT DISABLE_D3D11)
+	add_definitions(-DSPIRV_CROSS_C_API_HLSL)
+endif()
 if(TRACING_SUPPORT)
 	add_definitions(-DFNA3D_TRACING)
 endif()
 if(APPLE)
 	add_definitions(
 		-DFNA3D_DRIVER_METAL
+		-DSPIRV_CROSS_C_API_MSL
 	)
 else()
 	add_definitions(
@@ -124,6 +132,7 @@ add_library(mojoshader STATIC
 	MojoShader/profiles/mojoshader_profile_metal.c
 	MojoShader/profiles/mojoshader_profile_spirv.c
 )
+add_subdirectory(SPIRV-Cross)
 if(TRACING_SUPPORT)
 	add_executable(fna3d_replay replay/replay.c)
 	target_link_libraries(fna3d_replay FNA3D)
@@ -163,7 +172,7 @@ set_target_properties(FNA3D PROPERTIES OUTPUT_NAME "FNA3D"
 )
 
 # Internal Dependencies
-target_link_libraries(FNA3D PRIVATE mojoshader ${LOBJC})
+target_link_libraries(FNA3D PRIVATE mojoshader spirv-cross-c ${LOBJC})
 
 # SDL2 Dependency
 if (DEFINED SDL2_INCLUDE_DIRS AND DEFINED SDL2_LIBRARIES)

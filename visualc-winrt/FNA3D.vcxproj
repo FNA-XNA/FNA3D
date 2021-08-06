@@ -11,6 +11,34 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\SPIRV-Cross\spirv.h" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_cross_c.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross_c.h" />
+    <ClInclude Include="..\SPIRV-Cross\GLSL.std.450.h" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_common.hpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross_containers.hpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross_error_handling.hpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv.hpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross.hpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_cross.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_parser.hpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_parser.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross_parsed_ir.hpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_cross_parsed_ir.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_cfg.hpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_cfg.cpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_glsl.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_glsl.hpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_hlsl.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_hlsl.hpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_msl.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_msl.hpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_reflect.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_reflect.hpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_cross_util.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross_util.hpp" />
+  </ItemGroup>
+  <ItemGroup>
     <ClCompile Include="..\src\FNA3D.c" />
     <ClCompile Include="..\src\FNA3D_PipelineCache.c" />
     <ClCompile Include="..\src\FNA3D_Driver_D3D11.c" />
@@ -69,20 +97,20 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <GenerateManifest>false</GenerateManifest>
     <IgnoreImportLibrary>false</IgnoreImportLibrary>
-    <IncludePath>..\..\SDL2\include;..\MojoShader;..\include;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\SDL2\include;..\MojoShader;..\SPIRV-Cross;..\include;$(IncludePath)</IncludePath>
     <LibraryPath>..\..\SDL2\VisualC-WinRT\UWP_VS2015\$(Platform)\$(Configuration)\SDL-UWP;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <GenerateManifest>false</GenerateManifest>
     <IgnoreImportLibrary>false</IgnoreImportLibrary>
-    <IncludePath>..\..\SDL2\include;..\MojoShader;..\include;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\SDL2\include;..\MojoShader;..\SPIRV-Cross;..\include;$(IncludePath)</IncludePath>
     <LibraryPath>..\..\SDL2\VisualC-WinRT\UWP_VS2015\$(Platform)\$(Configuration)\SDL-UWP;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <CompileAsWinRT>false</CompileAsWinRT>
-      <PreprocessorDefinitions>_WINDLL;_CRT_SECURE_NO_WARNINGS;FNA3D_DRIVER_D3D11;MOJOSHADER_NO_VERSION_INCLUDE;MOJOSHADER_USE_SDL_STDLIB;MOJOSHADER_EFFECT_SUPPORT;MOJOSHADER_DEPTH_CLIPPING;MOJOSHADER_FLIP_RENDERTARGET;MOJOSHADER_XNA4_VERTEX_TEXTURES;SUPPORT_PROFILE_ARB1=0;SUPPORT_PROFILE_ARB1_NV=0;SUPPORT_PROFILE_BYTECODE=0;SUPPORT_PROFILE_D3D=0;SUPPORT_PROFILE_GLSL=0;SUPPORT_PROFILE_GLSL120=0;SUPPORT_PROFILE_GLSLES=0;SUPPORT_PROFILE_METAL=0;SUPPORT_PROFILE_SPIRV=0;SUPPORT_PROFILE_GLSPIRV=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WINDLL;_CRT_SECURE_NO_WARNINGS;FNA3D_DRIVER_D3D11;MOJOSHADER_NO_VERSION_INCLUDE;MOJOSHADER_USE_SDL_STDLIB;MOJOSHADER_EFFECT_SUPPORT;MOJOSHADER_DEPTH_CLIPPING;MOJOSHADER_FLIP_RENDERTARGET;MOJOSHADER_XNA4_VERTEX_TEXTURES;SUPPORT_PROFILE_ARB1=0;SUPPORT_PROFILE_ARB1_NV=0;SUPPORT_PROFILE_BYTECODE=0;SUPPORT_PROFILE_D3D=0;SUPPORT_PROFILE_GLSL=0;SUPPORT_PROFILE_GLSL120=0;SUPPORT_PROFILE_GLSLES=0;SUPPORT_PROFILE_METAL=0;SUPPORT_PROFILE_SPIRV=0;SUPPORT_PROFILE_GLSPIRV=0;SPIRV_CROSS_C_API_HLSL;SPIRV_CROSS_C_API_REFLECT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -95,7 +123,7 @@
     <ClCompile>
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
       <CompileAsWinRT>false</CompileAsWinRT>
-      <PreprocessorDefinitions>_WINDLL;_CRT_SECURE_NO_WARNINGS;FNA3D_DRIVER_D3D11;MOJOSHADER_NO_VERSION_INCLUDE;MOJOSHADER_USE_SDL_STDLIB;MOJOSHADER_EFFECT_SUPPORT;MOJOSHADER_DEPTH_CLIPPING;MOJOSHADER_FLIP_RENDERTARGET;MOJOSHADER_XNA4_VERTEX_TEXTURES;SUPPORT_PROFILE_ARB1=0;SUPPORT_PROFILE_ARB1_NV=0;SUPPORT_PROFILE_BYTECODE=0;SUPPORT_PROFILE_D3D=0;SUPPORT_PROFILE_GLSL=0;SUPPORT_PROFILE_GLSL120=0;SUPPORT_PROFILE_GLSLES=0;SUPPORT_PROFILE_METAL=0;SUPPORT_PROFILE_SPIRV=0;SUPPORT_PROFILE_GLSPIRV=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_WINDLL;_CRT_SECURE_NO_WARNINGS;FNA3D_DRIVER_D3D11;MOJOSHADER_NO_VERSION_INCLUDE;MOJOSHADER_USE_SDL_STDLIB;MOJOSHADER_EFFECT_SUPPORT;MOJOSHADER_DEPTH_CLIPPING;MOJOSHADER_FLIP_RENDERTARGET;MOJOSHADER_XNA4_VERTEX_TEXTURES;SUPPORT_PROFILE_ARB1=0;SUPPORT_PROFILE_ARB1_NV=0;SUPPORT_PROFILE_BYTECODE=0;SUPPORT_PROFILE_D3D=0;SUPPORT_PROFILE_GLSL=0;SUPPORT_PROFILE_GLSL120=0;SUPPORT_PROFILE_GLSLES=0;SUPPORT_PROFILE_METAL=0;SUPPORT_PROFILE_SPIRV=0;SUPPORT_PROFILE_GLSPIRV=0;SPIRV_CROSS_C_API_HLSL;SPIRV_CROSS_C_API_REFLECT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>

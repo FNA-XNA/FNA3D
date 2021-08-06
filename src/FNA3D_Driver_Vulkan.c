@@ -11348,6 +11348,50 @@ static void VULKAN_EndPassRestore(
 	MOJOSHADER_effectEnd(effectData);
 }
 
+/* Shaders */
+
+static FNA3D_ShaderModule* VULKAN_CreateShaderModule(
+	FNA3D_Renderer *driverData,
+	uint8_t *shaderCode,
+	uint32_t shaderCodeLength,
+	const char *entryPoint,
+	FNA3D_ShaderStage shaderStage
+) {
+	FNA3D_LogError("Not implemented");
+	return NULL;
+}
+
+static void VULKAN_AddDisposeShaderModule(FNA3D_Renderer *driverData, FNA3D_ShaderModule *shader)
+{
+	FNA3D_LogError("Not implemented");
+}
+
+static FNA3D_Shader* VULKAN_CreateShader(FNA3D_Renderer *driverData, FNA3D_ShaderModule *vertexShader, FNA3D_ShaderModule *pixelShader)
+{
+	FNA3D_LogError("Not implemented");
+	return NULL;
+}
+
+static void VULKAN_ApplyShader(FNA3D_Renderer *driverData, FNA3D_Shader *shader)
+{
+	FNA3D_LogError("Not implemented");
+}
+
+static void VULKAN_AddDisposeShader(FNA3D_Renderer *driverData, FNA3D_Shader *shader)
+{
+	FNA3D_LogError("Not implemented");
+}
+
+static void VULKAN_MapVertexShaderUniforms(FNA3D_Renderer *driverData, uint32_t slot, void *data, uint32_t dataLength)
+{
+	FNA3D_LogError("not implemented");
+}
+
+static void VULKAN_MapPixelShaderUniforms(FNA3D_Renderer *driverData, uint32_t slot, void *data, uint32_t dataLength)
+{
+	FNA3D_LogError("not implemented");
+}
+
 /* Queries */
 
 static FNA3D_Query* VULKAN_CreateQuery(FNA3D_Renderer *driverData)

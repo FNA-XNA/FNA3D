@@ -29,6 +29,8 @@
 #include "FNA3D_Driver.h"
 #include "FNA3D_Driver_OpenGL.h"
 
+#include "spirv_cross_c.h"
+
 #include <SDL.h>
 
 /* We only use this to detect UIKit, for backbuffer creation */
@@ -5029,6 +5031,50 @@ static void OPENGL_EndPassRestore(
 	MOJOSHADER_effectEndPass(effectData);
 	MOJOSHADER_effectEnd(effectData);
 	renderer->effectApplied = 1;
+}
+
+/* Shaders */
+
+static FNA3D_ShaderModule* OPENGL_CreateShaderModule(
+	FNA3D_Renderer *driverData,
+	uint8_t *shaderCode,
+	uint32_t shaderCodeLength,
+	const char *entryPoint,
+	FNA3D_ShaderStage shaderStage
+) {
+	FNA3D_LogError("Not implemented");
+	return NULL;
+}
+
+static void OPENGL_AddDisposeShaderModule(FNA3D_Renderer *driverData, FNA3D_ShaderModule *shader)
+{
+	FNA3D_LogError("Not implemented");
+}
+
+static FNA3D_Shader* OPENGL_CreateShader(FNA3D_Renderer *driverData, FNA3D_ShaderModule *vertexShader, FNA3D_ShaderModule *pixelShader)
+{
+	FNA3D_LogError("Not implemented");
+	return NULL;
+}
+
+static void OPENGL_ApplyShader(FNA3D_Renderer *driverData, FNA3D_Shader *shader)
+{
+	FNA3D_LogError("Not implemented");
+}
+
+static void OPENGL_AddDisposeShader(FNA3D_Renderer *driverData, FNA3D_Shader *shader)
+{
+	FNA3D_LogError("Not implemented");
+}
+
+static void OPENGL_MapVertexShaderUniforms(FNA3D_Renderer *driverData, uint32_t slot, void *data, uint32_t dataLength)
+{
+	FNA3D_LogError("not implemented");
+}
+
+static void OPENGL_MapPixelShaderUniforms(FNA3D_Renderer *driverData, uint32_t slot, void *data, uint32_t dataLength)
+{
+	FNA3D_LogError("not implemented");
 }
 
 /* Queries */

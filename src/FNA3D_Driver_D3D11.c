@@ -30,6 +30,8 @@
 #include "FNA3D_PipelineCache.h"
 #include "FNA3D_Driver_D3D11.h"
 
+#include "spirv_cross_c.h"
+
 #include <SDL.h>
 #include <SDL_syswm.h>
 
@@ -162,6 +164,25 @@ typedef struct D3D11Effect /* Cast FNA3D_Effect* to this! */
 	MOJOSHADER_effect *effect;
 } D3D11Effect;
 
+typedef struct D3D11ShaderModule /* Cast FNA3D_ShaderModule* to this! */
+{
+	union {
+		ID3D11VertexShader* vertexShader;
+		ID3D11PixelShader* pixelShader;
+	};
+	int32_t inputLocations[D3D11_VS_INPUT_REGISTER_COUNT];
+	uint32_t inputLocationCount;
+	ID3D11Buffer* ubo[16];
+	ID3DBlob* code;
+	uint8_t stage;
+} D3D11ShaderModule;
+
+typedef struct D3D11Shader /* Cast FNA3D_Shader* to this! */
+{
+	D3D11ShaderModule* vertexShader;
+	D3D11ShaderModule* pixelShader;
+} D3D11Shader;
+
 typedef struct D3D11Query /* Cast FNA3D_Query* to this! */
 {
 	ID3D11Query *handle;
@@ -174,6 +195,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	ID3D11DeviceContext *context;
 	void* d3d11_dll;
 	void* dxgi_dll;
+	void* d3dCompiler_dll;
 	void* factory; /* IDXGIFactory1 or IDXGIFactory2 */
 	IDXGIAdapter1 *adapter;
 	IDXGISwapChain *swapchain;
@@ -264,6 +286,12 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	ID3D11RenderTargetView *renderTargetViews[MAX_RENDERTARGET_BINDINGS];
 	ID3D11DepthStencilView *depthStencilView;
 	FNA3D_DepthFormat currentDepthFormat;
+
+	/* Custom shader support */
+	spvc_context spirvCompilerContext;
+	PFN_D3DCOMPILE d3dCompileFn;
+	D3D11Shader* currentShader;
+	uint8_t shaderApplied;
 
 	/* MojoShader Interop */
 	MOJOSHADER_effect *currentEffect;
@@ -841,6 +869,131 @@ static ID3D11SamplerState* D3D11_INTERNAL_FetchSamplerState(
 	return result;
 }
 
+static int32_t D3D11_INTERNAL_GetShaderAttributeLocation(
+	D3D11ShaderModule* shader,
+	int32_t index
+) {
+	for (int32_t i = 0; i < shader->inputLocationCount; i++)
+	{
+		if (shader->inputLocations[i] == index)
+		{
+			return i;
+		}
+	}
+
+	return -1;
+}
+
+static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayoutCustomShader(
+	D3D11Renderer* renderer,
+	FNA3D_VertexBufferBinding* bindings,
+	int32_t numBindings,
+	uint32_t* hash
+) {
+	int32_t numElements, i, j, k, usage, index, attribLoc, bindingsIndex;
+	D3D11_INPUT_ELEMENT_DESC elements[16]; /* D3DCAPS9 MaxStreams <= 16 */
+	D3D11_INPUT_ELEMENT_DESC* d3dElement;
+	void* bytecode;
+	int32_t bytecodeLength;
+	HRESULT res;
+	ID3D11InputLayout* result;
+
+	D3D11ShaderModule* vertexShader = renderer->currentShader->vertexShader;
+
+	bytecode = vertexShader->code->lpVtbl->GetBufferPointer(vertexShader->code);
+	bytecodeLength = vertexShader->code->lpVtbl->GetBufferSize(vertexShader->code);
+
+	/* Can we just reuse an existing input layout? */
+	result = (ID3D11InputLayout*)PackedVertexBufferBindingsArray_Fetch(
+		renderer->inputLayoutCache,
+		bindings,
+		numBindings,
+		vertexShader,
+		&bindingsIndex,
+		hash
+	);
+
+	if (result != NULL)
+	{
+		/* This input layout has already been cached! */
+		return result;
+	}
+
+	/* We have to make a new input layout... */
+
+	/* Determine how many elements are actually in use */
+	numElements = 0;
+	for (i = 0; i < numBindings; i += 1)
+	{
+		/* Describe vertex attributes */
+		const FNA3D_VertexBufferBinding* binding = &bindings[i];
+		for (j = 0; j < binding->vertexDeclaration.elementCount; j += 1)
+		{
+			const FNA3D_VertexElement* element = &binding->vertexDeclaration.elements[j];
+			usage = element->vertexElementUsage;
+			index = element->usageIndex;
+
+			// SPIRV-Cross binds *everything* to TEXCOORDn, so we can safely skip anything that isn't that.
+			if (usage != FNA3D_VERTEXELEMENTUSAGE_TEXTURECOORDINATE)
+			{
+				continue;
+			}
+			
+			attribLoc = D3D11_INTERNAL_GetShaderAttributeLocation(vertexShader, index);
+			
+			if (attribLoc == -1)
+			{
+				/* Stream not in use! */
+				continue;
+			}
+
+			numElements += 1;
+
+			d3dElement = &elements[attribLoc];
+			d3dElement->SemanticName = XNAToD3D_VertexAttribSemanticName[usage];
+			d3dElement->SemanticIndex = index;
+			d3dElement->Format = XNAToD3D_VertexAttribFormat[
+				element->vertexElementFormat
+			];
+			d3dElement->InputSlot = i;
+			d3dElement->AlignedByteOffset = element->offset;
+			d3dElement->InputSlotClass = (
+				binding->instanceFrequency > 0 ?
+				D3D11_INPUT_PER_INSTANCE_DATA :
+				D3D11_INPUT_PER_VERTEX_DATA
+			);
+			d3dElement->InstanceDataStepRate = (
+				binding->instanceFrequency > 0 ?
+				binding->instanceFrequency :
+				0
+			);
+		}
+	}
+
+	res = ID3D11Device_CreateInputLayout(
+		renderer->device,
+		elements,
+		numElements,
+		bytecode,
+		bytecodeLength,
+		&result
+	);
+
+	/* Check for errors now that elements is freed */
+	ERROR_CHECK_RETURN("Could not compile input layout", NULL)
+
+	/* Return the new input layout! */
+	PackedVertexBufferBindingsArray_Insert(
+		&renderer->inputLayoutCache,
+		bindings,
+		numBindings,
+		vertexShader,
+		result
+	);
+
+	return result;
+}
+
 static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 	D3D11Renderer *renderer,
 	FNA3D_VertexBufferBinding *bindings,
@@ -856,6 +1009,12 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 	int32_t bytecodeLength;
 	HRESULT res;
 	ID3D11InputLayout *result;
+
+	// a custom non-Effect shader has been applied, we need to go through a different path
+	if (renderer->shaderApplied)
+	{
+		return D3D11_INTERNAL_FetchBindingsInputLayoutCustomShader(renderer, bindings, numBindings, hash);
+	}
 
 	/* We need the vertex shader... */
 	MOJOSHADER_d3d11GetBoundShaders(&vertexShader, &blah);
@@ -1108,6 +1267,9 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 	/* Release the factory */
 	IUnknown_Release((IUnknown*) renderer->factory);
 
+	/* Destroy SPIRV-Cross context */
+	spvc_context_destroy(renderer->spirvCompilerContext);
+
 	/* Release the MojoShader context */
 	MOJOSHADER_d3d11DestroyContext();
 
@@ -1118,6 +1280,7 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 	/* Release the DLLs */
 	D3D11_PLATFORM_UnloadD3D11(renderer->d3d11_dll);
 	D3D11_PLATFORM_UnloadDXGI(renderer->dxgi_dll);
+	D3D11_PLATFORM_UnloadCompiler(renderer->d3dCompiler_dll);
 
 	SDL_DestroyMutex(renderer->ctxLock);
 	SDL_free(renderer);
@@ -2133,8 +2296,11 @@ static void D3D11_ApplyVertexBufferBindings(
 		}
 	}
 
-	MOJOSHADER_d3d11ProgramReady((unsigned long long) hash);
-	renderer->effectApplied = 0;
+	if (!renderer->shaderApplied)
+	{
+		MOJOSHADER_d3d11ProgramReady((unsigned long long) hash);
+		renderer->effectApplied = 0;
+	}
 
 	SDL_UnlockMutex(renderer->ctxLock);
 }
@@ -4208,6 +4374,7 @@ static void D3D11_ApplyEffect(
 	uint32_t whatever;
 
 	SDL_LockMutex(renderer->ctxLock);
+	renderer->shaderApplied = 0;
 	renderer->effectApplied = 1;
 	if (effectData == renderer->currentEffect)
 	{
@@ -4261,6 +4428,7 @@ static void D3D11_BeginPassRestore(
 		stateChanges
 	);
 	MOJOSHADER_effectBeginPass(effectData, 0);
+	renderer->shaderApplied = 0;
 	renderer->effectApplied = 1;
 	SDL_UnlockMutex(renderer->ctxLock);
 }
@@ -4274,7 +4442,316 @@ static void D3D11_EndPassRestore(
 	SDL_LockMutex(renderer->ctxLock);
 	MOJOSHADER_effectEndPass(effectData);
 	MOJOSHADER_effectEnd(effectData);
+	renderer->shaderApplied = 0;
 	renderer->effectApplied = 1;
+	SDL_UnlockMutex(renderer->ctxLock);
+}
+
+/* Shaders */
+
+static FNA3D_ShaderModule* D3D11_CreateShaderModule(FNA3D_Renderer *driverData, uint8_t *shaderCode, uint32_t shaderCodeLength, const char *entryPoint, FNA3D_ShaderStage shaderStage)
+{
+	D3D11Renderer* renderer = (D3D11Renderer*)driverData;
+
+	spvc_context context = renderer->spirvCompilerContext;
+	spvc_parsed_ir ir = NULL;
+	spvc_compiler compiler = NULL;
+	spvc_compiler_options options = NULL;
+	spvc_resources resources = NULL;
+	const spvc_reflected_resource *list = NULL;
+	spvc_entry_point *entryPoints = NULL;
+	size_t numEntryPoints;
+	const char* result = NULL;
+	size_t count;
+	size_t i, j;
+	size_t bufferSize;
+
+	// Parse the SPIR-V (NOTE: word size in SPIRV is 4 bytes)
+	if (spvc_context_parse_spirv(context, (SpvId*)shaderCode, shaderCodeLength / 4, &ir) != SPVC_SUCCESS)
+	{
+		FNA3D_LogError("spvc_context_parse_spirv Error: %s", spvc_context_get_last_error_string(context));
+		return NULL;
+	}
+
+	// Hand it off to a compiler instance and give it ownership of the IR.
+	if (spvc_context_create_compiler(context, SPVC_BACKEND_HLSL, ir, SPVC_CAPTURE_MODE_TAKE_OWNERSHIP, &compiler) != SPVC_SUCCESS)
+	{
+		FNA3D_LogError("spvc_context_create_compiler Error: %s", spvc_context_get_last_error_string(context));
+		return NULL;
+	}
+
+	// set compiler options
+	if (spvc_compiler_create_compiler_options(compiler, &options) != SPVC_SUCCESS)
+	{
+		FNA3D_LogError("spvc_compiler_create_compiler_options Error: %s", spvc_context_get_last_error_string(context));
+		return NULL;
+	}
+
+	// set SM 5.0
+	spvc_compiler_options_set_uint(options, SPVC_COMPILER_OPTION_HLSL_SHADER_MODEL, 50);
+	spvc_compiler_install_compiler_options(compiler, options);
+
+	// set entry point
+	switch (shaderStage)
+	{
+	case FNA3D_SHADERSTAGE_VERTEX:
+		spvc_compiler_set_entry_point(compiler, entryPoint, SpvExecutionModelVertex);
+		break;
+	case FNA3D_SHADERSTAGE_PIXEL:
+		spvc_compiler_set_entry_point(compiler, entryPoint, SpvExecutionModelFragment);
+		break;
+	default:
+		FNA3D_LogError("Invalid shader stage: %d", shaderStage);
+		break;
+	}
+
+	// transpile to HLSL
+	if (spvc_compiler_compile(compiler, &result) != SPVC_SUCCESS)
+	{
+		FNA3D_LogError("spvc_compiler_compile Error: %s", spvc_context_get_last_error_string(context));
+		return NULL;
+	}
+
+	// SPIRV-Cross probably renamed the entry point for us.
+	// D3DCompile will straight up just abort if you pass an entry point that doesn't exist. for some reason.
+	spvc_compiler_get_entry_points(compiler, &entryPoints, &numEntryPoints);
+	const char* realEntryPoint = entryPoints[0].name;
+
+	// now compile to shader bytecode
+	HRESULT res;
+	ID3DBlob* compiledShader;
+	ID3DBlob* errorMsgs;
+
+	switch (shaderStage)
+	{
+	case FNA3D_SHADERSTAGE_VERTEX:
+		res = renderer->d3dCompileFn(result, SDL_strlen(result), NULL, NULL, NULL, realEntryPoint, "vs_5_0", 0, 0, &compiledShader, &errorMsgs);
+		break;
+	case FNA3D_SHADERSTAGE_PIXEL:
+		res = renderer->d3dCompileFn(result, SDL_strlen(result), NULL, NULL, NULL, realEntryPoint, "ps_5_0", 0, 0, &compiledShader, &errorMsgs);
+		break;
+	default:
+		FNA3D_LogError("Invalid shader stage: %d", shaderStage);
+		return NULL;
+	}
+
+	ERROR_CHECK_RETURN("Could not compile HLSL source", NULL);
+
+	D3D11ShaderModule* d3dShaderModule = (D3D11ShaderModule*)SDL_malloc(sizeof(D3D11ShaderModule));
+	SDL_memset(d3dShaderModule, 0, sizeof(D3D11ShaderModule));
+
+	spvc_compiler_create_shader_resources(compiler, &resources);
+
+	// set up vertex attribute locations
+	if (shaderStage == FNA3D_SHADERSTAGE_VERTEX)
+	{
+		spvc_resources_get_resource_list_for_type(resources, SPVC_RESOURCE_TYPE_STAGE_INPUT, &list, &count);
+		d3dShaderModule->inputLocationCount = count;
+
+		for (i = 0; i < count; i++)
+		{
+			uint32_t location = spvc_compiler_get_decoration(compiler, list[i].id, SpvDecorationLocation);
+			d3dShaderModule->inputLocations[i] = location;
+		}
+	}
+
+	SDL_LockMutex(renderer->ctxLock);
+
+	// allocate UBOs for shader
+	spvc_resources_get_resource_list_for_type(resources, SPVC_RESOURCE_TYPE_UNIFORM_BUFFER, &list, &count);
+
+	for (i = 0; i < count; i++)
+	{
+		spvc_type type = spvc_compiler_get_type_handle(compiler, list[i].type_id);
+		uint32_t binding = spvc_compiler_get_decoration(compiler, list[i].id, SpvDecorationBinding);
+
+		spvc_basetype basetypeid = spvc_type_get_basetype(type);
+
+		// as far as I can tell uniform blocks always have a base type of struct, but just in case...
+		if (basetypeid != SPVC_BASETYPE_STRUCT)
+		{
+			continue;
+		}
+
+		spvc_type basetype = spvc_compiler_get_type_handle(compiler, list[i].base_type_id);
+
+		bufferSize = 0;
+		spvc_compiler_get_declared_struct_size(compiler, basetype, &bufferSize);
+
+		D3D11_BUFFER_DESC cbDesc;
+		cbDesc.ByteWidth = bufferSize;
+		cbDesc.Usage = D3D11_USAGE_DYNAMIC;
+		cbDesc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+		cbDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+		cbDesc.MiscFlags = 0;
+		cbDesc.StructureByteStride = 0;
+
+		res = ID3D11Device_CreateBuffer(renderer->device, &cbDesc, NULL, &d3dShaderModule->ubo[binding]);
+
+		ERROR_CHECK_UNLOCK_RETURN("Could not create D3D11 buffer object", NULL);
+	}
+
+	if (errorMsgs != NULL)
+	{
+		const char* msg = errorMsgs->lpVtbl->GetBufferPointer(errorMsgs);
+		FNA3D_LogError("D3DCompile Error: %s", msg);
+		SDL_UnlockMutex(renderer->ctxLock);
+		return NULL;
+	}
+
+	// compile to ID3D11VertexShader or ID3D11PixelShader
+	switch (shaderStage)
+	{
+	case FNA3D_SHADERSTAGE_VERTEX:
+		res = ID3D11Device_CreateVertexShader(
+			renderer->device,
+			compiledShader->lpVtbl->GetBufferPointer(compiledShader),
+			compiledShader->lpVtbl->GetBufferSize(compiledShader),
+			NULL,
+			&d3dShaderModule->vertexShader
+		);
+		break;
+	case FNA3D_SHADERSTAGE_PIXEL:
+		res = ID3D11Device_CreatePixelShader(
+			renderer->device,
+			compiledShader->lpVtbl->GetBufferPointer(compiledShader),
+			compiledShader->lpVtbl->GetBufferSize(compiledShader),
+			NULL,
+			&d3dShaderModule->pixelShader
+		);
+		break;
+	}
+
+	ERROR_CHECK_UNLOCK_RETURN("Could not create D3D11 shader object", NULL);
+
+	d3dShaderModule->code = compiledShader;
+	d3dShaderModule->stage = shaderStage;
+
+	SDL_UnlockMutex(renderer->ctxLock);
+	return (FNA3D_ShaderModule*)d3dShaderModule;
+}
+
+static void D3D11_AddDisposeShaderModule(FNA3D_Renderer *driverData, FNA3D_ShaderModule *shader)
+{
+	D3D11Renderer *renderer = (D3D11Renderer*)driverData;
+	D3D11ShaderModule *d3dShaderModule = (D3D11ShaderModule*)shader;
+	d3dShaderModule->code->lpVtbl->Release(d3dShaderModule->code);
+
+	switch (d3dShaderModule->stage)
+	{
+	case FNA3D_SHADERSTAGE_VERTEX:
+		ID3D11VertexShader_Release(d3dShaderModule->vertexShader);
+		break;
+	case FNA3D_SHADERSTAGE_PIXEL:
+		ID3D11PixelShader_Release(d3dShaderModule->pixelShader);
+		break;
+	}
+
+	for (int i = 0; i < 16; i++)
+	{
+		if (d3dShaderModule->ubo[i] != NULL)
+		{
+			ID3D11Buffer_Release(d3dShaderModule->ubo[i]);
+		}
+	}
+
+	SDL_free(d3dShaderModule);
+}
+
+static FNA3D_Shader* D3D11_CreateShader(FNA3D_Renderer *driverData, FNA3D_ShaderModule *vertexShader, FNA3D_ShaderModule *pixelShader)
+{
+	D3D11Renderer *renderer = (D3D11Renderer*)driverData;
+	D3D11ShaderModule *d3dVertexModule = (D3D11ShaderModule*)vertexShader;
+	D3D11ShaderModule *d3dPixelModule = (D3D11ShaderModule*)pixelShader;
+
+	D3D11Shader *shader = (D3D11Shader*)SDL_malloc(sizeof(D3D11Shader));
+	shader->vertexShader = d3dVertexModule;
+	shader->pixelShader = d3dPixelModule;
+
+	return (FNA3D_Shader*)shader;
+}
+
+static void D3D11_ApplyShader(FNA3D_Renderer *driverData, FNA3D_Shader *shader)
+{
+	D3D11Renderer *renderer = (D3D11Renderer*)driverData;
+	D3D11Shader *d3dShader = (D3D11Shader*)shader;
+
+	SDL_LockMutex(renderer->ctxLock);
+
+	ID3D11DeviceContext_VSSetShader(renderer->context, d3dShader->vertexShader->vertexShader, NULL, 0);
+	ID3D11DeviceContext_PSSetShader(renderer->context, d3dShader->pixelShader->pixelShader, NULL, 0);
+
+	for (int i = 0; i < 16; i++)
+	{
+		if (d3dShader->vertexShader->ubo[i] != NULL)
+		{
+			ID3D11DeviceContext_VSSetConstantBuffers(renderer->context, i, 1, &d3dShader->vertexShader->ubo[i]);
+		}
+
+		if (d3dShader->pixelShader->ubo[i] != NULL)
+		{
+			ID3D11DeviceContext_PSSetConstantBuffers(renderer->context, i, 1, &d3dShader->pixelShader->ubo[i]);
+		}
+	}
+
+	renderer->effectApplied = 0;
+	renderer->shaderApplied = 1;
+	renderer->currentShader = d3dShader;
+
+	SDL_UnlockMutex(renderer->ctxLock);
+}
+
+static void D3D11_AddDisposeShader(FNA3D_Renderer *driverData, FNA3D_Shader *shader)
+{
+	D3D11Renderer *renderer = (D3D11Renderer*)driverData;
+	D3D11Shader *d3dShader = (D3D11Shader*)shader;
+
+	SDL_free(d3dShader);
+}
+
+static void D3D11_MapVertexShaderUniforms(FNA3D_Renderer *driverData, uint32_t slot, void *data, uint32_t dataLength)
+{
+	D3D11Renderer *renderer = (D3D11Renderer*)driverData;
+	D3D11Shader *d3dShader = renderer->currentShader;
+
+	if (d3dShader->vertexShader->ubo[slot] == NULL)
+	{
+		return;
+	}
+
+	ID3D11Resource* buffer = (ID3D11Resource*)d3dShader->vertexShader->ubo[slot];
+
+	SDL_LockMutex(renderer->ctxLock);
+	
+	D3D11_MAPPED_SUBRESOURCE mappedResource;
+	SDL_zero(mappedResource);
+
+	ID3D11DeviceContext_Map(renderer->context, buffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+	SDL_memcpy(mappedResource.pData, data, dataLength);
+	ID3D11DeviceContext_Unmap(renderer->context, buffer, 0);
+
+	SDL_UnlockMutex(renderer->ctxLock);
+}
+
+static void D3D11_MapPixelShaderUniforms(FNA3D_Renderer *driverData, uint32_t slot, void *data, uint32_t dataLength)
+{
+	D3D11Renderer *renderer = (D3D11Renderer*)driverData;
+	D3D11Shader *d3dShader = renderer->currentShader;
+
+	if (d3dShader->pixelShader->ubo[slot] == NULL)
+	{
+		return;
+	}
+
+	SDL_LockMutex(renderer->ctxLock);
+
+	D3D11_MAPPED_SUBRESOURCE mappedResource;
+	SDL_zero(mappedResource);
+
+	ID3D11DeviceContext_Map(renderer->context, d3dShader->pixelShader->ubo[slot], 0, D3D11_MAP_WRITE_DISCARD, 0, &mappedResource);
+	SDL_memcpy(mappedResource.pData, data, dataLength);
+	ID3D11DeviceContext_Unmap(renderer->context, d3dShader->pixelShader->ubo[slot], 0);
+
 	SDL_UnlockMutex(renderer->ctxLock);
 }
 
@@ -4855,6 +5332,30 @@ try_create_device:
 		NULL,
 		renderer
 	);
+	
+	/* Create SPIRV-Cross context */
+	if (spvc_context_create(&renderer->spirvCompilerContext) != SPVC_SUCCESS)
+	{
+		FNA3D_LogError("Could not create SPIRV-Cross context");
+		return NULL;
+	}
+
+	// load D3DCompile function
+	renderer->d3dCompiler_dll = D3D11_PLATFORM_LoadCompiler();
+
+	if (renderer->d3dCompiler_dll == NULL)
+	{
+		FNA3D_LogError("Could not find " D3DCOMPILER_DLL);
+		return NULL;
+	}
+
+	renderer->d3dCompileFn = D3D11_PLATFORM_GetCompileFunc(renderer->d3dCompiler_dll);
+
+	if (renderer->d3dCompileFn == NULL)
+	{
+		FNA3D_LogError("Could not find D3DCompile function");
+		return NULL;
+	}
 
 	/* Initialize texture and sampler collections */
 	for (i = 0; i < MAX_TOTAL_SAMPLERS; i += 1)

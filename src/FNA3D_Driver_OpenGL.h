@@ -237,6 +237,14 @@ typedef unsigned char	GLboolean;
 #define GL_TRIANGLES					0x0004
 #define GL_TRIANGLE_STRIP				0x0005
 
+/* Shader stages */
+#define GL_FRAGMENT_SHADER			0x8B30
+#define GL_VERTEX_SHADER			0x8B31
+
+/* Shader & program parameters */
+#define GL_COMPILE_STATUS			0x8b81
+#define GL_INFO_LOG_LENGTH			0x8b84
+
 /* Query Objects */
 #define GL_QUERY_RESULT 				0x8866
 #define GL_QUERY_RESULT_AVAILABLE			0x8867

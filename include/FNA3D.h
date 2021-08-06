@@ -57,6 +57,8 @@ typedef struct FNA3D_Texture FNA3D_Texture;
 typedef struct FNA3D_Buffer FNA3D_Buffer;
 typedef struct FNA3D_Renderbuffer FNA3D_Renderbuffer;
 typedef struct FNA3D_Effect FNA3D_Effect;
+typedef struct FNA3D_ShaderModule FNA3D_ShaderModule;
+typedef struct FNA3D_Shader FNA3D_Shader;
 typedef struct FNA3D_Query FNA3D_Query;
 
 /* Enumerations, should match XNA 4.0 */
@@ -291,6 +293,12 @@ typedef enum FNA3D_VertexElementUsage
 	FNA3D_VERTEXELEMENTUSAGE_SAMPLE,
 	FNA3D_VERTEXELEMENTUSAGE_TESSELATEFACTOR
 } FNA3D_VertexElementUsage;
+
+typedef enum FNA3D_ShaderStage
+{
+	FNA3D_SHADERSTAGE_VERTEX,
+	FNA3D_SHADERSTAGE_PIXEL,
+} FNA3D_ShaderStage;
 
 /* Structures, should match XNA 4.0 */
 
@@ -1412,6 +1420,97 @@ FNA3DAPI void FNA3D_BeginPassRestore(
 FNA3DAPI void FNA3D_EndPassRestore(
 	FNA3D_Device *device,
 	FNA3D_Effect *effect
+);
+
+/* Shaders */
+
+/* Compiles input SPIR-V bytecode into a shader module
+ * 
+ * shaderCode: The SPIR-V bytecode blob
+ * shaderCodeLength: The size (in bytes) of the blob
+ * entryPoint: The name of the entry point in the shader module
+ * shaderStage: The pipeline stage of this shader module
+ * 
+ * Returns an FNA3D_ShaderModule handle to the compiled shader module
+ */
+FNA3DAPI FNA3D_ShaderModule* FNA3D_CreateShaderModule(
+	FNA3D_Device *device,
+	uint8_t *shaderCode,
+	uint32_t shaderCodeLength,
+	const char *entryPoint,
+	FNA3D_ShaderStage shaderStage
+);
+
+/* Sends a shader module to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * shader: The FNA3D_ShaderModule to be destroyed.
+ */
+FNA3DAPI void FNA3D_AddDisposeShaderModule(
+	FNA3D_Device *device,
+	FNA3D_ShaderModule *shaderModule
+);
+
+/* Constructs a shader from the given input vertex and pixel shader modules
+ *
+ * vertexShader: The vertex shader module
+ * pixelShader: The pixel shader module
+ *
+ * Returns an FNA3D_Shader handle to the new shader
+ */
+FNA3DAPI FNA3D_Shader* FNA3D_CreateShader(
+	FNA3D_Device *device,
+	FNA3D_ShaderModule *vertexShader,
+	FNA3D_ShaderModule *pixelShader
+);
+
+/* Sets the active shader to be used by future draw calls
+ *
+ * shader: The FNA3D_Shader to be applied.
+ */
+FNA3DAPI void FNA3D_ApplyShader(
+	FNA3D_Device *device,
+	FNA3D_Shader *shader
+);
+
+/* Sends a shader to be destroyed by the renderer. Note that we call it
+ * "AddDispose" because it may not be immediately destroyed by the renderer if
+ * this is not called from the main thread (for example, if a garbage collector
+ * deletes the resource instead of the programmer).
+ *
+ * shader: The FNA3D_Shader to be destroyed.
+ */
+FNA3DAPI void FNA3D_AddDisposeShader(
+	FNA3D_Device *device,
+	FNA3D_Shader *shader
+);
+
+/* Sets a buffer of uniform data to be used by the current vertex shader
+ *
+ * slot: Index of the uniform buffer to update
+ * data: Pointer to the data to be pushed
+ * dataLength: Size of the data in bytes
+ */
+FNA3DAPI void FNA3D_MapVertexShaderUniforms(
+	FNA3D_Device *device,
+	uint32_t slot,
+	void *data,
+	uint32_t dataLength
+);
+
+/* Sets a buffer of uniform data to be used by the current pixel shader
+ *
+ * slot: Index of the uniform buffer to update
+ * data: Pointer to the data to be pushed
+ * dataLength: Size of the data in bytes
+ */
+FNA3DAPI void FNA3D_MapPixelShaderUniforms(
+	FNA3D_Device* device,
+	uint32_t slot,
+	void* data,
+	uint32_t dataLength
 );
 
 /* Queries */

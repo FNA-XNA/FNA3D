@@ -5,3 +5,6 @@
 [submodule "Vulkan-Headers"]
 	path = Vulkan-Headers
 	url = git://github.com/KhronosGroup/Vulkan-Headers.git
+[submodule "SPIRV-Cross"]
+	path = SPIRV-Cross
+	url = https://github.com/KhronosGroup/SPIRV-Cross.git

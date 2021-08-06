@@ -43,6 +43,37 @@
       <Filter>mojoshader</Filter>
     </ClCompile>
     <ClCompile Include="..\src\FNA3D_Driver_Vulkan.c" />
+    <ClCompile Include="..\src\FNA3D_Tracing.c" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_cfg.cpp">
+      <Filter>spirv-cross</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SPIRV-Cross\spirv_cross.cpp">
+      <Filter>spirv-cross</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SPIRV-Cross\spirv_cross_c.cpp">
+      <Filter>spirv-cross</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SPIRV-Cross\spirv_cross_parsed_ir.cpp">
+      <Filter>spirv-cross</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SPIRV-Cross\spirv_cross_util.cpp">
+      <Filter>spirv-cross</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SPIRV-Cross\spirv_glsl.cpp">
+      <Filter>spirv-cross</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SPIRV-Cross\spirv_hlsl.cpp">
+      <Filter>spirv-cross</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SPIRV-Cross\spirv_msl.cpp">
+      <Filter>spirv-cross</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SPIRV-Cross\spirv_parser.cpp">
+      <Filter>spirv-cross</Filter>
+    </ClCompile>
+    <ClCompile Include="..\SPIRV-Cross\spirv_reflect.cpp">
+      <Filter>spirv-cross</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\FNA3D.h" />
@@ -53,10 +84,60 @@
     <ClInclude Include="..\src\FNA3D_PipelineCache.h" />
     <ClInclude Include="..\src\FNA3D_Driver_D3D11.h" />
     <ClInclude Include="..\src\FNA3D_Driver_Vulkan_vkfuncs.h" />
+    <ClInclude Include="..\src\FNA3D_Tracing.h" />
+    <ClInclude Include="..\SPIRV-Cross\GLSL.std.450.h" />
+    <ClInclude Include="..\SPIRV-Cross\spirv.h">
+      <Filter>spirv-cross</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SPIRV-Cross\spirv.hpp">
+      <Filter>spirv-cross</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SPIRV-Cross\spirv_cfg.hpp">
+      <Filter>spirv-cross</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SPIRV-Cross\spirv_common.hpp">
+      <Filter>spirv-cross</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross.hpp">
+      <Filter>spirv-cross</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross_c.h">
+      <Filter>spirv-cross</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross_containers.hpp">
+      <Filter>spirv-cross</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross_error_handling.hpp">
+      <Filter>spirv-cross</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross_parsed_ir.hpp">
+      <Filter>spirv-cross</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross_util.hpp">
+      <Filter>spirv-cross</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SPIRV-Cross\spirv_glsl.hpp">
+      <Filter>spirv-cross</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SPIRV-Cross\spirv_hlsl.hpp">
+      <Filter>spirv-cross</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SPIRV-Cross\spirv_msl.hpp">
+      <Filter>spirv-cross</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SPIRV-Cross\spirv_parser.hpp">
+      <Filter>spirv-cross</Filter>
+    </ClInclude>
+    <ClInclude Include="..\SPIRV-Cross\spirv_reflect.hpp">
+      <Filter>spirv-cross</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="mojoshader">
       <UniqueIdentifier>{622c740d-4374-4129-8a11-23bf8075b42c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="spirv-cross">
+      <UniqueIdentifier>{127c47e5-8280-4e96-bb1a-ccc7505b5e27}</UniqueIdentifier>
     </Filter>
   </ItemGroup>
 </Project>

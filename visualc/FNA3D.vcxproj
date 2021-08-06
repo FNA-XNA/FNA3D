@@ -42,14 +42,14 @@
   </ImportGroup>
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup>
-    <IncludePath>..\..\SDL2\include;..\MojoShader;..\include;$(DXSDK_DIR)\Include;..\Vulkan-Headers\include;$(IncludePath)</IncludePath>
+    <IncludePath>..\..\SDL2\include;..\MojoShader;..\SPIRV-Cross;..\include;$(DXSDK_DIR)\Include;..\Vulkan-Headers\include;$(IncludePath)</IncludePath>
     <LibraryPath>..\..\SDL2\lib\$(PlatformShortName);$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)'=='Debug'">
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
-      <PreprocessorDefinitions>FNA3D_DRIVER_OPENGL;FNA3D_DRIVER_D3D11;FNA3D_DRIVER_VULKAN;MOJOSHADER_NO_VERSION_INCLUDE;MOJOSHADER_USE_SDL_STDLIB;MOJOSHADER_EFFECT_SUPPORT;MOJOSHADER_DEPTH_CLIPPING;MOJOSHADER_FLIP_RENDERTARGET;MOJOSHADER_XNA4_VERTEX_TEXTURES;SUPPORT_PROFILE_ARB1=0;SUPPORT_PROFILE_ARB1_NV=0;SUPPORT_PROFILE_BYTECODE=0;SUPPORT_PROFILE_D3D=0;SUPPORT_PROFILE_METAL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>FNA3D_DRIVER_OPENGL;FNA3D_DRIVER_D3D11;FNA3D_DRIVER_VULKAN;MOJOSHADER_NO_VERSION_INCLUDE;MOJOSHADER_USE_SDL_STDLIB;MOJOSHADER_EFFECT_SUPPORT;MOJOSHADER_DEPTH_CLIPPING;MOJOSHADER_FLIP_RENDERTARGET;MOJOSHADER_XNA4_VERTEX_TEXTURES;SUPPORT_PROFILE_ARB1=0;SUPPORT_PROFILE_ARB1_NV=0;SUPPORT_PROFILE_BYTECODE=0;SUPPORT_PROFILE_D3D=0;SUPPORT_PROFILE_METAL=0;SPIRV_CROSS_C_API_HLSL;SPIRV_CROSS_C_API_GLSL;SPIRV_CROSS_C_API_REFLECT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
     </ClCompile>
     <Link>
       <GenerateDebugInformation>true</GenerateDebugInformation>
@@ -60,7 +60,7 @@
     <ClCompile>
       <WarningLevel>Level3</WarningLevel>
       <Optimization>MaxSpeed</Optimization>
-      <PreprocessorDefinitions>FNA3D_DRIVER_OPENGL;FNA3D_DRIVER_D3D11;FNA3D_DRIVER_VULKAN;MOJOSHADER_NO_VERSION_INCLUDE;MOJOSHADER_USE_SDL_STDLIB;MOJOSHADER_EFFECT_SUPPORT;MOJOSHADER_DEPTH_CLIPPING;MOJOSHADER_FLIP_RENDERTARGET;MOJOSHADER_XNA4_VERTEX_TEXTURES;SUPPORT_PROFILE_ARB1=0;SUPPORT_PROFILE_ARB1_NV=0;SUPPORT_PROFILE_BYTECODE=0;SUPPORT_PROFILE_D3D=0;SUPPORT_PROFILE_METAL=0;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>FNA3D_DRIVER_OPENGL;FNA3D_DRIVER_D3D11;FNA3D_DRIVER_VULKAN;MOJOSHADER_NO_VERSION_INCLUDE;MOJOSHADER_USE_SDL_STDLIB;MOJOSHADER_EFFECT_SUPPORT;MOJOSHADER_DEPTH_CLIPPING;MOJOSHADER_FLIP_RENDERTARGET;MOJOSHADER_XNA4_VERTEX_TEXTURES;SUPPORT_PROFILE_ARB1=0;SUPPORT_PROFILE_ARB1_NV=0;SUPPORT_PROFILE_BYTECODE=0;SUPPORT_PROFILE_D3D=0;SUPPORT_PROFILE_METAL=0;SPIRV_CROSS_C_API_HLSL;SPIRV_CROSS_C_API_GLSL;SPIRV_CROSS_C_API_REFLECT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
     </ClCompile>
@@ -70,6 +70,34 @@
       <AdditionalDependencies>SDL2.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClInclude Include="..\SPIRV-Cross\spirv.h" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_cross_c.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross_c.h" />
+    <ClInclude Include="..\SPIRV-Cross\GLSL.std.450.h" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_common.hpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross_containers.hpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross_error_handling.hpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv.hpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross.hpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_cross.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_parser.hpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_parser.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross_parsed_ir.hpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_cross_parsed_ir.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_cfg.hpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_cfg.cpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_glsl.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_glsl.hpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_hlsl.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_hlsl.hpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_msl.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_msl.hpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_reflect.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_reflect.hpp" />
+    <ClCompile Include="..\SPIRV-Cross\spirv_cross_util.cpp" />
+    <ClInclude Include="..\SPIRV-Cross\spirv_cross_util.hpp" />
+  </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\MojoShader\mojoshader.c">
       <CompileAs>CompileAsCpp</CompileAs>

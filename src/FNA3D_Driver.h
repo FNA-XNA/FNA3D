@@ -635,6 +635,16 @@ struct FNA3D_Device
 		FNA3D_Effect *effect
 	);
 
+	/* Shaders */
+
+	FNA3D_ShaderModule* (*CreateShaderModule)(FNA3D_Renderer *driverData, uint8_t *shaderCode, uint32_t shaderCodeLength, const char *entryPoint, FNA3D_ShaderStage shaderStage);
+	void (*AddDisposeShaderModule)(FNA3D_Renderer *driverData, FNA3D_ShaderModule *shader);
+	FNA3D_Shader* (*CreateShader)(FNA3D_Renderer *driverData, FNA3D_ShaderModule *vertexShader, FNA3D_ShaderModule *pixelShader);
+	void (*ApplyShader)(FNA3D_Renderer *driverData, FNA3D_Shader *shader);
+	void (*AddDisposeShader)(FNA3D_Renderer *driverData, FNA3D_Shader *shader);
+	void (*MapVertexShaderUniforms)(FNA3D_Renderer *driverData, uint32_t slot, void *data, uint32_t dataLength);
+	void (*MapPixelShaderUniforms)(FNA3D_Renderer *driverData, uint32_t slot, void *data, uint32_t dataLength);
+
 	/* Queries */
 
 	FNA3D_Query* (*CreateQuery)(FNA3D_Renderer *driverData);
@@ -745,6 +755,13 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(ApplyEffect, name) \
 	ASSIGN_DRIVER_FUNC(BeginPassRestore, name) \
 	ASSIGN_DRIVER_FUNC(EndPassRestore, name) \
+	ASSIGN_DRIVER_FUNC(CreateShaderModule, name) \
+	ASSIGN_DRIVER_FUNC(AddDisposeShaderModule, name) \
+	ASSIGN_DRIVER_FUNC(CreateShader, name) \
+	ASSIGN_DRIVER_FUNC(ApplyShader, name) \
+	ASSIGN_DRIVER_FUNC(AddDisposeShader, name) \
+	ASSIGN_DRIVER_FUNC(MapVertexShaderUniforms, name) \
+	ASSIGN_DRIVER_FUNC(MapPixelShaderUniforms, name) \
 	ASSIGN_DRIVER_FUNC(CreateQuery, name) \
 	ASSIGN_DRIVER_FUNC(AddDisposeQuery, name) \
 	ASSIGN_DRIVER_FUNC(QueryBegin, name) \

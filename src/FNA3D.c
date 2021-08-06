@@ -1305,6 +1305,97 @@ void FNA3D_EndPassRestore(
 	device->EndPassRestore(device->driverData, effect);
 }
 
+/* Shaders */
+
+FNA3D_ShaderModule* FNA3D_CreateShaderModule(FNA3D_Device *device, uint8_t *shaderCode, uint32_t shaderCodeLength, const char *entryPoint, FNA3D_ShaderStage shaderStage)
+{
+	/* We're stuck tracing _after_ the call instead of _before_, because
+	 * of threading issues. This can cause timing issues!
+	 */
+	FNA3D_ShaderModule *result;
+	if (device == NULL)
+	{
+		return NULL;
+	}
+	result = device->CreateShaderModule(device->driverData, shaderCode, shaderCodeLength, entryPoint, shaderStage);
+	TRACE_CREATESHADERMODULE
+	return result;
+}
+
+void FNA3D_AddDisposeShaderModule(FNA3D_Device *device, FNA3D_ShaderModule *shader)
+{
+	TRACE_ADDDISPOSESHADERMODULE
+	if (device == NULL)
+	{
+		return;
+	}
+	device->AddDisposeShaderModule(
+		device->driverData,
+		shader
+	);
+}
+
+FNA3D_Shader* FNA3D_CreateShader(FNA3D_Device *device, FNA3D_ShaderModule *vertexShader, FNA3D_ShaderModule *pixelShader)
+{
+	/* We're stuck tracing _after_ the call instead of _before_, because
+	 * of threading issues. This can cause timing issues!
+	 */
+	FNA3D_Shader *result;
+	if (device == NULL)
+	{
+		return NULL;
+	}
+	result = device->CreateShader(device->driverData, vertexShader, pixelShader);
+	TRACE_CREATESHADER
+	return result;
+}
+
+void FNA3D_ApplyShader(FNA3D_Device *device, FNA3D_Shader *shader)
+{
+	TRACE_APPLYSHADER
+	if (device == NULL)
+	{
+		return;
+	}
+	device->ApplyShader(
+		device->driverData,
+		shader
+	);
+}
+
+void FNA3D_AddDisposeShader(FNA3D_Device *device, FNA3D_Shader *shader)
+{
+	TRACE_ADDDISPOSESHADER
+	if (device == NULL)
+	{
+		return;
+	}
+	device->AddDisposeShader(
+		device->driverData,
+		shader
+	);
+}
+
+void FNA3D_MapVertexShaderUniforms(FNA3D_Device *device, uint32_t slot, void *data, uint32_t dataLength)
+{
+	TRACE_MAPVERTEXSHADERUNIFORMS
+	if (device == NULL)
+	{
+		return;
+	}
+	device->MapVertexShaderUniforms(device->driverData, slot, data, dataLength);
+}
+
+void FNA3D_MapPixelShaderUniforms(FNA3D_Device *device, uint32_t slot, void *data, uint32_t dataLength)
+{
+	TRACE_MAPPIXELSHADERUNIFORMS
+	if (device == NULL)
+	{
+		return;
+	}
+	device->MapPixelShaderUniforms(device->driverData, slot, data, dataLength);
+}
+
 /* Queries */
 
 FNA3D_Query* FNA3D_CreateQuery(FNA3D_Device *device)
