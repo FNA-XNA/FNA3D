@@ -85,6 +85,12 @@
 #define MARK_QUERYEND				54
 #define MARK_QUERYPIXELCOUNT			55
 #define MARK_SETSTRINGMARKER			56
+#define MARK_CREATESHADERMODULE 	57
+#define MARK_ADDDISPOSESHADERMODULE	58
+#define MARK_APPLYVERTEXSHADER		59
+#define MARK_APPLYPIXELSHADER		60
+#define MARK_MAPVERTEXSHADERUNIFORMS	61
+#define MARK_MAPPIXELSHADERUNIFORMS		62
 
 static uint8_t replay(const char *filename)
 {
@@ -188,13 +194,15 @@ static uint8_t replay(const char *filename)
 	MOJOSHADER_effectStateChanges changes;
 
 	/* Miscellaneous allocations, dimensions, blah blah... */
-	int32_t x, y, z, w, h, d, level, levelCount, sizeInBytes, dataLength;
+	int32_t x, y, z, w, h, d, level, levelCount, sizeInBytes, dataLength, strLength;
 	FNA3D_CubeMapFace cubeMapFace;
 	FNA3D_SurfaceFormat format;
 	FNA3D_BufferUsage usage;
+	FNA3D_ShaderStage stage;
 	uint8_t isRenderTarget, dynamic;
 	uint8_t nonNull;
 	void* miscBuffer;
+	char* strBuffer;
 
 	/* Objects */
 	FNA3D_Texture *texture;
@@ -202,6 +210,7 @@ static uint8_t replay(const char *filename)
 	FNA3D_Buffer *buffer;
 	FNA3D_Effect *effect;
 	MOJOSHADER_effect *effectData;
+	FNA3D_ShaderModule *shaderModule;
 	FNA3D_Query *query;
 
 	/* Trace Objects */
@@ -216,6 +225,8 @@ static uint8_t replay(const char *filename)
 	FNA3D_Effect **traceEffect = NULL;
 	MOJOSHADER_effect **traceEffectData = NULL;
 	uint64_t traceEffectCount = 0;
+	FNA3D_ShaderModule **traceShaderModule = NULL;
+	uint64_t traceShaderModuleCount = 0;
 	FNA3D_Query **traceQuery = NULL;
 	uint64_t traceQueryCount = 0;
 	uint64_t i, j, k;
@@ -1196,6 +1207,48 @@ static uint8_t replay(const char *filename)
 			READ(i);
 			FNA3D_EndPassRestore(device, traceEffect[i]);
 			break;
+		case MARK_CREATESHADERMODULE:
+			READ(dataLength);
+			miscBuffer = SDL_malloc(dataLength);
+			ops->read(ops, miscBuffer, dataLength, 1);
+			READ(strLength);
+			strBuffer = (char*)SDL_malloc(strLength);
+			ops->read(ops, strBuffer, strLength, 1);
+			READ(stage);
+			shaderModule = FNA3D_CreateShaderModule(device, miscBuffer, dataLength, strBuffer, stage);
+			SDL_free(miscBuffer);
+			SDL_free(strBuffer);
+			REGISTER_OBJECT(ShaderModule, ShaderModule, shaderModule)
+			break;
+		case MARK_ADDDISPOSESHADERMODULE:
+			READ(i);
+			FNA3D_AddDisposeShaderModule(device, traceShaderModule[i]);
+			traceShaderModule[i] = NULL;
+			break;
+		case MARK_APPLYVERTEXSHADER:
+			READ(i);
+			FNA3D_ApplyVertexShader(device, traceShaderModule[i]);
+			break;
+		case MARK_APPLYPIXELSHADER:
+			READ(i);
+			FNA3D_ApplyPixelShader(device, traceShaderModule[i]);
+			break;
+		case MARK_MAPVERTEXSHADERUNIFORMS:
+			READ(i);
+			READ(dataLength);
+			miscBuffer = SDL_malloc(dataLength);
+			ops->read(ops, miscBuffer, dataLength, 1);
+			FNA3D_MapVertexShaderUniforms(i, miscBuffer, dataLength);
+			SDL_free(miscBuffer);
+			break;
+		case MARK_MAPPIXELSHADERUNIFORMS:
+			READ(i);
+			READ(dataLength);
+			miscBuffer = SDL_malloc(dataLength);
+			ops->read(ops, miscBuffer, dataLength, 1);
+			FNA3D_MapPixelShaderUniforms(i, miscBuffer, dataLength);
+			SDL_free(miscBuffer);
+			break;
 		case MARK_CREATEQUERY:
 			query = FNA3D_CreateQuery(device);
 			REGISTER_OBJECT(Query, Query, query)
@@ -1263,6 +1316,7 @@ static uint8_t replay(const char *filename)
 	FREE_TRACES(VertexBuffer)
 	FREE_TRACES(IndexBuffer)
 	FREE_TRACES(Effect)
+	FREE_TRACES(ShaderModule)
 	FREE_TRACES(Query)
 	if (traceEffectData != NULL)
 	{
