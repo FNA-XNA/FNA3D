@@ -170,16 +170,17 @@ void FNA3D_Trace_RegisterEffect(FNA3D_Effect *effect, MOJOSHADER_effect *effectD
 }
 #undef TRACE_OBJECT
 
-#define WRITE(val) SDL_memcpy((uint8_t*)traceBuffer + traceBufferCurrentSize, &val, sizeof(val)); traceBufferCurrentSize += sizeof(val);
-#define WRITEMEM(ptr, len) SDL_memcpy((uint8_t*)traceBuffer + traceBufferCurrentSize, ptr, len); traceBufferCurrentSize += len;
+#define CHECK_AND_FLUSH_BUFFER(len) if (traceBufferCurrentSize + len > traceBufferSize) { FNA3D_Trace_FlushMemory(); }
+#define WRITE(val) CHECK_AND_FLUSH_BUFFER(sizeof(val)); SDL_memcpy((uint8_t*)traceBuffer + traceBufferCurrentSize, &val, sizeof(val)); traceBufferCurrentSize += sizeof(val);
+#define WRITEMEM(ptr, len) CHECK_AND_FLUSH_BUFFER(len); SDL_memcpy((uint8_t*)traceBuffer + traceBufferCurrentSize, ptr, len); traceBufferCurrentSize += len;
 
 static SDL_bool traceEnabled = SDL_FALSE;
 static void* windowHandle = NULL;
 static SDL_mutex *traceLock = NULL;
 
 static void* traceBuffer = NULL;
-static int traceBufferCurrentSize = 0;
-static int traceBufferSize = 64000000; /* 64MB */
+static uint32_t traceBufferCurrentSize = 0;
+static uint32_t traceBufferSize = 64000000; /* 64MB */
 
 static void FNA3D_Trace_FlushMemory()
 {
