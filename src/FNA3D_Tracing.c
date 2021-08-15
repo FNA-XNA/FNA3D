@@ -253,6 +253,7 @@ void FNA3D_Trace_DestroyDevice(void)
 	traceEffectCount = 0;
 	#undef FREE_TRACES
 	FNA3D_Trace_FlushMemory();
+	SDL_free(traceBuffer);
 	SDL_UnlockMutex(traceLock);
 }
 
