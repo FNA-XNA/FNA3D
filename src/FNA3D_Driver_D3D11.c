@@ -228,6 +228,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	uint32_t supportsDxt1;
 	uint32_t supportsS3tc;
 	uint8_t supportsSRGBRenderTarget;
+	uint32_t supportsBc7;
 	int32_t maxMultiSampleCount;
 	D3D_FEATURE_LEVEL featureLevel;
 
@@ -310,7 +311,8 @@ static DXGI_FORMAT XNAToD3D_TextureFormat[] =
 	DXGI_FORMAT_B8G8R8A8_UNORM,	/* SurfaceFormat.ColorBgraEXT */
 	DXGI_FORMAT_R8G8B8A8_UNORM_SRGB,/* SurfaceFormat.ColorSrgbEXT */
 	DXGI_FORMAT_BC3_UNORM_SRGB,	/* SurfaceFormat.Dxt5SrgbEXT */
-};
+	DXGI_FORMAT_BC7_UNORM, /* SurfaceFormat.BC7EXT */
+	DXGI_FORMAT_BC7_UNORM_SRGB,	/* SurfaceFormat.BC7SrgbEXT */};
 
 static DXGI_FORMAT XNAToD3D_DepthFormat[] =
 {
@@ -5049,6 +5051,11 @@ try_create_device:
 		renderer->device,
 		XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_DXT5],
 		&supportsDxt5
+	);
+	ID3D11Device_CheckFormatSupport(
+		renderer->device,
+		XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_BC7_EXT],
+		&renderer->supportsBc7
 	);
 	renderer->supportsS3tc = (supportsDxt3 || supportsDxt5);
 	ID3D11Device_CheckFormatSupport(

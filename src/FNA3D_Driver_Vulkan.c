@@ -1625,9 +1625,11 @@ static VkFormat XNAToVK_SurfaceFormat[] =
 	VK_FORMAT_R16G16_SFLOAT,		/* SurfaceFormat.HalfVector2 */
 	VK_FORMAT_R16G16B16A16_SFLOAT,		/* SurfaceFormat.HalfVector4 */
 	VK_FORMAT_R16G16B16A16_SFLOAT,		/* SurfaceFormat.HdrBlendable */
-	VK_FORMAT_B8G8R8A8_UNORM,		/* SurfaceFormat.ColorBgraEXT */
+	VK_FORMAT_R8G8B8A8_UNORM,		/* SurfaceFormat.ColorBgraEXT */
 	VK_FORMAT_R8G8B8A8_SRGB,		/* SurfaceFormat.ColorSrgbEXT */
-	VK_FORMAT_BC3_SRGB_BLOCK,		/* SurfaceFormat.Dxt5 */
+	VK_FORMAT_BC3_SRGB_BLOCK,		/* SurfaceFormat.Dxt5SrgbEXT */
+	VK_FORMAT_BC7_UNORM_BLOCK,		/* SurfaceFormat.BC7EXT */
+	VK_FORMAT_BC7_SRGB_BLOCK,		/* SurfaceFormat.BC7SrgbEXT */
 };
 
 static inline VkFormat XNAToVK_DepthFormat(
@@ -12005,7 +12007,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	VkDescriptorSetLayoutCreateInfo layoutCreateInfo;
 
 	/* Variables: Check for DXT1/S3TC Support */
-	VkFormatProperties formatPropsBC1, formatPropsBC2, formatPropsBC3;
+	VkFormatProperties formatPropsBC1, formatPropsBC2, formatPropsBC3, formatPropsBC7;
 
 	/* Variables: Check for SRGB Render Target Support */
 	VkFormatProperties formatPropsSrgbRT;
@@ -12596,6 +12598,11 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer->physicalDevice,
 		XNAToVK_SurfaceFormat[FNA3D_SURFACEFORMAT_COLORSRGB_EXT],
 		&formatPropsSrgbRT
+	);
+	renderer->vkGetPhysicalDeviceFormatProperties(
+		renderer->physicalDevice,
+		XNAToVK_SurfaceFormat[FNA3D_SURFACEFORMAT_BC7_EXT],
+		&formatPropsBC7
 	);
 
 	#define SUPPORTED_FORMAT(fmt) \

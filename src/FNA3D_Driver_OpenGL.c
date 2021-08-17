@@ -180,6 +180,7 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	uint8_t supports_dxt1;
 	uint8_t supports_anisotropic_filtering;
 	uint8_t supports_srgb_rendertarget;
+	uint8_t supports_bc7;
 	int32_t maxMultiSampleCount;
 	int32_t maxMultiSampleCountFormat[21];
 	int32_t windowSampleCount;
@@ -367,6 +368,8 @@ static int32_t XNAToGL_TextureInternalFormat[] =
 	GL_RGBA8,				/* SurfaceFormat.ColorBgraEXT */
 	GL_SRGB_ALPHA_EXT,			/* SurfaceFormat.ColorSrgbEXT */
 	GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT,	/* SurfaceFormat.Dxt5SrgbEXT */
+	GL_COMPRESSED_RGBA_BPTC_UNORM_EXT,	/* SurfaceFormat.BC7EXT */
+	GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT,/* SurfaceFormat.BC7SrgbEXT */
 };
 
 static int32_t XNAToGL_TextureDataType[] =
@@ -5267,6 +5270,12 @@ static uint8_t OPENGL_SupportsSRGBRenderTargets(FNA3D_Renderer *driverData)
 	return renderer->supports_srgb_rendertarget;
 }
 
+static uint8_t OPENGL_SupportsBC7(FNA3D_Renderer *driverData)
+{
+	OpenGLRenderer *renderer = (OpenGLRenderer*)driverData;
+	return renderer->supports_bc7;
+}
+
 static void OPENGL_GetMaxTextureSlots(
 	FNA3D_Renderer *driverData,
 	int32_t *textures,
@@ -5637,13 +5646,17 @@ static inline void CheckExtensions(
 	uint8_t *supportsS3tc,
 	uint8_t *supportsDxt1,
 	uint8_t *supportsAnisotropicFiltering,
-	uint8_t *SupportsSRGBRenderTargets
+	uint8_t *supportsSRGBRenderTargets,
+	uint8_t *supportsBC7
 ) {
 	uint8_t s3tc = (
 		SDL_strstr(ext, "GL_EXT_texture_compression_s3tc") ||
 		SDL_strstr(ext, "GL_OES_texture_compression_S3TC") ||
 		SDL_strstr(ext, "GL_EXT_texture_compression_dxt3") ||
 		SDL_strstr(ext, "GL_EXT_texture_compression_dxt5")
+	);
+	uint8_t bc7 = (
+		SDL_strstr(ext, "GL_ARB_texture_compression_bptc")
 	);
 	uint8_t anisotropicFiltering = (
 		SDL_strstr(ext, "GL_EXT_texture_filter_anisotropic") ||
@@ -5665,10 +5678,13 @@ static inline void CheckExtensions(
 	{
 		*supportsAnisotropicFiltering = 1;
 	}
-
 	if (srgbFrameBuffer)
 	{
-		*SupportsSRGBRenderTargets = 1;
+		*supportsSRGBRenderTargets = 1;
+	}
+	if (bc7)
+	{
+		*supportsBC7 = 1;
 	}
 }
 
@@ -5981,6 +5997,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	renderer->supports_dxt1 = 0;
 	renderer->supports_anisotropic_filtering = 0;
 	renderer->supports_srgb_rendertarget = 0;
+	renderer->supports_bc7 = 0;
 	if (renderer->useCoreProfile)
 	{
 		renderer->glGetIntegerv(GL_NUM_EXTENSIONS, &numExtensions);
@@ -5991,10 +6008,11 @@ FNA3D_Device* OPENGL_CreateDevice(
 				&renderer->supports_s3tc,
 				&renderer->supports_dxt1,
 				&renderer->supports_anisotropic_filtering,
-				&renderer->supports_srgb_rendertarget
+				&renderer->supports_srgb_rendertarget,
+				&renderer->supports_bc7
 			);
 
-			if (renderer->supports_s3tc && renderer->supports_dxt1 && renderer->supports_srgb_rendertarget)
+			if (renderer->supports_s3tc && renderer->supports_dxt1 && renderer->supports_srgb_rendertarget && renderer->supports_bc7)
 			{
 				/* No need to look further. */
 				break;
@@ -6008,7 +6026,8 @@ FNA3D_Device* OPENGL_CreateDevice(
 			&renderer->supports_s3tc,
 			&renderer->supports_dxt1,
 			&renderer->supports_anisotropic_filtering,
-			&renderer->supports_srgb_rendertarget
+			&renderer->supports_srgb_rendertarget,
+			&renderer->supports_bc7
 		);
 	}
 
