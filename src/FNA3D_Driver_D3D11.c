@@ -2141,6 +2141,82 @@ static void D3D11_ApplyVertexBufferBindings(
 
 /* Render Targets */
 
+static void D3D11_INTERNAL_DiscardTargetTextures(
+	D3D11Renderer *renderer,
+	ID3D11RenderTargetView **views,
+	int32_t numViews
+) {
+	/* For textures that are still bound while this target is about to
+	 * become active, rebind. D3D11 implicitly unsets these to prevent
+	 * simultaneous read/write, but we still have to be explicit to avoid
+	 * warnings from the debug layer.
+	 * -flibit
+	 */
+	int32_t i, j, k;
+	uint8_t bound;
+	for (i = 0; i < numViews; i += 1)
+	{
+		const ID3D11RenderTargetView *view = views[i];
+		for (j = 0; j < MAX_TOTAL_SAMPLERS; j += 1)
+		{
+			const D3D11Texture *texture = renderer->textures[j];
+			if (!texture->isRenderTarget)
+			{
+				continue;
+			}
+			if (texture->rtType == FNA3D_RENDERTARGET_TYPE_2D)
+			{
+				bound = (texture->twod.rtView == view);
+			}
+			else
+			{
+				bound = 0;
+				for (k = 0; k < 6; k += 1)
+				{
+					if (texture->cube.rtViews[k] == view)
+					{
+						bound = 1;
+						break;
+					}
+				}
+			}
+			if (bound)
+			{
+				if (j < MAX_TEXTURE_SAMPLERS)
+				{
+					ID3D11DeviceContext_PSSetShaderResources(
+						renderer->context,
+						j,
+						1,
+						&NullTexture.shaderView
+					);
+					ID3D11DeviceContext_PSSetSamplers(
+						renderer->context,
+						j,
+						1,
+						&renderer->samplers[j]
+					);
+				}
+				else
+				{
+					ID3D11DeviceContext_VSSetShaderResources(
+						renderer->context,
+						j - MAX_TEXTURE_SAMPLERS,
+						1,
+						&NullTexture.shaderView
+					);
+					ID3D11DeviceContext_VSSetSamplers(
+						renderer->context,
+						j - MAX_TEXTURE_SAMPLERS,
+						1,
+						&renderer->samplers[j]
+					);
+				}
+			}
+		}
+	}
+}
+
 static void D3D11_INTERNAL_RestoreTargetTextures(D3D11Renderer *renderer)
 {
 	/* For textures that were bound while this target was active, rebind.
@@ -2234,6 +2310,7 @@ static void D3D11_SetRenderTargets(
 		renderer->depthStencilView = renderer->backbuffer.depthStencilView;
 
 		SDL_LockMutex(renderer->ctxLock);
+		/* No need to discard textures, this is a backbuffer bind */
 		ID3D11DeviceContext_OMSetRenderTargets(
 			renderer->context,
 			1,
@@ -2294,6 +2371,7 @@ static void D3D11_SetRenderTargets(
 
 	/* Actually set the render targets, finally. */
 	SDL_LockMutex(renderer->ctxLock);
+	D3D11_INTERNAL_DiscardTargetTextures(renderer, views, numRenderTargets);
 	ID3D11DeviceContext_OMSetRenderTargets(
 		renderer->context,
 		numRenderTargets,
