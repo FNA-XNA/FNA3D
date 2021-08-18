@@ -3026,9 +3026,9 @@ static VulkanMemoryUsedRegion* VULKAN_INTERNAL_NewMemoryUsedRegion(
 	VkDeviceSize resourceSize,
 	VkDeviceSize alignment
 ) {
-	SDL_LockMutex(renderer->allocatorLock);
-
 	VulkanMemoryUsedRegion *memoryUsedRegion;
+
+	SDL_LockMutex(renderer->allocatorLock);
 
 	if (allocation->usedRegionCount == allocation->usedRegionCapacity)
 	{
@@ -3061,9 +3061,9 @@ static void VULKAN_INTERNAL_RemoveMemoryUsedRegion(
 	VulkanRenderer *renderer,
 	VulkanMemoryUsedRegion *usedRegion
 ) {
-	SDL_LockMutex(renderer->allocatorLock);
-
 	uint32_t i;
+
+	SDL_LockMutex(renderer->allocatorLock);
 
 	for (i = 0; i < usedRegion->allocation->usedRegionCount; i += 1)
 	{
