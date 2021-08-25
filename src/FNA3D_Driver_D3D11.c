@@ -2106,19 +2106,12 @@ static void D3D11_ApplyVertexBufferBindings(
 	{
 		vertexBuffer = (D3D11Buffer*) bindings[i].vertexBuffer;
 		stride = bindings[i].vertexDeclaration.vertexStride;
+		offset = bindings[i].vertexOffset * stride;
+		SDL_assert(vertexBuffer != NULL);
 		if (	renderer->vertexBuffers[i] != vertexBuffer->handle ||
 			renderer->vertexBufferStrides[i] != stride ||
-			renderer->vertexBufferOffsets[i] != bindings[i].vertexOffset	)
+			renderer->vertexBufferOffsets[i] != offset	)
 		{
-			renderer->vertexBuffers[i] = vertexBuffer->handle;
-			if (vertexBuffer == NULL)
-			{
-				renderer->vertexBufferStrides[i] = 0;
-				renderer->vertexBufferOffsets[i] = 0;
-				continue;
-			}
-
-			offset = bindings[i].vertexOffset * stride;
 			ID3D11DeviceContext_IASetVertexBuffers(
 				renderer->context,
 				i,
@@ -2128,6 +2121,7 @@ static void D3D11_ApplyVertexBufferBindings(
 				(uint32_t*) &offset
 			);
 
+			renderer->vertexBuffers[i] = vertexBuffer->handle;
 			renderer->vertexBufferOffsets[i] = offset;
 			renderer->vertexBufferStrides[i] = stride;
 		}
