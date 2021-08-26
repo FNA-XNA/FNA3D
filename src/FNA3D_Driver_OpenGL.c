@@ -178,6 +178,7 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	uint8_t supports_anisotropic_filtering;
 	int32_t maxMultiSampleCount;
 	int32_t maxMultiSampleCountFormat[21];
+	int32_t windowSampleCount;
 
 	/* Blend State */
 	uint8_t alphaBlendEnable;
@@ -5193,6 +5194,14 @@ static int32_t OPENGL_GetMaxMultiSampleCount(
 		/* This number isn't very good, but it's all we have... */
 		maxSamples = renderer->maxMultiSampleCount;
 	}
+	if (renderer->windowSampleCount > 0)
+	{
+		/* Desperate attempt to align multisample count with the window
+		 * sample count, otherwise glBlitFramebuffer will return
+		 * GL_INVALID_OPERATION
+		 */
+		maxSamples = SDL_min(maxSamples, renderer->windowSampleCount);
+	}
 	return SDL_min(maxSamples, multiSampleCount);
 }
 
@@ -5781,6 +5790,15 @@ FNA3D_Device* OPENGL_CreateDevice(
 			stencilSize
 		);
 		renderer->windowDepthFormat = FNA3D_DEPTHFORMAT_D24S8;
+	}
+
+	/* Lastly, check for backbuffer multisampling. This is extremely rare,
+	 * but Xwayland may try to introduce it (maybe because of DPI scaling?)
+	 */
+	SDL_GL_GetAttribute(SDL_GL_MULTISAMPLESAMPLES, &renderer->windowSampleCount);
+	if (renderer->windowSampleCount)
+	{
+		FNA3D_LogWarn("Window surface is multisampled! This is an OS bug!");
 	}
 
 	/* Set the swap interval now that we know enough about the GL context */
