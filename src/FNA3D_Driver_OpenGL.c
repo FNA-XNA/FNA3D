@@ -5796,7 +5796,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	 * but Xwayland may try to introduce it (maybe because of DPI scaling?)
 	 */
 	SDL_GL_GetAttribute(SDL_GL_MULTISAMPLESAMPLES, &renderer->windowSampleCount);
-	if (renderer->windowSampleCount)
+	if (renderer->windowSampleCount > 1)
 	{
 		FNA3D_LogWarn("Window surface is multisampled! This is an OS bug!");
 	}
