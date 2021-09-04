@@ -1029,6 +1029,10 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	D3D11Renderer *renderer,
 	FNA3D_PresentationParameters *pp
 );
+static HRESULT D3D11_PLATFORM_ResizeSwapChain(
+	D3D11Renderer *renderer,
+	FNA3D_PresentationParameters *pp
+);
 
 /* Renderer Implementation */
 
@@ -2583,13 +2587,9 @@ static void D3D11_INTERNAL_CreateFramebuffer(
 	else
 	{
 		/* Resize the swapchain to the new window size */
-		res = IDXGISwapChain_ResizeBuffers(
-			renderer->swapchain,
-			0,			/* keep # of buffers the same */
-			0,			/* get width from window */
-			0,			/* get height from window */
-			DXGI_FORMAT_UNKNOWN,	/* keep the old format */
-			0
+		res = D3D11_PLATFORM_ResizeSwapChain(
+			renderer,
+			presentationParameters
 		);
 		ERROR_CHECK_RETURN("Could not resize swapchain",)
 	}
@@ -5079,6 +5079,36 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	ERROR_CHECK("Could not create swapchain")
 }
 
+static HRESULT D3D11_PLATFORM_ResizeSwapChain(
+	D3D11Renderer *renderer,
+	FNA3D_PresentationParameters *pp
+) {
+	/* FIXME: MASSIVE XBOX REGRESSION!!!
+	 * An update to the Xbox OS went out on August 2021, and immediately
+	 * broke a ton of games including ID@Xbox titles. Some were even pulled
+	 * from the Microsoft Store!
+	 *
+	 * Reports were filed but Microsoft pretty plainly said it wasn't a
+	 * priority to fix the issue (read: breaking userspace is not a big deal
+	 * anymore?), but we found out that it's just that their latest DXGI is
+	 * broken and doesn't check the window size, instead clamping input to
+	 * be >= 8. If we trust the window size is correct we can pass those
+	 * values instead of passing (0, 0) like we're supposed to be able to.
+	 *
+	 * -flibit
+	 */
+	int w, h;
+	SDL_GetWindowSize((SDL_Window*) pp->deviceWindowHandle, &w, &h);
+	return IDXGISwapChain_ResizeBuffers(
+		renderer->swapchain,
+		0,			/* keep # of buffers the same */
+		w,
+		h,
+		DXGI_FORMAT_UNKNOWN,	/* keep the old format */
+		0
+	);
+}
+
 #else
 
 /* Win32 Platform Implementation */
@@ -5266,6 +5296,20 @@ static void D3D11_PLATFORM_CreateSwapChain(
 			);
 		}
 	}
+}
+
+static HRESULT D3D11_PLATFORM_ResizeSwapChain(
+	D3D11Renderer *renderer,
+	FNA3D_PresentationParameters *pp
+) {
+	return IDXGISwapChain_ResizeBuffers(
+		renderer->swapchain,
+		0,			/* keep # of buffers the same */
+		0,			/* get width from window */
+		0,			/* get height from window */
+		DXGI_FORMAT_UNKNOWN,	/* keep the old format */
+		0
+	);
 }
 
 #endif
