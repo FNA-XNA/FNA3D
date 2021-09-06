@@ -11867,11 +11867,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	{
 		FNA3D_LogInfo("KHR_driver_properties unsupported! Bother your vendor about this!");
 	}
-	FNA3D_LogWarn(
-		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n"
-		"FNA3D Vulkan is still in development! You have been warned!\n"
-		"!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-	);
 
 	if (!VULKAN_INTERNAL_CreateLogicalDevice(renderer))
 	{
