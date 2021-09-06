@@ -2679,10 +2679,7 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 	else
 	{
 		/* Resize the swapchain to the new window size */
-		res = D3D11_PLATFORM_ResizeSwapChain(
-			renderer,
-			presentationParameters
-		);
+		res = D3D11_PLATFORM_ResizeSwapChain(renderer, parameters);
 		ERROR_CHECK_RETURN("Could not resize swapchain",)
 	}
 
