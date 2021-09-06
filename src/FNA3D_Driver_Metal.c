@@ -4592,6 +4592,8 @@ FNA3D_Device* METAL_CreateDevice(
 		"FNA3D Driver: Metal\nDevice Name: %s",
 		mtlGetDeviceName(renderer->device)
 	);
+	FNA3D_LogWarn("The Metal renderer is officially deprecated.");
+	FNA3D_LogWarn("Please use the Vulkan renderer with MoltenVK instead.");
 
 	/* Set device properties */
 	renderer->isMac = (strcmp(SDL_GetPlatform(), "Mac OS X") == 0);
