@@ -306,6 +306,7 @@ static DXGI_FORMAT XNAToD3D_TextureFormat[] =
 	DXGI_FORMAT_R16G16B16A16_FLOAT,	/* SurfaceFormat.HalfVector4 */
 	DXGI_FORMAT_R16G16B16A16_FLOAT,	/* SurfaceFormat.HdrBlendable */
 	DXGI_FORMAT_B8G8R8A8_UNORM,	/* SurfaceFormat.ColorBgraEXT */
+	DXGI_FORMAT_B8G8R8A8_UNORM_SRGB,	/* SurfaceFormat.ColorSrgbEXT */
 };
 
 static DXGI_FORMAT XNAToD3D_DepthFormat[] =
@@ -2684,7 +2685,10 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 	}
 
 	/* Create a render target view for the swapchain */
-	swapchainViewDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+	DXGI_FORMAT swapchainFormat = (colorBufferDesc.Format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
+		? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
+		: DXGI_FORMAT_R8G8B8A8_UNORM;
+	swapchainViewDesc.Format = swapchainFormat;
 	swapchainViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
 	swapchainViewDesc.Texture2D.MipSlice = 0;
 

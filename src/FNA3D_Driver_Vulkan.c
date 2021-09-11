@@ -1231,6 +1231,7 @@ typedef struct VulkanRenderer
 	int8_t freeQueryIndexStack[MAX_QUERIES];
 	int8_t freeQueryIndexStackHead;
 
+	int8_t backBufferIsSRGB;
 	VkFormat swapchainFormat;
 	VkComponentMapping swapchainSwizzle;
 	VulkanColorBuffer fauxBackbufferColor;
@@ -1590,7 +1591,8 @@ static VkComponentMapping XNAToVK_SurfaceSwizzle[] =
 		VK_COMPONENT_SWIZZLE_G,
 		VK_COMPONENT_SWIZZLE_R,
 		VK_COMPONENT_SWIZZLE_A
-	}
+	},
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.ColorSrgbEXT */
 };
 
 static VkFormat XNAToVK_SurfaceFormat[] =
@@ -1615,7 +1617,8 @@ static VkFormat XNAToVK_SurfaceFormat[] =
 	VK_FORMAT_R16G16_SFLOAT,		/* SurfaceFormat.HalfVector2 */
 	VK_FORMAT_R16G16B16A16_SFLOAT,		/* SurfaceFormat.HalfVector4 */
 	VK_FORMAT_R16G16B16A16_SFLOAT,		/* SurfaceFormat.HdrBlendable */
-	VK_FORMAT_R8G8B8A8_UNORM		/* SurfaceFormat.ColorBgraEXT */
+	VK_FORMAT_R8G8B8A8_UNORM,		/* SurfaceFormat.ColorBgraEXT */
+	VK_FORMAT_B8G8R8A8_SRGB			/* SurfaceFormat.ColorSrgbEXT */
 };
 
 static inline VkFormat XNAToVK_DepthFormat(
@@ -6467,7 +6470,9 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
-	renderer->swapchainFormat = VK_FORMAT_R8G8B8A8_UNORM;
+	renderer->swapchainFormat = renderer->backBufferIsSRGB
+		? VK_FORMAT_B8G8R8A8_SRGB
+		: VK_FORMAT_B8G8R8A8_UNORM;
 	renderer->swapchainSwizzle.r = VK_COMPONENT_SWIZZLE_IDENTITY;
 	renderer->swapchainSwizzle.g = VK_COMPONENT_SWIZZLE_IDENTITY;
 	renderer->swapchainSwizzle.b = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -11797,6 +11802,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->parentDevice = result;
 	result->driverData = (FNA3D_Renderer*) renderer;
 
+	renderer->backBufferIsSRGB = presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_COLORSRGB_EXT;
 	renderer->presentInterval = presentationParameters->presentationInterval;
 	renderer->deviceWindowHandle = presentationParameters->deviceWindowHandle;
 
