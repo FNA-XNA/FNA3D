@@ -1416,6 +1416,17 @@ uint8_t FNA3D_SupportsNoOverwrite(FNA3D_Device *device)
 	return device->SupportsNoOverwrite(device->driverData);
 }
 
+
+uint8_t FNA3D_SupportsSRGBFrameBuffer(FNA3D_Device *device)
+{
+	/* Not traced! */
+	if (device == NULL)
+	{
+		return 0;
+	}
+	return device->SupportsSRGBFrameBuffer(device->driverData);
+}
+
 void FNA3D_GetMaxTextureSlots(
 	FNA3D_Device *device,
 	int32_t *textures,

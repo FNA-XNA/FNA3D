@@ -654,6 +654,7 @@ struct FNA3D_Device
 	uint8_t (*SupportsS3TC)(FNA3D_Renderer *driverData);
 	uint8_t (*SupportsHardwareInstancing)(FNA3D_Renderer *driverData);
 	uint8_t (*SupportsNoOverwrite)(FNA3D_Renderer *driverData);
+	uint8_t (*SupportsSRGBFrameBuffer)(FNA3D_Renderer *driverData);
 
 	void (*GetMaxTextureSlots)(
 		FNA3D_Renderer *driverData,
@@ -756,6 +757,7 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(SupportsS3TC, name) \
 	ASSIGN_DRIVER_FUNC(SupportsHardwareInstancing, name) \
 	ASSIGN_DRIVER_FUNC(SupportsNoOverwrite, name) \
+	ASSIGN_DRIVER_FUNC(SupportsSRGBFrameBuffer, name) \
 	ASSIGN_DRIVER_FUNC(GetMaxTextureSlots, name) \
 	ASSIGN_DRIVER_FUNC(GetMaxMultiSampleCount, name) \
 	ASSIGN_DRIVER_FUNC(SetStringMarker, name) \

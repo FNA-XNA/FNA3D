@@ -4586,6 +4586,11 @@ static uint8_t D3D11_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 	return 1;
 }
 
+static uint8_t D3D11_SupportsSRGBFrameBuffer(FNA3D_Renderer *driverData)
+{
+	return 1;
+}
+
 static void D3D11_GetMaxTextureSlots(
 	FNA3D_Renderer *driverData,
 	int32_t *textures,

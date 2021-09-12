@@ -11505,6 +11505,11 @@ static uint8_t VULKAN_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 	return 1;
 }
 
+static uint8_t VULKAN_SupportsSRGBFrameBuffer(FNA3D_Renderer *driverData)
+{
+	return 1;
+}
+
 static void VULKAN_GetMaxTextureSlots(
 	FNA3D_Renderer *driverData,
 	int32_t *textures,

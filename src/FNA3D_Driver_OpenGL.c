@@ -179,6 +179,7 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	uint8_t supports_s3tc;
 	uint8_t supports_dxt1;
 	uint8_t supports_anisotropic_filtering;
+	uint8_t supports_srgb_framebuffer;
 	int32_t maxMultiSampleCount;
 	int32_t maxMultiSampleCountFormat[21];
 	int32_t windowSampleCount;
@@ -5193,6 +5194,12 @@ static uint8_t OPENGL_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 	return 0;
 }
 
+static uint8_t OPENGL_SupportsSRGBFrameBuffer(FNA3D_Renderer *driverData)
+{
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	return renderer->supports_srgb_framebuffer;
+}
+
 static void OPENGL_GetMaxTextureSlots(
 	FNA3D_Renderer *driverData,
 	int32_t *textures,
@@ -5562,7 +5569,8 @@ static inline void CheckExtensions(
 	const char *ext,
 	uint8_t *supportsS3tc,
 	uint8_t *supportsDxt1,
-	uint8_t *supportsAnisotropicFiltering
+	uint8_t *supportsAnisotropicFiltering,
+	uint8_t *SupportsSRGBFrameBuffer
 ) {
 	uint8_t s3tc = (
 		SDL_strstr(ext, "GL_EXT_texture_compression_s3tc") ||
@@ -5573,6 +5581,9 @@ static inline void CheckExtensions(
 	uint8_t anisotropicFiltering = (
 		SDL_strstr(ext, "GL_EXT_texture_filter_anisotropic") ||
 		SDL_strstr(ext, "GL_ARB_texture_filter_anisotropic")
+	);
+	uint8_t srgbFrameBuffer = (
+		SDL_strstr(ext, "GL_EXT_framebuffer_sRGB")
 	);
 
 	if (s3tc)
@@ -5586,6 +5597,11 @@ static inline void CheckExtensions(
 	if (anisotropicFiltering)
 	{
 		*supportsAnisotropicFiltering = 1;
+	}
+
+	if (srgbFrameBuffer)
+	{
+		*SupportsSRGBFrameBuffer = 1;
 	}
 }
 
@@ -5919,6 +5935,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	renderer->supports_s3tc = 0;
 	renderer->supports_dxt1 = 0;
 	renderer->supports_anisotropic_filtering = 0;
+	renderer->supports_srgb_framebuffer = 0;
 	if (renderer->useCoreProfile)
 	{
 		renderer->glGetIntegerv(GL_NUM_EXTENSIONS, &numExtensions);
@@ -5928,10 +5945,11 @@ FNA3D_Device* OPENGL_CreateDevice(
 				(const char*) renderer->glGetStringi(GL_EXTENSIONS, i),
 				&renderer->supports_s3tc,
 				&renderer->supports_dxt1,
-				&renderer->supports_anisotropic_filtering
+				&renderer->supports_anisotropic_filtering,
+				&renderer->supports_srgb_framebuffer
 			);
 
-			if (renderer->supports_s3tc && renderer->supports_dxt1)
+			if (renderer->supports_s3tc && renderer->supports_dxt1 && renderer->supports_srgb_framebuffer)
 			{
 				/* No need to look further. */
 				break;
@@ -5944,7 +5962,8 @@ FNA3D_Device* OPENGL_CreateDevice(
 			(const char*) renderer->glGetString(GL_EXTENSIONS),
 			&renderer->supports_s3tc,
 			&renderer->supports_dxt1,
-			&renderer->supports_anisotropic_filtering
+			&renderer->supports_anisotropic_filtering,
+			&renderer->supports_srgb_framebuffer
 		);
 	}
 
