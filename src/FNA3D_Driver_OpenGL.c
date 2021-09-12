@@ -106,6 +106,7 @@ struct OpenGLRenderbuffer /* Cast from FNA3D_Renderbuffer* */
 {
 	GLuint handle;
 	OpenGLRenderbuffer *next; /* linked list */
+	FNA3D_SurfaceFormat format;
 };
 
 struct OpenGLEffect /* Cast from FNA3D_Effect* */
@@ -169,6 +170,7 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	GLenum backbufferScaleMode;
 	GLuint realBackbufferFBO;
 	GLuint realBackbufferRBO;
+	uint8_t srgbEnabled;
 
 	/* VAO for Core Profile */
 	GLuint vao;
@@ -2542,28 +2544,21 @@ static void OPENGL_SetRenderTargets(
 				renderer->realBackbufferFBO
 		);
 		renderer->renderTargetBound = 0;
-		/* The driver is able and willing to provide us a sRGB backbuffer even if we don't ask for one,
-		 * so we need to disable FRAMEBUFFER_SRGB if we don't actually want sRGB blending/sampling
-		 */
-		if (renderer->backbuffer->isSrgb)
+		if (renderer->backbuffer->isSrgb != renderer->srgbEnabled)
 		{
-			renderer->glEnable(GL_FRAMEBUFFER_SRGB_EXT);
-		}
-		else
-		{
-			renderer->glDisable(GL_FRAMEBUFFER_SRGB_EXT);
+			renderer->srgbEnabled = renderer->backbuffer->isSrgb;
+			ToggleGLState(renderer, GL_FRAMEBUFFER_SRGB_EXT, renderer->srgbEnabled);
 		}
 		return;
 	}
 	else
 	{
 		BindFramebuffer(renderer, renderer->targetFramebuffer);
-		/* Unlike the backbuffer, our format will be sRGB or non-sRGB as we expect so we can leave
-		 * this flag on universally and the blending will be configured based on the format
-		 */
-		renderer->glEnable(GL_FRAMEBUFFER_SRGB_EXT);
 		renderer->renderTargetBound = 1;
 	}
+
+	uint8_t isSrgb = 0;
+
 
 	for (i = 0; i < numRenderTargets; i += 1)
 	{
@@ -2572,6 +2567,7 @@ static void OPENGL_SetRenderTargets(
 		{
 			renderer->attachments[i] = ((OpenGLRenderbuffer*) rt->colorBuffer)->handle;
 			renderer->attachmentTypes[i] = GL_RENDERBUFFER;
+			isSrgb |= (((OpenGLRenderbuffer*)rt->colorBuffer)->format == FNA3D_SURFACEFORMAT_COLORSRGB_EXT);
 		}
 		else
 		{
@@ -2584,7 +2580,14 @@ static void OPENGL_SetRenderTargets(
 			{
 				renderer->attachmentTypes[i] = GL_TEXTURE_CUBE_MAP_POSITIVE_X + rt->cube.face;
 			}
+			isSrgb |= (((OpenGLTexture*)rt->colorBuffer)->format == FNA3D_SURFACEFORMAT_COLORSRGB_EXT);
 		}
+	}
+
+	if (isSrgb != renderer->srgbEnabled)
+	{
+		renderer->srgbEnabled = isSrgb;
+		ToggleGLState(renderer, GL_FRAMEBUFFER_SRGB_EXT, renderer->srgbEnabled);
 	}
 
 	/* Update the color attachments, DrawBuffers state */
@@ -4331,6 +4334,7 @@ static FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
 		sizeof(OpenGLRenderbuffer)
 	);
 	renderbuffer->next = NULL;
+	renderbuffer->format = format;
 
 	renderer->glGenRenderbuffers(1, &renderbuffer->handle);
 	renderer->glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer->handle);
