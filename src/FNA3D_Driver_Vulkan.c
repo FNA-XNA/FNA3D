@@ -1617,8 +1617,8 @@ static VkFormat XNAToVK_SurfaceFormat[] =
 	VK_FORMAT_R16G16_SFLOAT,		/* SurfaceFormat.HalfVector2 */
 	VK_FORMAT_R16G16B16A16_SFLOAT,		/* SurfaceFormat.HalfVector4 */
 	VK_FORMAT_R16G16B16A16_SFLOAT,		/* SurfaceFormat.HdrBlendable */
-	VK_FORMAT_R8G8B8A8_UNORM,		/* SurfaceFormat.ColorBgraEXT */
-	VK_FORMAT_B8G8R8A8_SRGB			/* SurfaceFormat.ColorSrgbEXT */
+	VK_FORMAT_B8G8R8A8_UNORM,		/* SurfaceFormat.ColorBgraEXT */
+	VK_FORMAT_R8G8B8A8_SRGB			/* SurfaceFormat.ColorSrgbEXT */
 };
 
 static inline VkFormat XNAToVK_DepthFormat(
@@ -6471,8 +6471,8 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	}
 
 	renderer->swapchainFormat = renderer->backBufferIsSRGB
-		? VK_FORMAT_B8G8R8A8_SRGB
-		: VK_FORMAT_B8G8R8A8_UNORM;
+		? VK_FORMAT_R8G8B8A8_SRGB
+		: VK_FORMAT_R8G8B8A8_UNORM;
 	renderer->swapchainSwizzle.r = VK_COMPONENT_SWIZZLE_IDENTITY;
 	renderer->swapchainSwizzle.g = VK_COMPONENT_SWIZZLE_IDENTITY;
 	renderer->swapchainSwizzle.b = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -6484,7 +6484,9 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		&surfaceFormat
 	)) {
 		FNA3D_LogWarn("RGBA8 swapchain unsupported, falling back to BGRA8 with swizzle");
-		renderer->swapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
+		renderer->swapchainFormat = renderer->backBufferIsSRGB
+			? VK_FORMAT_B8G8R8A8_SRGB
+			: VK_FORMAT_B8G8R8A8_UNORM;
 		renderer->swapchainSwizzle.r = VK_COMPONENT_SWIZZLE_B;
 		renderer->swapchainSwizzle.g = VK_COMPONENT_SWIZZLE_G;
 		renderer->swapchainSwizzle.b = VK_COMPONENT_SWIZZLE_R;
