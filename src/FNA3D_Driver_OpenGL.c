@@ -2560,7 +2560,6 @@ static void OPENGL_SetRenderTargets(
 
 	uint8_t isSrgb = 0;
 
-
 	for (i = 0; i < numRenderTargets; i += 1)
 	{
 		rt = &renderTargets[i];
