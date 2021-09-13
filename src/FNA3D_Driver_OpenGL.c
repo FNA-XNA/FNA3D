@@ -5569,7 +5569,7 @@ static inline void CheckExtensions(
 	uint8_t *supportsS3tc,
 	uint8_t *supportsDxt1,
 	uint8_t *supportsAnisotropicFiltering,
-	uint8_t *SupportsSRGBFrameBuffer
+	uint8_t *supportsSRGBFrameBuffer
 ) {
 	uint8_t s3tc = (
 		SDL_strstr(ext, "GL_EXT_texture_compression_s3tc") ||
