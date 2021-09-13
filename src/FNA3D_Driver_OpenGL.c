@@ -105,8 +105,8 @@ struct OpenGLBuffer /* Cast from FNA3D_Buffer* */
 struct OpenGLRenderbuffer /* Cast from FNA3D_Renderbuffer* */
 {
 	GLuint handle;
-	OpenGLRenderbuffer *next; /* linked list */
 	FNA3D_SurfaceFormat format;
+	OpenGLRenderbuffer *next; /* linked list */
 };
 
 struct OpenGLEffect /* Cast from FNA3D_Effect* */
