@@ -204,6 +204,7 @@ void FNA3D_Trace_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters,
 	uint8_t debugMode
 ) {
+	SDL_RWops* traceFile;
 	traceEnabled = !SDL_GetHintBoolean("FNA3D_DISABLE_TRACING", SDL_FALSE);
 	if (!traceEnabled)
 	{
@@ -211,7 +212,7 @@ void FNA3D_Trace_CreateDevice(
 		return;
 	}
 	SDL_Log("FNA3D tracing started!");
-	SDL_RWops* traceFile = SDL_RWFromFile("FNA3D_Trace.bin", "wb");
+	traceFile = SDL_RWFromFile("FNA3D_Trace.bin", "wb");
 	traceFile->close(traceFile);
 	traceBuffer = SDL_malloc(traceBufferSize);
 	traceLock = SDL_CreateMutex();
