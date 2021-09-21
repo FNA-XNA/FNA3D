@@ -9660,6 +9660,7 @@ static void VULKAN_VerifySampler(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkSampler vkSamplerState;
+	VulkanResourceAccessType resourceAccessType;
 
 	if (texture == NULL)
 	{
@@ -9686,9 +9687,18 @@ static void VULKAN_VerifySampler(
 
 	if (!vulkanTexture->external)
 	{
+		if (index >= MAX_TEXTURE_SAMPLERS)
+		{
+			resourceAccessType = RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE;
+		}
+		else
+		{
+			resourceAccessType = RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE;
+		}
+
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
-			RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
+			resourceAccessType,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
 			vulkanTexture->layerCount,
