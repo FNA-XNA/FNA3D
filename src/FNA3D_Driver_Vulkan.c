@@ -6066,6 +6066,11 @@ static void VULKAN_INTERNAL_SubmitCommands(
 			),
 			&mode
 		);
+		if (mode.refresh_rate == 0)
+		{
+			/* Needs to be _something_ */
+			mode.refresh_rate = 60;
+		}
 
 		/* Begin next frame */
 		acquireResult = renderer->vkAcquireNextImageKHR(
