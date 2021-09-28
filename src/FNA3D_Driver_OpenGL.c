@@ -1548,6 +1548,7 @@ static void OPENGL_DrawIndexedPrimitives(
 	if (tps)
 	{
 		renderer->glEnable(GL_POINT_SPRITE);
+		renderer->glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE);
 	}
 
 	/* Draw! */
@@ -1577,6 +1578,7 @@ static void OPENGL_DrawIndexedPrimitives(
 
 	if (tps)
 	{
+		renderer->glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_FALSE);
 		renderer->glDisable(GL_POINT_SPRITE);
 	}
 }
@@ -1608,6 +1610,7 @@ static void OPENGL_DrawInstancedPrimitives(
 	if (tps)
 	{
 		renderer->glEnable(GL_POINT_SPRITE);
+		renderer->glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE);
 	}
 
 	/* Draw! */
@@ -1635,6 +1638,7 @@ static void OPENGL_DrawInstancedPrimitives(
 
 	if (tps)
 	{
+		renderer->glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_FALSE);
 		renderer->glDisable(GL_POINT_SPRITE);
 	}
 }
@@ -1653,6 +1657,7 @@ static void OPENGL_DrawPrimitives(
 	if (tps)
 	{
 		renderer->glEnable(GL_POINT_SPRITE);
+		renderer->glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE);
 	}
 
 	/* Draw! */
@@ -1664,6 +1669,7 @@ static void OPENGL_DrawPrimitives(
 
 	if (tps)
 	{
+		renderer->glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_FALSE);
 		renderer->glDisable(GL_POINT_SPRITE);
 	}
 }
@@ -6016,20 +6022,22 @@ FNA3D_Device* OPENGL_CreateDevice(
 	else if (!renderer->useES3)
 	{
 		/* Compatibility contexts require that point sprites be enabled
-		 * explicitly. However, Apple's drivers have a blatant spec
-		 * violation that disallows a simple glEnable. So, here we are.
+		 * explicitly. However, drivers (and the Steam overlay) are
+		 * really fucking bad at not knowing that point sprite state
+		 * should only affect point rendering. So, here we are.
 		 * -flibit
 		 */
-		renderer->togglePointSprite = 0;
-		if (SDL_strcmp(SDL_GetPlatform(), "Mac OS X") == 0)
+		const char *os = SDL_GetPlatform();
+		if (	(SDL_strcmp(os, "Mac OS X") == 0) || /* Mainly Intel */
+			(SDL_strcmp(os, "Linux") == 0)	) /* Mainly Gallium */
 		{
 			renderer->togglePointSprite = 1;
 		}
 		else
 		{
 			renderer->glEnable(GL_POINT_SPRITE);
+			renderer->glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, GL_TRUE);
 		}
-		renderer->glTexEnvi(GL_POINT_SPRITE, GL_COORD_REPLACE, 1);
 	}
 
 	/* Initialize renderer members not covered by SDL_memset('\0') */
