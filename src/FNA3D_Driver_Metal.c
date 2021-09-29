@@ -289,6 +289,9 @@ static MTLPixelFormat XNAToMTL_TextureFormat[] =
 	MTLPixelFormatRGBA16Float,	/* SurfaceFormat.HalfVector4 */
 	MTLPixelFormatRGBA16Float,	/* SurfaceFormat.HdrBlendable */
 	MTLPixelFormatBGRA8Unorm,	/* SurfaceFormat.ColorBgraEXT */
+	MTLPixelFormatETC2_RGB8,	/* SurfaceFormat.Rgb8Etc2 */
+	MTLPixelFormatETC2_RGB8A1,	/* SurfaceFormat.Rgb8A1Etc2 */
+	MTLPixelFormatEAC_RGBA8,	/* SurfaceFormat.Rgba8Etc2 */
 };
 
 static MTLPixelFormat XNAToMTL_DepthFormat(

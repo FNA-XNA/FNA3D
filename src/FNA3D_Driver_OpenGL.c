@@ -334,6 +334,9 @@ static int32_t XNAToGL_TextureFormat[] =
 	GL_RGBA,			/* SurfaceFormat.HalfVector4 */
 	GL_RGBA,			/* SurfaceFormat.HdrBlendable */
 	GL_BGRA,			/* SurfaceFormat.ColorBgraEXT */
+	GL_COMPRESSED_RGB8_ETC2,	/* SurfaceFormat.Rgb8Etc2 */
+	GL_COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2,	/* SurfaceFormat.Rgb8A1Etc2 */
+	GL_COMPRESSED_RGBA8_ETC2_EAC,	/* SurfaceFormat.Rgba8Etc2 */
 };
 
 static int32_t XNAToGL_TextureInternalFormat[] =

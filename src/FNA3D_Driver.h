@@ -120,6 +120,11 @@ static inline int32_t Texture_GetFormatSize(
 			return 8;
 		case FNA3D_SURFACEFORMAT_VECTOR4:
 			return 16;
+		case FNA3D_SURFACEFORMAT_RGB8ETC2:
+		case FNA3D_SURFACEFORMAT_RGB8A1ETC2:
+			return 8;
+		case FNA3D_SURFACEFORMAT_RGBA8ETC2:
+			return 16;
 		default:
 			FNA3D_LogError(
 				"Unrecognized SurfaceFormat!"
@@ -202,7 +207,9 @@ static inline int32_t BytesPerRow(
 
 	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
 		format == FNA3D_SURFACEFORMAT_DXT3 ||
-		format == FNA3D_SURFACEFORMAT_DXT5	)
+		format == FNA3D_SURFACEFORMAT_DXT5 ||
+		format == FNA3D_SURFACEFORMAT_RGB8ETC2 ||
+		format == FNA3D_SURFACEFORMAT_RGB8A1ETC2	)
 	{
 		blocksPerRow = (width + 3) / 4;
 	}
@@ -220,7 +227,9 @@ static inline int32_t BytesPerImage(
 
 	if (	format == FNA3D_SURFACEFORMAT_DXT1 ||
 		format == FNA3D_SURFACEFORMAT_DXT3 ||
-		format == FNA3D_SURFACEFORMAT_DXT5	)
+		format == FNA3D_SURFACEFORMAT_DXT5 ||
+		format == FNA3D_SURFACEFORMAT_RGB8ETC2 ||
+		format == FNA3D_SURFACEFORMAT_RGB8A1ETC2	)
 	{
 		blocksPerRow = (width + 3) / 4;
 		blocksPerColumn = (height + 3) / 4;

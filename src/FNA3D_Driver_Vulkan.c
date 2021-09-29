@@ -1615,7 +1615,10 @@ static VkFormat XNAToVK_SurfaceFormat[] =
 	VK_FORMAT_R16G16_SFLOAT,		/* SurfaceFormat.HalfVector2 */
 	VK_FORMAT_R16G16B16A16_SFLOAT,		/* SurfaceFormat.HalfVector4 */
 	VK_FORMAT_R16G16B16A16_SFLOAT,		/* SurfaceFormat.HdrBlendable */
-	VK_FORMAT_R8G8B8A8_UNORM		/* SurfaceFormat.ColorBgraEXT */
+	VK_FORMAT_R8G8B8A8_UNORM,		/* SurfaceFormat.ColorBgraEXT */
+	VK_FORMAT_ETC2_R8G8B8_UNORM_BLOCK, /* SurfaceFormat.Rgb8Etc2 */
+	VK_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK, /* SurfaceFormat.Rgb8A1Etc2 */
+	VK_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK, /* SurfaceFormat.Rgba8Etc2 */
 };
 
 static inline VkFormat XNAToVK_DepthFormat(
