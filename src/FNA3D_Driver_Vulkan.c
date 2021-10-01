@@ -10011,8 +10011,8 @@ static void VULKAN_ResolveTarget(
 			blit.srcOffsets[0].y = 0;
 			blit.srcOffsets[0].z = 0;
 
-			blit.srcOffsets[1].x = vulkanTexture->dimensions.width;
-			blit.srcOffsets[1].y = vulkanTexture->dimensions.height;
+			blit.srcOffsets[1].x = vulkanTexture->dimensions.width >> (level - 1);
+			blit.srcOffsets[1].y = vulkanTexture->dimensions.height >> (level - 1);
 			blit.srcOffsets[1].z = 1;
 
 			blit.dstOffsets[0].x = 0;
@@ -10026,7 +10026,7 @@ static void VULKAN_ResolveTarget(
 			blit.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 			blit.srcSubresource.baseArrayLayer = 0;
 			blit.srcSubresource.layerCount = layerCount;
-			blit.srcSubresource.mipLevel = 0;
+			blit.srcSubresource.mipLevel = level - 1;
 
 			blit.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 			blit.dstSubresource.baseArrayLayer = 0;
