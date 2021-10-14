@@ -5854,12 +5854,6 @@ FNA3D_Device* OPENGL_CreateDevice(
 	);
 	LoadEntryPoints(renderer, driverInfo, debugMode);
 
-	/* FIXME: REMOVE ME ASAP! TERRIBLE HACK FOR ANGLE! */
-	if (SDL_strstr(rendererStr, "Direct3D11") != NULL)
-	{
-		renderer->supports_ARB_draw_elements_base_vertex = 0;
-	}
-
 	/* Initialize shader context */
 	renderer->shaderProfile = SDL_GetHint("FNA3D_MOJOSHADER_PROFILE");
 	if (renderer->shaderProfile == NULL || renderer->shaderProfile[0] == '\0')
