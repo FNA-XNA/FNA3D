@@ -5626,23 +5626,7 @@ static uint8_t OPENGL_PrepareWindowAttributes(uint32_t *flags)
 	SDL_GL_SetAttribute(SDL_GL_RED_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_GREEN_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_BLUE_SIZE, 8);
-	if (SDL_strcmp(SDL_GetCurrentVideoDriver(), "wayland") == 0)
-	{
-		/* FIXME: For Wayland we have to violate spec and discard alpha.
-		 * XNA backbuffers should be RGBA, but Wayland will literally
-		 * make your window transparent, which is not what we want.
-		 * Thankfully glReadPixels can still return 4-channel data, but
-		 * alpha will be missing and it wastes cycles converting. Blech.
-		 *
-		 * TODO: Ask for an EGL version of VkCompositeAlphaFlagBitsKHR.
-		 * -flibit
-		 */
-		SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 0);
-	}
-	else
-	{
-		SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
-	}
+	SDL_GL_SetAttribute(SDL_GL_ALPHA_SIZE, 8);
 	SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, depthSize);
 	SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, stencilSize);
 	SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
