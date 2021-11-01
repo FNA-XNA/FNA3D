@@ -2577,54 +2577,46 @@ static void OPENGL_SetRenderTargets(
 	/* Update the color attachments, DrawBuffers state */
 	for (i = 0; i < numRenderTargets; i += 1)
 	{
-		if (	(renderer->attachments[i] != renderer->currentAttachments[i]) ||
-			(renderer->attachmentTypes[i] != renderer->currentAttachmentTypes[i])	)
-		{
-			/* We can avoid unsetting an attachment if this is just a cubemap */
-			const uint8_t cubeFaceSwitch = (
-				(renderer->attachments[i] == renderer->currentAttachments[i]) &&
-				(renderer->attachmentTypes[i] != GL_RENDERBUFFER) &&
-				(renderer->currentAttachmentTypes[i] != GL_RENDERBUFFER)
-			);
-			/* Turns out you can have a valid texture AND renderbuffer with the same handle! */
-			const uint8_t collidingHandles = (
-				(renderer->attachments[i] == renderer->currentAttachments[i]) &&
-				(
-					(renderer->attachmentTypes[i] == GL_RENDERBUFFER) ||
-					(renderer->currentAttachmentTypes[i] == GL_RENDERBUFFER)
-				)
-			);
+		const uint8_t handleChange = renderer->attachments[i] != renderer->currentAttachments[i];
+		const uint8_t typeChange = renderer->attachmentTypes[i] != renderer->currentAttachmentTypes[i];
+		const uint8_t renderbuffersInvolved = (
+			renderer->attachmentTypes[i] == GL_RENDERBUFFER ||
+			renderer->currentAttachmentTypes[i] == GL_RENDERBUFFER
+		);
 
-			/* So, if there's a handle collision, be paranoid and always unset.
-			 * If we're not doing that, unset if the attachment is actually a different handle
-			 * and not just the application changing the cube face.
-			 */
-			if (	collidingHandles ||
-				(	renderer->currentAttachments[i] != 0 &&
-					!cubeFaceSwitch	)	)
+		/* Only detach the previous attachment here if all of the following are met:
+		 * - There must be an attachment to unset in the first place
+		 * - The type of the attachment index must be changing in some way
+		 * - Either the handles must be different, or a renderbuffer is involved
+		 *   and therefore a GL handle collision has occurred (WTF)
+		 */
+		if (	typeChange &&
+			renderer->currentAttachments[i] != 0 &&
+			(handleChange || renderbuffersInvolved)	)
+		{
+			if (renderer->currentAttachmentTypes[i] == GL_RENDERBUFFER)
 			{
-				if (	renderer->attachmentTypes[i] != GL_RENDERBUFFER &&
-					renderer->currentAttachmentTypes[i] == GL_RENDERBUFFER	)
-				{
-					renderer->glFramebufferRenderbuffer(
-						GL_FRAMEBUFFER,
-						GL_COLOR_ATTACHMENT0 + i,
-						GL_RENDERBUFFER,
-						0
-					);
-				}
-				else if (	renderer->attachmentTypes[i] == GL_RENDERBUFFER &&
-						renderer->currentAttachmentTypes[i] != GL_RENDERBUFFER	)
-				{
-					renderer->glFramebufferTexture2D(
-						GL_FRAMEBUFFER,
-						GL_COLOR_ATTACHMENT0 + i,
-						renderer->currentAttachmentTypes[i],
-						0,
-						0
-					);
-				}
+				renderer->glFramebufferRenderbuffer(
+					GL_FRAMEBUFFER,
+					GL_COLOR_ATTACHMENT0 + i,
+					GL_RENDERBUFFER,
+					0
+				);
 			}
+			else
+			{
+				renderer->glFramebufferTexture2D(
+					GL_FRAMEBUFFER,
+					GL_COLOR_ATTACHMENT0 + i,
+					renderer->currentAttachmentTypes[i],
+					0,
+					0
+				);
+			}
+		}
+
+		if (handleChange || typeChange)
+		{
 			if (renderer->attachmentTypes[i] == GL_RENDERBUFFER)
 			{
 				renderer->glFramebufferRenderbuffer(
