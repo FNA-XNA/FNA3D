@@ -6809,7 +6809,6 @@ static void VULKAN_INTERNAL_SetBufferData(
 	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
 	uint32_t prevIndex;
 	uint8_t allocateResult;
-	uint32_t i;
 
 	#define CURIDX vulkanBuffer->currentSubBufferIndex
 	#define SUBBUF vulkanBuffer->subBuffers[CURIDX]
