@@ -6176,7 +6176,6 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		{
 			renderer->buffersInUse[i]->bound = 0;
 			renderer->buffersInUse[i]->boundSubmitted = 1;
-			renderer->buffersInUse[i]->currentSubBufferIndex = 0;
 
 			renderer->submittedBuffers[i] = renderer->buffersInUse[i];
 			renderer->buffersInUse[i] = NULL;
@@ -6815,17 +6814,13 @@ static void VULKAN_INTERNAL_SetBufferData(
 
 	prevIndex = CURIDX;
 
-	/* If NOOVERWRITE is set, we check if the buffer was bound and submitted on the previous frame.
-	 * If so, we increment the index until we find a sub-buffer that has not been bound.
-	 * Otherwise we use the current sub-buffer index.
-
-	 * If NONE or DISCARD is set, we check if the buffer was bound either this frame or the previous frame.
-	 * If so, we increment the index until we find a sub-buffer that is unbound.
+	/* If NONE or DISCARD is set, we check if the buffer was bound either this frame or the previous frame.
+	 * If so, we start at sub-buffer 0 and increment the index until we find a sub-buffer that is unbound.
 	 * Otherwise we use the current sub-buffer index.
 	 */
-	if ((options == FNA3D_SETDATAOPTIONS_NOOVERWRITE && vulkanBuffer->boundSubmitted) ||
-		(options != FNA3D_SETDATAOPTIONS_NOOVERWRITE && (vulkanBuffer->bound || vulkanBuffer->boundSubmitted))
-	) {
+	if ((options != FNA3D_SETDATAOPTIONS_NOOVERWRITE && (vulkanBuffer->bound || vulkanBuffer->boundSubmitted)))
+	{
+		CURIDX = 0;
 		while (CURIDX < vulkanBuffer->subBufferCount && SUBBUF->bound != -1)
 		{
 			CURIDX += 1;
