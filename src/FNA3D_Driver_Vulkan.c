@@ -6795,7 +6795,7 @@ static void VULKAN_INTERNAL_MarkAsBound(
 	renderer->numBuffersInUse += 1;
 }
 
-/* This function is EXTREMELY sensitive. Change this at your own peril. -thatcosmonaut */
+/* This function is EXTREMELY sensitive. Change this at your own peril. -cosmonaut */
 static void VULKAN_INTERNAL_SetBufferData(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer,
