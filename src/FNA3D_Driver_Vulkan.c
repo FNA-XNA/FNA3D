@@ -6859,7 +6859,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 	}
 
 	/* If options is NONE and buffer was bound, copy the previous data into the new buffer */
-	if (options == FNA3D_SETDATAOPTIONS_NONE && vulkanBuffer->bound)
+	if (options == FNA3D_SETDATAOPTIONS_NONE && prevIndex != CURIDX)
 	{
 		SDL_memcpy(
 			SUBBUF->usedRegion->allocation->mapPointer + SUBBUF->usedRegion->resourceOffset,
