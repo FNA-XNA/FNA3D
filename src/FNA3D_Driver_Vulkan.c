@@ -6176,7 +6176,6 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		{
 			renderer->buffersInUse[i]->bound = 0;
 			renderer->buffersInUse[i]->boundSubmitted = 1;
-			renderer->buffersInUse[i]->currentSubBufferIndex = 0;
 
 			renderer->submittedBuffers[i] = renderer->buffersInUse[i];
 			renderer->buffersInUse[i] = NULL;
@@ -6796,6 +6795,7 @@ static void VULKAN_INTERNAL_MarkAsBound(
 	renderer->numBuffersInUse += 1;
 }
 
+/* This function is EXTREMELY sensitive. Change this at your own peril. -cosmonaut */
 static void VULKAN_INTERNAL_SetBufferData(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer,
@@ -6808,45 +6808,27 @@ static void VULKAN_INTERNAL_SetBufferData(
 	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
 	uint32_t prevIndex;
 	uint8_t allocateResult;
-	uint32_t i;
 
 	#define CURIDX vulkanBuffer->currentSubBufferIndex
 	#define SUBBUF vulkanBuffer->subBuffers[CURIDX]
 
 	prevIndex = CURIDX;
 
-	if (options != FNA3D_SETDATAOPTIONS_NOOVERWRITE)
-	{
-		/* If buffer has not been bound this frame, set the first unbound index */
-		if (!vulkanBuffer->bound)
-		{
-			for (i = 0; i < vulkanBuffer->subBufferCount; i += 1)
-			{
-				if (vulkanBuffer->subBuffers[i]->bound == -1)
-				{
-					break;
-				}
-			}
-			CURIDX = i;
-		}
-	}
-
-	/*
-	 * If buffer was bound and options is NONE or DISCARD
-	 * find the next available unbound sub-buffer
+	/* If NONE or DISCARD is set, we check if the buffer was bound either this frame or the previous frame.
+	 * If so, we start at sub-buffer 0 and increment the index until we find a sub-buffer that is unbound.
+	 * Otherwise we use the current sub-buffer index.
 	 */
-	if (vulkanBuffer->bound)
+	if (	options != FNA3D_SETDATAOPTIONS_NOOVERWRITE &&
+		(vulkanBuffer->bound || vulkanBuffer->boundSubmitted)	)
 	{
-		if (options == FNA3D_SETDATAOPTIONS_NONE || options == FNA3D_SETDATAOPTIONS_DISCARD)
+		CURIDX = 0;
+		while (CURIDX < vulkanBuffer->subBufferCount && SUBBUF->bound != -1)
 		{
-			while (CURIDX < vulkanBuffer->subBufferCount && SUBBUF->bound != -1)
-			{
-				CURIDX += 1;
-			}
+			CURIDX += 1;
 		}
 	}
 
-	/* Create a new SubBuffer if needed */
+	/* We are out of valid sub-buffers, so we have to create a new one */
 	if (CURIDX == vulkanBuffer->subBufferCount)
 	{
 		allocateResult = VULKAN_INTERNAL_AllocateSubBuffer(renderer, vulkanBuffer);
@@ -6863,6 +6845,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 		}
 	}
 
+	/* If this is a defrag frame, wait for that to finish */
 	if (renderer->bufferDefragInProgress)
 	{
 		renderer->vkWaitForFences(
