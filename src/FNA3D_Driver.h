@@ -209,7 +209,8 @@ static inline int32_t BytesPerRow(
 		format == FNA3D_SURFACEFORMAT_DXT3 ||
 		format == FNA3D_SURFACEFORMAT_DXT5 ||
 		format == FNA3D_SURFACEFORMAT_RGB8ETC2 ||
-		format == FNA3D_SURFACEFORMAT_RGB8A1ETC2	)
+		format == FNA3D_SURFACEFORMAT_RGB8A1ETC2 ||
+		format == FNA3D_SURFACEFORMAT_RGBA8ETC2		)
 	{
 		blocksPerRow = (width + 3) / 4;
 	}
@@ -229,7 +230,8 @@ static inline int32_t BytesPerImage(
 		format == FNA3D_SURFACEFORMAT_DXT3 ||
 		format == FNA3D_SURFACEFORMAT_DXT5 ||
 		format == FNA3D_SURFACEFORMAT_RGB8ETC2 ||
-		format == FNA3D_SURFACEFORMAT_RGB8A1ETC2	)
+		format == FNA3D_SURFACEFORMAT_RGB8A1ETC2 ||
+		format == FNA3D_SURFACEFORMAT_RGBA8ETC2		)
 	{
 		blocksPerRow = (width + 3) / 4;
 		blocksPerColumn = (height + 3) / 4;
