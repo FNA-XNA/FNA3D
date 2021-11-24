@@ -3958,7 +3958,28 @@ static void METAL_GetIndexBufferData(
 
 /* Effects */
 
-static void METAL_INTERNAL_DeleteShader(void* shader)
+static void* MOJOSHADERCALL METAL_INTERNAL_CompileShader(
+	const void *ctx,
+	const char *mainfn,
+	const unsigned char *tokenbuf,
+	const unsigned int bufsize,
+	const MOJOSHADER_swizzle *swiz,
+	const unsigned int swizcount,
+	const MOJOSHADER_samplerMap *smap,
+	const unsigned int smapcount
+) {
+	return MOJOSHADER_mtlCompileShader(
+		mainfn,
+		tokenbuf,
+		bufsize,
+		swiz,
+		swizcount,
+		smap,
+		smapcount
+	);
+}
+
+static void METAL_INTERNAL_DeleteShader(const void *ctx, void* shader)
 {
 	MOJOSHADER_mtlShader *mtlShader = (MOJOSHADER_mtlShader*) shader;
 	const MOJOSHADER_parseData *pd;
@@ -4011,6 +4032,46 @@ static void METAL_INTERNAL_DeleteShader(void* shader)
 	MOJOSHADER_mtlDeleteShader(mtlShader);
 }
 
+static void MOJOSHADERCALL METAL_INTERNAL_BindShaders(
+	const void *ctx,
+	void *vshader,
+	void *pshader
+) {
+	MOJOSHADER_mtlShader *mtlVShader = (MOJOSHADER_mtlShader*) vshader;
+	MOJOSHADER_mtlShader *mtlPShader = (MOJOSHADER_mtlShader*) pshader;
+
+	MOJOSHADER_mtlBindShaders(mtlVShader, mtlPShader);
+}
+
+static void MOJOSHADERCALL METAL_INTERNAL_GetBoundShaders(
+	const void *ctx,
+	void **vshader,
+	void **pshader
+) {
+	MOJOSHADER_mtlShader **mtlVShader = (MOJOSHADER_mtlShader**) vshader;
+	MOJOSHADER_mtlShader **mtlPShader = (MOJOSHADER_mtlShader**) pshader;
+	MOJOSHADER_mtlGetBoundShaders(mtlVShader, mtlPShader);
+}
+
+static void MOJOSHADERCALL METAL_INTERNAL_MapUniformBufferMemory(
+	const void *ctx,
+	float **vsf, int **vsi, unsigned char **vsb,
+	float **psf, int **psi, unsigned char **psb
+) {
+	MOJOSHADER_mtlMapUniformBufferMemory(vsf, vsi, vsb, psf, psi, psb);
+}
+
+static void MOJOSHADERCALL METAL_INTERNAL_UnmapUniformBufferMemory(
+	const void *ctx
+) {
+	MOJOSHADER_mtlUnmapUniformBufferMemory();
+}
+
+static const char* MOJOSHADERCALL METAL_INTERNAL_GetShaderError(const void *ctx)
+{
+	return MOJOSHADER_mtlGetError();
+}
+
 static void METAL_CreateEffect(
 	FNA3D_Renderer *driverData,
 	uint8_t *effectCode,
@@ -4022,15 +4083,15 @@ static void METAL_CreateEffect(
 	MOJOSHADER_effectShaderContext shaderBackend;
 	MetalEffect *result;
 
-	shaderBackend.compileShader = (MOJOSHADER_compileShaderFunc) MOJOSHADER_mtlCompileShader;
+	shaderBackend.compileShader = METAL_INTERNAL_CompileShader;
 	shaderBackend.shaderAddRef = (MOJOSHADER_shaderAddRefFunc) MOJOSHADER_mtlShaderAddRef;
 	shaderBackend.deleteShader = METAL_INTERNAL_DeleteShader;
 	shaderBackend.getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_mtlGetShaderParseData;
-	shaderBackend.bindShaders = (MOJOSHADER_bindShadersFunc) MOJOSHADER_mtlBindShaders;
-	shaderBackend.getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_mtlGetBoundShaders;
-	shaderBackend.mapUniformBufferMemory = MOJOSHADER_mtlMapUniformBufferMemory;
-	shaderBackend.unmapUniformBufferMemory = MOJOSHADER_mtlUnmapUniformBufferMemory;
-	shaderBackend.getError = MOJOSHADER_mtlGetError;
+	shaderBackend.bindShaders = METAL_INTERNAL_BindShaders;
+	shaderBackend.getBoundShaders = METAL_INTERNAL_GetBoundShaders;
+	shaderBackend.mapUniformBufferMemory = METAL_INTERNAL_MapUniformBufferMemory;
+	shaderBackend.unmapUniformBufferMemory = METAL_INTERNAL_UnmapUniformBufferMemory;
+	shaderBackend.getError = METAL_INTERNAL_GetShaderError;
 	shaderBackend.m = NULL;
 	shaderBackend.f = NULL;
 	shaderBackend.malloc_data = driverData;

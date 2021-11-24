@@ -275,6 +275,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	FNA3D_DepthFormat currentDepthFormat;
 
 	/* MojoShader Interop */
+	MOJOSHADER_d3d11Context *shaderContext;
 	MOJOSHADER_effect *currentEffect;
 	const MOJOSHADER_effectTechnique *currentTechnique;
 	uint32_t currentPass;
@@ -867,7 +868,7 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 	ID3D11InputLayout *result;
 
 	/* We need the vertex shader... */
-	MOJOSHADER_d3d11GetBoundShaders(&vertexShader, &blah);
+	MOJOSHADER_d3d11GetBoundShaders(renderer->shaderContext, &vertexShader, &blah);
 
 	/* Can we just reuse an existing input layout? */
 	result = (ID3D11InputLayout*) PackedVertexBufferBindingsArray_Fetch(
@@ -961,6 +962,7 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 	}
 
 	MOJOSHADER_d3d11CompileVertexShader(
+		renderer->shaderContext,
 		(unsigned long long) *hash,
 		elements,
 		numElements,
@@ -1128,7 +1130,7 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 	IUnknown_Release((IUnknown*) renderer->factory);
 
 	/* Release the MojoShader context */
-	MOJOSHADER_d3d11DestroyContext();
+	MOJOSHADER_d3d11DestroyContext(renderer->shaderContext);
 
 	/* Release the device */
 	ID3D11DeviceContext_Release(renderer->context);
@@ -2156,7 +2158,10 @@ static void D3D11_ApplyVertexBufferBindings(
 		}
 	}
 
-	MOJOSHADER_d3d11ProgramReady((unsigned long long) hash);
+	MOJOSHADER_d3d11ProgramReady(
+		renderer->shaderContext,
+		(unsigned long long) hash
+	);
 	renderer->effectApplied = 0;
 
 	SDL_UnlockMutex(renderer->ctxLock);
@@ -4243,7 +4248,7 @@ static void D3D11_GetIndexBufferData(
 
 /* Effects */
 
-static void D3D11_INTERNAL_DeleteShader(void* shader)
+static void D3D11_INTERNAL_DeleteShader(const void *ctx, void* shader)
 {
 	MOJOSHADER_d3d11Shader *d3dShader = (MOJOSHADER_d3d11Shader*) shader;
 	const MOJOSHADER_parseData *pd;
@@ -4275,7 +4280,7 @@ static void D3D11_INTERNAL_DeleteShader(void* shader)
 		}
 	}
 
-	MOJOSHADER_d3d11DeleteShader(d3dShader);
+	MOJOSHADER_d3d11DeleteShader(renderer->shaderContext, d3dShader);
 }
 
 static void D3D11_CreateEffect(
@@ -4286,18 +4291,20 @@ static void D3D11_CreateEffect(
 	MOJOSHADER_effect **effectData
 ) {
 	int32_t i;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	MOJOSHADER_effectShaderContext shaderBackend;
 	D3D11Effect *result;
 
+	shaderBackend.shaderContext = renderer->shaderContext;
 	shaderBackend.compileShader = (MOJOSHADER_compileShaderFunc) MOJOSHADER_d3d11CompileShader;
 	shaderBackend.shaderAddRef = (MOJOSHADER_shaderAddRefFunc) MOJOSHADER_d3d11ShaderAddRef;
 	shaderBackend.deleteShader = D3D11_INTERNAL_DeleteShader;
 	shaderBackend.getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_d3d11GetShaderParseData;
 	shaderBackend.bindShaders = (MOJOSHADER_bindShadersFunc) MOJOSHADER_d3d11BindShaders;
 	shaderBackend.getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_d3d11GetBoundShaders;
-	shaderBackend.mapUniformBufferMemory = MOJOSHADER_d3d11MapUniformBufferMemory;
-	shaderBackend.unmapUniformBufferMemory = MOJOSHADER_d3d11UnmapUniformBufferMemory;
-	shaderBackend.getError = MOJOSHADER_d3d11GetError;
+	shaderBackend.mapUniformBufferMemory = (MOJOSHADER_mapUniformBufferMemoryFunc) MOJOSHADER_d3d11MapUniformBufferMemory;
+	shaderBackend.unmapUniformBufferMemory = (MOJOSHADER_unmapUniformBufferMemoryFunc) MOJOSHADER_d3d11UnmapUniformBufferMemory;
+	shaderBackend.getError = (MOJOSHADER_getErrorFunc) MOJOSHADER_d3d11GetError;
 	shaderBackend.m = NULL;
 	shaderBackend.f = NULL;
 	shaderBackend.malloc_data = driverData;
@@ -4331,6 +4338,7 @@ static void D3D11_CloneEffect(
 	FNA3D_Effect **effect,
 	MOJOSHADER_effect **effectData
 ) {
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Effect *d3dCloneSource = (D3D11Effect*) cloneSource;
 	D3D11Effect *result;
 
@@ -4338,7 +4346,7 @@ static void D3D11_CloneEffect(
 	if (*effectData == NULL)
 	{
 		FNA3D_LogError(
-			"%s", MOJOSHADER_d3d11GetError()
+			"%s", MOJOSHADER_d3d11GetError(renderer->shaderContext)
 		);
 	}
 
@@ -5031,7 +5039,7 @@ try_create_device:
 	renderer->supportsS3tc = (supportsDxt3 || supportsDxt5);
 
 	/* Initialize MojoShader context */
-	MOJOSHADER_d3d11CreateContext(
+	renderer->shaderContext = MOJOSHADER_d3d11CreateContext(
 		renderer->device,
 		renderer->context,
 		NULL,

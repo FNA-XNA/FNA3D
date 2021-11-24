@@ -5442,7 +5442,11 @@ static ShaderResources *ShaderResources_Init(
 		shaderResources->inactiveDescriptorSets
 	);
 
-	MOJOSHADER_vkGetUniformBuffers(&vUniform, &vOff, &vSize, &fUniform, &fOff, &fSize);
+	MOJOSHADER_vkGetUniformBuffers(
+		renderer->mojoshaderContext,
+		&vUniform, &vOff, &vSize,
+		&fUniform, &fOff, &fSize
+	);
 
 	if (shaderStageFlag == VK_SHADER_STAGE_VERTEX_BIT)
 	{
@@ -5765,7 +5769,7 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 
 	uint32_t i;
 
-	MOJOSHADER_vkGetBoundShaders(&vertShader, &fragShader);
+	MOJOSHADER_vkGetBoundShaders(renderer->mojoshaderContext, &vertShader, &fragShader);
 
 	if (renderer->vertexSamplerDescriptorSetDataNeedsUpdate)
 	{
@@ -5877,7 +5881,11 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 	descriptorSets[2] = vertShaderResources->uniformDescriptorSet;
 	descriptorSets[3] = fragShaderResources->uniformDescriptorSet;
 
-	MOJOSHADER_vkGetUniformBuffers(&vUniform, &vOff, &vSize, &fUniform, &fOff, &fSize);
+	MOJOSHADER_vkGetUniformBuffers(
+		renderer->mojoshaderContext,
+		&vUniform, &vOff, &vSize,
+		&fUniform, &fOff, &fSize
+	);
 
 	dynamicOffsets[0] = vOff;
 	dynamicOffsets[1] = fOff;
@@ -6268,7 +6276,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	VULKAN_ERROR_CHECK(result, vkQueueSubmit,)
 
 	/* Rotate the UBOs */
-	MOJOSHADER_vkEndFrame();
+	MOJOSHADER_vkEndFrame(renderer->mojoshaderContext);
 
 	/* Reset the texture staging buffer */
 	VULKAN_INTERNAL_ResetTextureStagingBuffer(renderer);
@@ -7320,7 +7328,7 @@ static void VULKAN_INTERNAL_GenerateVertexInputInfo(
 	VkVertexInputBindingDescription vertexInputBindingDescription;
 	VkVertexInputBindingDivisorDescriptionEXT divisorDescription;
 
-	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
+	MOJOSHADER_vkGetBoundShaders(renderer->mojoshaderContext, &vertexShader, &blah);
 
 	SDL_memset(attrUse, '\0', sizeof(attrUse));
 	for (i = 0; i < (int32_t) renderer->numVertexBindings; i += 1)
@@ -7460,7 +7468,7 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 	hash.vertexBufferBindingsIndex = renderer->currentVertexBufferBindingsIndex;
 	hash.primitiveType = renderer->currentPrimitiveType;
 	hash.sampleMask = renderer->multiSampleMask[0];
-	MOJOSHADER_vkGetBoundShaders(&vertShader, &fragShader);
+	MOJOSHADER_vkGetBoundShaders(renderer->mojoshaderContext, &vertShader, &fragShader);
 	hash.vertShader = vertShader;
 	hash.fragShader = fragShader;
 	hash.renderPass = renderer->renderPass;
@@ -7734,6 +7742,7 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 	stageInfos[1].pSpecializationInfo = NULL;
 
 	MOJOSHADER_vkGetShaderModules(
+		renderer->mojoshaderContext,
 		&stageInfos[0].module,
 		&stageInfos[1].module
 	);
@@ -7781,7 +7790,7 @@ static VkPipeline VULKAN_INTERNAL_FetchPipeline(VulkanRenderer *renderer)
 static void VULKAN_INTERNAL_BindPipeline(VulkanRenderer *renderer)
 {
 	VkShaderModule vertShader, fragShader;
-	MOJOSHADER_vkGetShaderModules(&vertShader, &fragShader);
+	MOJOSHADER_vkGetShaderModules(renderer->mojoshaderContext, &vertShader, &fragShader);
 
 	if (	renderer->needNewPipeline ||
 		renderer->currentVertShader != vertShader ||
@@ -9277,7 +9286,7 @@ static void VULKAN_DrawInstancedPrimitives(
 		XNAToVK_IndexType[indexElementSize]
 	));
 
-	MOJOSHADER_vkGetBoundShaders(&vertShader, &fragShader);
+	MOJOSHADER_vkGetBoundShaders(renderer->mojoshaderContext, &vertShader, &fragShader);
 	vertShaderResources = VULKAN_INTERNAL_FetchShaderResources(
 		renderer,
 		vertShader,
@@ -9377,7 +9386,7 @@ static void VULKAN_DrawPrimitives(
 		));
 	}
 
-	MOJOSHADER_vkGetBoundShaders(&vertShader, &fragShader);
+	MOJOSHADER_vkGetBoundShaders(renderer->mojoshaderContext, &vertShader, &fragShader);
 	vertShaderResources = VULKAN_INTERNAL_FetchShaderResources(
 		renderer,
 		vertShader,
@@ -9767,7 +9776,7 @@ static void VULKAN_ApplyVertexBufferBindings(
 	VkDeviceSize offset;
 
 	/* Check VertexBufferBindings */
-	MOJOSHADER_vkGetBoundShaders(&vertexShader, &blah);
+	MOJOSHADER_vkGetBoundShaders(renderer->mojoshaderContext, &vertexShader, &blah);
 	bindingsResult = PackedVertexBufferBindingsArray_Fetch(
 		renderer->vertexBufferBindingsCache,
 		bindings,
@@ -11117,7 +11126,7 @@ static inline void ShaderResourcesHashTable_Remove(
 	}
 }
 
-static void VULKAN_INTERNAL_DeleteShader(void* shader)
+static void VULKAN_INTERNAL_DeleteShader(const void *shaderContext, void* shader)
 {
 	MOJOSHADER_vkShader *vkShader = (MOJOSHADER_vkShader*) shader;
 	const MOJOSHADER_parseData *pd;
@@ -11156,7 +11165,7 @@ static void VULKAN_INTERNAL_DeleteShader(void* shader)
 		}
 	}
 
-	MOJOSHADER_vkDeleteShader(vkShader);
+	MOJOSHADER_vkDeleteShader(renderer->mojoshaderContext, vkShader);
 }
 
 static void VULKAN_CreateEffect(
@@ -11166,18 +11175,21 @@ static void VULKAN_CreateEffect(
 	FNA3D_Effect **effect,
 	MOJOSHADER_effect **effectData
 ) {
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	MOJOSHADER_effectShaderContext shaderBackend;
 	VulkanEffect *result;
 	int32_t i;
 
+	shaderBackend.shaderContext = renderer->mojoshaderContext;
 	shaderBackend.compileShader = (MOJOSHADER_compileShaderFunc) MOJOSHADER_vkCompileShader;
 	shaderBackend.shaderAddRef = (MOJOSHADER_shaderAddRefFunc) MOJOSHADER_vkShaderAddRef;
 	shaderBackend.deleteShader = VULKAN_INTERNAL_DeleteShader;
 	shaderBackend.getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_vkGetShaderParseData;
 	shaderBackend.bindShaders = (MOJOSHADER_bindShadersFunc) MOJOSHADER_vkBindShaders;
 	shaderBackend.getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_vkGetBoundShaders;
-	shaderBackend.mapUniformBufferMemory = MOJOSHADER_vkMapUniformBufferMemory;
-	shaderBackend.unmapUniformBufferMemory = MOJOSHADER_vkUnmapUniformBufferMemory;
+	shaderBackend.mapUniformBufferMemory = (MOJOSHADER_mapUniformBufferMemoryFunc) MOJOSHADER_vkMapUniformBufferMemory;
+	shaderBackend.unmapUniformBufferMemory = (MOJOSHADER_unmapUniformBufferMemoryFunc) MOJOSHADER_vkUnmapUniformBufferMemory;
+	shaderBackend.getError = (MOJOSHADER_getErrorFunc) MOJOSHADER_vkGetError;
 	shaderBackend.m = NULL;
 	shaderBackend.f = NULL;
 	shaderBackend.malloc_data = driverData;
@@ -11211,13 +11223,14 @@ static void VULKAN_CloneEffect(
 	FNA3D_Effect **effect,
 	MOJOSHADER_effect **effectData
 ) {
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanEffect *vulkanCloneSource = (VulkanEffect*) cloneSource;
 	VulkanEffect *result;
 
 	*effectData = MOJOSHADER_cloneEffect(vulkanCloneSource->effect);
 	if (*effectData == NULL)
 	{
-		FNA3D_LogError(MOJOSHADER_vkGetError());
+		FNA3D_LogError(MOJOSHADER_vkGetError(renderer->mojoshaderContext));
 	}
 
 	result = (VulkanEffect*) SDL_malloc(sizeof(VulkanEffect));
@@ -12072,11 +12085,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		NULL,
 		renderer
 	);
-	if (renderer->mojoshaderContext != NULL)
-	{
-		MOJOSHADER_vkMakeContextCurrent(renderer->mojoshaderContext);
-	}
-	else
+	if (renderer->mojoshaderContext == NULL)
 	{
 		FNA3D_LogError("Failed to create MojoShader context");
 		return NULL;

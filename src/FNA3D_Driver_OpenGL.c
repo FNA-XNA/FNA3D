@@ -4801,6 +4801,7 @@ static void OPENGL_GetIndexBufferData(
 /* Effects */
 
 static void* MOJOSHADERCALL OPENGL_INTERNAL_CompileShader(
+	const void *ctx,
 	const char *mainfn,
 	const unsigned char *tokenbuf,
 	const unsigned int bufsize,
@@ -4817,6 +4818,54 @@ static void* MOJOSHADERCALL OPENGL_INTERNAL_CompileShader(
 		smap,
 		smapcount
 	);
+}
+
+static void MOJOSHADERCALL OPENGL_INTERNAL_DeleteShader(
+	const void *ctx,
+	void *shader
+) {
+	MOJOSHADER_glShader *glShader = (MOJOSHADER_glShader*) shader;
+	MOJOSHADER_glDeleteShader(glShader);
+}
+
+static void MOJOSHADERCALL OPENGL_INTERNAL_BindShaders(
+	const void *ctx,
+	void *vshader,
+	void *pshader
+) {
+	MOJOSHADER_glShader *glVShader = (MOJOSHADER_glShader*) vshader;
+	MOJOSHADER_glShader *glPShader = (MOJOSHADER_glShader*) pshader;
+
+	MOJOSHADER_glBindShaders(glVShader, glPShader);
+}
+
+static void MOJOSHADERCALL OPENGL_INTERNAL_GetBoundShaders(
+	const void *ctx,
+	void **vshader,
+	void **pshader
+) {
+	MOJOSHADER_glShader **glVShader = (MOJOSHADER_glShader**) vshader;
+	MOJOSHADER_glShader **glPShader = (MOJOSHADER_glShader**) pshader;
+	MOJOSHADER_glGetBoundShaders(glVShader, glPShader);
+}
+
+static void MOJOSHADERCALL OPENGL_INTERNAL_MapUniformBufferMemory(
+	const void *ctx,
+	float **vsf, int **vsi, unsigned char **vsb,
+	float **psf, int **psi, unsigned char **psb
+) {
+	MOJOSHADER_glMapUniformBufferMemory(vsf, vsi, vsb, psf, psi, psb);
+}
+
+static void MOJOSHADERCALL OPENGL_INTERNAL_UnmapUniformBufferMemory(
+	const void *ctx
+) {
+	MOJOSHADER_glUnmapUniformBufferMemory();
+}
+
+static const char* MOJOSHADERCALL OPENGL_INTERNAL_GetShaderError(const void *ctx)
+{
+	return MOJOSHADER_glGetError();
 }
 
 static void OPENGL_CreateEffect(
@@ -4843,15 +4892,16 @@ static void OPENGL_CreateEffect(
 		return;
 	}
 
+	shaderBackend.shaderContext = renderer->shaderContext;
 	shaderBackend.compileShader = OPENGL_INTERNAL_CompileShader;
 	shaderBackend.shaderAddRef = (MOJOSHADER_shaderAddRefFunc) MOJOSHADER_glShaderAddRef;
-	shaderBackend.deleteShader = (MOJOSHADER_deleteShaderFunc) MOJOSHADER_glDeleteShader;
+	shaderBackend.deleteShader = OPENGL_INTERNAL_DeleteShader;
 	shaderBackend.getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_glGetShaderParseData;
-	shaderBackend.bindShaders = (MOJOSHADER_bindShadersFunc) MOJOSHADER_glBindShaders;
-	shaderBackend.getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_glGetBoundShaders;
-	shaderBackend.mapUniformBufferMemory = MOJOSHADER_glMapUniformBufferMemory;
-	shaderBackend.unmapUniformBufferMemory = MOJOSHADER_glUnmapUniformBufferMemory;
-	shaderBackend.getError = MOJOSHADER_glGetError;
+	shaderBackend.bindShaders = OPENGL_INTERNAL_BindShaders;
+	shaderBackend.getBoundShaders = OPENGL_INTERNAL_GetBoundShaders;
+	shaderBackend.mapUniformBufferMemory = OPENGL_INTERNAL_MapUniformBufferMemory;
+	shaderBackend.unmapUniformBufferMemory = OPENGL_INTERNAL_UnmapUniformBufferMemory;
+	shaderBackend.getError = OPENGL_INTERNAL_GetShaderError;
 	shaderBackend.m = NULL;
 	shaderBackend.f = NULL;
 	shaderBackend.malloc_data = renderer;
