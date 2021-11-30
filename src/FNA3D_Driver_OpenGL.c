@@ -334,9 +334,9 @@ static int32_t XNAToGL_TextureFormat[] =
 	GL_RGBA,			/* SurfaceFormat.HalfVector4 */
 	GL_RGBA,			/* SurfaceFormat.HdrBlendable */
 	GL_BGRA,			/* SurfaceFormat.ColorBgraEXT */
-	GL_COMPRESSED_RGB8_ETC2,	/* SurfaceFormat.Rgb8Etc2 */
-	GL_COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2,	/* SurfaceFormat.Rgb8A1Etc2 */
-	GL_COMPRESSED_RGBA8_ETC2_EAC,	/* SurfaceFormat.Rgba8Etc2 */
+	GL_COMPRESSED_TEXTURE_FORMATS,	/* SurfaceFormat.Rgb8Etc2 */
+	GL_COMPRESSED_TEXTURE_FORMATS,	/* SurfaceFormat.Rgb8A1Etc2 */
+	GL_COMPRESSED_TEXTURE_FORMATS,	/* SurfaceFormat.Rgba8Etc2 */
 };
 
 static int32_t XNAToGL_TextureInternalFormat[] =
@@ -361,7 +361,10 @@ static int32_t XNAToGL_TextureInternalFormat[] =
 	GL_RG16F,				/* SurfaceFormat.HalfVector2 */
 	GL_RGBA16F,				/* SurfaceFormat.HalfVector4 */
 	GL_RGBA16F,				/* SurfaceFormat.HdrBlendable */
-	GL_RGBA8				/* SurfaceFormat.ColorBgraEXT */
+	GL_RGBA8,				/* SurfaceFormat.ColorBgraEXT */
+	GL_COMPRESSED_RGB8_ETC2,		/* SurfaceFormat.Rgb8Etc2 */
+	GL_COMPRESSED_RGB8_PUNCHTHROUGH_ALPHA1_ETC2,	/* SurfaceFormat.Rgb8A1Etc2 */
+	GL_COMPRESSED_RGBA8_ETC2_EAC,		/* SurfaceFormat.Rgba8Etc2 */
 };
 
 static int32_t XNAToGL_TextureDataType[] =
@@ -386,7 +389,10 @@ static int32_t XNAToGL_TextureDataType[] =
 	GL_HALF_FLOAT,			/* SurfaceFormat.HalfVector2 */
 	GL_HALF_FLOAT,			/* SurfaceFormat.HalfVector4 */
 	GL_HALF_FLOAT,			/* SurfaceFormat.HdrBlendable */
-	GL_UNSIGNED_BYTE		/* SurfaceFormat.ColorBgraEXT */
+	GL_UNSIGNED_BYTE,		/* SurfaceFormat.ColorBgraEXT */
+	GL_ZERO,			/* NOPE */
+	GL_ZERO,			/* NOPE */
+	GL_ZERO,			/* NOPE */
 };
 
 static int32_t XNAToGL_BlendMode[] =
