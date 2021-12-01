@@ -10005,7 +10005,7 @@ static void VULKAN_ResolveTarget(
 	VulkanTexture *vulkanTexture = (VulkanTexture*) target->texture;
 	int32_t layerCount = (target->type == FNA3D_RENDERTARGET_TYPE_CUBE) ? 6 : 1;
 	int32_t level;
-	VulkanResourceAccessType origAccessType;
+	VulkanResourceAccessType *origAccessType;
 	VkImageBlit blit;
 
 	/* The target is resolved during the render pass. */
@@ -10015,34 +10015,17 @@ static void VULKAN_ResolveTarget(
 	{
 		VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
 
-		origAccessType = vulkanTexture->resourceAccessType;
-
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			RESOURCE_ACCESS_TRANSFER_READ,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			0,
-			layerCount,
-			0,
-			1,
-			0,
-			vulkanTexture->image,
-			&vulkanTexture->resourceAccessType
+		/* Store the original image layout... */
+		origAccessType = SDL_stack_alloc(
+			VulkanResourceAccessType,
+			target->levelCount
 		);
+		for (level = 0; level < target->levelCount; level += 1)
+		{
+			origAccessType[level] = vulkanTexture->resourceAccessType;
+		}
 
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			RESOURCE_ACCESS_TRANSFER_WRITE,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			0,
-			layerCount,
-			1,
-			target->levelCount - 1,
-			1,
-			vulkanTexture->image,
-			&vulkanTexture->resourceAccessType
-		);
-
+		/* Blit each mip sequentially. Barriers, barriers everywhere! */
 		for (level = 1; level < target->levelCount; level += 1)
 		{
 			blit.srcOffsets[0].x = 0;
@@ -10071,6 +10054,32 @@ static void VULKAN_ResolveTarget(
 			blit.dstSubresource.layerCount = layerCount;
 			blit.dstSubresource.mipLevel = level;
 
+			VULKAN_INTERNAL_ImageMemoryBarrier(
+				renderer,
+				RESOURCE_ACCESS_TRANSFER_READ,
+				VK_IMAGE_ASPECT_COLOR_BIT,
+				0,
+				layerCount,
+				level - 1,
+				1,
+				0,
+				vulkanTexture->image,
+				&origAccessType[level - 1]
+			);
+
+			VULKAN_INTERNAL_ImageMemoryBarrier(
+				renderer,
+				RESOURCE_ACCESS_TRANSFER_WRITE,
+				VK_IMAGE_ASPECT_COLOR_BIT,
+				0,
+				layerCount,
+				level,
+				1,
+				1,
+				vulkanTexture->image,
+				&origAccessType[level]
+			);
+
 			RECORD_CMD(renderer->vkCmdBlitImage(
 				renderer->currentCommandBuffer,
 				vulkanTexture->image,
@@ -10083,34 +10092,26 @@ static void VULKAN_ResolveTarget(
 			));
 		}
 
-		/* Transition level >= 1 back to the original access type */
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			origAccessType,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			0,
-			layerCount,
-			1,
-			target->levelCount - 1,
-			0,
-			vulkanTexture->image,
-			&vulkanTexture->resourceAccessType
-		);
+		/* Revert to the old image layout.
+		 * Not as graceful as a single barrier call, but oh well
+		 */
+		for (level = 0; level < target->levelCount; level += 1)
+		{
+			VULKAN_INTERNAL_ImageMemoryBarrier(
+				renderer,
+				vulkanTexture->resourceAccessType,
+				VK_IMAGE_ASPECT_COLOR_BIT,
+				0,
+				layerCount,
+				level,
+				1,
+				0,
+				vulkanTexture->image,
+				&origAccessType[level]
+			);
+		}
 
-		/* The 0th mip requires a little access type switcheroo... */
-		vulkanTexture->resourceAccessType = RESOURCE_ACCESS_TRANSFER_READ;
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			origAccessType,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			0,
-			layerCount,
-			0,
-			1,
-			0,
-			vulkanTexture->image,
-			&vulkanTexture->resourceAccessType
-		);
+		SDL_stack_free(origAccessType);
 	}
 }
 
