@@ -2258,12 +2258,13 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	uint32_t *queueFamilyIndex,
 	uint8_t *deviceRank
 ) {
-	uint32_t queueFamilyCount, i;
+	uint32_t queueFamilyCount, queueFamilyRank, queueFamilyBest;
 	SwapChainSupportDetails swapChainSupportDetails;
 	VkQueueFamilyProperties *queueProps;
 	VkBool32 supportsPresent;
-	uint8_t querySuccess, foundSuitableDevice = 0;
+	uint8_t querySuccess;
 	VkPhysicalDeviceProperties deviceProperties;
+	uint32_t i;
 
 	*queueFamilyIndex = UINT32_MAX;
 	*deviceRank = 0;
@@ -2296,6 +2297,7 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 		queueProps
 	);
 
+	queueFamilyBest = 0;
 	for (i = 0; i < queueFamilyCount; i += 1)
 	{
 		renderer->vkGetPhysicalDeviceSurfaceSupportKHR(
@@ -2304,22 +2306,66 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 			surface,
 			&supportsPresent
 		);
-		if (	supportsPresent &&
-			(queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT) != 0	&&
-			(queueProps[i].queueFlags & VK_QUEUE_COMPUTE_BIT) != 0 &&
-			(queueProps[i].queueFlags & VK_QUEUE_TRANSFER_BIT) != 0	)
+		if (	!supportsPresent ||
+			!(queueProps[i].queueFlags & VK_QUEUE_GRAPHICS_BIT)	)
+		{
+			/* Not a graphics family, ignore. */
+			continue;
+		}
+
+		/* The queue family bitflags are kind of annoying.
+		 *
+		 * We of course need a graphics family, but we ideally want the
+		 * _primary_ graphics family. The spec states that at least one
+		 * graphics family must also be a compute family, so generally
+		 * drivers make that the first one. But hey, maybe something
+		 * genuinely can't do compute or something, and FNA doesn't
+		 * need it, so we'll be open to a non-compute queue family.
+		 *
+		 * Additionally, it's common to see the primary queue family
+		 * have the transfer bit set, which is great! But this is
+		 * actually optional; it's impossible to NOT have transfers in
+		 * graphics/compute but it _is_ possible for a graphics/compute
+		 * family, even the primary one, to just decide not to set the
+		 * bitflag. Admittedly, a driver may want to isolate transfer
+		 * queues to a dedicated family so that queues made solely for
+		 * transfers can have an optimized DMA queue.
+		 *
+		 * That, or the driver author got lazy and decided not to set
+		 * the bit. Looking at you, Android.
+		 *
+		 * -flibit
+		 */
+		if (queueProps[i].queueFlags & VK_QUEUE_COMPUTE_BIT)
+		{
+			if (queueProps[i].queueFlags & VK_QUEUE_TRANSFER_BIT)
+			{
+				/* Has all attribs! */
+				queueFamilyRank = 3;
+			}
+			else
+			{
+				/* Probably has a DMA transfer queue family */
+				queueFamilyRank = 2;
+			}
+		}
+		else
+		{
+			/* Just a graphics family, probably has something better */
+			queueFamilyRank = 1;
+		}
+		if (queueFamilyRank > queueFamilyBest)
 		{
 			*queueFamilyIndex = i;
-			foundSuitableDevice = 1;
-			break;
+			queueFamilyBest = queueFamilyRank;
 		}
 	}
 
 	SDL_stack_free(queueProps);
 
-	if (!foundSuitableDevice)
+	if (*queueFamilyIndex == UINT32_MAX)
 	{
-		/* This device probably can't even present, forget it */
+		/* Somehow no graphics queues existed. Compute-only device? */
 		return 0;
 	}
 
