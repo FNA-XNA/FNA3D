@@ -54,18 +54,10 @@ add_definitions(
 	-DSUPPORT_PROFILE_ARB1_NV=0
 	-DSUPPORT_PROFILE_BYTECODE=0
 	-DSUPPORT_PROFILE_D3D=0
+	-DSUPPORT_PROFILE_METAL=0
 )
 if(TRACING_SUPPORT)
 	add_definitions(-DFNA3D_TRACING)
-endif()
-if(APPLE)
-	add_definitions(
-		-DFNA3D_DRIVER_METAL
-	)
-else()
-	add_definitions(
-		-DSUPPORT_PROFILE_METAL=0
-	)
 endif()
 
 if(WIN32 AND NOT DISABLE_D3D11)
@@ -97,14 +89,12 @@ add_library(FNA3D
 	src/FNA3D_Driver.h
 	src/FNA3D_Driver_OpenGL.h
 	src/FNA3D_Driver_OpenGL_glfuncs.h
-	src/FNA3D_Driver_Metal.h
 	src/FNA3D_Driver_Vulkan_vkfuncs.h
 	src/FNA3D_PipelineCache.h
 	# Source Files
 	src/FNA3D.c
 	src/FNA3D_Driver_D3D11.c
 	src/FNA3D_Driver_OpenGL.c
-	src/FNA3D_Driver_Metal.c
 	src/FNA3D_Driver_Vulkan.c
 	src/FNA3D_Image.c
 	src/FNA3D_PipelineCache.c
@@ -116,12 +106,10 @@ add_library(mojoshader STATIC
 	MojoShader/mojoshader_common.c
 	MojoShader/mojoshader_d3d11.c
 	MojoShader/mojoshader_opengl.c
-	MojoShader/mojoshader_metal.c
 	MojoShader/mojoshader_vulkan.c
 	MojoShader/profiles/mojoshader_profile_common.c
 	MojoShader/profiles/mojoshader_profile_glsl.c
 	MojoShader/profiles/mojoshader_profile_hlsl.c
-	MojoShader/profiles/mojoshader_profile_metal.c
 	MojoShader/profiles/mojoshader_profile_spirv.c
 )
 if(TRACING_SUPPORT)
