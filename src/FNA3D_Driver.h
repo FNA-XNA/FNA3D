@@ -774,7 +774,6 @@ typedef struct FNA3D_Driver
 
 extern FNA3D_Driver VulkanDriver;
 extern FNA3D_Driver D3D11Driver;
-extern FNA3D_Driver MetalDriver;
 extern FNA3D_Driver OpenGLDriver;
 extern FNA3D_Driver GNMXDriver;
 
