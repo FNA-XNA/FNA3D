@@ -3166,7 +3166,6 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 			);
 			renderer->backbuffer->type = BACKBUFFER_TYPE_NULL;
 		}
-		renderer->backbuffer->isSrgb = parameters->backBufferFormat == FNA3D_SURFACEFORMAT_COLORSRGB_EXT;
 		renderer->backbuffer->width = parameters->backBufferWidth;
 		renderer->backbuffer->height = parameters->backBufferHeight;
 		renderer->backbuffer->depthFormat = renderer->windowDepthFormat;
