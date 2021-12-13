@@ -2160,7 +2160,7 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapSurfaceFormat(
 	for (i = 0; i < availableFormatsLength; i += 1)
 	{
 		if (	availableFormats[i].format == desiredFormat &&
-			availableFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+			availableFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR	)
 		{
 			*outputFormat = availableFormats[i];
 			return 1;
