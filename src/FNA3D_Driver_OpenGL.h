@@ -198,7 +198,7 @@ typedef unsigned char	GLboolean;
 #define GL_SRGB8_EXT					0x8C41
 #define GL_SRGB_ALPHA_EXT				0x8C42
 #define GL_SRGB8_ALPHA8_EXT				0x8C43
-#define GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT		0x83F3
+#define GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT		0x8C4F
 
 /* EXT_framebuffer_sRGB */
 #define GL_FRAMEBUFFER_SRGB_EXT				0x8DB9
