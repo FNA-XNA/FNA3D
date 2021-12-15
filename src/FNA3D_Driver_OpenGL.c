@@ -1120,6 +1120,15 @@ static inline void ToggleGLState(
 	}
 }
 
+static inline void ApplySRGBFlag(OpenGLRenderer *renderer, uint8_t state)
+{
+	if (state == renderer->srgbEnabled)
+		return;
+
+	renderer->srgbEnabled = state;
+	ToggleGLState(renderer, GL_FRAMEBUFFER_SRGB_EXT, state);
+}
+
 static inline void ForceToMainThread(
 	OpenGLRenderer *renderer,
 	FNA3D_Command *command
@@ -2554,11 +2563,7 @@ static void OPENGL_SetRenderTargets(
 				renderer->realBackbufferFBO
 		);
 		renderer->renderTargetBound = 0;
-		if (renderer->backbuffer->isSrgb != renderer->srgbEnabled)
-		{
-			renderer->srgbEnabled = renderer->backbuffer->isSrgb;
-			ToggleGLState(renderer, GL_FRAMEBUFFER_SRGB_EXT, renderer->srgbEnabled);
-		}
+		ApplySRGBFlag(renderer, renderer->backbuffer->isSrgb);
 		return;
 	}
 	else
@@ -2593,11 +2598,7 @@ static void OPENGL_SetRenderTargets(
 		}
 	}
 
-	if (isSrgb != renderer->srgbEnabled)
-	{
-		renderer->srgbEnabled = isSrgb;
-		ToggleGLState(renderer, GL_FRAMEBUFFER_SRGB_EXT, renderer->srgbEnabled);
-	}
+	ApplySRGBFlag(renderer, isSrgb);
 
 	/* Update the color attachments, DrawBuffers state */
 	for (i = 0; i < numRenderTargets; i += 1)
@@ -3172,6 +3173,9 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 		renderer->backbuffer->isSrgb = parameters->backBufferFormat == FNA3D_SURFACEFORMAT_COLORSRGB_EXT;
 		renderer->backbuffer->multiSampleCount = 0;
 	}
+
+	if (renderer->backbuffer)
+		ApplySRGBFlag(renderer, renderer->backbuffer->isSrgb);
 }
 
 static void OPENGL_INTERNAL_DisposeBackbuffer(OpenGLRenderer *renderer)
