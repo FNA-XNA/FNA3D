@@ -2528,7 +2528,7 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 		renderer->backbufferSizeChanged = 1;
 		renderer->backbuffer->width = parameters->backBufferWidth;
 		renderer->backbuffer->height = parameters->backBufferHeight;
-		renderer->backbuffer->d3d11.surfaceFormat = parameters->backBufferFormat;
+		renderer->backbuffer->d3d11.surfaceFormat = actualFnaFormat;
 		renderer->backbuffer->depthFormat = parameters->depthStencilFormat;
 		renderer->backbuffer->multiSampleCount = parameters->multiSampleCount;
 
@@ -2638,7 +2638,7 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 		renderer->backbuffer->width = parameters->backBufferWidth;
 		renderer->backbuffer->height = parameters->backBufferHeight;
 		renderer->backbuffer->depthFormat = parameters->depthStencilFormat;
-		renderer->backbuffer->d3d11.surfaceFormat = parameters->backBufferFormat;
+		renderer->backbuffer->d3d11.surfaceFormat = actualFnaFormat;
 		renderer->backbuffer->multiSampleCount = 0;
 	}
 
@@ -2703,10 +2703,9 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 	}
 
 	/* Create a render target view for the swapchain */
-	DXGI_FORMAT swapchainFormat = (actualDxgiFormat == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
+	swapchainViewDesc.Format = (actualDxgiFormat == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
 		? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
 		: DXGI_FORMAT_R8G8B8A8_UNORM;
-	swapchainViewDesc.Format = swapchainFormat;
 	swapchainViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
 	swapchainViewDesc.Texture2D.MipSlice = 0;
 
