@@ -2292,7 +2292,7 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 		/* Device is outranked by a previous device, don't even try to
 		 * run a query and reset the rank to avoid overwrites
 		 */
-		*deviceRank = -1;
+		*deviceRank = 0;
 		return 0;
 	}
 
@@ -2590,7 +2590,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer)
 
 	/* Any suitable device will do, but we'd like the best */
 	suitableIndex = -1;
-	highestRank = -1;
+	highestRank = 0;
 	for (i = 0; i < physicalDeviceCount; i += 1)
 	{
 		deviceRank = highestRank;
