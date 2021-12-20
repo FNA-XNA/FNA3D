@@ -2278,7 +2278,23 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 		physicalDevice,
 		&deviceProperties
 	);
-	*deviceRank = DEVICE_PRIORITY[deviceProperties.deviceType];
+	if (*deviceRank < DEVICE_PRIORITY[deviceProperties.deviceType])
+	{
+		/* This device outranks the best device we've found so far!
+		 * This includes a dedicated GPU that has less features than an
+		 * integrated GPU, because this is a freak case that is almost
+		 * never intentionally desired by the end user
+		 */
+		*deviceRank = DEVICE_PRIORITY[deviceProperties.deviceType];
+	}
+	else if (*deviceRank > DEVICE_PRIORITY[deviceProperties.deviceType])
+	{
+		/* Device is outranked by a previous device, don't even try to
+		 * run a query and reset the rank to avoid overwrites
+		 */
+		*deviceRank = -1;
+		return 0;
+	}
 
 	if (!VULKAN_INTERNAL_CheckDeviceExtensions(
 		renderer,
@@ -2574,39 +2590,37 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer)
 
 	/* Any suitable device will do, but we'd like the best */
 	suitableIndex = -1;
-	deviceRank = 0;
-	highestRank = 0;
+	highestRank = -1;
 	for (i = 0; i < physicalDeviceCount; i += 1)
 	{
-		const uint8_t suitable = VULKAN_INTERNAL_IsDeviceSuitable(
+		deviceRank = highestRank;
+		if (VULKAN_INTERNAL_IsDeviceSuitable(
 			renderer,
 			physicalDevices[i],
 			&physicalDeviceExtensions[i],
 			renderer->surface,
 			&queueFamilyIndex,
 			&deviceRank
-		);
-		if (deviceRank >= highestRank)
+		)) {
+			/* Use this for rendering.
+			 * Note that this may override a previous device that
+			 * supports rendering, but shares the same device rank.
+			 */
+			suitableIndex = i;
+			suitableQueueFamilyIndex = queueFamilyIndex;
+			highestRank = deviceRank;
+		}
+		else if (deviceRank > highestRank)
 		{
-			/* We found a better device type, but does it work? */
-			if (suitable)
-			{
-				/* Yes, use this for rendering. */
-				suitableIndex = i;
-				suitableQueueFamilyIndex = queueFamilyIndex;
-			}
-			else if (deviceRank > highestRank)
-			{
-				/* In this case, we found a... "realer?" GPU,
-				 * but it doesn't actually support our Vulkan.
-				 * We should disqualify all devices below as a
-				 * result, because if we don't we end up
-				 * ignoring real hardware and risk using
-				 * something like LLVMpipe instead!
-				 * -flibit
-				 */
-				suitableIndex = -1;
-			}
+			/* In this case, we found a... "realer?" GPU,
+			 * but it doesn't actually support our Vulkan.
+			 * We should disqualify all devices below as a
+			 * result, because if we don't we end up
+			 * ignoring real hardware and risk using
+			 * something like LLVMpipe instead!
+			 * -flibit
+			 */
+			suitableIndex = -1;
 			highestRank = deviceRank;
 		}
 	}
