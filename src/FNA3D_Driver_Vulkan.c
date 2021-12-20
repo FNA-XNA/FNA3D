@@ -2054,29 +2054,39 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 	SwapChainSupportDetails *outputDetails
 ) {
 	VkResult result;
-	uint32_t formatCount;
-	uint32_t presentModeCount;
 
+	/* Initialize these in case anything fails */
+	outputDetails->formatsLength = 0;
+	outputDetails->presentModesLength = 0;
+
+	/* Run the device surface queries */
 	result = renderer->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
 		physicalDevice,
 		surface,
 		&outputDetails->capabilities
 	);
 	VULKAN_ERROR_CHECK(result, vkGetPhysicalDeviceSurfaceCapabilitiesKHR, 0)
-
-	renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(
+	result = renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(
 		physicalDevice,
 		surface,
-		&formatCount,
+		&outputDetails->formatsLength,
 		NULL
 	);
+	VULKAN_ERROR_CHECK(result, vkGetPhysicalDeviceSurfaceFormatsKHR, 0)
+	result = renderer->vkGetPhysicalDeviceSurfacePresentModesKHR(
+		physicalDevice,
+		surface,
+		&outputDetails->presentModesLength,
+		NULL
+	);
+	VULKAN_ERROR_CHECK(result, vkGetPhysicalDeviceSurfacePresentModesKHR, 0)
 
-	if (formatCount != 0)
+	/* Generate the arrays, if applicable */
+	if (outputDetails->formatsLength != 0)
 	{
 		outputDetails->formats = (VkSurfaceFormatKHR*) SDL_malloc(
-			sizeof(VkSurfaceFormatKHR) * formatCount
+			sizeof(VkSurfaceFormatKHR) * outputDetails->formatsLength
 		);
-		outputDetails->formatsLength = formatCount;
 
 		if (!outputDetails->formats)
 		{
@@ -2087,7 +2097,7 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 		result = renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(
 			physicalDevice,
 			surface,
-			&formatCount,
+			&outputDetails->formatsLength,
 			outputDetails->formats
 		);
 		if (result != VK_SUCCESS)
@@ -2101,20 +2111,11 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 			return 0;
 		}
 	}
-
-	renderer->vkGetPhysicalDeviceSurfacePresentModesKHR(
-		physicalDevice,
-		surface,
-		&presentModeCount,
-		NULL
-	);
-
-	if (presentModeCount != 0)
+	if (outputDetails->presentModesLength != 0)
 	{
 		outputDetails->presentModes = (VkPresentModeKHR*) SDL_malloc(
-			sizeof(VkPresentModeKHR) * presentModeCount
+			sizeof(VkPresentModeKHR) * outputDetails->presentModesLength
 		);
-		outputDetails->presentModesLength = presentModeCount;
 
 		if (!outputDetails->presentModes)
 		{
@@ -2125,7 +2126,7 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 		result = renderer->vkGetPhysicalDeviceSurfacePresentModesKHR(
 			physicalDevice,
 			surface,
-			&presentModeCount,
+			&outputDetails->presentModesLength,
 			outputDetails->presentModes
 		);
 		if (result != VK_SUCCESS)
@@ -2141,6 +2142,9 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 		}
 	}
 
+	/* If we made it here, all the queries were successfull. This does NOT
+	 * necessarily mean there are any supported formats or present modes!
+	 */
 	return 1;
 }
 
@@ -2376,8 +2380,14 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 		surface,
 		&swapChainSupportDetails
 	);
-	SDL_free(swapChainSupportDetails.formats);
-	SDL_free(swapChainSupportDetails.presentModes);
+	if (swapChainSupportDetails.formatsLength > 0)
+	{
+		SDL_free(swapChainSupportDetails.formats);
+	}
+	if (swapChainSupportDetails.presentModesLength > 0)
+	{
+		SDL_free(swapChainSupportDetails.presentModes);
+	}
 	if (	querySuccess == 0 ||
 		swapChainSupportDetails.formatsLength == 0 ||
 		swapChainSupportDetails.presentModesLength == 0	)
