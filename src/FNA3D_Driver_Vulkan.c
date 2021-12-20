@@ -2270,12 +2270,15 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	VkPhysicalDeviceProperties deviceProperties;
 	uint32_t i;
 
-	*queueFamilyIndex = UINT32_MAX;
-	*deviceRank = 0;
-
-	/* Note: If no dedicated device exists,
-	 * one that supports our features would be fine
+	/* Get the device rank before doing any checks, in case one fails.
+	 * Note: If no dedicated device exists, one that supports our features
+	 * would be fine
 	 */
+	renderer->vkGetPhysicalDeviceProperties(
+		physicalDevice,
+		&deviceProperties
+	);
+	*deviceRank = DEVICE_PRIORITY[deviceProperties.deviceType];
 
 	if (!VULKAN_INTERNAL_CheckDeviceExtensions(
 		renderer,
@@ -2302,6 +2305,7 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	);
 
 	queueFamilyBest = 0;
+	*queueFamilyIndex = UINT32_MAX;
 	for (i = 0; i < queueFamilyCount; i += 1)
 	{
 		renderer->vkGetPhysicalDeviceSurfaceSupportKHR(
@@ -2388,20 +2392,10 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 	{
 		SDL_free(swapChainSupportDetails.presentModes);
 	}
-	if (	querySuccess == 0 ||
-		swapChainSupportDetails.formatsLength == 0 ||
-		swapChainSupportDetails.presentModesLength == 0	)
-	{
-		return 0;
-	}
 
-	/* Try to make sure we pick the best device available */
-	renderer->vkGetPhysicalDeviceProperties(
-		physicalDevice,
-		&deviceProperties
-	);
-	*deviceRank = DEVICE_PRIORITY[deviceProperties.deviceType];
-	return 1;
+	return (	querySuccess &&
+			swapChainSupportDetails.formatsLength > 0 &&
+			swapChainSupportDetails.presentModesLength > 0	);
 }
 
 /* Vulkan: vkInstance/vkDevice Creation */
