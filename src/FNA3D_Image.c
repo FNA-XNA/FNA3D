@@ -28,6 +28,8 @@
 
 #include <SDL.h>
 
+extern void FNA3D_LogWarn(const char *fmt, ...);
+
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-but-set-variable"
 #pragma GCC diagnostic ignored "-Wunused-function"
@@ -224,6 +226,11 @@ uint8_t* FNA3D_Image_Load(
 		&format,
 		STBI_rgb_alpha
 	);
+
+	if (result == NULL)
+	{
+		FNA3D_LogWarn("Image loading failed: %s", stbi_failure_reason());
+	}
 
 	if (forceW != -1 && forceH != -1)
 	{
