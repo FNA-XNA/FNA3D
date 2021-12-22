@@ -105,6 +105,7 @@ struct OpenGLBuffer /* Cast from FNA3D_Buffer* */
 struct OpenGLRenderbuffer /* Cast from FNA3D_Renderbuffer* */
 {
 	GLuint handle;
+	FNA3D_SurfaceFormat format;
 	OpenGLRenderbuffer *next; /* linked list */
 };
 
@@ -126,6 +127,7 @@ typedef struct OpenGLBackbuffer
 	#define BACKBUFFER_TYPE_OPENGL 1
 	uint8_t type;
 
+	uint8_t isSrgb;
 	int32_t width;
 	int32_t height;
 	FNA3D_DepthFormat depthFormat;
@@ -168,6 +170,7 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	GLenum backbufferScaleMode;
 	GLuint realBackbufferFBO;
 	GLuint realBackbufferRBO;
+	uint8_t srgbEnabled;
 
 	/* VAO for Core Profile */
 	GLuint vao;
@@ -176,6 +179,7 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	uint8_t supports_s3tc;
 	uint8_t supports_dxt1;
 	uint8_t supports_anisotropic_filtering;
+	uint8_t supports_srgb_rendertarget;
 	int32_t maxMultiSampleCount;
 	int32_t maxMultiSampleCountFormat[21];
 	int32_t windowSampleCount;
@@ -334,6 +338,8 @@ static int32_t XNAToGL_TextureFormat[] =
 	GL_RGBA,			/* SurfaceFormat.HalfVector4 */
 	GL_RGBA,			/* SurfaceFormat.HdrBlendable */
 	GL_BGRA,			/* SurfaceFormat.ColorBgraEXT */
+	GL_RGBA,			/* SurfaceFormat.ColorSrgbEXT */
+	GL_COMPRESSED_TEXTURE_FORMATS,	/* SurfaceFormat.Dxt5SrgbEXT */
 };
 
 static int32_t XNAToGL_TextureInternalFormat[] =
@@ -358,7 +364,9 @@ static int32_t XNAToGL_TextureInternalFormat[] =
 	GL_RG16F,				/* SurfaceFormat.HalfVector2 */
 	GL_RGBA16F,				/* SurfaceFormat.HalfVector4 */
 	GL_RGBA16F,				/* SurfaceFormat.HdrBlendable */
-	GL_RGBA8				/* SurfaceFormat.ColorBgraEXT */
+	GL_RGBA8,				/* SurfaceFormat.ColorBgraEXT */
+	GL_SRGB_ALPHA_EXT,			/* SurfaceFormat.ColorSrgbEXT */
+	GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT,	/* SurfaceFormat.Dxt5SrgbEXT */
 };
 
 static int32_t XNAToGL_TextureDataType[] =
@@ -383,7 +391,9 @@ static int32_t XNAToGL_TextureDataType[] =
 	GL_HALF_FLOAT,			/* SurfaceFormat.HalfVector2 */
 	GL_HALF_FLOAT,			/* SurfaceFormat.HalfVector4 */
 	GL_HALF_FLOAT,			/* SurfaceFormat.HdrBlendable */
-	GL_UNSIGNED_BYTE		/* SurfaceFormat.ColorBgraEXT */
+	GL_UNSIGNED_BYTE,		/* SurfaceFormat.ColorBgraEXT */
+	GL_UNSIGNED_BYTE,		/* SurfaceFormat.ColorSrgbEXT */
+	GL_ZERO,			/* NOPE */
 };
 
 static int32_t XNAToGL_BlendMode[] =
@@ -1108,6 +1118,17 @@ static inline void ToggleGLState(
 	{
 		renderer->glDisable(feature);
 	}
+}
+
+static inline void ApplySRGBFlag(OpenGLRenderer *renderer, uint8_t state)
+{
+	if (state == renderer->srgbEnabled)
+	{
+		return;
+	}
+
+	renderer->srgbEnabled = state;
+	ToggleGLState(renderer, GL_FRAMEBUFFER_SRGB_EXT, state);
 }
 
 static inline void ForceToMainThread(
@@ -2530,6 +2551,7 @@ static void OPENGL_SetRenderTargets(
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLRenderbuffer *rb = (OpenGLRenderbuffer*) depthStencilBuffer;
+	uint8_t isSrgb = 0;
 	FNA3D_RenderTargetBinding *rt;
 	int32_t i;
 	GLuint handle;
@@ -2544,6 +2566,7 @@ static void OPENGL_SetRenderTargets(
 				renderer->realBackbufferFBO
 		);
 		renderer->renderTargetBound = 0;
+		ApplySRGBFlag(renderer, renderer->backbuffer->isSrgb);
 		return;
 	}
 	else
@@ -2559,6 +2582,7 @@ static void OPENGL_SetRenderTargets(
 		{
 			renderer->attachments[i] = ((OpenGLRenderbuffer*) rt->colorBuffer)->handle;
 			renderer->attachmentTypes[i] = GL_RENDERBUFFER;
+			isSrgb |= (((OpenGLRenderbuffer*)rt->colorBuffer)->format == FNA3D_SURFACEFORMAT_COLORSRGB_EXT);
 		}
 		else
 		{
@@ -2571,8 +2595,11 @@ static void OPENGL_SetRenderTargets(
 			{
 				renderer->attachmentTypes[i] = GL_TEXTURE_CUBE_MAP_POSITIVE_X + rt->cube.face;
 			}
+			isSrgb |= (((OpenGLTexture*) rt->texture)->format == FNA3D_SURFACEFORMAT_COLORSRGB_EXT);
 		}
 	}
+
+	ApplySRGBFlag(renderer, isSrgb);
 
 	/* Update the color attachments, DrawBuffers state */
 	for (i = 0; i < numRenderTargets; i += 1)
@@ -2849,6 +2876,7 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 			renderer->backbuffer->width = parameters->backBufferWidth;
 			renderer->backbuffer->height = parameters->backBufferHeight;
 			renderer->backbuffer->depthFormat = parameters->depthStencilFormat;
+			renderer->backbuffer->isSrgb = parameters->backBufferFormat == FNA3D_SURFACEFORMAT_COLORSRGB_EXT;
 			renderer->backbuffer->multiSampleCount = parameters->multiSampleCount;
 			renderer->backbuffer->opengl.texture = 0;
 
@@ -2968,6 +2996,7 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 		{
 			renderer->backbuffer->width = parameters->backBufferWidth;
 			renderer->backbuffer->height = parameters->backBufferHeight;
+			renderer->backbuffer->isSrgb = parameters->backBufferFormat == FNA3D_SURFACEFORMAT_COLORSRGB_EXT;
 			renderer->backbuffer->multiSampleCount = parameters->multiSampleCount;
 			if (renderer->backbuffer->opengl.texture != 0)
 			{
@@ -3142,7 +3171,13 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 		renderer->backbuffer->width = parameters->backBufferWidth;
 		renderer->backbuffer->height = parameters->backBufferHeight;
 		renderer->backbuffer->depthFormat = renderer->windowDepthFormat;
+		renderer->backbuffer->isSrgb = parameters->backBufferFormat == FNA3D_SURFACEFORMAT_COLORSRGB_EXT;
 		renderer->backbuffer->multiSampleCount = 0;
+	}
+
+	if (renderer->backbuffer)
+	{
+		ApplySRGBFlag(renderer, renderer->backbuffer->isSrgb);
 	}
 }
 
@@ -4317,6 +4352,7 @@ static FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
 		sizeof(OpenGLRenderbuffer)
 	);
 	renderbuffer->next = NULL;
+	renderbuffer->format = format;
 
 	renderer->glGenRenderbuffers(1, &renderbuffer->handle);
 	renderer->glBindRenderbuffer(GL_RENDERBUFFER, renderbuffer->handle);
@@ -5225,6 +5261,12 @@ static uint8_t OPENGL_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 	return 0;
 }
 
+static uint8_t OPENGL_SupportsSRGBRenderTargets(FNA3D_Renderer *driverData)
+{
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	return renderer->supports_srgb_rendertarget;
+}
+
 static void OPENGL_GetMaxTextureSlots(
 	FNA3D_Renderer *driverData,
 	int32_t *textures,
@@ -5594,7 +5636,8 @@ static inline void CheckExtensions(
 	const char *ext,
 	uint8_t *supportsS3tc,
 	uint8_t *supportsDxt1,
-	uint8_t *supportsAnisotropicFiltering
+	uint8_t *supportsAnisotropicFiltering,
+	uint8_t *SupportsSRGBRenderTargets
 ) {
 	uint8_t s3tc = (
 		SDL_strstr(ext, "GL_EXT_texture_compression_s3tc") ||
@@ -5605,6 +5648,9 @@ static inline void CheckExtensions(
 	uint8_t anisotropicFiltering = (
 		SDL_strstr(ext, "GL_EXT_texture_filter_anisotropic") ||
 		SDL_strstr(ext, "GL_ARB_texture_filter_anisotropic")
+	);
+	uint8_t srgbFrameBuffer = (
+		SDL_strstr(ext, "GL_EXT_framebuffer_sRGB")
 	);
 
 	if (s3tc)
@@ -5618,6 +5664,11 @@ static inline void CheckExtensions(
 	if (anisotropicFiltering)
 	{
 		*supportsAnisotropicFiltering = 1;
+	}
+
+	if (srgbFrameBuffer)
+	{
+		*SupportsSRGBRenderTargets = 1;
 	}
 }
 
@@ -5929,6 +5980,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	renderer->supports_s3tc = 0;
 	renderer->supports_dxt1 = 0;
 	renderer->supports_anisotropic_filtering = 0;
+	renderer->supports_srgb_rendertarget = 0;
 	if (renderer->useCoreProfile)
 	{
 		renderer->glGetIntegerv(GL_NUM_EXTENSIONS, &numExtensions);
@@ -5938,10 +5990,11 @@ FNA3D_Device* OPENGL_CreateDevice(
 				(const char*) renderer->glGetStringi(GL_EXTENSIONS, i),
 				&renderer->supports_s3tc,
 				&renderer->supports_dxt1,
-				&renderer->supports_anisotropic_filtering
+				&renderer->supports_anisotropic_filtering,
+				&renderer->supports_srgb_rendertarget
 			);
 
-			if (renderer->supports_s3tc && renderer->supports_dxt1)
+			if (renderer->supports_s3tc && renderer->supports_dxt1 && renderer->supports_srgb_rendertarget)
 			{
 				/* No need to look further. */
 				break;
@@ -5954,7 +6007,8 @@ FNA3D_Device* OPENGL_CreateDevice(
 			(const char*) renderer->glGetString(GL_EXTENSIONS),
 			&renderer->supports_s3tc,
 			&renderer->supports_dxt1,
-			&renderer->supports_anisotropic_filtering
+			&renderer->supports_anisotropic_filtering,
+			&renderer->supports_srgb_rendertarget
 		);
 	}
 

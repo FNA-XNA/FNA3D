@@ -1231,6 +1231,7 @@ typedef struct VulkanRenderer
 	int8_t freeQueryIndexStack[MAX_QUERIES];
 	int8_t freeQueryIndexStackHead;
 
+	int8_t backBufferIsSRGB;
 	VkFormat swapchainFormat;
 	VkComponentMapping swapchainSwizzle;
 	VulkanColorBuffer fauxBackbufferColor;
@@ -1432,6 +1433,7 @@ typedef struct VulkanRenderer
 	uint8_t supportsDxt1;
 	uint8_t supportsS3tc;
 	uint8_t supportsDebugUtils;
+	uint8_t supportsSRGBRenderTarget;
 	uint8_t debugMode;
 	VulkanExtensions supports;
 
@@ -1590,7 +1592,9 @@ static VkComponentMapping XNAToVK_SurfaceSwizzle[] =
 		VK_COMPONENT_SWIZZLE_G,
 		VK_COMPONENT_SWIZZLE_R,
 		VK_COMPONENT_SWIZZLE_A
-	}
+	},
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.ColorSrgbEXT */
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.Dxt5SrgbEXT */
 };
 
 static VkFormat XNAToVK_SurfaceFormat[] =
@@ -1615,7 +1619,9 @@ static VkFormat XNAToVK_SurfaceFormat[] =
 	VK_FORMAT_R16G16_SFLOAT,		/* SurfaceFormat.HalfVector2 */
 	VK_FORMAT_R16G16B16A16_SFLOAT,		/* SurfaceFormat.HalfVector4 */
 	VK_FORMAT_R16G16B16A16_SFLOAT,		/* SurfaceFormat.HdrBlendable */
-	VK_FORMAT_R8G8B8A8_UNORM		/* SurfaceFormat.ColorBgraEXT */
+	VK_FORMAT_B8G8R8A8_UNORM,		/* SurfaceFormat.ColorBgraEXT */
+	VK_FORMAT_R8G8B8A8_SRGB,		/* SurfaceFormat.ColorSrgbEXT */
+	VK_FORMAT_BC3_SRGB_BLOCK,		/* SurfaceFormat.Dxt5 */
 };
 
 static inline VkFormat XNAToVK_DepthFormat(
@@ -6543,7 +6549,9 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
-	renderer->swapchainFormat = VK_FORMAT_R8G8B8A8_UNORM;
+	renderer->swapchainFormat = renderer->backBufferIsSRGB
+		? VK_FORMAT_R8G8B8A8_SRGB
+		: VK_FORMAT_R8G8B8A8_UNORM;
 	renderer->swapchainSwizzle.r = VK_COMPONENT_SWIZZLE_IDENTITY;
 	renderer->swapchainSwizzle.g = VK_COMPONENT_SWIZZLE_IDENTITY;
 	renderer->swapchainSwizzle.b = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -6555,7 +6563,9 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		&surfaceFormat
 	)) {
 		FNA3D_LogWarn("RGBA8 swapchain unsupported, falling back to BGRA8 with swizzle");
-		renderer->swapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
+		renderer->swapchainFormat = renderer->backBufferIsSRGB
+			? VK_FORMAT_B8G8R8A8_SRGB
+			: VK_FORMAT_B8G8R8A8_UNORM;
 		renderer->swapchainSwizzle.r = VK_COMPONENT_SWIZZLE_B;
 		renderer->swapchainSwizzle.g = VK_COMPONENT_SWIZZLE_G;
 		renderer->swapchainSwizzle.b = VK_COMPONENT_SWIZZLE_R;
@@ -10402,6 +10412,7 @@ static void VULKAN_INTERNAL_SetTextureData(
 	VkDeviceSize offset;
 	int32_t bufferRowLength = w;
 	int32_t bufferImageHeight = h;
+	int32_t blockSize = Texture_GetBlockSize(texture->colorFormat);
 
 	if (dataLength > uploadLength)
 	{
@@ -10449,14 +10460,9 @@ static void VULKAN_INTERNAL_SetTextureData(
 		&texture->resourceAccessType
 	);
 
-	/* DXT texture buffers must be at least 4x4 */
-	if (	texture->colorFormat == FNA3D_SURFACEFORMAT_DXT1 ||
-		texture->colorFormat == FNA3D_SURFACEFORMAT_DXT3 ||
-		texture->colorFormat == FNA3D_SURFACEFORMAT_DXT5	)
-	{
-		bufferRowLength = SDL_max(4, w);
-		bufferImageHeight = SDL_max(4, h);
-	}
+	/* Block compressed texture buffers must be at least 1 block in width and height */
+	bufferRowLength = SDL_max(blockSize, w);
+	bufferImageHeight = SDL_max(blockSize, h);
 
 	imageCopy.imageExtent.width = w;
 	imageCopy.imageExtent.height = h;
@@ -11574,6 +11580,12 @@ static uint8_t VULKAN_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 	return 1;
 }
 
+static uint8_t VULKAN_SupportsSRGBRenderTargets(FNA3D_Renderer *driverData)
+{
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	return renderer->supportsSRGBRenderTarget;
+}
+
 static void VULKAN_GetMaxTextureSlots(
 	FNA3D_Renderer *driverData,
 	int32_t *textures,
@@ -11846,6 +11858,9 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	/* Variables: Check for DXT1/S3TC Support */
 	VkFormatProperties formatPropsBC1, formatPropsBC2, formatPropsBC3;
 
+	/* Variables: Check for SRGB Render Target Support */
+	VkFormatProperties formatPropsSrgbRT;
+
 	/* Variables: Create query pool */
 	VkQueryPoolCreateInfo queryPoolCreateInfo;
 
@@ -11873,6 +11888,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->parentDevice = result;
 	result->driverData = (FNA3D_Renderer*) renderer;
 
+	renderer->backBufferIsSRGB = presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_COLORSRGB_EXT;
 	renderer->presentInterval = presentationParameters->presentationInterval;
 	renderer->deviceWindowHandle = presentationParameters->deviceWindowHandle;
 
@@ -12433,6 +12449,11 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		XNAToVK_SurfaceFormat[FNA3D_SURFACEFORMAT_DXT5],
 		&formatPropsBC3
 	);
+	renderer->vkGetPhysicalDeviceFormatProperties(
+		renderer->physicalDevice,
+		XNAToVK_SurfaceFormat[FNA3D_SURFACEFORMAT_COLORSRGB_EXT],
+		&formatPropsSrgbRT
+	);
 
 	#define SUPPORTED_FORMAT(fmt) \
 		((fmt.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT) && \
@@ -12441,6 +12462,10 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->supportsS3tc = (
 		SUPPORTED_FORMAT(formatPropsBC2) ||
 		SUPPORTED_FORMAT(formatPropsBC3)
+	);
+
+	renderer->supportsSRGBRenderTarget = (
+		SUPPORTED_FORMAT(formatPropsSrgbRT) && (formatPropsSrgbRT.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)
 	);
 
 	/*
