@@ -3177,7 +3177,9 @@ static void OPENGL_INTERNAL_CreateBackbuffer(
 	}
 
 	if (renderer->backbuffer)
+	{
 		ApplySRGBFlag(renderer, renderer->backbuffer->isSrgb);
+	}
 }
 
 static void OPENGL_INTERNAL_DisposeBackbuffer(OpenGLRenderer *renderer)
