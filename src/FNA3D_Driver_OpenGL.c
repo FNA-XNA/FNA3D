@@ -1123,7 +1123,9 @@ static inline void ToggleGLState(
 static inline void ApplySRGBFlag(OpenGLRenderer *renderer, uint8_t state)
 {
 	if (state == renderer->srgbEnabled)
+	{
 		return;
+	}
 
 	renderer->srgbEnabled = state;
 	ToggleGLState(renderer, GL_FRAMEBUFFER_SRGB_EXT, state);
