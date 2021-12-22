@@ -10394,6 +10394,7 @@ static void VULKAN_INTERNAL_SetTextureData(
 	VkDeviceSize offset;
 	int32_t bufferRowLength = w;
 	int32_t bufferImageHeight = h;
+	int32_t blockSize = Texture_GetBlockSize(texture->colorFormat);
 
 	if (dataLength > uploadLength)
 	{
@@ -10442,7 +10443,6 @@ static void VULKAN_INTERNAL_SetTextureData(
 	);
 
 	/* Block compressed texture buffers must be at least 1 block in width and height */
-	int32_t blockSize = Texture_GetBlockSize(texture->colorFormat);
 	bufferRowLength = SDL_max(blockSize, w);
 	bufferImageHeight = SDL_max(blockSize, h);
 

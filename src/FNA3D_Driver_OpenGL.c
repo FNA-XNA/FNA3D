@@ -2551,6 +2551,7 @@ static void OPENGL_SetRenderTargets(
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLRenderbuffer *rb = (OpenGLRenderbuffer*) depthStencilBuffer;
+	uint8_t isSrgb = 0;
 	FNA3D_RenderTargetBinding *rt;
 	int32_t i;
 	GLuint handle;
@@ -2573,8 +2574,6 @@ static void OPENGL_SetRenderTargets(
 		BindFramebuffer(renderer, renderer->targetFramebuffer);
 		renderer->renderTargetBound = 1;
 	}
-
-	uint8_t isSrgb = 0;
 
 	for (i = 0; i < numRenderTargets; i += 1)
 	{

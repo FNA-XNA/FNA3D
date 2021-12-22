@@ -2480,6 +2480,8 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 	D3D11_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc;
 	D3D11_RENDER_TARGET_VIEW_DESC swapchainViewDesc;
 	ID3D11Texture2D *swapchainTexture;
+	FNA3D_SurfaceFormat actualFnaFormat = parameters->backBufferFormat;
+	DXGI_FORMAT actualDxgiFormat = XNAToD3D_TextureFormat[actualFnaFormat];
 
 	/* Dispose of the existing backbuffer in preparation for the new one. */
 	if (renderer->backbuffer != NULL)
@@ -2497,9 +2499,6 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 				drawY != parameters->backBufferHeight	);
 	useFauxBackbuffer = (	useFauxBackbuffer ||
 				parameters->multiSampleCount > 0	);
-
-	FNA3D_SurfaceFormat actualFnaFormat = parameters->backBufferFormat;
-	DXGI_FORMAT actualDxgiFormat = XNAToD3D_TextureFormat[actualFnaFormat];
 
 	if ((actualDxgiFormat == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB) && !renderer->supportsSRGBRenderTarget)
 	{
