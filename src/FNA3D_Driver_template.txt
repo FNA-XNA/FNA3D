@@ -87,6 +87,8 @@ static TEMPLATE_SURFACE_FORMAT_TYPE XNAToTMP_TextureFormat[] =
 	0,	/* SurfaceFormat.HalfVector4 */
 	0,	/* SurfaceFormat.HdrBlendable */
 	0,	/* SurfaceFormat.ColorBgraEXT */
+	0,	/* SurfaceFormat.ColorSrgbEXT */
+	0,	/* SurfaceFormat.Dxt5SrgbEXT */
 };
 
 static TEMPLATE_DEPTH_FORMAT_TYPE XNAToTMP_DepthFormat[] =
@@ -814,6 +816,11 @@ static uint8_t TEMPLATE_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
 }
 
 static uint8_t TEMPLATE_SupportsNoOverwrite(FNA3D_Renderer *driverData)
+{
+	return 0;
+}
+
+static uint8_t TEMPLATE_SupportsSRGBRenderTargets(FNA3D_Device *device)
 {
 	return 0;
 }
