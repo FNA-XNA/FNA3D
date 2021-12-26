@@ -820,7 +820,7 @@ static uint8_t TEMPLATE_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 	return 0;
 }
 
-static uint8_t TEMPLATE_SupportsSRGBRenderTargets(FNA3D_Device *device)
+static uint8_t TEMPLATE_SupportsSRGBRenderTargets(FNA3D_Renderer *driverData)
 {
 	return 0;
 }
