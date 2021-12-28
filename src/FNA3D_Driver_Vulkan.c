@@ -1078,7 +1078,7 @@ static inline void WindowSwapchainHashArray_Insert(
 	WindowSwapchainHashArray *arr = &table->buckets[hashcode % NUM_WINDOW_SWAPCHAIN_BUCKETS];
 
 	WindowSwapchainHashMap map;
-	map.windowHandle = windowHandle;
+	map.windowHandle = (uint64_t)windowHandle;
 	map.swapchainData = swapchainData;
 
 	EXPAND_ARRAY_IF_NEEDED(arr, 4, WindowSwapchainHashMap)
@@ -1100,7 +1100,7 @@ static inline void WindowSwapchainHashArray_Remove(
 	for (i = arr->count - 1; i >= 0; i -= 1)
 	{
 		element = &arr->elements[i];
-		if (element->windowHandle == windowHandle)
+		if (element->windowHandle == (uint64_t)windowHandle)
 		{
 			SDL_memmove(
 				arr->elements + i,
@@ -1292,12 +1292,10 @@ typedef struct VulkanRenderer
 	VkDevice logicalDevice;
 
 	FNA3D_PresentInterval presentInterval;
-	void* deviceWindowHandle;
 
 	uint32_t queueFamilyIndex;
 	VkQueue unifiedQueue;
 
-	VkSurfaceKHR defaultSurface;
 	VkSurfaceFormatKHR surfaceFormat;
 	SwapChainSupportDetails swapchainSupportDetails;
 	VkExtent2D swapchainExtent;
@@ -2648,7 +2646,7 @@ create_instance_fail:
 	return 0;
 }
 
-static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer)
+static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer, VkSurfaceKHR surface)
 {
 	VkResult vulkanResult;
 	VkPhysicalDevice *physicalDevices;
@@ -2703,7 +2701,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer)
 			renderer,
 			physicalDevices[i],
 			&physicalDeviceExtensions[i],
-			renderer->defaultSurface,
+			surface,
 			&queueFamilyIndex,
 			&deviceRank
 		)) {
@@ -6658,26 +6656,17 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	}
 
 	/* Each swapchain must have its own surface.
-	 * If this is the device window handle, just use the default surface.
-	 * Otherwise create a new one.
 	 */
-	if (windowHandle == renderer->deviceWindowHandle)
-	{
-		swapchainData->surface = renderer->defaultSurface;
-	}
-	else
-	{
-		if (!SDL_Vulkan_CreateSurface(
-			(SDL_Window*) windowHandle,
-			renderer->instance,
-			&swapchainData->surface
-		)) {
-			FNA3D_LogError(
-				"SDL_Vulkan_CreateSurface failed: %s",
-				SDL_GetError()
-			);
-			return CREATE_SWAPCHAIN_FAIL;
-		}
+	if (!SDL_Vulkan_CreateSurface(
+		(SDL_Window*) windowHandle,
+		renderer->instance,
+		&swapchainData->surface
+	)) {
+		FNA3D_LogError(
+			"SDL_Vulkan_CreateSurface failed: %s",
+			SDL_GetError()
+		);
+		return CREATE_SWAPCHAIN_FAIL;
 	}
 
 	swapchainCreateInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
@@ -6839,14 +6828,11 @@ static void VULKAN_INTERNAL_DestroySwapchain(
 		NULL
 	);
 
-	if (windowHandle != renderer->deviceWindowHandle)
-	{
-		renderer->vkDestroySurfaceKHR(
-			renderer->instance,
-			swapchainData->surface,
-			NULL
-		);
-	}
+	renderer->vkDestroySurfaceKHR(
+		renderer->instance,
+		swapchainData->surface,
+		NULL
+	);
 
 	WindowSwapchainHashArray_Remove(
 		&renderer->windowSwapchainTable,
@@ -6862,7 +6848,6 @@ static void VULKAN_INTERNAL_RecreateSwapchain(
 	uint8_t flush
 ) {
 	CreateSwapchainResult createSwapchainResult;
-	SwapChainSupportDetails swapchainSupportDetails;
 
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
 	if (flush)
@@ -6871,16 +6856,6 @@ static void VULKAN_INTERNAL_RecreateSwapchain(
 	}
 
 	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
-
-	VULKAN_INTERNAL_QuerySwapChainSupport(
-		renderer,
-		renderer->physicalDevice,
-		renderer->defaultSurface,
-		&swapchainSupportDetails
-	);
-
-	SDL_free(swapchainSupportDetails.formats);
-	SDL_free(swapchainSupportDetails.presentModes);
 
 	if (renderer->swapchainExtent.width == 0 || renderer->swapchainExtent.height == 0)
 	{
@@ -9237,12 +9212,6 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		}
 	}
 
-	renderer->vkDestroySurfaceKHR(
-		renderer->instance,
-		renderer->defaultSurface,
-		NULL
-	);
-
 	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
 	{
 		allocator = &renderer->memoryAllocator->subAllocators[i];
@@ -10235,7 +10204,6 @@ static void VULKAN_ResetBackbuffer(
 
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	renderer->presentInterval = presentationParameters->presentationInterval;
-	renderer->deviceWindowHandle = presentationParameters->deviceWindowHandle;
 	renderer->swapchainExtent.width = presentationParameters->backBufferWidth;
 	renderer->swapchainExtent.height = presentationParameters->backBufferHeight;
 
@@ -11804,6 +11772,7 @@ static FNA3D_Texture* VULKAN_CreateSysTexture(
 static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 {
 	SDL_Window *dummyWindowHandle;
+	VkSurfaceKHR surface;
 	FNA3D_PresentationParameters presentationParameters;
 	VulkanRenderer *renderer;
 	uint8_t result;
@@ -11861,7 +11830,6 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 	/* partially set up VulkanRenderer so we can fall back in case of device non-compliance */
 	renderer = (VulkanRenderer*) SDL_malloc(sizeof(VulkanRenderer));
 	SDL_memset(renderer, '\0', sizeof(VulkanRenderer));
-	renderer->deviceWindowHandle = dummyWindowHandle;
 
 	if (!VULKAN_INTERNAL_CreateInstance(renderer, &presentationParameters))
 	{
@@ -11874,7 +11842,7 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 	if (!SDL_Vulkan_CreateSurface(
 		(SDL_Window*) presentationParameters.deviceWindowHandle,
 		renderer->instance,
-		&renderer->defaultSurface
+		&surface
 	)) {
 		SDL_DestroyWindow(dummyWindowHandle);
 		SDL_free(renderer);
@@ -11889,11 +11857,11 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 		renderer->name = (PFN_##name) vkGetInstanceProcAddr(renderer->instance, #name);
 	#include "FNA3D_Driver_Vulkan_vkfuncs.h"
 
-	result = VULKAN_INTERNAL_DeterminePhysicalDevice(renderer);
+	result = VULKAN_INTERNAL_DeterminePhysicalDevice(renderer, surface);
 
 	renderer->vkDestroySurfaceKHR(
 		renderer->instance,
-		renderer->defaultSurface,
+		surface,
 		NULL
 	);
 	renderer->vkDestroyInstance(renderer->instance, NULL);
@@ -11968,6 +11936,9 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	VkWriteDescriptorSet writeDescriptorSets[2];
 	VkDescriptorBufferInfo bufferInfos[2];
 
+	/* Variables: Create dummy surface for initialization */
+	VkSurfaceKHR surface;
+
 	/*
 	 * Create the FNA3D_Device
 	 */
@@ -11983,7 +11954,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	renderer->backBufferIsSRGB = presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_COLORSRGB_EXT;
 	renderer->presentInterval = presentationParameters->presentationInterval;
-	renderer->deviceWindowHandle = presentationParameters->deviceWindowHandle;
 
 	/*
 	 * Create the vkInstance
@@ -11996,13 +11966,13 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	}
 
 	/*
-	 * Create the WSI vkSurface
+	 * Create the dummy surface
 	 */
 
 	if (!SDL_Vulkan_CreateSurface(
 		(SDL_Window*) presentationParameters->deviceWindowHandle,
 		renderer->instance,
-		&renderer->defaultSurface
+		&surface
 	)) {
 		FNA3D_LogError(
 			"SDL_Vulkan_CreateSurface failed: %s",
@@ -12023,7 +11993,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	 * Choose/Create vkDevice
 	 */
 
-	if (!VULKAN_INTERNAL_DeterminePhysicalDevice(renderer))
+	if (!VULKAN_INTERNAL_DeterminePhysicalDevice(renderer, surface))
 	{
 		FNA3D_LogError("Failed to determine a suitable physical device");
 		return NULL;
@@ -12371,7 +12341,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	if (!VULKAN_INTERNAL_QuerySwapChainSupport(
 		renderer,
 		renderer->physicalDevice,
-		renderer->defaultSurface,
+		surface,
 		&renderer->swapchainSupportDetails
 	)) {
 		FNA3D_LogError("Device does not support swap chain creation");
@@ -12419,6 +12389,8 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		FNA3D_LogError("Device does not support swap chain present mode");
 		return CREATE_SWAPCHAIN_FAIL;
 	}
+
+	renderer->vkDestroySurfaceKHR(renderer->instance, surface, NULL);
 
 	/*
 	 * Initialize the window to swapchain table
