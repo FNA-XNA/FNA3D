@@ -161,6 +161,8 @@ static inline void CreateDeviceExtensionArray(
 
 #define DEFAULT_PIPELINE_CACHE_FILE_NAME "FNA3D_Vulkan_PipelineCache.blob"
 
+#define WINDOW_SWAPCHAIN_DATA "swapchainData"
+
 #define IDENTITY_SWIZZLE \
 { \
 	VK_COMPONENT_SWIZZLE_IDENTITY, \
@@ -1015,105 +1017,13 @@ typedef struct VulkanSwapchainData
 	VkImageView *views;
 	uint32_t imageCount;
 	VkSurfaceKHR surface;
+	void *windowHandle;
 } VulkanSwapchainData;
-
-typedef struct WindowSwapchainHashMap
-{
-	uint64_t windowHandle;
-	VulkanSwapchainData *swapchainData;
-} WindowSwapchainHashMap;
-
-typedef struct WindowSwapchainHashArray
-{
-	WindowSwapchainHashMap *elements;
-	int32_t count;
-	int32_t capacity;
-} WindowSwapchainHashArray;
-
-#define NUM_WINDOW_SWAPCHAIN_BUCKETS 1031
-
-typedef struct WindowSwapchainHashTable
-{
-	WindowSwapchainHashArray buckets[NUM_WINDOW_SWAPCHAIN_BUCKETS];
-} WindowSwapchainHashTable;
 
 typedef struct VulkanMemoryAllocation VulkanMemoryAllocation;
 typedef struct VulkanBuffer VulkanBuffer;
 typedef struct VulkanSubBuffer VulkanSubBuffer;
 typedef struct VulkanTexture VulkanTexture;
-
-static inline uint64_t WindowSwapchainHashTable_GetHashCode(void* windowHandle)
-{
-	const uint64_t HASH_FACTOR = 97;
-	uint64_t result = 1;
-	result = result * HASH_FACTOR + (uint64_t) windowHandle;
-	return result;
-}
-
-static inline VulkanSwapchainData* WindowSwapchainHashArray_Fetch(
-	WindowSwapchainHashTable *table,
-	void *windowHandle
-) {
-	int32_t i;
-	uint64_t hashcode = WindowSwapchainHashTable_GetHashCode(windowHandle);
-	WindowSwapchainHashArray *arr = &table->buckets[hashcode % NUM_WINDOW_SWAPCHAIN_BUCKETS];
-
-	for (i = 0; i < arr->count; i += 1)
-	{
-		if (arr->elements[i].windowHandle == (uint64_t) windowHandle)
-		{
-			return arr->elements[i].swapchainData;
-		}
-	}
-
-	return NULL;
-}
-
-static inline void WindowSwapchainHashArray_Insert(
-	WindowSwapchainHashTable *table,
-	void *windowHandle,
-	VulkanSwapchainData *swapchainData
-) {
-	uint64_t hashcode = WindowSwapchainHashTable_GetHashCode(windowHandle);
-	WindowSwapchainHashArray *arr = &table->buckets[hashcode % NUM_WINDOW_SWAPCHAIN_BUCKETS];
-
-	WindowSwapchainHashMap map;
-	map.windowHandle = (uint64_t)windowHandle;
-	map.swapchainData = swapchainData;
-
-	EXPAND_ARRAY_IF_NEEDED(arr, 4, WindowSwapchainHashMap)
-
-	arr->elements[arr->count] = map;
-	arr->count += 1;
-}
-
-static inline void WindowSwapchainHashArray_Remove(
-	WindowSwapchainHashTable *table,
-	void *windowHandle
-) {
-	int32_t i;
-	uint64_t hashcode = WindowSwapchainHashTable_GetHashCode(windowHandle);
-	WindowSwapchainHashArray *arr = &table->buckets[hashcode % NUM_WINDOW_SWAPCHAIN_BUCKETS];
-
-	WindowSwapchainHashMap *element;
-
-	for (i = arr->count - 1; i >= 0; i -= 1)
-	{
-		element = &arr->elements[i];
-		if (element->windowHandle == (uint64_t)windowHandle)
-		{
-			SDL_memmove(
-				arr->elements + i,
-				arr->elements + i + 1,
-				sizeof(WindowSwapchainHashMap) * (arr->count - i - 1)
-			);
-
-			arr->count -= 1;
-
-			return;
-		}
-	}
-}
 
 typedef struct VulkanMemoryFreeRegion
 {
@@ -1297,10 +1207,11 @@ typedef struct VulkanRenderer
 	VkQueue unifiedQueue;
 
 	VkSurfaceFormatKHR surfaceFormat;
-	SwapChainSupportDetails swapchainSupportDetails;
-	VkExtent2D swapchainExtent;
-	WindowSwapchainHashTable windowSwapchainTable;
 	VkPresentModeKHR presentMode;
+	SwapChainSupportDetails swapchainSupportDetails;
+	VulkanSwapchainData** swapchainDatas;
+	uint32_t swapchainDataCount;
+	VkExtent2D swapchainExtent;
 
 	PackedVertexBufferBindingsArray vertexBufferBindingsCache;
 	VkPipelineCache pipelineCache;
@@ -6083,8 +5994,8 @@ static void VULKAN_INTERNAL_SwapChainBlit(
 	VulkanSwapchainData *swapchainData,
 	FNA3D_Rect * sourceRectangle,
 	FNA3D_Rect *destinationRectangle,
-	uint32_t swapchainImageIndex)
-{
+	uint32_t swapchainImageIndex
+) {
 	FNA3D_Rect srcRect;
 	FNA3D_Rect dstRect;
 	VkImageBlit blit;
@@ -6247,12 +6158,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 			mode.refresh_rate = 60;
 		}
 
-		swapchainData = WindowSwapchainHashArray_Fetch(
-			&renderer->windowSwapchainTable,
-			windowHandle
-		);
-
-		/* TODO: create the swapchain here if NULL */
+		swapchainData = (VulkanSwapchainData*)SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
 
 		if (swapchainData == NULL)
 		{
@@ -6262,10 +6168,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 				return;
 			}
 
-			swapchainData = WindowSwapchainHashArray_Fetch(
-				&renderer->windowSwapchainTable,
-				windowHandle
-			);
+			swapchainData = (VulkanSwapchainData*)SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
 		}
 
 		/* Begin next frame */
@@ -6621,7 +6524,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	VkSwapchainCreateInfoKHR swapchainCreateInfo;
 	VkImageViewCreateInfo createInfo;
 
-	swapchainData = WindowSwapchainHashArray_Fetch(&renderer->windowSwapchainTable, windowHandle);
+	swapchainData = (VulkanSwapchainData*)SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
 
 	if (swapchainData != NULL)
 	{
@@ -6629,13 +6532,13 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
-	swapchainData = SDL_malloc(sizeof(VulkanSwapchainData));
-
 	if (renderer->swapchainExtent.width == 0 || renderer->swapchainExtent.height == 0)
 	{
 		return CREATE_SWAPCHAIN_SURFACE_ZERO;
 	}
 
+	swapchainData = SDL_malloc(sizeof(VulkanSwapchainData));
+	swapchainData->windowHandle = windowHandle;
 	swapchainData->imageCount = renderer->swapchainSupportDetails.capabilities.minImageCount + 1;
 
 	if (	renderer->swapchainSupportDetails.capabilities.maxImageCount > 0 &&
@@ -6655,8 +6558,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		swapchainData->imageCount = SDL_max(swapchainData->imageCount, 3);
 	}
 
-	/* Each swapchain must have its own surface.
-	 */
+	/* Each swapchain must have its own surface. */
 	if (!SDL_Vulkan_CreateSurface(
 		(SDL_Window*) windowHandle,
 		renderer->instance,
@@ -6769,11 +6671,10 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		swapchainData->resourceAccessTypes[i] = RESOURCE_ACCESS_NONE;
 	}
 
-	WindowSwapchainHashArray_Insert(
-		&renderer->windowSwapchainTable,
-		windowHandle,
-		swapchainData
-	);
+	SDL_SetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA, swapchainData);
+	renderer->swapchainDatas = SDL_realloc(renderer->swapchainDatas, sizeof(VulkanSwapchainData*) * renderer->swapchainDataCount);
+	renderer->swapchainDatas[renderer->swapchainDataCount] = swapchainData;
+	renderer->swapchainDataCount += 1;
 
 	return CREATE_SWAPCHAIN_SUCCESS;
 }
@@ -6785,10 +6686,7 @@ static void VULKAN_INTERNAL_DestroySwapchain(
 	uint32_t i;
 	VulkanSwapchainData *swapchainData;
 
-	swapchainData = WindowSwapchainHashArray_Fetch(
-		&renderer->windowSwapchainTable,
-		windowHandle
-	);
+	swapchainData = (VulkanSwapchainData*)SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
 
 	if (swapchainData == NULL)
 	{
@@ -6834,10 +6732,16 @@ static void VULKAN_INTERNAL_DestroySwapchain(
 		NULL
 	);
 
-	WindowSwapchainHashArray_Remove(
-		&renderer->windowSwapchainTable,
-		windowHandle
-	);
+	for (i = 0; i < renderer->swapchainDataCount; i += 1)
+	{
+		if (windowHandle == renderer->swapchainDatas[i]->windowHandle)
+		{
+			renderer->swapchainDatas[i] = renderer->swapchainDatas[renderer->swapchainDataCount - 1];
+			SDL_realloc(renderer->swapchainDatas, sizeof(VulkanSwapchainData*) * (renderer->swapchainDataCount - 1));
+			renderer->swapchainDataCount -= 1;
+			break;
+		}
+	}
 
 	SDL_free(swapchainData);
 }
@@ -9204,12 +9108,9 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		NULL
 	);
 
-	for (i = 0; i < NUM_WINDOW_SWAPCHAIN_BUCKETS; i += 1)
+	for (j = renderer->swapchainDataCount - 1; j >= 0; j -= 1)
 	{
-		for (j = renderer->windowSwapchainTable.buckets[i].count; j >= 0; j -= 1)
-		{
-			VULKAN_INTERNAL_DestroySwapchain(renderer, (void*)renderer->windowSwapchainTable.buckets[i].elements[j].windowHandle);
-		}
+		VULKAN_INTERNAL_DestroySwapchain(renderer, renderer->swapchainDatas[j]->windowHandle);
 	}
 
 	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
@@ -10204,8 +10105,6 @@ static void VULKAN_ResetBackbuffer(
 
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	renderer->presentInterval = presentationParameters->presentationInterval;
-	renderer->swapchainExtent.width = presentationParameters->backBufferWidth;
-	renderer->swapchainExtent.height = presentationParameters->backBufferHeight;
 
 	VULKAN_INTERNAL_DestroyFauxBackbuffer(renderer);
 	VULKAN_INTERNAL_CreateFauxBackbuffer(
@@ -10213,13 +10112,17 @@ static void VULKAN_ResetBackbuffer(
 		presentationParameters
 	);
 
-	for (i = 0; i < NUM_WINDOW_SWAPCHAIN_BUCKETS; i += 1)
+	if (presentationParameters->backBufferWidth != renderer->swapchainExtent.width ||
+		presentationParameters->backBufferHeight != renderer->swapchainExtent.height)
 	{
-		for (j = renderer->windowSwapchainTable.buckets[i].count; j >= 0; j -= 1)
+		for (i = renderer->swapchainDataCount - 1; i >= 0; i -= 1)
 		{
-			VULKAN_INTERNAL_RecreateSwapchain(renderer, (void*)renderer->windowSwapchainTable.buckets[i].elements[j].windowHandle, 1);
+			VULKAN_INTERNAL_RecreateSwapchain(renderer, renderer->swapchainDatas[i]->windowHandle, 1);
 		}
 	}
+
+	renderer->swapchainExtent.width = presentationParameters->backBufferWidth;
+	renderer->swapchainExtent.height = presentationParameters->backBufferHeight;
 }
 
 static void VULKAN_ReadBackbuffer(
@@ -12393,17 +12296,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->vkDestroySurfaceKHR(renderer->instance, surface, NULL);
 
 	/*
-	 * Initialize the window to swapchain table
-	 */
-
-	for (i = 0; i < NUM_WINDOW_SWAPCHAIN_BUCKETS; i += 1)
-	{
-		renderer->windowSwapchainTable.buckets[i].elements = NULL;
-		renderer->windowSwapchainTable.buckets[i].count = 0;
-		renderer->windowSwapchainTable.buckets[i].capacity = 0;
-	}
-
-	/*
 	 * Create the initial faux-backbuffer
 	 */
 
@@ -12417,6 +12309,8 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	 * Create initial swapchain
 	 */
 
+	renderer->swapchainDatas = NULL;
+	renderer->swapchainDataCount = 0;
 	renderer->swapchainExtent.width = renderer->fauxBackbufferWidth;
 	renderer->swapchainExtent.height = renderer->fauxBackbufferHeight;
 
