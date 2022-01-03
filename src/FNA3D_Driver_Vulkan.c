@@ -161,7 +161,7 @@ static inline void CreateDeviceExtensionArray(
 
 #define DEFAULT_PIPELINE_CACHE_FILE_NAME "FNA3D_Vulkan_PipelineCache.blob"
 
-#define WINDOW_SWAPCHAIN_DATA "swapchainData"
+#define WINDOW_SWAPCHAIN_DATA "FNA3D_VulkanSwapchain"
 
 #define IDENTITY_SWIZZLE \
 { \
@@ -6158,7 +6158,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 			mode.refresh_rate = 60;
 		}
 
-		swapchainData = (VulkanSwapchainData*)SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+		swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
 
 		if (swapchainData == NULL)
 		{
@@ -6168,7 +6168,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 				return;
 			}
 
-			swapchainData = (VulkanSwapchainData*)SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+			swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
 		}
 
 		/* Begin next frame */
@@ -6524,7 +6524,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	VkSwapchainCreateInfoKHR swapchainCreateInfo;
 	VkImageViewCreateInfo createInfo;
 
-	swapchainData = (VulkanSwapchainData*)SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+	swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
 
 	if (swapchainData != NULL)
 	{
@@ -6686,7 +6686,7 @@ static void VULKAN_INTERNAL_DestroySwapchain(
 	uint32_t i;
 	VulkanSwapchainData *swapchainData;
 
-	swapchainData = (VulkanSwapchainData*)SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+	swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
 
 	if (swapchainData == NULL)
 	{
