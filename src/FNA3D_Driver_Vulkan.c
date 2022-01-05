@@ -6898,6 +6898,8 @@ static void VULKAN_INTERNAL_SetBufferData(
 	VkDeviceSize stagingOffset;
 	VkBufferCopy bufferCopy;
 
+	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
+
 	if (options == FNA3D_SETDATAOPTIONS_NONE || options == FNA3D_SETDATAOPTIONS_DISCARD)
 	{
 		/* If NONE or DISCARD is set, we need to do a buffered copy.
