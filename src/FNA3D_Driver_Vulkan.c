@@ -1267,7 +1267,7 @@ typedef struct VulkanRenderer
 	VkDeviceSize maxDeviceLocalHeapUsage;
 	VkDeviceSize deviceLocalHeapUsage;
 
-	VulkanStagingBuffer textureStagingBuffers[2];
+	VulkanStagingBuffer stagingBuffers[2];
 	uint32_t stagingIndex;
 
 	uint32_t numVertexBindings;
@@ -4919,20 +4919,20 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 
 /* Staging buffer functions */
 
-static void VULKAN_INTERNAL_ResetTextureStagingBuffer(
+static void VULKAN_INTERNAL_ResetStagingBuffer(
 	VulkanRenderer *renderer
 ) {
 	renderer->stagingIndex = (renderer->stagingIndex + 1) % 2;
 
-	renderer->textureStagingBuffers[renderer->stagingIndex].fastBufferOffset = 0;
-	renderer->textureStagingBuffers[renderer->stagingIndex].slowBufferOffset = 0;
+	renderer->stagingBuffers[renderer->stagingIndex].fastBufferOffset = 0;
+	renderer->stagingBuffers[renderer->stagingIndex].slowBufferOffset = 0;
 }
 
 static void VULKAN_INTERNAL_CreateFastStagingBuffers(
 	VulkanRenderer *renderer,
 	VkDeviceSize size
 ) {
-	renderer->textureStagingBuffers[0].fastBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
+	renderer->stagingBuffers[0].fastBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
 		renderer,
 		size,
 		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
@@ -4941,7 +4941,7 @@ static void VULKAN_INTERNAL_CreateFastStagingBuffers(
 		1
 	);
 
-	renderer->textureStagingBuffers[1].fastBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
+	renderer->stagingBuffers[1].fastBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
 		renderer,
 		size,
 		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
@@ -4955,7 +4955,7 @@ static void VULKAN_INTERNAL_CreateSlowStagingBuffers(
 	VulkanRenderer *renderer,
 	VkDeviceSize size
 ) {
-	renderer->textureStagingBuffers[0].slowBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
+	renderer->stagingBuffers[0].slowBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
 		renderer,
 		size,
 		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
@@ -4964,12 +4964,12 @@ static void VULKAN_INTERNAL_CreateSlowStagingBuffers(
 		1
 	);
 
-	if (renderer->textureStagingBuffers[0].slowBuffer == NULL)
+	if (renderer->stagingBuffers[0].slowBuffer == NULL)
 	{
 		FNA3D_LogError("Failed to create slow texture staging buffer!");
 	}
 
-	renderer->textureStagingBuffers[1].slowBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
+	renderer->stagingBuffers[1].slowBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
 		renderer,
 		size,
 		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
@@ -4978,7 +4978,7 @@ static void VULKAN_INTERNAL_CreateSlowStagingBuffers(
 		1
 	);
 
-	if (renderer->textureStagingBuffers[1].slowBuffer == NULL)
+	if (renderer->stagingBuffers[1].slowBuffer == NULL)
 	{
 		FNA3D_LogError("Failed to create slow texture staging buffer!");
 	}
@@ -4988,9 +4988,9 @@ static void VULKAN_INTERNAL_ExpandSlowStagingBuffer(
 	VulkanRenderer *renderer,
 	VkDeviceSize requiredSize
 ) {
-	VkDeviceSize nextStagingSize = renderer->textureStagingBuffers[renderer->stagingIndex].slowBuffer->size;
+	VkDeviceSize nextStagingSize = renderer->stagingBuffers[renderer->stagingIndex].slowBuffer->size;
 
-	if (renderer->textureStagingBuffers[renderer->stagingIndex].slowBuffer->size < MAX_SLOW_TEXTURE_STAGING_SIZE)
+	if (renderer->stagingBuffers[renderer->stagingIndex].slowBuffer->size < MAX_SLOW_TEXTURE_STAGING_SIZE)
 	{
 		nextStagingSize *= 2;
 
@@ -5001,7 +5001,7 @@ static void VULKAN_INTERNAL_ExpandSlowStagingBuffer(
 
 		VULKAN_INTERNAL_RemoveBuffer(
 			(FNA3D_Renderer*) renderer,
-			(FNA3D_Buffer*) renderer->textureStagingBuffers[renderer->stagingIndex].slowBuffer
+			(FNA3D_Buffer*) renderer->stagingBuffers[renderer->stagingIndex].slowBuffer
 		);
 
 		VULKAN_INTERNAL_CreateSlowStagingBuffers(
@@ -5054,21 +5054,21 @@ static void VULKAN_INTERNAL_CopyToStagingBuffer(
 
 	/* Where will we be staging this data? */
 	if (VULKAN_INTERNAL_GetBufferOffset(
-		renderer->textureStagingBuffers[renderer->stagingIndex].fastBuffer,
-		&renderer->textureStagingBuffers[renderer->stagingIndex].fastBufferOffset,
+		renderer->stagingBuffers[renderer->stagingIndex].fastBuffer,
+		&renderer->stagingBuffers[renderer->stagingIndex].fastBufferOffset,
 		&offset,
 		uploadLength,
 		fmtAlignment
 	)) {
 		/* We have access to a fast buffer! */
-		stagingBuffer = renderer->textureStagingBuffers[renderer->stagingIndex].fastBuffer;
+		stagingBuffer = renderer->stagingBuffers[renderer->stagingIndex].fastBuffer;
 	}
 	else
 	{
 		/* We had to fall back to a slow buffer... */
 		if (!VULKAN_INTERNAL_GetBufferOffset(
-			renderer->textureStagingBuffers[renderer->stagingIndex].slowBuffer,
-			&renderer->textureStagingBuffers[renderer->stagingIndex].slowBufferOffset,
+			renderer->stagingBuffers[renderer->stagingIndex].slowBuffer,
+			&renderer->stagingBuffers[renderer->stagingIndex].slowBufferOffset,
 			&offset,
 			uploadLength,
 			fmtAlignment
@@ -5078,15 +5078,15 @@ static void VULKAN_INTERNAL_CopyToStagingBuffer(
 			VULKAN_INTERNAL_ExpandSlowStagingBuffer(renderer, uploadLength);
 
 			VULKAN_INTERNAL_GetBufferOffset(
-				renderer->textureStagingBuffers[renderer->stagingIndex].slowBuffer,
-				&renderer->textureStagingBuffers[renderer->stagingIndex].slowBufferOffset,
+				renderer->stagingBuffers[renderer->stagingIndex].slowBuffer,
+				&renderer->stagingBuffers[renderer->stagingIndex].slowBufferOffset,
 				&offset,
 				uploadLength,
 				fmtAlignment
 			);
 		}
 
-		stagingBuffer = renderer->textureStagingBuffers[renderer->stagingIndex].slowBuffer;
+		stagingBuffer = renderer->stagingBuffers[renderer->stagingIndex].slowBuffer;
 	}
 
 	stagingBufferPointer =
@@ -5111,10 +5111,10 @@ static void VULKAN_INTERNAL_PrepareCopyFromStagingBuffer(
 	VkDeviceSize *pOffset,
 	void **pStagingBufferPointer
 ) {
-	VulkanBuffer *fastBuffer = renderer->textureStagingBuffers[renderer->stagingIndex].fastBuffer;
-	VkDeviceSize fastBufferOffset = renderer->textureStagingBuffers[renderer->stagingIndex].fastBufferOffset;
-	VulkanBuffer *slowBuffer = renderer->textureStagingBuffers[renderer->stagingIndex].slowBuffer;
-	VkDeviceSize slowBufferOffset = renderer->textureStagingBuffers[renderer->stagingIndex].slowBufferOffset;
+	VulkanBuffer *fastBuffer = renderer->stagingBuffers[renderer->stagingIndex].fastBuffer;
+	VkDeviceSize fastBufferOffset = renderer->stagingBuffers[renderer->stagingIndex].fastBufferOffset;
+	VulkanBuffer *slowBuffer = renderer->stagingBuffers[renderer->stagingIndex].slowBuffer;
+	VkDeviceSize slowBufferOffset = renderer->stagingBuffers[renderer->stagingIndex].slowBufferOffset;
 
 	if (fastBuffer != NULL && fastBufferOffset + dataLength < fastBuffer->size)
 	{
@@ -5146,12 +5146,12 @@ static void VULKAN_INTERNAL_CreateStagingBuffer(
 	VulkanRenderer *renderer
 ) {
 	VULKAN_INTERNAL_CreateFastStagingBuffers(renderer, FAST_TEXTURE_STAGING_SIZE);
-	renderer->textureStagingBuffers[0].fastBufferOffset = 0;
-	renderer->textureStagingBuffers[1].fastBufferOffset = 0;
+	renderer->stagingBuffers[0].fastBufferOffset = 0;
+	renderer->stagingBuffers[1].fastBufferOffset = 0;
 
 	VULKAN_INTERNAL_CreateSlowStagingBuffers(renderer, STARTING_SLOW_TEXTURE_STAGING_SIZE);
-	renderer->textureStagingBuffers[0].slowBufferOffset = 0;
-	renderer->textureStagingBuffers[1].slowBufferOffset = 0;
+	renderer->stagingBuffers[0].slowBufferOffset = 0;
+	renderer->stagingBuffers[1].slowBufferOffset = 0;
 }
 
 /* Vulkan: Descriptor Set Logic */
@@ -6217,7 +6217,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	MOJOSHADER_vkEndFrame(renderer->mojoshaderContext);
 
 	/* Reset the texture staging buffer */
-	VULKAN_INTERNAL_ResetTextureStagingBuffer(renderer);
+	VULKAN_INTERNAL_ResetStagingBuffer(renderer);
 
 	/* Mark active command buffers as submitted */
 	for (i = 0; i < renderer->activeCommandBufferCount; i += 1)
@@ -8985,17 +8985,17 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
 	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
 
-	if (renderer->textureStagingBuffers[0].fastBuffer != NULL)
+	if (renderer->stagingBuffers[0].fastBuffer != NULL)
 	{
-		VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->textureStagingBuffers[0].fastBuffer);
+		VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->stagingBuffers[0].fastBuffer);
 	}
-	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->textureStagingBuffers[0].slowBuffer);
+	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->stagingBuffers[0].slowBuffer);
 
-	if (renderer->textureStagingBuffers[1].fastBuffer != NULL)
+	if (renderer->stagingBuffers[1].fastBuffer != NULL)
 	{
-		VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->textureStagingBuffers[1].fastBuffer);
+		VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->stagingBuffers[1].fastBuffer);
 	}
-	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->textureStagingBuffers[1].slowBuffer);
+	VULKAN_INTERNAL_DestroyBuffer(renderer, renderer->stagingBuffers[1].slowBuffer);
 
 	MOJOSHADER_vkDestroyContext(renderer->mojoshaderContext);
 	VULKAN_INTERNAL_DestroyFauxBackbuffer(renderer);
