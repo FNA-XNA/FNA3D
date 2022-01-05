@@ -1294,14 +1294,6 @@ typedef struct VulkanRenderer
 	uint8_t textureNeedsUpdate[TEXTURE_COUNT];
 	uint8_t samplerNeedsUpdate[TEXTURE_COUNT];
 
-	VulkanBuffer **boundBuffers;
-	uint32_t boundBufferCount;
-	uint32_t boundBufferCapacity;
-
-	VulkanBuffer **submittedBuffers;
-	uint32_t submittedBufferCount;
-	uint32_t submittedBufferCapacity;
-
 	VulkanBuffer *dummyVertUniformBuffer;
 	VulkanBuffer *dummyFragUniformBuffer;
 
@@ -4299,27 +4291,6 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 	VulkanRenderer *renderer,
 	VulkanBuffer *buffer
 ) {
-	uint32_t i;
-
-	if (buffer->bound)
-	{
-		for (i = 0; i < renderer->boundBufferCount; i += 1)
-		{
-			if (renderer->boundBuffers[i] == buffer)
-			{
-				renderer->boundBuffers[i] = NULL;
-			}
-		}
-
-		for (i = 0; i < renderer->submittedBufferCount; i += 1)
-		{
-			if (renderer->submittedBuffers[i] == buffer)
-			{
-				renderer->submittedBuffers[i] = NULL;
-			}
-		}
-	}
-
 	renderer->vkDestroyBuffer(
 		renderer->logicalDevice,
 		buffer->buffer,
@@ -6160,33 +6131,6 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	/* Cleanup */
 	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
 
-	/* Mark previously submitted buffers as unbound */
-	for (i = 0; i < renderer->submittedBufferCount; i += 1)
-	{
-		if (renderer->submittedBuffers[i] != NULL)
-		{
-			renderer->submittedBuffers[i]->bound = 0;
-		}
-	}
-
-	/* Increase the submitted buffer capacity if required */
-	if (renderer->boundBufferCount > renderer->submittedBufferCapacity)
-	{
-		renderer->submittedBufferCapacity = renderer->boundBufferCount;
-		renderer->submittedBuffers = SDL_realloc(
-			renderer->submittedBuffers,
-			renderer->submittedBufferCapacity * sizeof(VulkanBuffer*)
-		);
-	}
-
-	/* Mark previously bound buffers as submitted */
-	for (i = 0; i < renderer->boundBufferCount; i += 1)
-	{
-		renderer->submittedBuffers[i] = renderer->boundBuffers[i];
-	}
-	renderer->submittedBufferCount = renderer->boundBufferCount;
-	renderer->boundBufferCount = 0;
-
 	/* Reset the previously submitted command buffers */
 	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
 	{
@@ -6940,21 +6884,7 @@ static void VULKAN_INTERNAL_MarkBufferAsBound(
 	VulkanRenderer *renderer,
 	VulkanBuffer *vulkanBuffer
 ) {
-	if (vulkanBuffer->bound) { return; }
-
 	vulkanBuffer->bound = 1;
-
-	if (renderer->boundBufferCount >= renderer->boundBufferCapacity)
-	{
-		renderer->boundBufferCapacity *= 2;
-		renderer->boundBuffers = SDL_realloc(
-			renderer->boundBuffers,
-			sizeof(VulkanBuffer*) * renderer->boundBufferCapacity
-		);
-	}
-
-	renderer->boundBuffers[renderer->boundBufferCount] = vulkanBuffer;
-	renderer->boundBufferCount += 1;
 }
 
 /* This function is EXTREMELY sensitive. Change this at your own peril. -cosmonaut */
@@ -12930,16 +12860,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer->textures[MAX_TEXTURE_SAMPLERS + i] = &NullTexture;
 		renderer->samplers[MAX_TEXTURE_SAMPLERS + i] = renderer->dummyVertSamplerState;
 	}
-
-	/* init bound buffer storage */
-
-	renderer->boundBufferCapacity = 4;
-	renderer->boundBufferCount = 0;
-	renderer->boundBuffers = SDL_malloc(renderer->boundBufferCapacity * sizeof(VulkanBuffer*));
-
-	renderer->submittedBufferCapacity = 4;
-	renderer->submittedBufferCount = 0;
-	renderer->submittedBuffers = SDL_malloc(renderer->submittedBufferCapacity * sizeof(VulkanBuffer*));
 
 	renderer->needDefrag = 0;
 	renderer->defragTimer = 0;
