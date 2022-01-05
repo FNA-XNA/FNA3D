@@ -1134,11 +1134,7 @@ static VulkanTexture NullTexture =
 	RESOURCE_ACCESS_NONE
 };
 
-/*
- * Our VulkanBuffer is actually a series of sub-buffers
- * so we can properly support overwrites without flushing
- */
-struct VulkanBuffer /* cast from FNA3D_Buffer */
+struct VulkanBuffer
 {
 	VkDeviceSize size;
 	VulkanMemoryUsedRegion *usedRegion;
@@ -1148,7 +1144,18 @@ struct VulkanBuffer /* cast from FNA3D_Buffer */
 	VkBufferUsageFlags usage;
 	uint8_t preferDeviceLocal;
 	uint8_t isStagingBuffer;
+	uint8_t bound;
 };
+
+/* To properly support SETDATAOPTIONS_DISCARD the "buffer handle"
+ * we return is actually a container pointing to a buffer.
+ * This lets us change out the internal buffer without affecting
+ * the client or requiring a stall.
+ */
+typedef struct VulkanBufferContainer
+{
+	VulkanBuffer *vulkanBuffer;
+} VulkanBufferContainer;
 
 typedef struct VulkanStagingBuffer
 {
@@ -1276,14 +1283,6 @@ typedef struct VulkanRenderer
 	VkBuffer boundVertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
 	VkDeviceSize boundVertexBufferOffsets[MAX_BOUND_VERTEX_BUFFERS];
 
-	/* Should be equal to swap chain count */
-	VkBuffer ldVertUniformBuffer;
-	VkBuffer ldFragUniformBuffer;
-	VkDeviceSize ldVertUniformOffset;
-	VkDeviceSize ldFragUniformOffset;
-	VkDeviceSize ldVertUniformSize;
-	VkDeviceSize ldFragUniformSize;
-
 	int32_t stencilRef;
 
 	int32_t numSamplers;
@@ -1294,6 +1293,14 @@ typedef struct VulkanRenderer
 	VkSampler samplers[TEXTURE_COUNT];
 	uint8_t textureNeedsUpdate[TEXTURE_COUNT];
 	uint8_t samplerNeedsUpdate[TEXTURE_COUNT];
+
+	VulkanBuffer **boundBuffers;
+	uint32_t boundBufferCount;
+	uint32_t boundBufferCapacity;
+
+	VulkanBuffer **submittedBuffers;
+	uint32_t submittedBufferCount;
+	uint32_t submittedBufferCapacity;
 
 	VulkanBuffer *dummyVertUniformBuffer;
 	VulkanBuffer *dummyFragUniformBuffer;
@@ -1883,9 +1890,9 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	VulkanResourceAccessType *resourceAccessType
 );
 
-static void VULKAN_INTERNAL_RemoveBuffer(
-	FNA3D_Renderer *driverData,
-	FNA3D_Buffer *buffer
+static void VULKAN_INTERNAL_MarkBufferForDestroy(
+	VulkanRenderer *renderer,
+	VulkanBuffer *vulkanBuffer
 );
 
 static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(VulkanRenderer* renderer, void* windowHandle);
@@ -4292,6 +4299,27 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 	VulkanRenderer *renderer,
 	VulkanBuffer *buffer
 ) {
+	uint32_t i;
+
+	if (buffer->bound)
+	{
+		for (i = 0; i < renderer->boundBufferCount; i += 1)
+		{
+			if (renderer->boundBuffers[i] == buffer)
+			{
+				renderer->boundBuffers[i] = NULL;
+			}
+		}
+
+		for (i = 0; i < renderer->submittedBufferCount; i += 1)
+		{
+			if (renderer->submittedBuffers[i] == buffer)
+			{
+				renderer->submittedBuffers[i] = NULL;
+			}
+		}
+	}
+
 	renderer->vkDestroyBuffer(
 		renderer->logicalDevice,
 		buffer->buffer,
@@ -4852,7 +4880,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	VkDeviceSize size,
 	VulkanResourceAccessType resourceAccessType,
 	VkBufferUsageFlags usage,
-	uint8_t isDeviceLocal,
+	uint8_t preferDeviceLocal,
 	uint8_t isStagingBuffer
 ) {
 	VkBufferCreateInfo bufferCreateInfo;
@@ -4863,8 +4891,9 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	buffer->size = size;
 	buffer->resourceAccessType = resourceAccessType;
 	buffer->usage = usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	buffer->preferDeviceLocal = isDeviceLocal;
+	buffer->preferDeviceLocal = preferDeviceLocal;
 	buffer->isStagingBuffer = isStagingBuffer;
+	buffer->bound = 0;
 
 	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufferCreateInfo.pNext = NULL;
@@ -4999,9 +5028,9 @@ static void VULKAN_INTERNAL_ExpandSlowStagingBuffer(
 			nextStagingSize *= 2;
 		}
 
-		VULKAN_INTERNAL_RemoveBuffer(
-			(FNA3D_Renderer*) renderer,
-			(FNA3D_Buffer*) renderer->stagingBuffers[renderer->stagingIndex].slowBuffer
+		VULKAN_INTERNAL_MarkBufferForDestroy(
+			renderer,
+			renderer->stagingBuffers[renderer->stagingIndex].slowBuffer
 		);
 
 		VULKAN_INTERNAL_CreateSlowStagingBuffers(
@@ -6131,6 +6160,33 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	/* Cleanup */
 	VULKAN_INTERNAL_PerformDeferredDestroys(renderer);
 
+	/* Mark previously submitted buffers as unbound */
+	for (i = 0; i < renderer->submittedBufferCount; i += 1)
+	{
+		if (renderer->submittedBuffers[i] != NULL)
+		{
+			renderer->submittedBuffers[i]->bound = 0;
+		}
+	}
+
+	/* Increase the submitted buffer capacity if required */
+	if (renderer->boundBufferCount > renderer->submittedBufferCapacity)
+	{
+		renderer->submittedBufferCapacity = renderer->boundBufferCount;
+		renderer->submittedBuffers = SDL_realloc(
+			renderer->submittedBuffers,
+			renderer->submittedBufferCapacity * sizeof(VulkanBuffer*)
+		);
+	}
+
+	/* Mark previously bound buffers as submitted */
+	for (i = 0; i < renderer->boundBufferCount; i += 1)
+	{
+		renderer->submittedBuffers[i] = renderer->boundBuffers[i];
+	}
+	renderer->submittedBufferCount = renderer->boundBufferCount;
+	renderer->boundBufferCount = 0;
+
 	/* Reset the previously submitted command buffers */
 	for (i = 0; i < renderer->submittedCommandBufferCount; i += 1)
 	{
@@ -6855,13 +6911,10 @@ static void VULKAN_INTERNAL_RecreateSwapchain(
 
 /* Vulkan: Buffer Objects */
 
-static void VULKAN_INTERNAL_RemoveBuffer(
-	FNA3D_Renderer *driverData,
-	FNA3D_Buffer *buffer
+static void VULKAN_INTERNAL_MarkBufferForDestroy(
+	VulkanRenderer *renderer,
+	VulkanBuffer *vulkanBuffer
 ) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
-
 	SDL_LockMutex(renderer->disposeLock);
 
 	/* Queue buffer for destruction */
@@ -6883,6 +6936,27 @@ static void VULKAN_INTERNAL_RemoveBuffer(
 	SDL_UnlockMutex(renderer->disposeLock);
 }
 
+static void VULKAN_INTERNAL_MarkBufferAsBound(
+	VulkanRenderer *renderer,
+	VulkanBuffer *vulkanBuffer
+) {
+	if (vulkanBuffer->bound) { return; }
+
+	vulkanBuffer->bound = 1;
+
+	if (renderer->boundBufferCount >= renderer->boundBufferCapacity)
+	{
+		renderer->boundBufferCapacity *= 2;
+		renderer->boundBuffers = SDL_realloc(
+			renderer->boundBuffers,
+			sizeof(VulkanBuffer*) * renderer->boundBufferCapacity
+		);
+	}
+
+	renderer->boundBuffers[renderer->boundBufferCount] = vulkanBuffer;
+	renderer->boundBufferCount += 1;
+}
+
 /* This function is EXTREMELY sensitive. Change this at your own peril. -cosmonaut */
 static void VULKAN_INTERNAL_SetBufferData(
 	FNA3D_Renderer *driverData,
@@ -6893,15 +6967,16 @@ static void VULKAN_INTERNAL_SetBufferData(
 	FNA3D_SetDataOptions options
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
+	VulkanBufferContainer *vulkanBufferContainer = (VulkanBufferContainer*) buffer;
+	VulkanBuffer *vulkanBuffer = vulkanBufferContainer->vulkanBuffer;
 	VulkanBuffer *stagingBuffer;
 	VkDeviceSize stagingOffset;
 	VkBufferCopy bufferCopy;
 
-	if (options == FNA3D_SETDATAOPTIONS_NONE || options == FNA3D_SETDATAOPTIONS_DISCARD)
+	if (options == FNA3D_SETDATAOPTIONS_NONE)
 	{
-		/* If NONE or DISCARD is set, we need to do a buffered copy.
-		 * The barrier will synchronize on the GPU so the data isn't overwritten
+		/* If NONE is set, we need to do a buffered copy.
+		 * The barriers will synchronize on the GPU so the data isn't overwritten
 		 * before it needs to be used.
 		 */
 
@@ -6951,7 +7026,24 @@ static void VULKAN_INTERNAL_SetBufferData(
 	}
 	else
 	{
-		/* If NOOVERWRITE is set then we actually want to copy over in-flight data. */
+		if (options == FNA3D_SETDATAOPTIONS_DISCARD && vulkanBuffer->bound)
+		{
+			/* If DISCARD is set and the buffer was bound,
+			 * we allocate a new buffer and replace the pointer.
+			 * The original buffer is marked to be destroyed after processing.
+			 */
+			VULKAN_INTERNAL_MarkBufferForDestroy(renderer, vulkanBuffer);
+			vulkanBufferContainer->vulkanBuffer = VULKAN_INTERNAL_CreateBuffer(
+				renderer,
+				vulkanBuffer->size,
+				vulkanBuffer->resourceAccessType,
+				vulkanBuffer->usage,
+				vulkanBuffer->preferDeviceLocal,
+				vulkanBuffer->isStagingBuffer
+			);
+			vulkanBuffer = vulkanBufferContainer->vulkanBuffer;
+		}
+
 		SDL_memcpy(
 			vulkanBuffer->usedRegion->allocation->mapPointer + vulkanBuffer->usedRegion->resourceOffset + offsetInBytes,
 			data,
@@ -8656,12 +8748,6 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 		}
 	}
 
-	renderer->ldFragUniformBuffer = VK_NULL_HANDLE;
-	renderer->ldFragUniformOffset = 0;
-	renderer->ldFragUniformSize = 0;
-	renderer->ldVertUniformBuffer = VK_NULL_HANDLE;
-	renderer->ldVertUniformOffset = 0;
-	renderer->ldVertUniformSize = 0;
 	renderer->currentPipeline = VK_NULL_HANDLE;
 
 	renderer->needNewRenderPass = 0;
@@ -9328,7 +9414,7 @@ static void VULKAN_DrawInstancedPrimitives(
 	FNA3D_IndexElementSize indexElementSize
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanBuffer *indexBuffer = (VulkanBuffer*) indices;
+	VulkanBuffer *indexBuffer = ((VulkanBufferContainer*) indices)->vulkanBuffer;
 	VkDescriptorSet descriptorSets[4];
 	MOJOSHADER_vkShader *vertShader, *fragShader;
 	ShaderResources *vertShaderResources, *fragShaderResources;
@@ -9342,6 +9428,8 @@ static void VULKAN_DrawInstancedPrimitives(
 		indexBuffer->buffer,
 		&indexBuffer->resourceAccessType
 	);
+
+	VULKAN_INTERNAL_MarkBufferAsBound(renderer, indexBuffer);
 
 	if (primitiveType != renderer->currentPrimitiveType)
 	{
@@ -9908,7 +9996,7 @@ static void VULKAN_ApplyVertexBufferBindings(
 
 	for (i = 0; i < numBindings; i += 1)
 	{
-		vertexBuffer = (VulkanBuffer*) bindings[i].vertexBuffer;
+		vertexBuffer = ((VulkanBufferContainer*) bindings[i].vertexBuffer)->vulkanBuffer;
 		if (vertexBuffer == NULL)
 		{
 			continue;
@@ -9928,6 +10016,8 @@ static void VULKAN_ApplyVertexBufferBindings(
 			vertexBuffer->buffer,
 			&vertexBuffer->resourceAccessType
 		);
+
+		VULKAN_INTERNAL_MarkBufferAsBound(renderer, vertexBuffer);
 	}
 }
 
@@ -11005,7 +11095,8 @@ static FNA3D_Buffer* VULKAN_GenVertexBuffer(
 	FNA3D_BufferUsage usage,
 	int32_t sizeInBytes
 ) {
-	return (FNA3D_Buffer*) VULKAN_INTERNAL_CreateBuffer(
+	VulkanBufferContainer *bufferContainer = SDL_malloc(sizeof(VulkanBufferContainer));
+	bufferContainer->vulkanBuffer = VULKAN_INTERNAL_CreateBuffer(
 		(VulkanRenderer*) driverData,
 		sizeInBytes,
 		RESOURCE_ACCESS_VERTEX_BUFFER,
@@ -11013,13 +11104,18 @@ static FNA3D_Buffer* VULKAN_GenVertexBuffer(
 		0,
 		0
 	);
+	return (FNA3D_Buffer*) bufferContainer;
 }
 
 static void VULKAN_AddDisposeVertexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
-	VULKAN_INTERNAL_RemoveBuffer(driverData, buffer);
+	VULKAN_INTERNAL_MarkBufferForDestroy(
+		(VulkanRenderer*) driverData,
+		((VulkanBufferContainer*)buffer)->vulkanBuffer
+	);
+	SDL_free(buffer);
 }
 
 static void VULKAN_SetVertexBufferData(
@@ -11032,7 +11128,6 @@ static void VULKAN_SetVertexBufferData(
 	int32_t vertexStride,
 	FNA3D_SetDataOptions options
 ) {
-	/* FIXME: use staging buffer for elementSizeInBytes < vertexStride */
 	VULKAN_INTERNAL_SetBufferData(
 		driverData,
 		buffer,
@@ -11053,7 +11148,7 @@ static void VULKAN_GetVertexBufferData(
 	int32_t vertexStride
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
+	VulkanBuffer *vulkanBuffer = ((VulkanBufferContainer*) buffer)->vulkanBuffer;
 	uint8_t *dataBytes, *cpy, *src, *dst;
 	uint8_t useStagingBuffer;
 	int32_t i;
@@ -11112,7 +11207,8 @@ static FNA3D_Buffer* VULKAN_GenIndexBuffer(
 	FNA3D_BufferUsage usage,
 	int32_t sizeInBytes
 ) {
-	return (FNA3D_Buffer*) VULKAN_INTERNAL_CreateBuffer(
+	VulkanBufferContainer *bufferContainer = SDL_malloc(sizeof(VulkanBufferContainer));
+	bufferContainer->vulkanBuffer = VULKAN_INTERNAL_CreateBuffer(
 		(VulkanRenderer*) driverData,
 		sizeInBytes,
 		RESOURCE_ACCESS_INDEX_BUFFER,
@@ -11120,13 +11216,18 @@ static FNA3D_Buffer* VULKAN_GenIndexBuffer(
 		0,
 		0
 	);
+	return (FNA3D_Buffer*) bufferContainer;
 }
 
 static void VULKAN_AddDisposeIndexBuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer
 ) {
-	VULKAN_INTERNAL_RemoveBuffer(driverData, buffer);
+	VULKAN_INTERNAL_MarkBufferForDestroy(
+		(VulkanRenderer*) driverData,
+		((VulkanBufferContainer*)buffer)->vulkanBuffer
+	);
+	SDL_free(buffer);
 }
 
 static void VULKAN_SetIndexBufferData(
@@ -11155,7 +11256,7 @@ static void VULKAN_GetIndexBufferData(
 	int32_t dataLength
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
+	VulkanBuffer *vulkanBuffer = ((VulkanBufferContainer*) buffer)->vulkanBuffer;
 
 	VULKAN_INTERNAL_BufferMemoryBarrier(
 		renderer,
@@ -11877,7 +11978,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 
 	/* Variables: Create dummy data */
 	VkSamplerCreateInfo samplerCreateInfo;
-	uint8_t dummyData[] = { 0 };
 
 	/* Variables: Create UBO pool and dummy UBO descriptor sets */
 	VkDescriptorPoolSize descriptorPoolSize;
@@ -12653,6 +12753,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer->dummyFragTextureCube->image,
 		&renderer->dummyFragTextureCube->resourceAccessType
 	);
+
 	renderer->dummyVertUniformBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
 		renderer,
 		1,
@@ -12661,14 +12762,13 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		0,
 		0
 	);
-	VULKAN_INTERNAL_SetBufferData(
-		(FNA3D_Renderer*) renderer,
-		(FNA3D_Buffer*) renderer->dummyVertUniformBuffer,
+	SDL_memset(
+		renderer->dummyVertUniformBuffer->usedRegion->allocation->mapPointer +
+		renderer->dummyVertUniformBuffer->usedRegion->resourceOffset,
 		0,
-		&dummyData,
-		1,
-		FNA3D_SETDATAOPTIONS_NOOVERWRITE
+		1
 	);
+
 	renderer->dummyFragUniformBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
 		renderer,
 		1,
@@ -12677,13 +12777,11 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		0,
 		0
 	);
-	VULKAN_INTERNAL_SetBufferData(
-		(FNA3D_Renderer*) renderer,
-		(FNA3D_Buffer*) renderer->dummyFragUniformBuffer,
+	SDL_memset(
+		renderer->dummyFragUniformBuffer->usedRegion->allocation->mapPointer +
+		renderer->dummyVertUniformBuffer->usedRegion->resourceOffset,
 		0,
-		&dummyData,
-		1,
-		FNA3D_SETDATAOPTIONS_NOOVERWRITE
+		1
 	);
 
 	samplerCreateInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
@@ -12832,6 +12930,16 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer->textures[MAX_TEXTURE_SAMPLERS + i] = &NullTexture;
 		renderer->samplers[MAX_TEXTURE_SAMPLERS + i] = renderer->dummyVertSamplerState;
 	}
+
+	/* init bound buffer storage */
+
+	renderer->boundBufferCapacity = 4;
+	renderer->boundBufferCount = 0;
+	renderer->boundBuffers = SDL_malloc(renderer->boundBufferCapacity * sizeof(VulkanBuffer*));
+
+	renderer->submittedBufferCapacity = 4;
+	renderer->submittedBufferCount = 0;
+	renderer->submittedBuffers = SDL_malloc(renderer->submittedBufferCapacity * sizeof(VulkanBuffer*));
 
 	renderer->needDefrag = 0;
 	renderer->defragTimer = 0;
