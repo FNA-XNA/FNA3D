@@ -6898,14 +6898,14 @@ static void VULKAN_INTERNAL_SetBufferData(
 	VkDeviceSize stagingOffset;
 	VkBufferCopy bufferCopy;
 
-	VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
-
 	if (options == FNA3D_SETDATAOPTIONS_NONE || options == FNA3D_SETDATAOPTIONS_DISCARD)
 	{
 		/* If NONE or DISCARD is set, we need to do a buffered copy.
 		 * The barrier will synchronize on the GPU so the data isn't overwritten
 		 * before it needs to be used.
 		 */
+
+		VULKAN_INTERNAL_MaybeEndRenderPass(renderer, 1);
 
 		SDL_LockMutex(renderer->passLock);
 		SDL_LockMutex(renderer->stagingLock);
