@@ -3489,7 +3489,7 @@ static uint8_t VULKAN_INTERNAL_BindResourceMemory(
 	if (	(buffer == VK_NULL_HANDLE && image == VK_NULL_HANDLE) ||
 		(buffer != VK_NULL_HANDLE && image != VK_NULL_HANDLE)	)
 	{
-		FNA3D_LogError("BindResourceMemory must be given either a VulkanSubBuffer or a VulkanTexture");
+		FNA3D_LogError("BindResourceMemory must be given either a VulkanBuffer or a VulkanTexture");
 		return 0;
 	}
 
