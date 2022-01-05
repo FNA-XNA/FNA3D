@@ -151,9 +151,9 @@ static inline void CreateDeviceExtensionArray(
 #define STARTING_ALLOCATION_SIZE 64000000 /* 64MB */
 #define ALLOCATION_INCREMENT 16000000 /* 16MB */
 #define MAX_ALLOCATION_SIZE 256000000 /* 256MB */
-#define FAST_TEXTURE_STAGING_SIZE 64000000 /* 64MB */
-#define STARTING_SLOW_TEXTURE_STAGING_SIZE 16000000 /* 16MB */
-#define MAX_SLOW_TEXTURE_STAGING_SIZE 256000000 /* 256MB */
+#define FAST_STAGING_SIZE 64000000 /* 64MB */
+#define STARTING_SLOW_STAGING_SIZE 16000000 /* 16MB */
+#define MAX_SLOW_STAGING_SIZE 128000000 /* 128MB */
 
 /* Should be equivalent to the number of values in FNA3D_PrimitiveType */
 #define PRIMITIVE_TYPES_COUNT 5
@@ -4990,7 +4990,7 @@ static void VULKAN_INTERNAL_ExpandSlowStagingBuffer(
 ) {
 	VkDeviceSize nextStagingSize = renderer->stagingBuffers[renderer->stagingIndex].slowBuffer->size;
 
-	if (renderer->stagingBuffers[renderer->stagingIndex].slowBuffer->size < MAX_SLOW_TEXTURE_STAGING_SIZE)
+	if (renderer->stagingBuffers[renderer->stagingIndex].slowBuffer->size < MAX_SLOW_STAGING_SIZE)
 	{
 		nextStagingSize *= 2;
 
@@ -5145,11 +5145,11 @@ static void VULKAN_INTERNAL_PrepareCopyFromStagingBuffer(
 static void VULKAN_INTERNAL_CreateStagingBuffer(
 	VulkanRenderer *renderer
 ) {
-	VULKAN_INTERNAL_CreateFastStagingBuffers(renderer, FAST_TEXTURE_STAGING_SIZE);
+	VULKAN_INTERNAL_CreateFastStagingBuffers(renderer, FAST_STAGING_SIZE);
 	renderer->stagingBuffers[0].fastBufferOffset = 0;
 	renderer->stagingBuffers[1].fastBufferOffset = 0;
 
-	VULKAN_INTERNAL_CreateSlowStagingBuffers(renderer, STARTING_SLOW_TEXTURE_STAGING_SIZE);
+	VULKAN_INTERNAL_CreateSlowStagingBuffers(renderer, STARTING_SLOW_STAGING_SIZE);
 	renderer->stagingBuffers[0].slowBufferOffset = 0;
 	renderer->stagingBuffers[1].slowBufferOffset = 0;
 }
