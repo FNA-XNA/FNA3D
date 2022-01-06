@@ -6523,6 +6523,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	VulkanSwapchainData *swapchainData;
 	VkSwapchainCreateInfoKHR swapchainCreateInfo;
 	VkImageViewCreateInfo createInfo;
+	VkBool32 supportsPresent;
 
 	swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
 
@@ -6568,6 +6569,19 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 			"SDL_Vulkan_CreateSurface failed: %s",
 			SDL_GetError()
 		);
+		return CREATE_SWAPCHAIN_FAIL;
+	}
+
+	renderer->vkGetPhysicalDeviceSurfaceSupportKHR(
+		renderer->physicalDevice,
+		renderer->queueFamilyIndex,
+		swapchainData->surface,
+		&supportsPresent
+	);
+
+	if (!supportsPresent)
+	{
+		FNA3D_LogError("This surface does not support presenting!");
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
