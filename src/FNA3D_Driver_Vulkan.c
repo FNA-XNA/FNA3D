@@ -10101,7 +10101,7 @@ static void VULKAN_ResetBackbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_PresentationParameters *presentationParameters
 ) {
-	int32_t i, j;
+	int32_t i;
 
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	renderer->presentInterval = presentationParameters->presentationInterval;
@@ -12248,7 +12248,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		&renderer->swapchainSupportDetails
 	)) {
 		FNA3D_LogError("Device does not support swap chain creation");
-		return CREATE_SWAPCHAIN_FAIL;
+		return NULL;
 	}
 
 	renderer->swapchainFormat = renderer->backBufferIsSRGB
@@ -12279,7 +12279,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 			&renderer->surfaceFormat
 		)) {
 			FNA3D_LogError("Device does not support swap chain format");
-			return CREATE_SWAPCHAIN_FAIL;
+			return NULL;
 		}
 	}
 
@@ -12290,7 +12290,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		&renderer->presentMode
 	)) {
 		FNA3D_LogError("Device does not support swap chain present mode");
-		return CREATE_SWAPCHAIN_FAIL;
+		return NULL;
 	}
 
 	renderer->vkDestroySurfaceKHR(renderer->instance, surface, NULL);
