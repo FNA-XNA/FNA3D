@@ -4959,6 +4959,7 @@ static void VULKAN_INTERNAL_CreateFastStagingBuffers(
 		1,
 		1
 	);
+	renderer->stagingBuffers[0].fastBufferOffset = 0;
 
 	renderer->stagingBuffers[1].fastBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
 		renderer,
@@ -4968,13 +4969,15 @@ static void VULKAN_INTERNAL_CreateFastStagingBuffers(
 		1,
 		1
 	);
+	renderer->stagingBuffers[0].fastBufferOffset = 0;
 }
 
-static void VULKAN_INTERNAL_CreateSlowStagingBuffers(
+static void VULKAN_INTERNAL_CreateSlowStagingBuffer(
 	VulkanRenderer *renderer,
-	VkDeviceSize size
+	VkDeviceSize size,
+	uint32_t index
 ) {
-	renderer->stagingBuffers[0].slowBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
+	renderer->stagingBuffers[index].slowBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
 		renderer,
 		size,
 		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
@@ -4983,24 +4986,12 @@ static void VULKAN_INTERNAL_CreateSlowStagingBuffers(
 		1
 	);
 
-	if (renderer->stagingBuffers[0].slowBuffer == NULL)
+	if (renderer->stagingBuffers[index].slowBuffer == NULL)
 	{
 		FNA3D_LogError("Failed to create slow texture staging buffer!");
 	}
 
-	renderer->stagingBuffers[1].slowBuffer = (VulkanBuffer*) VULKAN_INTERNAL_CreateBuffer(
-		renderer,
-		size,
-		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
-		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-		0,
-		1
-	);
-
-	if (renderer->stagingBuffers[1].slowBuffer == NULL)
-	{
-		FNA3D_LogError("Failed to create slow texture staging buffer!");
-	}
+	renderer->stagingBuffers[index].slowBufferOffset = 0;
 }
 
 static void VULKAN_INTERNAL_ExpandSlowStagingBuffer(
@@ -5023,9 +5014,10 @@ static void VULKAN_INTERNAL_ExpandSlowStagingBuffer(
 			renderer->stagingBuffers[renderer->stagingIndex].slowBuffer
 		);
 
-		VULKAN_INTERNAL_CreateSlowStagingBuffers(
+		VULKAN_INTERNAL_CreateSlowStagingBuffer(
 			renderer,
-			nextStagingSize
+			nextStagingSize,
+			renderer->stagingIndex
 		);
 	}
 }
@@ -5165,12 +5157,8 @@ static void VULKAN_INTERNAL_CreateStagingBuffer(
 	VulkanRenderer *renderer
 ) {
 	VULKAN_INTERNAL_CreateFastStagingBuffers(renderer, FAST_STAGING_SIZE);
-	renderer->stagingBuffers[0].fastBufferOffset = 0;
-	renderer->stagingBuffers[1].fastBufferOffset = 0;
-
-	VULKAN_INTERNAL_CreateSlowStagingBuffers(renderer, STARTING_SLOW_STAGING_SIZE);
-	renderer->stagingBuffers[0].slowBufferOffset = 0;
-	renderer->stagingBuffers[1].slowBufferOffset = 0;
+	VULKAN_INTERNAL_CreateSlowStagingBuffer(renderer, STARTING_SLOW_STAGING_SIZE, 0);
+	VULKAN_INTERNAL_CreateSlowStagingBuffer(renderer, STARTING_SLOW_STAGING_SIZE, 1);
 }
 
 /* Vulkan: Descriptor Set Logic */
