@@ -230,8 +230,7 @@ typedef enum VulkanResourceAccessType
 typedef enum CreateSwapchainResult
 {
 	CREATE_SWAPCHAIN_FAIL,
-	CREATE_SWAPCHAIN_SUCCESS,
-	CREATE_SWAPCHAIN_SURFACE_ZERO,
+	CREATE_SWAPCHAIN_SUCCESS
 } CreateSwapchainResult;
 
 /* Image Barriers */
@@ -1017,6 +1016,7 @@ typedef struct VulkanSwapchainData
 	VkPresentModeKHR presentMode;
 	VkFormat swapchainFormat;
 	VkComponentMapping swapchainSwizzle;
+	VkExtent2D extent;
 	VkImage *images;
 	VulkanResourceAccessType *resourceAccessTypes;
 	VkImageView *views;
@@ -1210,7 +1210,7 @@ typedef struct VulkanRenderer
 
 	VulkanSwapchainData** swapchainDatas;
 	uint32_t swapchainDataCount;
-	VkExtent2D swapchainExtent;
+	uint32_t swapchainDataCapacity;
 
 	PackedVertexBufferBindingsArray vertexBufferBindingsCache;
 	VkPipelineCache pipelineCache;
@@ -6032,8 +6032,8 @@ static void VULKAN_INTERNAL_SwapChainBlit(
 	{
 		dstRect.x = 0;
 		dstRect.y = 0;
-		dstRect.w = renderer->swapchainExtent.width;
-		dstRect.h = renderer->swapchainExtent.height;
+		dstRect.w = swapchainData->extent.width;
+		dstRect.h = swapchainData->extent.height;
 	}
 
 	/* Blit the framebuffer! */
@@ -6537,6 +6537,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	VkImageViewCreateInfo createInfo;
 	SwapChainSupportDetails swapchainSupportDetails;
 	uint8_t swapchainSupport;
+	int32_t drawableWidth, drawableHeight;
 
 	swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
 
@@ -6544,11 +6545,6 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	{
 		FNA3D_LogError("Swapchain already exists for this window! Destroy it first!");
 		return CREATE_SWAPCHAIN_FAIL;
-	}
-
-	if (renderer->swapchainExtent.width == 0 || renderer->swapchainExtent.height == 0)
-	{
-		return CREATE_SWAPCHAIN_SURFACE_ZERO;
 	}
 
 	swapchainData = SDL_malloc(sizeof(VulkanSwapchainData));
@@ -6610,6 +6606,14 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 			&swapchainData->surfaceFormat
 		)) {
 			FNA3D_LogError("Device does not support swap chain format");
+			if (swapchainSupportDetails.formatsLength > 0)
+			{
+				SDL_free(swapchainSupportDetails.formats);
+			}
+			if (swapchainSupportDetails.presentModesLength > 0)
+			{
+				SDL_free(swapchainSupportDetails.presentModes);
+			}
 			return CREATE_SWAPCHAIN_FAIL;
 		}
 	}
@@ -6621,10 +6625,63 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		&swapchainData->presentMode
 	)) {
 		FNA3D_LogError("Device does not support swap chain present mode");
+		if (swapchainSupportDetails.formatsLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.formats);
+		}
+		if (swapchainSupportDetails.presentModesLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.presentModes);
+		}
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
 	/* TODO: validate swapchain extents */
+
+	SDL_Vulkan_GetDrawableSize(
+		(SDL_Window*) windowHandle,
+		&drawableWidth,
+		&drawableHeight
+	);
+
+	if (	drawableWidth < swapchainSupportDetails.capabilities.minImageExtent.width ||
+		drawableWidth > swapchainSupportDetails.capabilities.maxImageExtent.width ||
+		drawableHeight < swapchainSupportDetails.capabilities.minImageExtent.height ||
+		drawableHeight > swapchainSupportDetails.capabilities.maxImageExtent.height	)
+	{
+		FNA3D_LogWarn("Drawable size not possible for this VkSurface!");
+
+		if (swapchainSupportDetails.capabilities.currentExtent.width != UINT32_MAX)
+		{
+			FNA3D_LogWarn("Falling back to an acceptable swapchain extent.");
+			drawableWidth = SDL_clamp(
+				drawableWidth,
+				swapchainSupportDetails.capabilities.minImageExtent.width,
+				swapchainSupportDetails.capabilities.maxImageExtent.width
+			);
+			drawableHeight = SDL_clamp(
+				drawableHeight,
+				swapchainSupportDetails.capabilities.minImageExtent.height,
+				swapchainSupportDetails.capabilities.maxImageExtent.height
+			);
+		}
+		else
+		{
+			FNA3D_LogError("No fallback swapchain size available!");
+			if (swapchainSupportDetails.formatsLength > 0)
+			{
+				SDL_free(swapchainSupportDetails.formats);
+			}
+			if (swapchainSupportDetails.presentModesLength > 0)
+			{
+				SDL_free(swapchainSupportDetails.presentModes);
+			}
+			return CREATE_SWAPCHAIN_FAIL;
+		}
+	}
+
+	swapchainData->extent.width = drawableWidth;
+	swapchainData->extent.height = drawableHeight;
 
 	swapchainData->imageCount = swapchainSupportDetails.capabilities.minImageCount + 1;
 
@@ -6652,7 +6709,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	swapchainCreateInfo.minImageCount = swapchainData->imageCount;
 	swapchainCreateInfo.imageFormat = swapchainData->surfaceFormat.format;
 	swapchainCreateInfo.imageColorSpace = swapchainData->surfaceFormat.colorSpace;
-	swapchainCreateInfo.imageExtent = renderer->swapchainExtent;
+	swapchainCreateInfo.imageExtent = swapchainData->extent;
 	swapchainCreateInfo.imageArrayLayers = 1;
 	swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 	swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
@@ -6686,6 +6743,14 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	if (!swapchainData->images)
 	{
 		SDL_OutOfMemory();
+		if (swapchainSupportDetails.formatsLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.formats);
+		}
+		if (swapchainSupportDetails.presentModesLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.presentModes);
+		}
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
@@ -6695,6 +6760,14 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	if (!swapchainData->views)
 	{
 		SDL_OutOfMemory();
+		if (swapchainSupportDetails.formatsLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.formats);
+		}
+		if (swapchainSupportDetails.presentModesLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.presentModes);
+		}
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
@@ -6704,6 +6777,14 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	if (!swapchainData->resourceAccessTypes)
 	{
 		SDL_OutOfMemory();
+		if (swapchainSupportDetails.formatsLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.formats);
+		}
+		if (swapchainSupportDetails.presentModesLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.presentModes);
+		}
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
@@ -6746,9 +6827,26 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	}
 
 	SDL_SetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA, swapchainData);
-	renderer->swapchainDatas = SDL_realloc(renderer->swapchainDatas, sizeof(VulkanSwapchainData*) * (renderer->swapchainDataCount + 1));
+
+	if (renderer->swapchainDataCount >= renderer->swapchainDataCapacity)
+	{
+		renderer->swapchainDataCapacity *= 2;
+		renderer->swapchainDatas = SDL_realloc(
+			renderer->swapchainDatas,
+			renderer->swapchainDataCapacity * sizeof(VulkanSwapchainData*)
+		);
+	}
 	renderer->swapchainDatas[renderer->swapchainDataCount] = swapchainData;
 	renderer->swapchainDataCount += 1;
+
+	if (swapchainSupportDetails.formatsLength > 0)
+	{
+		SDL_free(swapchainSupportDetails.formats);
+	}
+	if (swapchainSupportDetails.presentModesLength > 0)
+	{
+		SDL_free(swapchainSupportDetails.presentModes);
+	}
 
 	return CREATE_SWAPCHAIN_SUCCESS;
 }
@@ -6811,7 +6909,6 @@ static void VULKAN_INTERNAL_DestroySwapchain(
 		if (windowHandle == renderer->swapchainDatas[i]->windowHandle)
 		{
 			renderer->swapchainDatas[i] = renderer->swapchainDatas[renderer->swapchainDataCount - 1];
-			SDL_realloc(renderer->swapchainDatas, sizeof(VulkanSwapchainData*) * (renderer->swapchainDataCount - 1));
 			renderer->swapchainDataCount -= 1;
 			break;
 		}
@@ -6828,11 +6925,6 @@ static void VULKAN_INTERNAL_RecreateSwapchain(
 	CreateSwapchainResult createSwapchainResult;
 
 	renderer->vkDeviceWaitIdle(renderer->logicalDevice);
-
-	if (renderer->swapchainExtent.width == 0 || renderer->swapchainExtent.height == 0)
-	{
-		return;
-	}
 
 	VULKAN_INTERNAL_DestroySwapchain(renderer, windowHandle);
 	createSwapchainResult = VULKAN_INTERNAL_CreateSwapchain(renderer, windowHandle);
@@ -9194,6 +9286,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	{
 		VULKAN_INTERNAL_DestroySwapchain(renderer, renderer->swapchainDatas[j]->windowHandle);
 	}
+	SDL_free(renderer->swapchainDatas);
 
 	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
 	{
@@ -10184,8 +10277,10 @@ static void VULKAN_ResetBackbuffer(
 	FNA3D_PresentationParameters *presentationParameters
 ) {
 	int32_t i;
-
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	uint8_t recreateSwapchains =
+		(presentationParameters->backBufferWidth != renderer->fauxBackbufferWidth ||
+		presentationParameters->backBufferHeight != renderer->fauxBackbufferHeight);
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 
@@ -10195,19 +10290,13 @@ static void VULKAN_ResetBackbuffer(
 		presentationParameters
 	);
 
-	if (presentationParameters->backBufferWidth != renderer->swapchainExtent.width ||
-		presentationParameters->backBufferHeight != renderer->swapchainExtent.height)
+	if (recreateSwapchains)
 	{
-		renderer->swapchainExtent.width = presentationParameters->backBufferWidth;
-		renderer->swapchainExtent.height = presentationParameters->backBufferHeight;
-
 		for (i = renderer->swapchainDataCount - 1; i >= 0; i -= 1)
 		{
 			VULKAN_INTERNAL_RecreateSwapchain(renderer, renderer->swapchainDatas[i]->windowHandle);
 		}
 	}
-
-
 }
 
 static void VULKAN_ReadBackbuffer(
@@ -12336,10 +12425,9 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	 * Create initial swapchain
 	 */
 
-	renderer->swapchainDatas = NULL;
+	renderer->swapchainDataCapacity = 4;
 	renderer->swapchainDataCount = 0;
-	renderer->swapchainExtent.width = renderer->fauxBackbufferWidth;
-	renderer->swapchainExtent.height = renderer->fauxBackbufferHeight;
+	renderer->swapchainDatas = SDL_malloc(renderer->swapchainDataCapacity * sizeof(VulkanSwapchainData*));
 
 	if (VULKAN_INTERNAL_CreateSwapchain(renderer, presentationParameters->deviceWindowHandle) != CREATE_SWAPCHAIN_SUCCESS)
 	{
