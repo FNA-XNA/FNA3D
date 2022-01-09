@@ -11166,6 +11166,7 @@ static void VULKAN_SetVertexBufferData(
 	int32_t vertexStride,
 	FNA3D_SetDataOptions options
 ) {
+	/* FIXME: use staging buffer for elementSizeInBytes < vertexStride */
 	VULKAN_INTERNAL_SetBufferData(
 		driverData,
 		buffer,
@@ -11274,7 +11275,6 @@ static void VULKAN_SetIndexBufferData(
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
 ) {
-	/* FIXME: use staging buffer for elementSizeInBytes < vertexStride */
 	VULKAN_INTERNAL_SetBufferData(
 		driverData,
 		buffer,
