@@ -38,7 +38,7 @@
 #include <SDL.h>
 #include <SDL_vulkan.h>
 
-#define clamp(val, min, max) SDL_max(min, SDL_min(val, max))
+#define VULKAN_INTERNAL_clamp(val, min, max) SDL_max(min, SDL_min(val, max))
 
 /* Global Vulkan Loader Entry Points */
 
@@ -6170,7 +6170,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	{
 		SDL_GetCurrentDisplayMode(
 			SDL_GetWindowDisplayIndex(
-				windowHandle
+				(SDL_Window*) windowHandle
 			),
 			&mode
 		);
@@ -6417,7 +6417,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	renderer->activeCommandBufferCount = 0;
 
 	/* Present, if applicable */
-	if (present && validSwapchainExists && acquireSuccess)
+	if (present && acquireSuccess)
 	{
 		if (renderer->supports.GGP_frame_token)
 		{
@@ -6628,7 +6628,6 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 			swapchainSupportDetails.formatsLength,
 			&swapchainData->surfaceFormat
 		)) {
-			FNA3D_LogError("Device does not support swap chain format");
 			if (swapchainSupportDetails.formatsLength > 0)
 			{
 				SDL_free(swapchainSupportDetails.formats);
@@ -6637,6 +6636,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 			{
 				SDL_free(swapchainSupportDetails.presentModes);
 			}
+			FNA3D_LogError("Device does not support swap chain format");
 			return CREATE_SWAPCHAIN_FAIL;
 		}
 	}
@@ -6647,7 +6647,6 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		swapchainSupportDetails.presentModesLength,
 		&swapchainData->presentMode
 	)) {
-		FNA3D_LogError("Device does not support swap chain present mode");
 		if (swapchainSupportDetails.formatsLength > 0)
 		{
 			SDL_free(swapchainSupportDetails.formats);
@@ -6656,6 +6655,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		{
 			SDL_free(swapchainSupportDetails.presentModes);
 		}
+		FNA3D_LogError("Device does not support swap chain present mode");
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
@@ -6689,12 +6689,12 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		if (swapchainSupportDetails.capabilities.currentExtent.width != UINT32_MAX)
 		{
 			FNA3D_LogWarn("Falling back to an acceptable swapchain extent.");
-			drawableWidth = clamp(
+			drawableWidth = VULKAN_INTERNAL_clamp(
 				drawableWidth,
 				swapchainSupportDetails.capabilities.minImageExtent.width,
 				swapchainSupportDetails.capabilities.maxImageExtent.width
 			);
-			drawableHeight = clamp(
+			drawableHeight = VULKAN_INTERNAL_clamp(
 				drawableHeight,
 				swapchainSupportDetails.capabilities.minImageExtent.height,
 				swapchainSupportDetails.capabilities.maxImageExtent.height
@@ -12460,7 +12460,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	 * Create initial swapchain
 	 */
 
-	renderer->swapchainDataCapacity = 4;
+	renderer->swapchainDataCapacity = 1;
 	renderer->swapchainDataCount = 0;
 	renderer->swapchainDatas = SDL_malloc(renderer->swapchainDataCapacity * sizeof(VulkanSwapchainData*));
 
