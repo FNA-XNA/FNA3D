@@ -4969,7 +4969,7 @@ static void VULKAN_INTERNAL_CreateFastStagingBuffers(
 		1,
 		1
 	);
-	renderer->stagingBuffers[0].fastBufferOffset = 0;
+	renderer->stagingBuffers[1].fastBufferOffset = 0;
 }
 
 static void VULKAN_INTERNAL_CreateSlowStagingBuffer(
@@ -6914,7 +6914,10 @@ static void VULKAN_INTERNAL_MarkBufferAsBound(
 	VulkanRenderer *renderer,
 	VulkanBuffer *vulkanBuffer
 ) {
-	if (vulkanBuffer->bound) { return; }
+	if (vulkanBuffer->bound)
+	{
+		return;
+	}
 
 	vulkanBuffer->bound = 1;
 
@@ -11271,6 +11274,7 @@ static void VULKAN_SetIndexBufferData(
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
 ) {
+	/* FIXME: use staging buffer for elementSizeInBytes < vertexStride */
 	VULKAN_INTERNAL_SetBufferData(
 		driverData,
 		buffer,
