@@ -86,7 +86,7 @@
 #define MARK_QUERYPIXELCOUNT			55
 #define MARK_SETSTRINGMARKER			56
 
-static uint8_t replay(const char *filename)
+static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 {
 	#define READ(val) ops->read(ops, &val, sizeof(val), 1)
 
@@ -279,7 +279,7 @@ static uint8_t replay(const char *filename)
 		presentationParameters.backBufferHeight,
 		flags
 	);
-	device = FNA3D_CreateDevice(&presentationParameters, debugMode);
+	device = FNA3D_CreateDevice(&presentationParameters, debugMode || forceDebugMode);
 
 	/* Go through all the calls, let vsync do the timing if applicable */
 	run = 1;
@@ -1281,21 +1281,35 @@ static uint8_t replay(const char *filename)
 int main(int argc, char **argv)
 {
 	int i;
+	int replayArgIndex = 1;
+	uint8_t forceDebugMode = 0;
 
 	SDL_Init(SDL_INIT_VIDEO);
 
 	/* Make sure we don't recursively trace... */
 	SDL_SetHint("FNA3D_DISABLE_TRACING", "1");
 
-	if (argc < 2)
+	if (argc > 1)
 	{
-		replay("FNA3D_Trace.bin");
-	}
-	else for (i = 1; i < argc; i += 1)
-	{
-		if (replay(argv[i]))
+		if (SDL_strcmp(argv[1], "-debug") == 0)
 		{
-			break;
+			forceDebugMode = 1;
+			replayArgIndex += 1;
+		}
+	}
+
+	if (replayArgIndex == argc)
+	{
+		replay("FNA3D_Trace.bin", forceDebugMode);
+	}
+	else
+	{
+		for (i = replayArgIndex; i < argc; i += 1)
+		{
+			if (replay(argv[i], forceDebugMode))
+			{
+				break;
+			}
 		}
 	}
 
