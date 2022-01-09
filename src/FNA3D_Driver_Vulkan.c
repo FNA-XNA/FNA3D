@@ -1625,7 +1625,7 @@ static VkFormat XNAToVK_SurfaceFormat[] =
 	VK_FORMAT_R16G16_SFLOAT,		/* SurfaceFormat.HalfVector2 */
 	VK_FORMAT_R16G16B16A16_SFLOAT,		/* SurfaceFormat.HalfVector4 */
 	VK_FORMAT_R16G16B16A16_SFLOAT,		/* SurfaceFormat.HdrBlendable */
-	VK_FORMAT_R8G8B8A8_UNORM,		/* SurfaceFormat.ColorBgraEXT */
+	VK_FORMAT_B8G8R8A8_UNORM,		/* SurfaceFormat.ColorBgraEXT */
 	VK_FORMAT_R8G8B8A8_SRGB,		/* SurfaceFormat.ColorSrgbEXT */
 	VK_FORMAT_BC3_SRGB_BLOCK,		/* SurfaceFormat.Dxt5SrgbEXT */
 	VK_FORMAT_BC7_UNORM_BLOCK,		/* SurfaceFormat.BC7EXT */
