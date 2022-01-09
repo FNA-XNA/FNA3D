@@ -6948,9 +6948,9 @@ static void VULKAN_INTERNAL_SetBufferData(
 	VkBufferCopy bufferCopy;
 	uint32_t i;
 
-	if (options == FNA3D_SETDATAOPTIONS_NONE && vulkanBuffer->bound)
+	if (options == FNA3D_SETDATAOPTIONS_NONE)
 	{
-		/* If NONE is set and the buffer was bound, we need to do a buffered copy.
+		/* If NONE is set, we need to do a buffered copy.
 		 * The barriers will synchronize on the GPU so the data isn't overwritten
 		 * before it needs to be used.
 		 */
