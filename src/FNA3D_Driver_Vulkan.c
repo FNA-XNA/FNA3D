@@ -6145,7 +6145,9 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	VkSemaphore semaphores[2];
 	VkSubmitInfo submitInfo;
 	uint32_t i, j;
-	VkResult result, acquireResult, presentResult = VK_SUCCESS;
+	VkResult result;
+	VkResult acquireResult = VK_SUCCESS;
+	VkResult presentResult = VK_SUCCESS;
 	uint8_t acquireSuccess = 0;
 	uint8_t performDefrag = 0;
 	uint8_t createSwapchainResult = 0;
@@ -6453,7 +6455,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	/* Now that commands are totally done, check if we need new swapchain */
 	if (present)
 	{
-		if (	!validSwapchainExists ||	
+		if (	!validSwapchainExists ||
 			acquireResult == VK_ERROR_OUT_OF_DATE_KHR ||
 			acquireResult == VK_SUBOPTIMAL_KHR ||
 			presentResult == VK_ERROR_OUT_OF_DATE_KHR ||
@@ -6566,6 +6568,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 
 	if (swapchainData != NULL)
 	{
+		SDL_free(swapchainData);
 		FNA3D_LogError("Swapchain already exists for this window! Destroy it first!");
 		return CREATE_SWAPCHAIN_FAIL;
 	}
@@ -6579,6 +6582,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		renderer->instance,
 		&swapchainData->surface
 	)) {
+		SDL_free(swapchainData);
 		FNA3D_LogError(
 			"SDL_Vulkan_CreateSurface failed: %s",
 			SDL_GetError()
@@ -6595,6 +6599,20 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 
 	if (swapchainSupport == 0)
 	{
+		renderer->vkDestroySurfaceKHR(
+			renderer->instance,
+			swapchainData->surface,
+			NULL
+		);
+		if (swapchainSupportDetails.formatsLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.formats);
+		}
+		if (swapchainSupportDetails.presentModesLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.presentModes);
+		}
+		SDL_free(swapchainData);
 		FNA3D_LogError("Surface does not support swapchain creation!");
 		return CREATE_SWAPCHAIN_FAIL;
 	}
@@ -6628,6 +6646,11 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 			swapchainSupportDetails.formatsLength,
 			&swapchainData->surfaceFormat
 		)) {
+			renderer->vkDestroySurfaceKHR(
+				renderer->instance,
+				swapchainData->surface,
+				NULL
+			);
 			if (swapchainSupportDetails.formatsLength > 0)
 			{
 				SDL_free(swapchainSupportDetails.formats);
@@ -6636,6 +6659,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 			{
 				SDL_free(swapchainSupportDetails.presentModes);
 			}
+			SDL_free(swapchainData);
 			FNA3D_LogError("Device does not support swap chain format");
 			return CREATE_SWAPCHAIN_FAIL;
 		}
@@ -6647,6 +6671,11 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		swapchainSupportDetails.presentModesLength,
 		&swapchainData->presentMode
 	)) {
+		renderer->vkDestroySurfaceKHR(
+			renderer->instance,
+			swapchainData->surface,
+			NULL
+		);
 		if (swapchainSupportDetails.formatsLength > 0)
 		{
 			SDL_free(swapchainSupportDetails.formats);
@@ -6655,6 +6684,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		{
 			SDL_free(swapchainSupportDetails.presentModes);
 		}
+		SDL_free(swapchainData);
 		FNA3D_LogError("Device does not support swap chain present mode");
 		return CREATE_SWAPCHAIN_FAIL;
 	}
@@ -6675,6 +6705,11 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		if (	swapchainSupportDetails.capabilities.currentExtent.width == 0 ||
 			swapchainSupportDetails.capabilities.currentExtent.height == 0)
 		{
+			renderer->vkDestroySurfaceKHR(
+				renderer->instance,
+				swapchainData->surface,
+				NULL
+			);
 			if (swapchainSupportDetails.formatsLength > 0)
 			{
 				SDL_free(swapchainSupportDetails.formats);
@@ -6683,6 +6718,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 			{
 				SDL_free(swapchainSupportDetails.presentModes);
 			}
+			SDL_free(swapchainData);
 			return CREATE_SWAPCHAIN_SURFACE_ZERO;
 		}
 
@@ -6702,7 +6738,11 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		}
 		else
 		{
-			FNA3D_LogError("No fallback swapchain size available!");
+			renderer->vkDestroySurfaceKHR(
+				renderer->instance,
+				swapchainData->surface,
+				NULL
+			);
 			if (swapchainSupportDetails.formatsLength > 0)
 			{
 				SDL_free(swapchainSupportDetails.formats);
@@ -6711,6 +6751,8 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 			{
 				SDL_free(swapchainSupportDetails.presentModes);
 			}
+			SDL_free(swapchainData);
+			FNA3D_LogError("No fallback swapchain size available!");
 			return CREATE_SWAPCHAIN_FAIL;
 		}
 	}
@@ -6778,6 +6820,11 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	if (!swapchainData->images)
 	{
 		SDL_OutOfMemory();
+		renderer->vkDestroySurfaceKHR(
+			renderer->instance,
+			swapchainData->surface,
+			NULL
+		);
 		if (swapchainSupportDetails.formatsLength > 0)
 		{
 			SDL_free(swapchainSupportDetails.formats);
@@ -6786,6 +6833,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		{
 			SDL_free(swapchainSupportDetails.presentModes);
 		}
+		SDL_free(swapchainData);
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
@@ -6795,6 +6843,11 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	if (!swapchainData->views)
 	{
 		SDL_OutOfMemory();
+		renderer->vkDestroySurfaceKHR(
+			renderer->instance,
+			swapchainData->surface,
+			NULL
+		);
 		if (swapchainSupportDetails.formatsLength > 0)
 		{
 			SDL_free(swapchainSupportDetails.formats);
@@ -6803,6 +6856,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		{
 			SDL_free(swapchainSupportDetails.presentModes);
 		}
+		SDL_free(swapchainData);
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
@@ -6812,6 +6866,11 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	if (!swapchainData->resourceAccessTypes)
 	{
 		SDL_OutOfMemory();
+		renderer->vkDestroySurfaceKHR(
+			renderer->instance,
+			swapchainData->surface,
+			NULL
+		);
 		if (swapchainSupportDetails.formatsLength > 0)
 		{
 			SDL_free(swapchainSupportDetails.formats);
@@ -6820,6 +6879,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		{
 			SDL_free(swapchainSupportDetails.presentModes);
 		}
+		SDL_free(swapchainData);
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
@@ -6854,6 +6914,20 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 
 		if (vulkanResult != VK_SUCCESS)
 		{
+			renderer->vkDestroySurfaceKHR(
+				renderer->instance,
+				swapchainData->surface,
+				NULL
+			);
+			if (swapchainSupportDetails.formatsLength > 0)
+			{
+				SDL_free(swapchainSupportDetails.formats);
+			}
+			if (swapchainSupportDetails.presentModesLength > 0)
+			{
+				SDL_free(swapchainSupportDetails.presentModes);
+			}
+			SDL_free(swapchainData);
 			FNA3D_LogError("vkCreateImageView: %s", VkErrorMessages(vulkanResult));
 			return CREATE_SWAPCHAIN_FAIL;
 		}
@@ -6897,7 +6971,6 @@ static void VULKAN_INTERNAL_DestroySwapchain(
 
 	if (swapchainData == NULL)
 	{
-		FNA3D_LogError("No swapchain exists for that window handle!");
 		return;
 	}
 
