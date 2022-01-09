@@ -233,7 +233,7 @@ typedef enum CreateSwapchainResult
 {
 	CREATE_SWAPCHAIN_FAIL,
 	CREATE_SWAPCHAIN_SUCCESS,
-	CREATE_SWAPCHAIN_SURFACE_ZERO
+	CREATE_SWAPCHAIN_SURFACE_ZERO,
 } CreateSwapchainResult;
 
 /* Image Barriers */
@@ -1013,18 +1013,23 @@ static inline void PipelineLayoutHashArray_Insert(
 
 typedef struct VulkanSwapchainData
 {
-	VkSwapchainKHR swapchain;
+	/* Window surface */
 	VkSurfaceKHR surface;
 	VkSurfaceFormatKHR surfaceFormat;
-	VkPresentModeKHR presentMode;
+	void *windowHandle;
+
+	/* Swapchain for window surface */
+	VkSwapchainKHR swapchain;
 	VkFormat swapchainFormat;
 	VkComponentMapping swapchainSwizzle;
+	VkPresentModeKHR presentMode;
+
+	/* Swapchain images */
 	VkExtent2D extent;
 	VkImage *images;
-	VulkanResourceAccessType *resourceAccessTypes;
 	VkImageView *views;
+	VulkanResourceAccessType *resourceAccessTypes;
 	uint32_t imageCount;
-	void *windowHandle;
 } VulkanSwapchainData;
 
 typedef struct VulkanMemoryAllocation VulkanMemoryAllocation;
@@ -2080,7 +2085,7 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 
 	if (!supportsPresent)
 	{
-		FNA3D_LogError("This surface does not support presenting!");
+		FNA3D_LogWarn("This surface does not support presenting!");
 		return 0;
 	}
 
