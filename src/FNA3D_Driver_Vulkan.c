@@ -1443,6 +1443,7 @@ typedef struct VulkanRenderer
 	/* Capabilities */
 	uint8_t supportsDxt1;
 	uint8_t supportsS3tc;
+	uint8_t supportsBc7;
 	uint8_t supportsDebugUtils;
 	uint8_t supportsSRGBRenderTarget;
 	uint8_t debugMode;
@@ -11727,6 +11728,12 @@ static uint8_t VULKAN_SupportsS3TC(FNA3D_Renderer *driverData)
 	return renderer->supportsS3tc;
 }
 
+static uint8_t VULKAN_SupportsBC7(FNA3D_Renderer *driverData)
+{
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	return renderer->supportsBc7;
+}
+
 static uint8_t VULKAN_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
 {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
@@ -12620,6 +12627,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		SUPPORTED_FORMAT(formatPropsBC2) ||
 		SUPPORTED_FORMAT(formatPropsBC3)
 	);
+	renderer->supportsBc7 = SUPPORTED_FORMAT(formatPropsBC7);
 
 	renderer->supportsSRGBRenderTarget = (
 		SUPPORTED_FORMAT(formatPropsSrgbRT) && (formatPropsSrgbRT.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)

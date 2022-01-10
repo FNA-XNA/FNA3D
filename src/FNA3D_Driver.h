@@ -693,6 +693,7 @@ struct FNA3D_Device
 
 	uint8_t (*SupportsDXT1)(FNA3D_Renderer *driverData);
 	uint8_t (*SupportsS3TC)(FNA3D_Renderer *driverData);
+	uint8_t (*SupportsBC7)(FNA3D_Renderer *driverData);
 	uint8_t (*SupportsHardwareInstancing)(FNA3D_Renderer *driverData);
 	uint8_t (*SupportsNoOverwrite)(FNA3D_Renderer *driverData);
 	uint8_t (*SupportsSRGBRenderTargets)(FNA3D_Renderer *driverData);
@@ -796,6 +797,7 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(QueryPixelCount, name) \
 	ASSIGN_DRIVER_FUNC(SupportsDXT1, name) \
 	ASSIGN_DRIVER_FUNC(SupportsS3TC, name) \
+	ASSIGN_DRIVER_FUNC(SupportsBC7, name) \
 	ASSIGN_DRIVER_FUNC(SupportsHardwareInstancing, name) \
 	ASSIGN_DRIVER_FUNC(SupportsNoOverwrite, name) \
 	ASSIGN_DRIVER_FUNC(SupportsSRGBRenderTargets, name) \

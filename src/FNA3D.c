@@ -1393,6 +1393,16 @@ uint8_t FNA3D_SupportsS3TC(FNA3D_Device *device)
 	return device->SupportsS3TC(device->driverData);
 }
 
+uint8_t FNA3D_SupportsBC7(FNA3D_Device *device)
+{
+	/* Not traced! */
+	if (device == NULL)
+	{
+		return 0;
+	}
+	return device->SupportsBC7(device->driverData);
+}
+
 uint8_t FNA3D_SupportsHardwareInstancing(FNA3D_Device *device)
 {
 	/* Not traced! */

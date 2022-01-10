@@ -5256,6 +5256,12 @@ static uint8_t OPENGL_SupportsS3TC(FNA3D_Renderer *driverData)
 	return renderer->supports_s3tc;
 }
 
+static uint8_t OPENGL_SupportsBC7(FNA3D_Renderer *driverData)
+{
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	return renderer->supports_bc7;
+}
+
 static uint8_t OPENGL_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
@@ -5272,12 +5278,6 @@ static uint8_t OPENGL_SupportsSRGBRenderTargets(FNA3D_Renderer *driverData)
 {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	return renderer->supports_srgb_rendertarget;
-}
-
-static uint8_t OPENGL_SupportsBC7(FNA3D_Renderer *driverData)
-{
-	OpenGLRenderer *renderer = (OpenGLRenderer*)driverData;
-	return renderer->supports_bc7;
 }
 
 static void OPENGL_GetMaxTextureSlots(
@@ -5660,7 +5660,7 @@ static inline void CheckExtensions(
 		SDL_strstr(ext, "GL_EXT_texture_compression_dxt5")
 	);
 	uint8_t bc7 = (
-		SDL_strstr(ext, "GL_ARB_texture_compression_bptc")
+		SDL_strstr(ext, "GL_ARB_texture_compression_bptc") != NULL
 	);
 	uint8_t anisotropicFiltering = (
 		SDL_strstr(ext, "GL_EXT_texture_filter_anisotropic") ||

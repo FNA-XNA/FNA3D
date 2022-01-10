@@ -1476,6 +1476,9 @@ FNA3DAPI uint8_t FNA3D_SupportsDXT1(FNA3D_Device *device);
 /* Returns 1 if the renderer natively supports S3TC texture data. */
 FNA3DAPI uint8_t FNA3D_SupportsS3TC(FNA3D_Device *device);
 
+/* Returns 1 if the renderer natively supports BC7 texture data. */
+FNA3DAPI uint8_t FNA3D_SupportsBC7(FNA3D_Device *device);
+
 /* Returns 1 if the renderer natively supports hardware instancing. */
 FNA3DAPI uint8_t FNA3D_SupportsHardwareInstancing(FNA3D_Device *device);
 

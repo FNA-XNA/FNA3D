@@ -227,8 +227,8 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	uint8_t debugMode;
 	uint32_t supportsDxt1;
 	uint32_t supportsS3tc;
-	uint8_t supportsSRGBRenderTarget;
 	uint32_t supportsBc7;
+	uint8_t supportsSRGBRenderTarget;
 	int32_t maxMultiSampleCount;
 	D3D_FEATURE_LEVEL featureLevel;
 
@@ -4589,6 +4589,12 @@ static uint8_t D3D11_SupportsS3TC(FNA3D_Renderer *driverData)
 {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	return renderer->supportsS3tc;
+}
+
+static uint8_t D3D11_SupportsBC7(FNA3D_Renderer *driverData)
+{
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	return renderer->supportsBc7;
 }
 
 static uint8_t D3D11_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
