@@ -6,7 +6,8 @@ project(FNA3D C)
 # Options
 option(BUILD_SHARED_LIBS "Build shared library" ON)
 option(TRACING_SUPPORT "Build with tracing enabled" OFF)
-option(DISABLE_D3D11 "Disable D3D11 backend")
+option(DISABLE_D3D11 "Disable D3D11 backend" OFF)
+option(BUILD_DXVK_NATIVE "Enable support for dxvk-native" OFF)
 
 # Version
 SET(LIB_MAJOR_VERSION "0")
@@ -60,7 +61,7 @@ if(TRACING_SUPPORT)
 	add_definitions(-DFNA3D_TRACING)
 endif()
 
-if(WIN32 AND NOT DISABLE_D3D11)
+if((WIN32 AND NOT DISABLE_D3D11) OR BUILD_DXVK_NATIVE)
 	add_definitions(
 		-DFNA3D_DRIVER_D3D11
 	)
@@ -134,6 +135,13 @@ target_include_directories(FNA3D PUBLIC
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Vulkan-Headers/include>
 )
+if(BUILD_DXVK_NATIVE)
+	target_include_directories(FNA3D PUBLIC
+		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk-native/include/native/directx>
+		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk-native/include/native/windows>
+		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk-native/include/native/wsi>
+	)
+endif()
 target_include_directories(mojoshader PUBLIC
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/MojoShader>
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Vulkan-Headers/include>
