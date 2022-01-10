@@ -3275,16 +3275,16 @@ static void OPENGL_INTERNAL_SetPresentationInterval(
 	FNA3D_PresentInterval presentInterval,
 	uint8_t isEGL
 ) {
-	int32_t disableLateSwapTear;
+	int32_t enableLateSwapTear;
 
 	if (	presentInterval == FNA3D_PRESENTINTERVAL_DEFAULT ||
 		presentInterval == FNA3D_PRESENTINTERVAL_ONE	)
 	{
-		disableLateSwapTear = (
-			isEGL ||
-			SDL_GetHintBoolean("FNA3D_DISABLE_LATESWAPTEAR", 0)
+		enableLateSwapTear = (
+			!isEGL &&
+			SDL_GetHintBoolean("FNA3D_ENABLE_LATESWAPTEAR", 0)
 		);
-		if (disableLateSwapTear)
+		if (!enableLateSwapTear)
 		{
 			SDL_GL_SetSwapInterval(1);
 		}

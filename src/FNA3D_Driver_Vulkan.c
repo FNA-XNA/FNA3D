@@ -2216,20 +2216,27 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapPresentMode(
 	if (	desiredPresentInterval == FNA3D_PRESENTINTERVAL_DEFAULT ||
 		desiredPresentInterval == FNA3D_PRESENTINTERVAL_ONE	)
 	{
-		if (SDL_GetHintBoolean("FNA3D_DISABLE_LATESWAPTEAR", 0))
+		if (SDL_GetHintBoolean("FNA3D_ENABLE_LATESWAPTEAR", 0))
+		{
+			CHECK_MODE(VK_PRESENT_MODE_FIFO_RELAXED_KHR)
+		}
+		else if (SDL_GetHintBoolean("FNA3D_VULKAN_FORCE_MAILBOX_VSYNC", 0))
+		{
+			CHECK_MODE(VK_PRESENT_MODE_MAILBOX_KHR)
+		}
+		else
 		{
 			*outputPresentMode = VK_PRESENT_MODE_FIFO_KHR;
 			return 1;
 		}
-		if (SDL_GetHintBoolean("FNA3D_VULKAN_FORCE_MAILBOX_VSYNC", 0))
-		{
-			CHECK_MODE(VK_PRESENT_MODE_MAILBOX_KHR)
-		}
-		CHECK_MODE(VK_PRESENT_MODE_FIFO_RELAXED_KHR)
 	}
 	else if (desiredPresentInterval ==  FNA3D_PRESENTINTERVAL_IMMEDIATE)
 	{
 		CHECK_MODE(VK_PRESENT_MODE_IMMEDIATE_KHR)
+
+		/* Some implementations have mailbox in place of immediate. */
+		FNA3D_LogInfo("Fall back to VK_PRESENT_MODE_MAILBOX_KHR.");
+		CHECK_MODE(VK_PRESENT_MODE_MAILBOX_KHR)
 	}
 	else if (desiredPresentInterval == FNA3D_PRESENTINTERVAL_TWO)
 	{
