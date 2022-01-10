@@ -863,7 +863,8 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 	int32_t numBindings,
 	uint32_t *hash
 ) {
-	int32_t numElements, i, j, k, usage, index, attribLoc, bindingsIndex;
+	int32_t numElements, i, j, k, index, attribLoc, bindingsIndex;
+	FNA3D_VertexElementUsage usage;
 	uint8_t attrUse[MOJOSHADER_USAGE_TOTAL][16];
 	D3D11_INPUT_ELEMENT_DESC elements[16]; /* D3DCAPS9 MaxStreams <= 16 */
 	D3D11_INPUT_ELEMENT_DESC *d3dElement;
