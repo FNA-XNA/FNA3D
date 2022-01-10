@@ -5650,7 +5650,7 @@ static inline void CheckExtensions(
 		SDL_strstr(ext, "GL_ARB_texture_filter_anisotropic")
 	);
 	uint8_t srgbFrameBuffer = (
-		SDL_strstr(ext, "GL_EXT_framebuffer_sRGB")
+		SDL_strstr(ext, "GL_EXT_framebuffer_sRGB") != NULL
 	);
 
 	if (s3tc)
