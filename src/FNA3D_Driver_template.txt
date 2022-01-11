@@ -810,6 +810,11 @@ static uint8_t TEMPLATE_SupportsS3TC(FNA3D_Renderer *driverData)
 	return 0;
 }
 
+static uint8_t TEMPLATE_SupportsBC7(FNA3D_Renderer *driverData)
+{
+	return 0;
+}
+
 static uint8_t TEMPLATE_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
 {
 	return 0;
