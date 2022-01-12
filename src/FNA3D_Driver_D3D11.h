@@ -125,7 +125,7 @@ struct ID3DUserDefinedAnnotation
 #define ID3DUserDefinedAnnotation_GetStatus(This)	\
 	( (This)->lpVtbl -> GetStatus(This) )
 
-
+/* IDXGIFactory6 */
 /* From igdx1_6.h, cleaned up a bit... */
 
 typedef enum
