@@ -5352,11 +5352,31 @@ static void D3D11_PLATFORM_GetDefaultAdapter(
 	void* factory,
 	IDXGIAdapter1 **adapter
 ) {
-	IDXGIFactory1_EnumAdapters1(
+	void* factory6;
+	HRESULT res;
+	res = IDXGIFactory1_QueryInterface(
 		(IDXGIFactory1*) factory,
-		0,
-		adapter
+		&D3D_IID_IDXGIFactory6,
+		(void**) &factory6
 	);
+	if (SUCCEEDED(res)) 
+	{
+		IDXGIFactory6_EnumAdapterByGpuPreference(
+			(IDXGIFactory6*) factory6,
+			0,
+			DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+			&D3D_IID_IDXGIAdapter,
+			adapter
+		);
+	}
+	else 
+	{
+		IDXGIFactory1_EnumAdapters1(
+			(IDXGIFactory1*) factory,
+			0,
+			adapter
+		);
+	}
 }
 
 static void D3D11_PLATFORM_CreateSwapChain(
