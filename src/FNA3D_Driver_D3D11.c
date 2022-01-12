@@ -5366,7 +5366,7 @@ static void D3D11_PLATFORM_GetDefaultAdapter(
 			0,
 			DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
 			&D3D_IID_IDXGIAdapter,
-			adapter
+			(void**) adapter
 		);
 	}
 	else 
