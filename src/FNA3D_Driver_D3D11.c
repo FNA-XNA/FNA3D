@@ -53,7 +53,7 @@
 #include <dxgi1_2.h>
 #include <d3dcompiler.h>
 #else
-#include <dxgi1_6.h>
+#include <dxgi.h>
 #endif
 
 #define ERROR_CHECK(msg) \
