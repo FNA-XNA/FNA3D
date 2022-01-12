@@ -5357,7 +5357,7 @@ static void D3D11_PLATFORM_GetDefaultAdapter(
 	res = IDXGIFactory1_QueryInterface(
 		(IDXGIFactory1*) factory,
 		&D3D_IID_IDXGIFactory6,
-		(void**)&factory6
+		(void**) &factory6
 	);
 	if (SUCCEEDED(res)) 
 	{

@@ -126,22 +126,19 @@ struct ID3DUserDefinedAnnotation
 	( (This)->lpVtbl -> GetStatus(This) )
 
 
-/* IDXGIFactory6 */
 /* From igdx1_6.h, cleaned up a bit... */
 
-typedef 
-enum DXGI_FEATURE
-    {
-        DXGI_FEATURE_PRESENT_ALLOW_TEARING	= 0
-    } 	DXGI_FEATURE;
+typedef enum
+{
+	DXGI_FEATURE_PRESENT_ALLOW_TEARING	= 0
+} DXGI_FEATURE;
 
-typedef 
-enum DXGI_GPU_PREFERENCE
-    {
-        DXGI_GPU_PREFERENCE_UNSPECIFIED	= 0,
-        DXGI_GPU_PREFERENCE_MINIMUM_POWER	= ( DXGI_GPU_PREFERENCE_UNSPECIFIED + 1 ) ,
-        DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE	= ( DXGI_GPU_PREFERENCE_MINIMUM_POWER + 1 ) 
-    } 	DXGI_GPU_PREFERENCE;
+typedef enum
+{
+	DXGI_GPU_PREFERENCE_UNSPECIFIED	= 0,
+	DXGI_GPU_PREFERENCE_MINIMUM_POWER	= ( DXGI_GPU_PREFERENCE_UNSPECIFIED + 1 ) ,
+	DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE	= ( DXGI_GPU_PREFERENCE_MINIMUM_POWER + 1 ) 
+} DXGI_GPU_PREFERENCE;
 
 typedef struct IDXGIFactory6 IDXGIFactory6;
 typedef struct IDXGIFactory6Vtbl
@@ -309,7 +306,7 @@ struct IDXGIFactory6
 };
 
 #define IDXGIFactory6_EnumAdapterByGpuPreference(This,Adapter,GpuPreference,riid,ppvAdapter)	\
-    ( (This)->lpVtbl -> EnumAdapterByGpuPreference(This,Adapter,GpuPreference,riid,ppvAdapter) ) 
+	( (This)->lpVtbl -> EnumAdapterByGpuPreference(This,Adapter,GpuPreference,riid,ppvAdapter) ) 
 
 
 #endif /* FNA3D_DRIVER_D3D11_H */
