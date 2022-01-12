@@ -308,5 +308,4 @@ struct IDXGIFactory6
 #define IDXGIFactory6_EnumAdapterByGpuPreference(This,Adapter,GpuPreference,riid,ppvAdapter)	\
 	( (This)->lpVtbl -> EnumAdapterByGpuPreference(This,Adapter,GpuPreference,riid,ppvAdapter) ) 
 
-
 #endif /* FNA3D_DRIVER_D3D11_H */
