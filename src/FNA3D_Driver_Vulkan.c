@@ -1304,7 +1304,6 @@ typedef struct VulkanRenderer
 
 	int32_t stencilRef;
 
-	int32_t numSamplers;
 	int32_t numTextureSlots;
 	int32_t numVertexTextureSlots;
 
@@ -12522,10 +12521,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	 * Define sampler counts
 	 */
 
-	renderer->numSamplers = SDL_min(
-		renderer->physicalDeviceProperties.properties.limits.maxPerStageDescriptorSamplers * 2,
-		MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS
-	);
 	renderer->numTextureSlots = SDL_min(
 		renderer->physicalDeviceProperties.properties.limits.maxPerStageDescriptorSamplers,
 		MAX_TEXTURE_SAMPLERS
