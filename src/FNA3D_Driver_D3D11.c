@@ -5388,7 +5388,7 @@ static void ResolveSwapChainModeDescription(
 	DXGI_MODE_DESC* swapChainDescription
 ) {
 	HMONITOR monitor;
-	int iAdapter, iOutput;
+	int iAdapter = 0, iOutput;
 	IDXGIAdapter1* pAdapter;
 	IDXGIOutput *output;
 	DXGI_OUTPUT_DESC description;
