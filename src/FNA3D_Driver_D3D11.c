@@ -5427,7 +5427,6 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	HWND dxgiHandle;
 	HRESULT res;
 
-
 	SDL_VERSION(&info.version);
 	SDL_GetWindowWMInfo((SDL_Window*) pp->deviceWindowHandle, &info);
 	dxgiHandle = info.info.win.window;
@@ -5441,7 +5440,14 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	swapchainBufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
 	swapchainBufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
 
-	ResolveSwapChainModeDescription((IUnknown*) renderer->device, (IDXGIAdapter*) renderer->adapter, (IDXGIFactory1*) renderer->factory, dxgiHandle, &swapchainBufferDesc, &swapchainDesc.BufferDesc);
+	ResolveSwapChainModeDescription(
+		(IUnknown*) renderer->device,
+		(IDXGIAdapter*) renderer->adapter,
+		(IDXGIFactory1*) renderer->factory,
+		dxgiHandle,
+		&swapchainBufferDesc,
+		&swapchainDesc.BufferDesc
+	);
 
 	/* Initialize the swapchain descriptor */
 	swapchainDesc.BufferDesc = swapchainBufferDesc;
