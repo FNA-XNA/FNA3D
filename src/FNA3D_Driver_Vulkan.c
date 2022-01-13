@@ -12527,11 +12527,11 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		MAX_TEXTURE_SAMPLERS + MAX_VERTEXTEXTURE_SAMPLERS
 	);
 	renderer->numTextureSlots = SDL_min(
-		renderer->numSamplers,
+		renderer->physicalDeviceProperties.properties.limits.maxPerStageDescriptorSamplers,
 		MAX_TEXTURE_SAMPLERS
 	);
 	renderer->numVertexTextureSlots = SDL_min(
-		SDL_max(renderer->numSamplers - MAX_TEXTURE_SAMPLERS, 0),
+		renderer->physicalDeviceProperties.properties.limits.maxPerStageDescriptorSamplers,
 		MAX_VERTEXTEXTURE_SAMPLERS
 	);
 
