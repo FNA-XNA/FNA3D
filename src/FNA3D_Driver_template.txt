@@ -89,6 +89,8 @@ static TEMPLATE_SURFACE_FORMAT_TYPE XNAToTMP_TextureFormat[] =
 	0,	/* SurfaceFormat.ColorBgraEXT */
 	0,	/* SurfaceFormat.ColorSrgbEXT */
 	0,	/* SurfaceFormat.Dxt5SrgbEXT */
+	0,	/* SurfaceFormat.Bc7EXT */
+	0,	/* SurfaceFormat.Bc7SrgbEXT */
 };
 
 static TEMPLATE_DEPTH_FORMAT_TYPE XNAToTMP_DepthFormat[] =
