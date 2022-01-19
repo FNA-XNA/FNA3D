@@ -4985,7 +4985,6 @@ static FNA3D_Device* D3D11_CreateDevice(
 		D3D_FEATURE_LEVEL_10_1,
 		D3D_FEATURE_LEVEL_10_0
 	};
-	uint32_t featureLevelIndex = 0;
 	uint32_t flags, supportsDxt3, supportsDxt5, supportsSrgb;
 	int32_t i;
 	HRESULT res;
@@ -5024,46 +5023,113 @@ static FNA3D_Device* D3D11_CreateDevice(
 	}
 
 	/* Create the D3D11Device */
+
 	flags = D3D11_CREATE_DEVICE_BGRA_SUPPORT;
 	if (debugMode)
 	{
 		flags |= D3D11_CREATE_DEVICE_DEBUG;
 	}
 
-try_create_device:
 	res = D3D11CreateDeviceFunc(
-		renderer->adapter,
+		(IDXGIAdapter*) renderer->adapter,
 		D3D_DRIVER_TYPE_UNKNOWN, /* must be UNKNOWN if adapter is non-null according to spec */
 		NULL,
 		flags,
-		&levels[featureLevelIndex],
-		SDL_arraysize(levels) - featureLevelIndex,
+		levels,
+		SDL_arraysize(levels),
 		D3D11_SDK_VERSION,
 		&renderer->device,
 		&renderer->featureLevel,
 		&renderer->context
 	);
 
-	if (FAILED(res))
+	if (debugMode)
 	{
-		if (flags & D3D11_CREATE_DEVICE_DEBUG)
+		if (FAILED(res))
 		{
 			/* Creating a debug mode device will fail on some systems due to the necessary
-			* debug infrastructure not being available. Remove the debug flag and retry. */
-			FNA3D_LogWarn("Creating device in debug mode failed with error %08X. Trying non-debug.", res);
+			* debug infrastructure not being available. Remove the debug flag and retry.
+			*/
+
+			FNA3D_LogWarn("Creating device with feature level 11.1 in debug mode failed with error %08X. Trying non-debug.", res);
 			flags &= ~(D3D11_CREATE_DEVICE_DEBUG);
-			goto try_create_device;
-		}
-		else if (featureLevelIndex == 0)
-		{
-			FNA3D_LogWarn("Creating device with feature level 11_1 failed. Lowering feature level.", res);
-			featureLevelIndex = 1;
-			if (debugMode)
+
+			res = D3D11CreateDeviceFunc(
+				(IDXGIAdapter*) renderer->adapter,
+				D3D_DRIVER_TYPE_UNKNOWN, /* must be UNKNOWN if adapter is non-null according to spec */
+				NULL,
+				flags,
+				levels,
+				SDL_arraysize(levels),
+				D3D11_SDK_VERSION,
+				&renderer->device,
+				&renderer->featureLevel,
+				&renderer->context
+			);
+
+			if (FAILED(res))
 			{
-				/* Since we're lowering the feature level, let's try setting debug mode again. */
+				/* We failed again, so let's try lowering the feature level to 11.0 and setting the debug flag again. */
+
+				FNA3D_LogWarn("Creating device with feature level 11.1 failed. Lowering to 11.0 with debug.");
 				flags |= D3D11_CREATE_DEVICE_DEBUG;
+
+				res = D3D11CreateDeviceFunc(
+					(IDXGIAdapter*) renderer->adapter,
+					D3D_DRIVER_TYPE_UNKNOWN, /* must be UNKNOWN if adapter is non-null according to spec */
+					NULL,
+					flags,
+					&levels[1],
+					SDL_arraysize(levels) - 1,
+					D3D11_SDK_VERSION,
+					&renderer->device,
+					&renderer->featureLevel,
+					&renderer->context
+				);
+
+				if (FAILED(res))
+				{
+					/* We failed again, so let's try unsetting the debug flag again. */
+
+					FNA3D_LogWarn("Creating device with feature level 11.0 and debug mode failed. Trying non-debug.");
+					flags &= ~(D3D11_CREATE_DEVICE_DEBUG);
+
+					res = D3D11CreateDeviceFunc(
+						(IDXGIAdapter*) renderer->adapter,
+						D3D_DRIVER_TYPE_UNKNOWN, /* must be UNKNOWN if adapter is non-null according to spec */
+						NULL,
+						flags,
+						&levels[1],
+						SDL_arraysize(levels) - 1,
+						D3D11_SDK_VERSION,
+						&renderer->device,
+						&renderer->featureLevel,
+						&renderer->context
+					);
+				}
 			}
-			goto try_create_device;
+		}
+	}
+	else
+	{
+		if (FAILED(res))
+		{
+			/* Let's try lowering the feature level to 11.0. */
+
+			FNA3D_LogWarn("Creating device with feature level 11.1 failed. Lowering to 11.0.");
+
+			res = D3D11CreateDeviceFunc(
+				(IDXGIAdapter*) renderer->adapter,
+				D3D_DRIVER_TYPE_UNKNOWN, /* must be UNKNOWN if adapter is non-null according to spec */
+				NULL,
+				flags,
+				&levels[1],
+				SDL_arraysize(levels) - 1,
+				D3D11_SDK_VERSION,
+				&renderer->device,
+				&renderer->featureLevel,
+				&renderer->context
+			);
 		}
 	}
 
