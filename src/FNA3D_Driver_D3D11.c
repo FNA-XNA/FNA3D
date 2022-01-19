@@ -4740,6 +4740,23 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 		NULL
 	);
 
+	if (FAILED(res))
+	{
+		FNA3D_LogWarn("Creating device with feature level 11_1 failed. Lowering feature level.", res);
+		res = D3D11CreateDeviceFunc(
+			NULL,
+			D3D_DRIVER_TYPE_HARDWARE,
+			NULL,
+			D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+			&levels[1],
+			SDL_arraysize(levels) - 1,
+			D3D11_SDK_VERSION,
+			NULL,
+			NULL,
+			NULL
+		);
+	}
+
 	D3D11_PLATFORM_UnloadD3D11(module);
 
 	if (FAILED(res))
@@ -4968,6 +4985,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 		D3D_FEATURE_LEVEL_10_1,
 		D3D_FEATURE_LEVEL_10_0
 	};
+	uint32_t featureLevelIndex = 0;
 	uint32_t flags, supportsDxt3, supportsDxt5, supportsSrgb;
 	int32_t i;
 	HRESULT res;
@@ -5014,26 +5032,40 @@ static FNA3D_Device* D3D11_CreateDevice(
 
 try_create_device:
 	res = D3D11CreateDeviceFunc(
-		NULL, /* FIXME: Should be renderer->adapter! */
-		D3D_DRIVER_TYPE_HARDWARE,
+		renderer->adapter,
+		D3D_DRIVER_TYPE_UNKNOWN, /* must be UNKNOWN if adapter is non-null according to spec */
 		NULL,
 		flags,
-		levels,
-		SDL_arraysize(levels),
+		&levels[featureLevelIndex],
+		SDL_arraysize(levels) - featureLevelIndex,
 		D3D11_SDK_VERSION,
 		&renderer->device,
 		&renderer->featureLevel,
 		&renderer->context
 	);
 
-	if (FAILED(res) && debugMode)
+	if (FAILED(res))
 	{
-		/* Creating a debug mode device will fail on some systems due to the necessary
-		 * debug infrastructure not being available. Remove the debug flag and retry. */
-		FNA3D_LogWarn("Creating device in debug mode failed with error %08X. Trying non-debug.", res);
-		flags ^= D3D11_CREATE_DEVICE_DEBUG;
-		debugMode = 0;
-		goto try_create_device;
+		if (flags & D3D11_CREATE_DEVICE_DEBUG)
+		{
+			/* Creating a debug mode device will fail on some systems due to the necessary
+			* debug infrastructure not being available. Remove the debug flag and retry.
+			*/
+			FNA3D_LogWarn("Creating device in debug mode failed with error %08X. Trying non-debug.", res);
+			flags &= ~(D3D11_CREATE_DEVICE_DEBUG);
+			goto try_create_device;
+		}
+		else if (featureLevelIndex == 0)
+		{
+			FNA3D_LogWarn("Creating device with feature level 11_1 failed. Lowering feature level.", res);
+			featureLevelIndex = 1;
+			if (debugMode)
+			{
+				/* Since we're lowering the feature level, let's try setting debug mode again. */
+				flags |= D3D11_CREATE_DEVICE_DEBUG;
+			}
+			goto try_create_device;
+		}
 	}
 
 	ERROR_CHECK_RETURN("Could not create D3D11Device", NULL)
@@ -5105,7 +5137,7 @@ try_create_device:
 	}
 
 	/* Initialize renderer members not covered by SDL_memset('\0') */
-	renderer->debugMode = debugMode;
+	renderer->debugMode = flags & D3D11_CREATE_DEVICE_DEBUG;
 	renderer->blendFactor.r = 0xFF;
 	renderer->blendFactor.g = 0xFF;
 	renderer->blendFactor.b = 0xFF;
@@ -5359,7 +5391,7 @@ static void D3D11_PLATFORM_GetDefaultAdapter(
 		&D3D_IID_IDXGIFactory6,
 		(void**) &factory6
 	);
-	if (SUCCEEDED(res)) 
+	if (SUCCEEDED(res))
 	{
 		IDXGIFactory6_EnumAdapterByGpuPreference(
 			(IDXGIFactory6*) factory6,
@@ -5369,7 +5401,7 @@ static void D3D11_PLATFORM_GetDefaultAdapter(
 			(void**) adapter
 		);
 	}
-	else 
+	else
 	{
 		IDXGIFactory1_EnumAdapters1(
 			(IDXGIFactory1*) factory,
@@ -5392,7 +5424,7 @@ static void ResolveSwapChainModeDescription(
 	IDXGIAdapter1* pAdapter;
 	IDXGIOutput *output;
 	DXGI_OUTPUT_DESC description;
-	
+
 	/* Find the output (on any adapter) attached to the monitor that holds our window */
 	monitor = MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY);
 	while (SUCCEEDED(IDXGIFactory1_EnumAdapters1(factory, iAdapter++, &pAdapter)))
