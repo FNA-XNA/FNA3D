@@ -4985,7 +4985,6 @@ static FNA3D_Device* D3D11_CreateDevice(
 		D3D_FEATURE_LEVEL_10_1,
 		D3D_FEATURE_LEVEL_10_0
 	};
-	uint32_t featureLevelIndex = 0;
 	uint32_t flags, supportsDxt3, supportsDxt5, supportsSrgb;
 	int32_t i;
 	HRESULT res;
@@ -5030,42 +5029,63 @@ static FNA3D_Device* D3D11_CreateDevice(
 		flags |= D3D11_CREATE_DEVICE_DEBUG;
 	}
 
+	/* We attempt to create a device a maximum of four times:
+	 *
+	 * - Feature levels 11_1 and 11_0
+	 * - Debug and Non-Debug mode
+	 *
+	 * We have to test 11_1 explicitly because unlike the rest of the array
+	 * it fails without testing the others, probably because the enum is
+	 * unrecognized by older Windows releases.
+	 *
+	 * As you'd expect, we only try debug mode if it was requested by the
+	 * application. But, regardless of mode, we check all the feature levels
+	 * before trying a different mode, because inverting the test matrix
+	 * would break if, for example, a debug app did have the debug layer but
+	 * didn't have 11_1.
+	 *
+	 * So, the final order of the worst case scenario:
+	 * 1. Debug 11_1
+	 * 2. Debug 11_0
+	 * 3. Normal 11_1 <- Release builds should start here
+	 * 4. Normal 11_0
+	 *
+	 * -flibit
+	 */
 try_create_device:
-	res = D3D11CreateDeviceFunc(
-		renderer->adapter,
-		D3D_DRIVER_TYPE_UNKNOWN, /* must be UNKNOWN if adapter is non-null according to spec */
-		NULL,
-		flags,
-		&levels[featureLevelIndex],
-		SDL_arraysize(levels) - featureLevelIndex,
-		D3D11_SDK_VERSION,
-		&renderer->device,
-		&renderer->featureLevel,
-		&renderer->context
-	);
-
-	if (FAILED(res))
+	for (i = 0; i < 2; i += 1)
 	{
-		if (flags & D3D11_CREATE_DEVICE_DEBUG)
+		res = D3D11CreateDeviceFunc(
+			(IDXGIAdapter*) renderer->adapter,
+			D3D_DRIVER_TYPE_UNKNOWN, /* Must be UNKNOWN if adapter is non-null according to spec */
+			NULL,
+			flags,
+			&levels[i],
+			SDL_arraysize(levels) - i,
+			D3D11_SDK_VERSION,
+			&renderer->device,
+			&renderer->featureLevel,
+			&renderer->context
+		);
+		if (SUCCEEDED(res))
 		{
-			/* Creating a debug mode device will fail on some systems due to the necessary
-			* debug infrastructure not being available. Remove the debug flag and retry.
-			*/
-			FNA3D_LogWarn("Creating device in debug mode failed with error %08X. Trying non-debug.", res);
-			flags &= ~(D3D11_CREATE_DEVICE_DEBUG);
-			goto try_create_device;
-		}
-		else if (featureLevelIndex == 0)
-		{
-			FNA3D_LogWarn("Creating device with feature level 11_1 failed. Lowering feature level.", res);
-			featureLevelIndex = 1;
-			if (debugMode)
+			/* It worked! */
+			if (i == 1)
 			{
-				/* Since we're lowering the feature level, let's try setting debug mode again. */
-				flags |= D3D11_CREATE_DEVICE_DEBUG;
+				FNA3D_LogWarn("Feature level 11_1 was not available, fell back to 11_0!");
 			}
-			goto try_create_device;
+			break;
 		}
+	}
+	if (FAILED(res) && debugMode)
+	{
+		/* Creating a debug mode device will fail on some systems due to the necessary
+		 * debug infrastructure not being available. Remove the debug flag and retry.
+		 */
+		FNA3D_LogWarn("Creating device in debug mode failed with error %08X. Trying non-debug.", res);
+		flags ^= D3D11_CREATE_DEVICE_DEBUG;
+		debugMode = 0;
+		goto try_create_device;
 	}
 
 	ERROR_CHECK_RETURN("Could not create D3D11Device", NULL)
