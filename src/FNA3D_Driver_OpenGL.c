@@ -349,8 +349,8 @@ static int32_t XNAToGL_TextureInternalFormat[] =
 {
 	GL_RGBA8,				/* SurfaceFormat.Color */
 	GL_RGB8,				/* SurfaceFormat.Bgr565 */
-	GL_RGB5_A1,				/* SurfaceFormat.Bgra5551 */
-	GL_RGBA4,				/* SurfaceFormat.Bgra4444 */
+	GL_BGRA,				/* SurfaceFormat.Bgra5551 */
+	GL_BGRA,				/* SurfaceFormat.Bgra4444 */
 	GL_COMPRESSED_RGBA_S3TC_DXT1_EXT,	/* SurfaceFormat.Dxt1 */
 	GL_COMPRESSED_RGBA_S3TC_DXT3_EXT,	/* SurfaceFormat.Dxt3 */
 	GL_COMPRESSED_RGBA_S3TC_DXT5_EXT,	/* SurfaceFormat.Dxt5 */
@@ -367,7 +367,7 @@ static int32_t XNAToGL_TextureInternalFormat[] =
 	GL_RG16F,				/* SurfaceFormat.HalfVector2 */
 	GL_RGBA16F,				/* SurfaceFormat.HalfVector4 */
 	GL_RGBA16F,				/* SurfaceFormat.HdrBlendable */
-	GL_RGBA8,				/* SurfaceFormat.ColorBgraEXT */
+	GL_BGRA,				/* SurfaceFormat.ColorBgraEXT */
 	GL_SRGB_ALPHA_EXT,			/* SurfaceFormat.ColorSrgbEXT */
 	GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT,	/* SurfaceFormat.Dxt5SrgbEXT */
 	GL_COMPRESSED_RGBA_BPTC_UNORM_EXT,	/* SurfaceFormat.BC7EXT */
