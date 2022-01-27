@@ -1593,12 +1593,7 @@ static VkComponentMapping XNAToVK_SurfaceSwizzle[] =
 	},
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.HalfVector4 */
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.HdrBlendable */
-	{			/* SurfaceFormat.ColorBgraEXT */
-		VK_COMPONENT_SWIZZLE_B,
-		VK_COMPONENT_SWIZZLE_G,
-		VK_COMPONENT_SWIZZLE_R,
-		VK_COMPONENT_SWIZZLE_A
-	},
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.ColorBgraEXT */
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.ColorSrgbEXT */
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.Dxt5SrgbEXT */
 };
