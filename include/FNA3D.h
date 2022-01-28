@@ -502,7 +502,11 @@ FNA3DAPI void FNA3D_HookLogFunctions(
  */
 FNA3DAPI uint32_t FNA3D_PrepareWindowAttributes(void);
 
-/* After your window is created, call this to check for high-DPI support.
+/* After your device is created, call this to check for high-DPI support.
+ *
+ * Note that this will NOT work if it's called after the window is created but
+ * before the device! Not all platforms create drawable surfaces at the same
+ * time as the window!
  *
  * window:	The OS window handle, typically an SDL_Window*.
  * w:		Filled with the width of the window's drawable canvas.
