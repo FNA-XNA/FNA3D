@@ -1355,6 +1355,7 @@ typedef struct VulkanRenderer
 	VkSemaphore renderFinishedSemaphore;
 	VkSemaphore defragSemaphore;
 
+	uint8_t bufferDefragInProgress;
 	uint8_t needDefrag;
 	uint32_t defragTimer;
 	uint8_t resourceFreed;
@@ -1891,6 +1892,11 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	uint8_t discardContents,
 	VkImage image,
 	VulkanResourceAccessType *resourceAccessType
+);
+
+static void VULKAN_INTERNAL_MarkBufferAsBound(
+	VulkanRenderer *renderer,
+	VulkanBuffer *vulkanBuffer
 );
 
 static void VULKAN_INTERNAL_MarkBufferForDestroy(
@@ -4095,7 +4101,11 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 				newRegion->vulkanBuffer->buffer = copyBuffer;
 				newRegion->vulkanBuffer->resourceAccessType = copyResourceAccessType;
 
+				/* Binding prevents data race when using SetBufferData with Discard option */
+				VULKAN_INTERNAL_MarkBufferAsBound(renderer, newRegion->vulkanBuffer);
+
 				renderer->needDefrag = 1;
+				renderer->bufferDefragInProgress = 1;
 			}
 			else
 			{
@@ -6179,6 +6189,8 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 	renderer->submittedCommandBufferCount = 0;
 
+	renderer->bufferDefragInProgress = 0;
+
 	/* Decide if we will be defragmenting */
 	if (renderer->resourceFreed)
 	{
@@ -6356,6 +6368,8 @@ static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync
 		{
 			FNA3D_LogWarn("vkWaitForFences: %s", VkErrorMessages(result));
 		}
+
+		renderer->bufferDefragInProgress = 0;
 	}
 
 	SDL_UnlockMutex(renderer->passLock);
@@ -7046,6 +7060,20 @@ static void VULKAN_INTERNAL_SetBufferData(
 			}
 
 			vulkanBuffer = vulkanBufferContainer->vulkanBuffer;
+		}
+
+		/* If this is a defrag frame and NoOverwrite is set, wait for defrag to avoid data race */
+		if (options == FNA3D_SETDATAOPTIONS_NOOVERWRITE && renderer->bufferDefragInProgress)
+		{
+			renderer->vkWaitForFences(
+				renderer->logicalDevice,
+				1,
+				&renderer->defragFence,
+				VK_TRUE,
+				UINT64_MAX
+			);
+
+			renderer->bufferDefragInProgress = 0;
 		}
 
 		SDL_memcpy(
@@ -12987,6 +13015,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		renderer->boundBufferCapacity * sizeof(VulkanBuffer*)
 	);
 
+	renderer->bufferDefragInProgress = 0;
 	renderer->needDefrag = 0;
 	renderer->defragTimer = 0;
 	renderer->resourceFreed = 0;
