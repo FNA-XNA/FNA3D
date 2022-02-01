@@ -1895,8 +1895,8 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 );
 
 static void VULKAN_INTERNAL_MarkBufferAsBound(
-	VulkanRenderer* renderer,
-	VulkanBuffer* vulkanBuffer
+	VulkanRenderer *renderer,
+	VulkanBuffer *vulkanBuffer
 );
 
 static void VULKAN_INTERNAL_MarkBufferForDestroy(
