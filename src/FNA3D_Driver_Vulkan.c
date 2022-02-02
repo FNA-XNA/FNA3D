@@ -2091,6 +2091,12 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 		&outputDetails->capabilities
 	);
 	VULKAN_ERROR_CHECK(result, vkGetPhysicalDeviceSurfaceCapabilitiesKHR, 0)
+
+	if (!(outputDetails->capabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR))
+	{
+		FNA3D_LogWarn("Opaque presentation unsupported! Expect weird transparency bugs!");
+	}
+
 	result = renderer->vkGetPhysicalDeviceSurfaceFormatsKHR(
 		physicalDevice,
 		surface,
