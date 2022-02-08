@@ -6421,15 +6421,6 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	uint8_t swapchainSupport;
 	int32_t drawableWidth, drawableHeight;
 
-	swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
-
-	if (swapchainData != NULL)
-	{
-		SDL_free(swapchainData);
-		FNA3D_LogError("Swapchain already exists for this window! Destroy it first!");
-		return CREATE_SWAPCHAIN_FAIL;
-	}
-
 	swapchainData = SDL_malloc(sizeof(VulkanSwapchainData));
 	swapchainData->windowHandle = windowHandle;
 
