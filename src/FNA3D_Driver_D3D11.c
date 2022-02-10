@@ -193,6 +193,15 @@ typedef struct D3D11Backbuffer
 	} d3d11;
 } D3D11Backbuffer;
 
+typedef struct D3D11SwapchainData
+{
+	IDXGISwapChain *swapchain;
+	ID3D11RenderTargetView *swapchainRTView;
+	void *windowHandle;
+} D3D11SwapchainData;
+
+#define WINDOW_SWAPCHAIN_DATA "FNA3D_D3D11Swapchain"
+
 typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 {
 	/* Persistent D3D11 Objects */
@@ -202,9 +211,13 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	void* dxgi_dll;
 	void* factory; /* IDXGIFactory1 or IDXGIFactory2 */
 	IDXGIAdapter1 *adapter;
-	IDXGISwapChain *swapchain;
 	ID3DUserDefinedAnnotation *annotation;
 	SDL_mutex *ctxLock;
+
+	/* Window surfaces */
+	D3D11SwapchainData** swapchainDatas;
+	int32_t swapchainDataCount;
+	int32_t swapchainDataCapacity;
 
 	/* The Faux-Backbuffer */
 	D3D11Backbuffer *backbuffer;
@@ -271,7 +284,6 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 
 	/* Render Targets */
 	int32_t numRenderTargets;
-	ID3D11RenderTargetView *swapchainRTView;
 	ID3D11RenderTargetView *renderTargetViews[MAX_RENDERTARGET_BINDINGS];
 	ID3D11DepthStencilView *depthStencilView;
 	FNA3D_DepthFormat currentDepthFormat;
@@ -1045,11 +1057,17 @@ static void D3D11_PLATFORM_GetDefaultAdapter(
 
 static void D3D11_PLATFORM_CreateSwapChain(
 	D3D11Renderer *renderer,
-	FNA3D_PresentationParameters *pp
+	FNA3D_SurfaceFormat backBufferFormat,
+	void* windowHandle
 );
 static HRESULT D3D11_PLATFORM_ResizeSwapChain(
 	D3D11Renderer *renderer,
-	FNA3D_PresentationParameters *pp
+	D3D11SwapchainData *swapchain
+);
+static void D3D11_INTERNAL_UpdateSwapchainRT(
+	D3D11Renderer *renderer,
+	D3D11SwapchainData *swapchainData,
+	DXGI_FORMAT format
 );
 
 /* Renderer Implementation */
@@ -1080,7 +1098,13 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 	renderer->backbuffer = NULL;
 
 	/* Release swapchain */
-	IDXGISwapChain_Release(renderer->swapchain);
+	for (i = 0; i < renderer->swapchainDataCount; i += 1)
+	{
+		ID3D11RenderTargetView_Release(renderer->swapchainDatas[i]->swapchainRTView);
+		IDXGISwapChain_Release(renderer->swapchainDatas[i]->swapchain);
+		SDL_free(renderer->swapchainDatas[i]);
+	}
+	SDL_free(renderer->swapchainDatas);
 
 	/* Release blend states */
 	for (i = 0; i < renderer->blendStateCache.count; i += 1)
@@ -1232,6 +1256,7 @@ static void D3D11_INTERNAL_UpdateFauxBackbufferVertexBuffer(
 
 static void D3D11_INTERNAL_BlitFauxBackbuffer(
 	D3D11Renderer *renderer,
+	D3D11SwapchainData *swapchainData,
 	int32_t drawableWidth,
 	int32_t drawableHeight
 ) {
@@ -1269,7 +1294,7 @@ static void D3D11_INTERNAL_BlitFauxBackbuffer(
 	 *  requires us to first release any references to its backbuffers, so attempting to
 	 *  resize it here will always fail.
 	 */
-	IDXGISwapChain_GetDesc(renderer->swapchain, &swapchainDesc);
+	IDXGISwapChain_GetDesc(swapchainData->swapchain, &swapchainDesc);
 	tempViewport.TopLeftX = 0;
 	tempViewport.TopLeftY = 0;
 	tempViewport.Width = (float) swapchainDesc.BufferDesc.Width;
@@ -1295,7 +1320,7 @@ static void D3D11_INTERNAL_BlitFauxBackbuffer(
 	ID3D11DeviceContext_OMSetRenderTargets(
 		renderer->context,
 		1,
-		&renderer->swapchainRTView,
+		&swapchainData->swapchainRTView,
 		NULL
 	);
 
@@ -1474,6 +1499,7 @@ static void D3D11_SwapBuffers(
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	int32_t drawableWidth, drawableHeight;
 	FNA3D_Rect srcRect, dstRect;
+	D3D11SwapchainData *swapchainData;
 
 	/* Only the faux-backbuffer supports presenting
 	 * specific regions given to Present().
@@ -1537,6 +1563,28 @@ static void D3D11_SwapBuffers(
 		}
 	}
 
+	swapchainData = (D3D11SwapchainData*) SDL_GetWindowData(
+		(SDL_Window*) overrideWindowHandle,
+		WINDOW_SWAPCHAIN_DATA
+	);
+	if (swapchainData == NULL)
+	{
+		D3D11_PLATFORM_CreateSwapChain(
+			renderer,
+			FNA3D_SURFACEFORMAT_COLOR, /* FIXME: Is there something we can use here? */
+			(SDL_Window*) overrideWindowHandle
+		);
+		swapchainData = (D3D11SwapchainData*) SDL_GetWindowData(
+			(SDL_Window*) overrideWindowHandle,
+			WINDOW_SWAPCHAIN_DATA
+		);
+		D3D11_INTERNAL_UpdateSwapchainRT(
+			renderer,
+			swapchainData,
+			DXGI_FORMAT_R8G8B8A8_UNORM /* FIXME: No really where can we get this */
+		);
+	}
+
 	SDL_LockMutex(renderer->ctxLock);
 
 	if (renderer->backbuffer->type == BACKBUFFER_TYPE_D3D11)
@@ -1555,11 +1603,16 @@ static void D3D11_SwapBuffers(
 		}
 
 		/* "Blit" the faux-backbuffer to the swapchain image */
-		D3D11_INTERNAL_BlitFauxBackbuffer(renderer, drawableWidth, drawableHeight);
+		D3D11_INTERNAL_BlitFauxBackbuffer(
+			renderer,
+			swapchainData,
+			drawableWidth,
+			drawableHeight
+		);
 	}
 
 	/* Present! */
-	IDXGISwapChain_Present(renderer->swapchain, renderer->syncInterval, 0);
+	IDXGISwapChain_Present(swapchainData->swapchain, renderer->syncInterval, 0);
 
 	/* An overlay program may seize our context and render with it, so
 	 * unlock _after_ we present so the device context is safe in that time
@@ -2346,7 +2399,8 @@ static void D3D11_SetRenderTargets(
 		}
 		else
 		{
-			views[0] = renderer->swapchainRTView;
+			/* This path is only possible with a single window, 0 is safe */
+			views[0] = renderer->swapchainDatas[0]->swapchainRTView;
 		}
 
 		renderer->currentDepthFormat = renderer->backbuffer->depthFormat;
@@ -2470,22 +2524,64 @@ static void D3D11_ResolveTarget(
 
 /* Backbuffer Functions */
 
+static void D3D11_INTERNAL_UpdateSwapchainRT(
+	D3D11Renderer *renderer,
+	D3D11SwapchainData *swapchainData,
+	DXGI_FORMAT format
+) {
+	HRESULT res;
+	ID3D11Texture2D *swapchainTexture;
+	D3D11_RENDER_TARGET_VIEW_DESC swapchainViewDesc;
+
+	/* Create a render target view for the swapchain */
+	swapchainViewDesc.Format = (format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
+		? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
+		: DXGI_FORMAT_R8G8B8A8_UNORM;
+	swapchainViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
+	swapchainViewDesc.Texture2D.MipSlice = 0;
+
+	res = IDXGISwapChain_GetBuffer(
+		swapchainData->swapchain,
+		0,
+		&D3D_IID_ID3D11Texture2D,
+		(void**) &swapchainTexture
+	);
+	ERROR_CHECK_RETURN("Could not get buffer from swapchain",)
+
+	res = ID3D11Device_CreateRenderTargetView(
+		renderer->device,
+		(ID3D11Resource*) swapchainTexture,
+		&swapchainViewDesc,
+		&swapchainData->swapchainRTView
+	);
+	ERROR_CHECK_RETURN("Swapchain RT view creation failed",)
+
+	/* Cleanup is required for any GetBuffer call! */
+	ID3D11Texture2D_Release(swapchainTexture);
+	swapchainTexture = NULL;
+}
+
 static void D3D11_INTERNAL_CreateBackbuffer(
 	D3D11Renderer *renderer,
 	FNA3D_PresentationParameters *parameters
 ) {
 	uint8_t useFauxBackbuffer;
-	int32_t drawX, drawY;
 	HRESULT res;
 	D3D11_TEXTURE2D_DESC colorBufferDesc;
 	D3D11_RENDER_TARGET_VIEW_DESC colorViewDesc;
 	D3D11_SHADER_RESOURCE_VIEW_DESC shaderViewDesc;
 	D3D11_TEXTURE2D_DESC depthStencilDesc;
 	D3D11_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc;
-	D3D11_RENDER_TARGET_VIEW_DESC swapchainViewDesc;
-	ID3D11Texture2D *swapchainTexture;
+	D3D11SwapchainData *swapchainData;
 	FNA3D_SurfaceFormat actualFnaFormat = parameters->backBufferFormat;
 	DXGI_FORMAT actualDxgiFormat = XNAToD3D_TextureFormat[actualFnaFormat];
+
+	if ((actualDxgiFormat == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB) && !renderer->supportsSRGBRenderTarget)
+	{
+		FNA3D_LogWarn("Could not create an SRGB swapchain because this renderer does not support it. Silently falling back to UNORM.");
+		actualFnaFormat = FNA3D_SURFACEFORMAT_COLOR;
+		actualDxgiFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+	}
 
 	/* Dispose of the existing backbuffer in preparation for the new one. */
 	if (renderer->backbuffer != NULL)
@@ -2493,22 +2589,53 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 		D3D11_INTERNAL_DisposeBackbuffer(renderer);
 	}
 
-	/* Determine if we should use the faux backbuffer. */
-	D3D11_GetDrawableSize(
-		(SDL_Window*) parameters->deviceWindowHandle,
-		&drawX,
-		&drawY
-	);
-	useFauxBackbuffer = (	drawX != parameters->backBufferWidth ||
-				drawY != parameters->backBufferHeight	);
-	useFauxBackbuffer = (	useFauxBackbuffer ||
-				parameters->multiSampleCount > 0	);
-
-	if ((actualDxgiFormat == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB) && !renderer->supportsSRGBRenderTarget)
+	/* Create or update the swapchain */
+	if (parameters->deviceWindowHandle != NULL)
 	{
-		FNA3D_LogWarn("Could not create an SRGB swapchain because this renderer does not support it. Silently falling back to UNORM.");
-		actualFnaFormat = FNA3D_SURFACEFORMAT_COLOR;
-		actualDxgiFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+		swapchainData = (D3D11SwapchainData*) SDL_GetWindowData(
+			(SDL_Window*) parameters->deviceWindowHandle,
+			WINDOW_SWAPCHAIN_DATA
+		);
+		if (swapchainData == NULL)
+		{
+			D3D11_PLATFORM_CreateSwapChain(
+				renderer,
+				actualFnaFormat,
+				parameters->deviceWindowHandle
+			);
+			swapchainData = (D3D11SwapchainData*) SDL_GetWindowData(
+				(SDL_Window*) parameters->deviceWindowHandle,
+				WINDOW_SWAPCHAIN_DATA
+			);
+		}
+		else
+		{
+			/* Resize the swapchain to the new window size */
+			res = D3D11_PLATFORM_ResizeSwapChain(renderer, swapchainData);
+			ERROR_CHECK_RETURN("Could not resize swapchain",)
+		}
+		useFauxBackbuffer = renderer->swapchainDataCount > 1;
+	}
+	else
+	{
+		/* Nothing to update, skip everything involving this */
+		swapchainData = NULL;
+		useFauxBackbuffer = 1;
+	}
+
+	/* Determine if we should use the faux backbuffer. */
+	if (!useFauxBackbuffer)
+	{
+		int32_t drawX, drawY;
+		D3D11_GetDrawableSize(
+			(SDL_Window*) parameters->deviceWindowHandle,
+			&drawX,
+			&drawY
+		);
+		useFauxBackbuffer = (	drawX != parameters->backBufferWidth ||
+					drawY != parameters->backBufferHeight	);
+		useFauxBackbuffer = (	useFauxBackbuffer ||
+					parameters->multiSampleCount > 0	);
 	}
 
 	if (useFauxBackbuffer)
@@ -2693,44 +2820,14 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 		ERROR_CHECK_RETURN("Backbuffer depth-stencil view creation failed", )
 	}
 
-	/* Create or update the swapchain */
-	if (renderer->swapchain == NULL)
+	if (swapchainData != NULL)
 	{
-		D3D11_PLATFORM_CreateSwapChain(renderer, parameters);
+		D3D11_INTERNAL_UpdateSwapchainRT(
+			renderer,
+			swapchainData,
+			actualDxgiFormat
+		);
 	}
-	else
-	{
-		/* Resize the swapchain to the new window size */
-		res = D3D11_PLATFORM_ResizeSwapChain(renderer, parameters);
-		ERROR_CHECK_RETURN("Could not resize swapchain",)
-	}
-
-	/* Create a render target view for the swapchain */
-	swapchainViewDesc.Format = (actualDxgiFormat == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
-		? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
-		: DXGI_FORMAT_R8G8B8A8_UNORM;
-	swapchainViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
-	swapchainViewDesc.Texture2D.MipSlice = 0;
-
-	res = IDXGISwapChain_GetBuffer(
-		renderer->swapchain,
-		0,
-		&D3D_IID_ID3D11Texture2D,
-		(void**) &swapchainTexture
-	);
-	ERROR_CHECK_RETURN("Could not get buffer from swapchain",)
-
-	res = ID3D11Device_CreateRenderTargetView(
-		renderer->device,
-		(ID3D11Resource*) swapchainTexture,
-		&swapchainViewDesc,
-		&renderer->swapchainRTView
-	);
-	ERROR_CHECK_RETURN("Swapchain RT view creation failed",)
-
-	/* Cleanup is required for any GetBuffer call! */
-	ID3D11Texture2D_Release(swapchainTexture);
-	swapchainTexture = NULL;
 
 	/* This is the default render target */
 	D3D11_SetRenderTargets(
@@ -2779,12 +2876,6 @@ static void D3D11_INTERNAL_DisposeBackbuffer(D3D11Renderer *renderer)
 	{
 		ID3D11Texture2D_Release(renderer->backbuffer->stagingBuffer);
 		renderer->backbuffer->stagingBuffer = NULL;
-	}
-
-	if (renderer->swapchainRTView != NULL)
-	{
-		ID3D11RenderTargetView_Release(renderer->swapchainRTView);
-		renderer->swapchainRTView = NULL;
 	}
 }
 
@@ -2878,8 +2969,9 @@ static void D3D11_ReadBackbuffer(
 	}
 	else
 	{
+		/* This is only possible with a single window/swapchain, 0 should be safe */
 		res = IDXGISwapChain_GetBuffer(
-			renderer->swapchain,
+			renderer->swapchainDatas[0]->swapchain,
 			0,
 			&D3D_IID_ID3D11Texture2D,
 			(void**) &swapchainBuffer
@@ -5166,6 +5258,9 @@ try_create_device:
 	renderer->topology = (FNA3D_PrimitiveType) -1; /* Force an update */
 
 	/* Initialize the faux backbuffer */
+	renderer->swapchainDataCapacity = 1;
+	renderer->swapchainDataCount = 0;
+	renderer->swapchainDatas = SDL_malloc(renderer->swapchainDataCapacity * sizeof(D3D11SwapchainData*));
 	D3D11_INTERNAL_CreateBackbuffer(renderer, presentationParameters);
 
 	/* Create any pipeline resources required for the faux backbuffer */
@@ -5251,19 +5346,22 @@ static void D3D11_PLATFORM_GetDefaultAdapter(
 
 static void D3D11_PLATFORM_CreateSwapChain(
 	D3D11Renderer *renderer,
-	FNA3D_PresentationParameters *pp
+	FNA3D_SurfaceFormat backBufferFormat,
+	void *windowHandle
 ) {
+	IDXGISwapChain *swapchain;
+	D3D11SwapchainData *swapchainData;
 	DXGI_SWAP_CHAIN_DESC1 swapchainDesc;
 	HRESULT res;
 	SDL_SysWMinfo info;
 
 	SDL_VERSION(&info.version);
-	SDL_GetWindowWMInfo((SDL_Window*) pp->deviceWindowHandle, &info);
+	SDL_GetWindowWMInfo((SDL_Window*) windowHandle, &info);
 
 	/* Initialize swapchain descriptor */
 	swapchainDesc.Width = 0;
 	swapchainDesc.Height = 0;
-	swapchainDesc.Format = XNAToD3D_TextureFormat[pp->backBufferFormat];
+	swapchainDesc.Format = XNAToD3D_TextureFormat[backBufferFormat];
 	swapchainDesc.Stereo = 0;
 	swapchainDesc.SampleDesc.Count = 1;
 	swapchainDesc.SampleDesc.Quality = 0;
@@ -5281,14 +5379,30 @@ static void D3D11_PLATFORM_CreateSwapChain(
 		(IUnknown*) info.info.winrt.window,
 		&swapchainDesc,
 		NULL,
-		(IDXGISwapChain1**) &renderer->swapchain
+		(IDXGISwapChain1**) &swapchain
 	);
 	ERROR_CHECK("Could not create swapchain")
+
+	swapchainData = (D3D11SwapchainData*) SDL_malloc(sizeof(D3D11SwapchainData));
+	swapchainData->swapchain = swapchain;
+	swapchainData->windowHandle = windowHandle;
+	swapchainData->swapchainRTView = NULL;
+	SDL_SetWindowData((SDL_Window*) windowHandle, WINDOW_SWAPCHAIN_DATA, swapchainData);
+	if (renderer->swapchainDataCount >= renderer->swapchainDataCapacity)
+	{
+		renderer->swapchainDataCapacity *= 2;
+		renderer->swapchainDatas = SDL_realloc(
+			renderer->swapchainDatas,
+			renderer->swapchainDataCapacity * sizeof(D3D11SwapchainData*)
+		);
+	}
+	renderer->swapchainDatas[renderer->swapchainDataCount] = swapchainData;
+	renderer->swapchainDataCount += 1;
 }
 
 static HRESULT D3D11_PLATFORM_ResizeSwapChain(
 	D3D11Renderer *renderer,
-	FNA3D_PresentationParameters *pp
+	D3D11SwapchainData *swapchainData
 ) {
 	/* FIXME: MASSIVE XBOX REGRESSION!!!
 	 * An update to the Xbox OS went out on August 2021, and immediately
@@ -5305,9 +5419,9 @@ static HRESULT D3D11_PLATFORM_ResizeSwapChain(
 	 * -flibit
 	 */
 	int w, h;
-	SDL_GetWindowSize((SDL_Window*) pp->deviceWindowHandle, &w, &h);
+	SDL_GetWindowSize((SDL_Window*) swapchainData->windowHandle, &w, &h);
 	return IDXGISwapChain_ResizeBuffers(
-		renderer->swapchain,
+		swapchainData->swapchain,
 		0,			/* keep # of buffers the same */
 		w,
 		h,
@@ -5470,17 +5584,20 @@ static void ResolveSwapChainModeDescription(
 
 static void D3D11_PLATFORM_CreateSwapChain(
 	D3D11Renderer *renderer,
-	FNA3D_PresentationParameters *pp
+	FNA3D_SurfaceFormat backBufferFormat,
+	void *windowHandle
 ) {
 	IDXGIFactory1* pParent;
 	DXGI_SWAP_CHAIN_DESC swapchainDesc;
 	DXGI_MODE_DESC swapchainBufferDesc;
+	IDXGISwapChain *swapchain;
+	D3D11SwapchainData *swapchainData;
 	SDL_SysWMinfo info;
 	HWND dxgiHandle;
 	HRESULT res;
 
 	SDL_VERSION(&info.version);
-	SDL_GetWindowWMInfo((SDL_Window*) pp->deviceWindowHandle, &info);
+	SDL_GetWindowWMInfo((SDL_Window*) windowHandle, &info);
 	dxgiHandle = info.info.win.window;
 
 	/* Initialize swapchain buffer descriptor */
@@ -5488,7 +5605,7 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	swapchainBufferDesc.Height = 0;
 	swapchainBufferDesc.RefreshRate.Numerator = 0;
 	swapchainBufferDesc.RefreshRate.Denominator = 0;
-	swapchainBufferDesc.Format = XNAToD3D_TextureFormat[pp->backBufferFormat];
+	swapchainBufferDesc.Format = XNAToD3D_TextureFormat[backBufferFormat];
 	swapchainBufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
 	swapchainBufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
 
@@ -5517,7 +5634,7 @@ static void D3D11_PLATFORM_CreateSwapChain(
 		(IDXGIFactory1*) renderer->factory,
 		(IUnknown*) renderer->device,
 		&swapchainDesc,
-		&renderer->swapchain
+		&swapchain
 	);
 	ERROR_CHECK("Could not create swapchain")
 
@@ -5529,7 +5646,7 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	 * See https://gamedev.net/forums/topic/634235-dxgidisabling-altenter/4999955/
 	 */
 	res = IDXGISwapChain_GetParent(
-		(IDXGISwapChain*) renderer->swapchain,
+		swapchain,
 		&D3D_IID_IDXGIFactory1,
 		(void**) &pParent
 	);
@@ -5556,14 +5673,30 @@ static void D3D11_PLATFORM_CreateSwapChain(
 			);
 		}
 	}
+
+	swapchainData = (D3D11SwapchainData*) SDL_malloc(sizeof(D3D11SwapchainData));
+	swapchainData->swapchain = swapchain;
+	swapchainData->windowHandle = windowHandle;
+	swapchainData->swapchainRTView = NULL;
+	SDL_SetWindowData((SDL_Window*) windowHandle, WINDOW_SWAPCHAIN_DATA, swapchainData);
+	if (renderer->swapchainDataCount >= renderer->swapchainDataCapacity)
+	{
+		renderer->swapchainDataCapacity *= 2;
+		renderer->swapchainDatas = SDL_realloc(
+			renderer->swapchainDatas,
+			renderer->swapchainDataCapacity * sizeof(D3D11SwapchainData*)
+		);
+	}
+	renderer->swapchainDatas[renderer->swapchainDataCount] = swapchainData;
+	renderer->swapchainDataCount += 1;
 }
 
 static HRESULT D3D11_PLATFORM_ResizeSwapChain(
 	D3D11Renderer *renderer,
-	FNA3D_PresentationParameters *pp
+	D3D11SwapchainData *swapchainData
 ) {
 	return IDXGISwapChain_ResizeBuffers(
-		renderer->swapchain,
+		swapchainData->swapchain,
 		0,			/* keep # of buffers the same */
 		0,			/* get width from window */
 		0,			/* get height from window */
