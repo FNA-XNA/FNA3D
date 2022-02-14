@@ -8000,6 +8000,8 @@ static void VULKAN_INTERNAL_BindPipeline(VulkanRenderer *renderer)
 				pipeline
 			));
 			renderer->currentPipeline = pipeline;
+			renderer->fragSamplerDescriptorSetDataNeedsUpdate = 1;
+			renderer->vertexSamplerDescriptorSetDataNeedsUpdate = 1;
 		}
 
 		renderer->needNewPipeline = 0;
@@ -8778,6 +8780,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	}
 
 	renderer->currentPipeline = VK_NULL_HANDLE;
+	renderer->needNewPipeline = 1;
 
 	renderer->needNewRenderPass = 0;
 	renderer->shouldClearColorOnBeginPass = 0;
@@ -9513,8 +9516,8 @@ static void VULKAN_DrawInstancedPrimitives(
 		VK_SHADER_STAGE_FRAGMENT_BIT
 	);
 
-	if (	renderer->fragSamplerDescriptorSetDataNeedsUpdate ||
-		renderer->vertexSamplerDescriptorSetDataNeedsUpdate	)
+	if (	renderer->vertexSamplerDescriptorSetDataNeedsUpdate ||
+		renderer->fragSamplerDescriptorSetDataNeedsUpdate	)
 	{
 		VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 			renderer,
@@ -9618,24 +9621,28 @@ static void VULKAN_DrawPrimitives(
 		VK_SHADER_STAGE_FRAGMENT_BIT
 	);
 
-	VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
-		renderer,
-		vertShaderResources,
-		fragShaderResources,
-		descriptorSets,
-		dynamicOffsets
-	);
+	if (	renderer->vertexSamplerDescriptorSetDataNeedsUpdate ||
+		renderer->fragSamplerDescriptorSetDataNeedsUpdate	)
+	{
+		VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
+			renderer,
+			vertShaderResources,
+			fragShaderResources,
+			descriptorSets,
+			dynamicOffsets
+		);
 
-	RECORD_CMD(renderer->vkCmdBindDescriptorSets(
-		renderer->currentCommandBufferContainer->commandBuffer,
-		VK_PIPELINE_BIND_POINT_GRAPHICS,
-		renderer->currentPipelineLayout,
-		0,
-		4,
-		descriptorSets,
-		2,
-		dynamicOffsets
-	));
+		RECORD_CMD(renderer->vkCmdBindDescriptorSets(
+			renderer->currentCommandBufferContainer->commandBuffer,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			renderer->currentPipelineLayout,
+			0,
+			4,
+			descriptorSets,
+			2,
+			dynamicOffsets
+		));
+	}
 
 	RECORD_CMD(renderer->vkCmdDraw(
 		renderer->currentCommandBufferContainer->commandBuffer,
