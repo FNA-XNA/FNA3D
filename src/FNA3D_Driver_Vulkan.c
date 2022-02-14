@@ -423,54 +423,10 @@ static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] =
 	}
 };
 
-/* Descriptor Set Data */
-
-typedef struct SamplerDescriptorSetData
-{
-	VkDescriptorImageInfo descriptorImageInfo[MAX_TEXTURE_SAMPLERS]; /* used for vertex samplers as well */
-} SamplerDescriptorSetData;
-
-typedef struct SamplerDescriptorSetHashMap
-{
-	uint64_t key;
-	SamplerDescriptorSetData descriptorSetData;
-	VkDescriptorSet descriptorSet;
-	uint8_t inactiveFrameCount;
-} SamplerDescriptorSetHashMap;
-
-typedef struct SamplerDescriptorSetHashArray
-{
-	uint32_t *elements;
-	int32_t count;
-	int32_t capacity;
-} SamplerDescriptorSetHashArray;
-
-#define NUM_DESCRIPTOR_SET_HASH_BUCKETS 1031
-
-static inline uint64_t SamplerDescriptorSetHashTable_GetHashCode(
-	SamplerDescriptorSetData *descriptorSetData,
-	uint32_t samplerCount
-) {
-	const uint64_t HASH_FACTOR = 97;
-	uint32_t i;
-	uint64_t result = 1;
-
-	for (i = 0; i < samplerCount; i++)
-	{
-		result = result * HASH_FACTOR + (uint64_t) descriptorSetData->descriptorImageInfo[i].imageView;
-		result = result * HASH_FACTOR + (uint64_t) descriptorSetData->descriptorImageInfo[i].sampler;
-	}
-
-	return result;
-}
+/* Shader Resources */
 
 typedef struct ShaderResources
 {
-	SamplerDescriptorSetHashArray buckets[NUM_DESCRIPTOR_SET_HASH_BUCKETS]; /* these buckets store indices */
-	SamplerDescriptorSetHashMap *elements; /* where the hash map elements are stored */
-	uint32_t count;
-	uint32_t capacity;
-
 	VkDescriptorPool *samplerDescriptorPools;
 	uint32_t samplerDescriptorPoolCount;
 	uint32_t nextPoolSize;
@@ -485,6 +441,9 @@ typedef struct ShaderResources
 
 	VkDescriptorSet uniformDescriptorSet;
 	VkDescriptorBufferInfo uniformBufferInfo;
+
+	/* VK_NULL_HANDLE unless samplerCount is 0 */
+	VkDescriptorSet dummySamplerDescriptorSet;
 } ShaderResources;
 
 typedef struct ShaderResourcesHashMap
@@ -1209,6 +1168,12 @@ typedef struct VulkanQuery /* Cast from FNA3D_Query* */
 	uint32_t index;
 } VulkanQuery;
 
+typedef struct DescriptorSetData
+{
+	VkDescriptorSet descriptorSet;
+	ShaderResources *parent;
+} DescriptorSetData;
+
 /* Command buffers have various resources associated with them
  * that can be freed after the command buffer is fully processed.
  */
@@ -1217,9 +1182,9 @@ typedef struct VulkanCommandBufferContainer
 	VkCommandBuffer commandBuffer;
 	VkFence inFlightFence;
 
-	VulkanBuffer **submittedBuffers;
-	uint32_t submittedBufferCount;
-	uint32_t submittedBufferCapacity;
+	DescriptorSetData **usedDescriptorSetDatas;
+	uint32_t usedDescriptorSetDataCount;
+	uint32_t usedDescriptorSetDataCapacity;
 
 	VulkanBuffer **boundBuffers;
 	uint32_t boundBufferCount;
@@ -1268,9 +1233,15 @@ typedef struct VulkanRenderer
 
 	/* Command Buffers */
 	VkCommandPool commandPool;
+
 	VulkanCommandBufferContainer **inactiveCommandBufferContainers;
 	uint32_t inactiveCommandBufferContainerCount;
 	uint32_t inactiveCommandBufferContainerCapacity;
+
+	VulkanCommandBufferContainer **submittedCommandBufferContainers;
+	uint32_t submittedCommandBufferContainerCount;
+	uint32_t submittedCommandBufferContainerCapacity;
+
 	uint32_t currentCommandCount;
 	VulkanCommandBufferContainer *currentCommandBufferContainer;
 	uint32_t numActiveCommands;
@@ -1442,6 +1413,8 @@ typedef struct VulkanRenderer
 	SDL_mutex *disposeLock;
 	SDL_mutex *allocatorLock;
 	SDL_mutex *stagingLock;
+	SDL_mutex *descriptorLock;
+	SDL_mutex *bindLock;
 	SDL_mutex *cleanupLock;
 	uint32_t activeCleanupThreadCount;
 
@@ -1907,8 +1880,6 @@ static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync
 static void VULKAN_INTERNAL_StartDefragCleanupThread(VulkanRenderer *renderer);
 static void VULKAN_INTERNAL_StartSubmitCleanupThread(VulkanRenderer *renderer, VulkanCommandBufferContainer *vulkanCommandBufferContainer);
 static void VULKAN_INTERNAL_PerformDeferredDestroys(VulkanRenderer *renderer, VulkanCommandBufferContainer *vulkanCommandBufferContainer);
-
-static void ShaderResources_InvalidateDescriptorSet(VulkanRenderer* renderer, VkImageView view);
 
 /* Vulkan: Internal Implementation */
 
@@ -2868,6 +2839,14 @@ static VulkanCommandBufferContainer* VULKAN_INTERNAL_AllocateCommandBuffer(
 		&vulkanCommandBufferContainer->inFlightFence
 	);
 
+	/* Descriptor set tracking */
+
+	vulkanCommandBufferContainer->usedDescriptorSetDataCapacity = 16;
+	vulkanCommandBufferContainer->usedDescriptorSetDataCount = 0;
+	vulkanCommandBufferContainer->usedDescriptorSetDatas = SDL_malloc(
+		vulkanCommandBufferContainer->usedDescriptorSetDataCapacity * sizeof(DescriptorSetData*)
+	);
+
 	/* Bound buffer tracking */
 
 	vulkanCommandBufferContainer->boundBufferCapacity = 4;
@@ -2876,14 +2855,7 @@ static VulkanCommandBufferContainer* VULKAN_INTERNAL_AllocateCommandBuffer(
 		vulkanCommandBufferContainer->boundBufferCapacity * sizeof(VulkanBuffer*)
 	);
 
-	vulkanCommandBufferContainer->submittedBufferCapacity = 4;
-	vulkanCommandBufferContainer->submittedBufferCount = 0;
-	vulkanCommandBufferContainer->submittedBuffers = SDL_malloc(
-		vulkanCommandBufferContainer->submittedBufferCapacity * sizeof(VulkanBuffer*)
-	);
-
 	/* Destroyed resources tracking */
-
 
 	vulkanCommandBufferContainer->renderbuffersToDestroyCapacity = 16;
 	vulkanCommandBufferContainer->renderbuffersToDestroyCount = 0;
@@ -4389,6 +4361,8 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 	VulkanRenderer *renderer,
 	VulkanBuffer *buffer
 ) {
+	uint32_t i, j;
+
 	renderer->vkDestroyBuffer(
 		renderer->logicalDevice,
 		buffer->buffer,
@@ -4400,6 +4374,20 @@ static void VULKAN_INTERNAL_DestroyBuffer(
 		buffer->usedRegion
 	);
 
+	/* Don't unbind destroyed buffers! */
+	SDL_LockMutex(renderer->bindLock);
+	for (i = 0; i < renderer->submittedCommandBufferContainerCount; i += 1)
+	{
+		for (j = 0; j < renderer->submittedCommandBufferContainers[i]->boundBufferCount; j += 1)
+		{
+			if (buffer == renderer->submittedCommandBufferContainers[i]->boundBuffers[j])
+			{
+				renderer->submittedCommandBufferContainers[i]->boundBuffers[j] = NULL;
+			}
+		}
+	}
+	SDL_UnlockMutex(renderer->bindLock);
+
 	SDL_free(buffer);
 }
 
@@ -4407,11 +4395,6 @@ static void VULKAN_INTERNAL_DestroyImageView(
 	VulkanRenderer* renderer,
 	VkImageView imageView
 ) {
-	ShaderResources_InvalidateDescriptorSet(
-		renderer,
-		imageView
-	);
-
 	renderer->vkDestroyImageView(
 		renderer->logicalDevice,
 		imageView,
@@ -4420,7 +4403,7 @@ static void VULKAN_INTERNAL_DestroyImageView(
 }
 
 /* When a render target image view is destroyed we need to invalidate
- * the framebuffers and descriptor sets that reference it */
+ * the framebuffers that reference it */
 static void VULKAN_INTERNAL_RemoveViewFramebuffer(
 	VulkanRenderer *renderer,
 	VkImageView imageView
@@ -5274,12 +5257,6 @@ static void ShaderResources_Destroy(
 	SDL_free(shaderResources->samplerDescriptorPools);
 	SDL_free(shaderResources->samplerBindingIndices);
 	SDL_free(shaderResources->inactiveDescriptorSets);
-	SDL_free(shaderResources->elements);
-
-	for (i = 0; i < NUM_DESCRIPTOR_SET_HASH_BUCKETS; i += 1)
-	{
-		SDL_free(shaderResources->buckets[i].elements);
-	}
 
 	SDL_free(shaderResources);
 }
@@ -5292,7 +5269,9 @@ static ShaderResources *ShaderResources_Init(
 	uint32_t i;
 	VkBuffer vUniform, fUniform;
 	VkWriteDescriptorSet writeDescriptorSet;
+	VkDescriptorImageInfo imageInfo;
 	unsigned long long vOff, fOff, vSize, fSize;
+	uint32_t descriptorPoolSize = STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE;
 	ShaderResources *shaderResources = SDL_malloc(sizeof(ShaderResources));
 
 	/*
@@ -5301,28 +5280,22 @@ static ShaderResources *ShaderResources_Init(
 	 */
 	SDL_LockMutex(renderer->passLock);
 
-	shaderResources->elements = SDL_malloc(sizeof(SamplerDescriptorSetHashMap) * 16);
-	shaderResources->count = 0;
-	shaderResources->capacity = 16;
-
-	for (i = 0; i < NUM_DESCRIPTOR_SET_HASH_BUCKETS; i += 1)
-	{
-		shaderResources->buckets[i].elements = NULL;
-		shaderResources->buckets[i].count = 0;
-		shaderResources->buckets[i].capacity = 0;
-	}
-
 	shaderResources->samplerLayout = VULKAN_INTERNAL_FetchSamplerDescriptorSetLayout(renderer, shader, shaderStageFlag);
 	shaderResources->samplerCount = MOJOSHADER_vkGetShaderParseData(shader)->sampler_count;
 
 	shaderResources->samplerDescriptorPools = SDL_malloc(sizeof(VkDescriptorPool));
 	shaderResources->samplerDescriptorPoolCount = 1;
 
+	if (shaderResources->samplerCount == 0)
+	{
+		descriptorPoolSize = 1;
+	}
+
 	VULKAN_INTERNAL_CreateDescriptorPool(
 		renderer,
 		VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,
-		STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE,
-		STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE * SDL_max(shaderResources->samplerCount, 1), /* in case of dummy data */
+		descriptorPoolSize,
+		descriptorPoolSize * SDL_max(shaderResources->samplerCount, 1), /* in case of dummy data */
 		&shaderResources->samplerDescriptorPools[0]
 	);
 
@@ -5335,17 +5308,66 @@ static ShaderResources *ShaderResources_Init(
 		shaderResources->samplerBindingIndices[i] = MOJOSHADER_vkGetShaderParseData(shader)->samplers[i].index;
 	}
 
-	shaderResources->inactiveDescriptorSetCapacity = STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE;
-	shaderResources->inactiveDescriptorSetCount = STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE - 1;
-	shaderResources->inactiveDescriptorSets = SDL_malloc(sizeof(VkDescriptorSet) * STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE);
+	if (shaderResources->samplerCount > 0)
+	{
+		shaderResources->inactiveDescriptorSetCapacity = STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE;
+		shaderResources->inactiveDescriptorSetCount = STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE - 1;
+		shaderResources->inactiveDescriptorSets = SDL_malloc(sizeof(VkDescriptorSet) * STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE);
 
-	VULKAN_INTERNAL_AllocateDescriptorSets(
-		renderer,
-		shaderResources->samplerDescriptorPools[0],
-		shaderResources->samplerLayout,
-		STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE,
-		shaderResources->inactiveDescriptorSets
-	);
+		VULKAN_INTERNAL_AllocateDescriptorSets(
+			renderer,
+			shaderResources->samplerDescriptorPools[0],
+			shaderResources->samplerLayout,
+			STARTING_SAMPLER_DESCRIPTOR_POOL_SIZE,
+			shaderResources->inactiveDescriptorSets
+		);
+	}
+	else
+	{
+		shaderResources->inactiveDescriptorSetCapacity = 0;
+		shaderResources->inactiveDescriptorSetCount = 0;
+		shaderResources->inactiveDescriptorSets = NULL;
+
+		/* Set up the dummy descriptor set */
+		VULKAN_INTERNAL_AllocateDescriptorSets(
+			renderer,
+			shaderResources->samplerDescriptorPools[0],
+			shaderResources->samplerLayout,
+			1,
+			&shaderResources->dummySamplerDescriptorSet
+		);
+
+		imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+		if (shaderStageFlag == VK_SHADER_STAGE_VERTEX_BIT)
+		{
+			imageInfo.imageView = renderer->dummyVertTexture->view;
+			imageInfo.sampler = renderer->dummyVertSamplerState;
+		}
+		else
+		{
+			imageInfo.imageView = renderer->dummyFragTexture->view;
+			imageInfo.sampler = renderer->dummyFragSamplerState;
+		}
+
+		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSet.pNext = NULL;
+		writeDescriptorSet.descriptorCount = 1;
+		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+		writeDescriptorSet.dstArrayElement = 0;
+		writeDescriptorSet.dstBinding = 0;
+		writeDescriptorSet.dstSet = shaderResources->dummySamplerDescriptorSet;
+		writeDescriptorSet.pBufferInfo = NULL;
+		writeDescriptorSet.pImageInfo = &imageInfo;
+
+		renderer->vkUpdateDescriptorSets(
+			renderer->logicalDevice,
+			1,
+			&writeDescriptorSet,
+			0,
+			NULL
+		);
+	}
 
 	MOJOSHADER_vkGetUniformBuffers(
 		renderer->mojoshaderContext,
@@ -5424,50 +5446,15 @@ static ShaderResources* VULKAN_INTERNAL_FetchShaderResources(
 	return shaderResources;
 }
 
-static inline uint8_t SamplerDescriptorSetDataEqual(
-	SamplerDescriptorSetData *a,
-	SamplerDescriptorSetData *b,
-	uint8_t samplerCount
-) {
-	uint32_t i;
-
-	for (i = 0; i < samplerCount; i += 1)
-	{
-		if (	a->descriptorImageInfo[i].imageLayout != b->descriptorImageInfo[i].imageLayout ||
-			a->descriptorImageInfo[i].imageView != b->descriptorImageInfo[i].imageView ||
-			a->descriptorImageInfo[i].sampler != b->descriptorImageInfo[i].sampler	)
-		{
-			return 0;
-		}
-	}
-
-	return 1;
-}
-
 /* Fetches or creates a new descriptor set based on data */
 static VkDescriptorSet ShaderResources_FetchDescriptorSet(
 	VulkanRenderer *renderer,
-	ShaderResources *shaderResources,
-	SamplerDescriptorSetData *value
+	ShaderResources *shaderResources
 ) {
-	uint32_t i;
 	VkDescriptorSet newDescriptorSet;
-	VkWriteDescriptorSet writeDescriptorSets[MAX_TEXTURE_SAMPLERS];
-	SamplerDescriptorSetHashMap *map;
-	uint64_t hashcode = SamplerDescriptorSetHashTable_GetHashCode(value, SDL_max(shaderResources->samplerCount, 1));
-	SamplerDescriptorSetHashArray *arr = &shaderResources->buckets[hashcode % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
 
-	for (i = 0; i < arr->count; i += 1)
-	{
-		SamplerDescriptorSetHashMap *e = &shaderResources->elements[arr->elements[i]];
-		if (SamplerDescriptorSetDataEqual(value, &e->descriptorSetData, shaderResources->samplerCount))
-		{
-			e->inactiveFrameCount = 0;
-			return e->descriptorSet;
-		}
-	}
+	SDL_LockMutex(renderer->descriptorLock);
 
-	/* If no match exists, assign a new descriptor set and prepare it for update */
 	/* If no inactive descriptor sets remain, create a new pool and allocate new inactive sets */
 
 	if (shaderResources->inactiveDescriptorSetCount == 0)
@@ -5509,150 +5496,33 @@ static VkDescriptorSet ShaderResources_FetchDescriptorSet(
 	newDescriptorSet = shaderResources->inactiveDescriptorSets[shaderResources->inactiveDescriptorSetCount - 1];
 	shaderResources->inactiveDescriptorSetCount -= 1;
 
-	for (i = 0; i < shaderResources->samplerCount; i += 1)
-	{
-		writeDescriptorSets[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeDescriptorSets[i].pNext = NULL;
-		writeDescriptorSets[i].descriptorCount = 1;
-		writeDescriptorSets[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-		writeDescriptorSets[i].dstArrayElement = 0;
-		writeDescriptorSets[i].dstBinding = shaderResources->samplerBindingIndices[i];
-		writeDescriptorSets[i].dstSet = newDescriptorSet;
-		writeDescriptorSets[i].pBufferInfo = NULL;
-		writeDescriptorSets[i].pImageInfo = &value->descriptorImageInfo[i];
-	}
-
-	renderer->vkUpdateDescriptorSets(
-		renderer->logicalDevice,
-		shaderResources->samplerCount,
-		writeDescriptorSets,
-		0,
-		NULL
-	);
-
-	EXPAND_ARRAY_IF_NEEDED(arr, 2, uint32_t)
-	arr->elements[arr->count] = shaderResources->count;
-	arr->count += 1;
-
-	if (shaderResources->count == shaderResources->capacity)
-	{
-		shaderResources->capacity *= 2;
-
-		shaderResources->elements = SDL_realloc(
-			shaderResources->elements,
-			sizeof(SamplerDescriptorSetHashMap) * shaderResources->capacity
-		);
-	}
-	map = &shaderResources->elements[shaderResources->count];
-	map->key = hashcode;
-	for (i = 0; i < shaderResources->samplerCount; i += 1)
-	{
-		map->descriptorSetData.descriptorImageInfo[i].imageLayout =
-			value->descriptorImageInfo[i].imageLayout;
-		map->descriptorSetData.descriptorImageInfo[i].imageView =
-			value->descriptorImageInfo[i].imageView;
-		map->descriptorSetData.descriptorImageInfo[i].sampler =
-			value->descriptorImageInfo[i].sampler;
-	}
-	map->descriptorSet = newDescriptorSet;
-	map->inactiveFrameCount = 0;
-	shaderResources->count += 1;
+	SDL_UnlockMutex(renderer->descriptorLock);
 
 	return newDescriptorSet;
 }
 
-static void ShaderResources_DeactivateDescriptorSet(
-	ShaderResources* shaderResources,
-	uint32_t index
-) {
-	uint32_t j;
-	SamplerDescriptorSetHashArray* arr;
-
-	arr = &shaderResources->buckets[shaderResources->elements[index].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
-
-	/* remove index from bucket */
-	for (j = 0; j < arr->count; j += 1)
-	{
-		if (arr->elements[j] == index)
-		{
-			if (j < arr->count - 1)
-			{
-				arr->elements[j] = arr->elements[arr->count - 1];
-			}
-
-			arr->count -= 1;
-			break;
-		}
-	}
-
-	/* remove element from table and place in inactive sets */
-
-	shaderResources->inactiveDescriptorSets[shaderResources->inactiveDescriptorSetCount] = shaderResources->elements[index].descriptorSet;
-	shaderResources->inactiveDescriptorSetCount += 1;
-
-	/* move another descriptor set to fill the hole */
-	if (index < shaderResources->count - 1)
-	{
-		shaderResources->elements[index] = shaderResources->elements[shaderResources->count - 1];
-
-		/* update index in bucket */
-		arr = &shaderResources->buckets[shaderResources->elements[index].key % NUM_DESCRIPTOR_SET_HASH_BUCKETS];
-
-		for (j = 0; j < arr->count; j += 1)
-		{
-			if (arr->elements[j] == shaderResources->count - 1)
-			{
-				arr->elements[j] = index;
-				break;
-			}
-		}
-	}
-
-	shaderResources->count -= 1;
-
-}
-
-static void ShaderResources_InvalidateDescriptorSet(
+static void VULKAN_INTERNAL_RegisterUsedDescriptorSet(
 	VulkanRenderer *renderer,
-	VkImageView view
+	ShaderResources *parent,
+	VkDescriptorSet descriptorSet
 ) {
-	int32_t i, j, m, n;
-	ShaderResources* shaderResources;
+	VulkanCommandBufferContainer *commandBufferContainer = renderer->currentCommandBufferContainer;
+	DescriptorSetData *descriptorSetData = SDL_malloc(sizeof(DescriptorSetData));
 
-	for (i = 0; i < NUM_SHADER_RESOURCES_BUCKETS; i += 1)
+	if (commandBufferContainer->usedDescriptorSetDataCount >= commandBufferContainer->usedDescriptorSetDataCapacity)
 	{
-		for (j = 0; j < renderer->shaderResourcesHashTable.buckets[i].count; j += 1)
-		{
-			shaderResources = renderer->shaderResourcesHashTable.buckets[i].elements[j].value;
-
-			for (m = shaderResources->count - 1; m >= 0; m -= 1)
-			{
-				for (n = 0; n < shaderResources->samplerCount; n += 1)
-				{
-					if (shaderResources->elements[m].descriptorSetData.descriptorImageInfo[n].imageView == view)
-					{
-						ShaderResources_DeactivateDescriptorSet(shaderResources, m);
-					}
-				}
-			}
-		}
+		commandBufferContainer->usedDescriptorSetDataCapacity *= 2;
+		commandBufferContainer->usedDescriptorSetDatas = SDL_realloc(
+			commandBufferContainer->usedDescriptorSetDatas,
+			commandBufferContainer->usedDescriptorSetDataCapacity * sizeof(DescriptorSetData*)
+		);
 	}
-}
 
-static void ShaderResources_DeactivateUnusedDescriptorSets(
-	ShaderResources *shaderResources
-) {
-	int32_t i;
+	descriptorSetData->parent = parent;
+	descriptorSetData->descriptorSet = descriptorSet;
 
-	for (i = shaderResources->count - 1; i >= 0; i -= 1)
-	{
-		shaderResources->elements[i].inactiveFrameCount += 1;
-
-		if (shaderResources->elements[i].inactiveFrameCount + 1 > DESCRIPTOR_SET_DEACTIVATE_FRAMES)
-		{
-			ShaderResources_DeactivateDescriptorSet(shaderResources, i);
-		}
-	}
+	commandBufferContainer->usedDescriptorSetDatas[commandBufferContainer->usedDescriptorSetDataCount] = descriptorSetData;
+	commandBufferContainer->usedDescriptorSetDataCount += 1;
 }
 
 /* Must take an array of descriptor sets of size 4 */
@@ -5668,9 +5538,8 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 
 	MOJOSHADER_vkShader *vertShader, *fragShader;
 	MOJOSHADER_samplerType samplerType;
-
-	SamplerDescriptorSetData vertexSamplerDescriptorSetData;
-	SamplerDescriptorSetData fragSamplerDescriptorSetData;
+	VkWriteDescriptorSet writeDescriptorSets[MAX_TEXTURE_SAMPLERS];
+	VkDescriptorImageInfo imageInfos[MAX_TEXTURE_SAMPLERS];
 
 	uint32_t i;
 
@@ -5680,70 +5549,93 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 	{
 		if (vertShaderResources->samplerCount == 0)
 		{
-			/* in case we have 0 samplers, bind dummy data */
-			vertexSamplerDescriptorSetData.descriptorImageInfo[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			vertexSamplerDescriptorSetData.descriptorImageInfo[0].imageView = renderer->dummyVertTexture->view;
-			vertexSamplerDescriptorSetData.descriptorImageInfo[0].sampler = renderer->dummyVertSamplerState;
+			renderer->currentVertexSamplerDescriptorSet = vertShaderResources->dummySamplerDescriptorSet;
 		}
 		else
 		{
+			renderer->currentVertexSamplerDescriptorSet = ShaderResources_FetchDescriptorSet(
+				renderer,
+				vertShaderResources
+			);
+
 			for (i = 0; i < vertShaderResources->samplerCount; i += 1)
 			{
 				if (renderer->textures[MAX_TEXTURE_SAMPLERS + vertShaderResources->samplerBindingIndices[i]] != &NullTexture)
 				{
-					vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->textures[MAX_TEXTURE_SAMPLERS + vertShaderResources->samplerBindingIndices[i]]->view;
-					vertexSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->samplers[MAX_TEXTURE_SAMPLERS + vertShaderResources->samplerBindingIndices[i]];
-					vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+					imageInfos[i].imageView = renderer->textures[MAX_TEXTURE_SAMPLERS + vertShaderResources->samplerBindingIndices[i]]->view;
+					imageInfos[i].sampler = renderer->samplers[MAX_TEXTURE_SAMPLERS + vertShaderResources->samplerBindingIndices[i]];
+					imageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 				}
 				else
 				{
 					samplerType = MOJOSHADER_vkGetShaderParseData(vertShader)->samplers[i].type;
 					if (samplerType == MOJOSHADER_SAMPLER_2D)
 					{
-						vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-						vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyVertTexture->view;
-						vertexSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->dummyVertSamplerState;
+						imageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+						imageInfos[i].imageView = renderer->dummyVertTexture->view;
+						imageInfos[i].sampler = renderer->dummyVertSamplerState;
 					}
 					else if (samplerType == MOJOSHADER_SAMPLER_VOLUME)
 					{
-						vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-						vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyVertTexture3D->view;
-						vertexSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->dummyVertSampler3DState;
+						imageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+						imageInfos[i].imageView = renderer->dummyVertTexture3D->view;
+						imageInfos[i].sampler = renderer->dummyVertSampler3DState;
 					}
 					else if (samplerType == MOJOSHADER_SAMPLER_CUBE)
 					{
-						vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-						vertexSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyVertTextureCube->view;
-						vertexSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->dummyVertSamplerCubeState;
+						imageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+						imageInfos[i].imageView = renderer->dummyVertTextureCube->view;
+						imageInfos[i].sampler = renderer->dummyVertSamplerCubeState;
 					}
 				}
-			}
-		}
 
-		renderer->currentVertexSamplerDescriptorSet = ShaderResources_FetchDescriptorSet(
-			renderer,
-			vertShaderResources,
-			&vertexSamplerDescriptorSetData
-		);
+				writeDescriptorSets[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+				writeDescriptorSets[i].pNext = NULL;
+				writeDescriptorSets[i].descriptorCount = 1;
+				writeDescriptorSets[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+				writeDescriptorSets[i].dstArrayElement = 0;
+				writeDescriptorSets[i].dstBinding = vertShaderResources->samplerBindingIndices[i];
+				writeDescriptorSets[i].dstSet = renderer->currentVertexSamplerDescriptorSet;
+				writeDescriptorSets[i].pBufferInfo = NULL;
+				writeDescriptorSets[i].pImageInfo = &imageInfos[i];
+			}
+
+			renderer->vkUpdateDescriptorSets(
+				renderer->logicalDevice,
+				vertShaderResources->samplerCount,
+				writeDescriptorSets,
+				0,
+				NULL
+			);
+
+			VULKAN_INTERNAL_RegisterUsedDescriptorSet(
+				renderer,
+				vertShaderResources,
+				renderer->currentVertexSamplerDescriptorSet
+			);
+		}
 	}
 
 	if (renderer->fragSamplerDescriptorSetDataNeedsUpdate)
 	{
 		if (fragShaderResources->samplerCount == 0)
 		{
-			fragSamplerDescriptorSetData.descriptorImageInfo[0].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-			fragSamplerDescriptorSetData.descriptorImageInfo[0].imageView = renderer->dummyFragTexture->view;
-			fragSamplerDescriptorSetData.descriptorImageInfo[0].sampler = renderer->dummyFragSamplerState;
+			renderer->currentFragSamplerDescriptorSet = fragShaderResources->dummySamplerDescriptorSet;
 		}
 		else
 		{
+			renderer->currentFragSamplerDescriptorSet = ShaderResources_FetchDescriptorSet(
+				renderer,
+				fragShaderResources
+			);
+
 			for (i = 0; i < fragShaderResources->samplerCount; i += 1)
 			{
 				if (renderer->textures[fragShaderResources->samplerBindingIndices[i]] != &NullTexture)
 				{
-					fragSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->textures[fragShaderResources->samplerBindingIndices[i]]->view;
-					fragSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->samplers[fragShaderResources->samplerBindingIndices[i]];
-					fragSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+					imageInfos[i].imageView = renderer->textures[fragShaderResources->samplerBindingIndices[i]]->view;
+					imageInfos[i].sampler = renderer->samplers[fragShaderResources->samplerBindingIndices[i]];
+					imageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 				}
 				else
 				{
@@ -5751,31 +5643,49 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 					samplerType = MOJOSHADER_vkGetShaderParseData(fragShader)->samplers[i].type;
 					if (samplerType == MOJOSHADER_SAMPLER_2D)
 					{
-						fragSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-						fragSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyFragTexture->view;
-						fragSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->dummyFragSamplerState;
+						imageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+						imageInfos[i].imageView = renderer->dummyFragTexture->view;
+						imageInfos[i].sampler = renderer->dummyFragSamplerState;
 					}
 					else if (samplerType == MOJOSHADER_SAMPLER_VOLUME)
 					{
-						fragSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-						fragSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyFragTexture3D->view;
-						fragSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->dummyFragSampler3DState;
+						imageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+						imageInfos[i].imageView = renderer->dummyFragTexture3D->view;
+						imageInfos[i].sampler = renderer->dummyFragSampler3DState;
 					}
 					else if (samplerType == MOJOSHADER_SAMPLER_CUBE)
 					{
-						fragSamplerDescriptorSetData.descriptorImageInfo[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-						fragSamplerDescriptorSetData.descriptorImageInfo[i].imageView = renderer->dummyFragTextureCube->view;
-						fragSamplerDescriptorSetData.descriptorImageInfo[i].sampler = renderer->dummyFragSamplerCubeState;
+						imageInfos[i].imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+						imageInfos[i].imageView = renderer->dummyFragTextureCube->view;
+						imageInfos[i].sampler = renderer->dummyFragSamplerCubeState;
 					}
 				}
-			}
-		}
 
-		renderer->currentFragSamplerDescriptorSet = ShaderResources_FetchDescriptorSet(
-			renderer,
-			fragShaderResources,
-			&fragSamplerDescriptorSetData
-		);
+				writeDescriptorSets[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+				writeDescriptorSets[i].pNext = NULL;
+				writeDescriptorSets[i].descriptorCount = 1;
+				writeDescriptorSets[i].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+				writeDescriptorSets[i].dstArrayElement = 0;
+				writeDescriptorSets[i].dstBinding = fragShaderResources->samplerBindingIndices[i];
+				writeDescriptorSets[i].dstSet = renderer->currentFragSamplerDescriptorSet;
+				writeDescriptorSets[i].pBufferInfo = NULL;
+				writeDescriptorSets[i].pImageInfo = &imageInfos[i];
+			}
+
+			renderer->vkUpdateDescriptorSets(
+				renderer->logicalDevice,
+				fragShaderResources->samplerCount,
+				writeDescriptorSets,
+				0,
+				NULL
+			);
+
+			VULKAN_INTERNAL_RegisterUsedDescriptorSet(
+				renderer,
+				fragShaderResources,
+				renderer->currentFragSamplerDescriptorSet
+			);
+		}
 	}
 
 	renderer->vertexSamplerDescriptorSetDataNeedsUpdate = 0;
@@ -5794,24 +5704,6 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 
 	dynamicOffsets[0] = vOff;
 	dynamicOffsets[1] = fOff;
-}
-
-static void VULKAN_INTERNAL_ResetDescriptorSetData(VulkanRenderer *renderer)
-{
-	uint32_t i, j;
-	ShaderResources *shaderResources;
-
-	for (i = 0; i < NUM_SHADER_RESOURCES_BUCKETS; i += 1)
-	{
-		for (j = 0; j < renderer->shaderResourcesHashTable.buckets[i].count; j += 1)
-		{
-			shaderResources = renderer->shaderResourcesHashTable.buckets[i].elements[j].value;
-			ShaderResources_DeactivateUnusedDescriptorSets(shaderResources);
-		}
-	}
-
-	renderer->vertexSamplerDescriptorSetDataNeedsUpdate = 1;
-	renderer->fragSamplerDescriptorSetDataNeedsUpdate = 1;
 }
 
 /* Vulkan: Command Submission */
@@ -5949,6 +5841,7 @@ static int VULKAN_INTERNAL_SubmitCleanupThread(
 ) {
 	VulkanRenderer *renderer = ((VulkanCleanupData*)cleanupData)->renderer;
 	VulkanCommandBufferContainer *vulkanCommandBufferContainer = ((VulkanCleanupData*)cleanupData)->vulkanCommandBufferContainer;
+	DescriptorSetData *descriptorSetData;
 	VkFence fences[2];
 	VkResult result;
 	uint32_t i;
@@ -5976,40 +5869,57 @@ static int VULKAN_INTERNAL_SubmitCleanupThread(
 		&vulkanCommandBufferContainer->inFlightFence
 	);
 
-	SDL_LockMutex(renderer->commandLock);
-	SDL_LockMutex(renderer->allocatorLock);
+	/* Reset bound buffers */
+
+	SDL_LockMutex(renderer->bindLock);
+	for (i = 0; i < vulkanCommandBufferContainer->boundBufferCount; i += 1)
+	{
+		if (vulkanCommandBufferContainer->boundBuffers[i] != NULL)
+		{
+			vulkanCommandBufferContainer->boundBuffers[i]->bound = 0;
+		}
+	}
+	vulkanCommandBufferContainer->boundBufferCount = 0;
+	SDL_UnlockMutex(renderer->bindLock);
 
 	/* Cleanup */
 	VULKAN_INTERNAL_PerformDeferredDestroys(renderer, vulkanCommandBufferContainer);
 
-	/* Reset submitted buffers */
-	for (i = 0; i < vulkanCommandBufferContainer->submittedBufferCount; i += 1)
-	{
-		vulkanCommandBufferContainer->submittedBuffers[i]->bound = 0;
-	}
+	SDL_LockMutex(renderer->descriptorLock);
 
-	/* Mark bound buffers as submitted */
-	if (vulkanCommandBufferContainer->boundBufferCount > vulkanCommandBufferContainer->submittedBufferCapacity)
+	/* Mark used descriptor sets as inactive */
+	for (i = 0; i < vulkanCommandBufferContainer->usedDescriptorSetDataCount; i += 1)
 	{
-		vulkanCommandBufferContainer->submittedBufferCapacity = vulkanCommandBufferContainer->boundBufferCount;
-		vulkanCommandBufferContainer->submittedBuffers = SDL_realloc(
-			vulkanCommandBufferContainer->submittedBuffers,
-			vulkanCommandBufferContainer->submittedBufferCapacity * sizeof(VulkanBuffer*)
-		);
-	}
+		descriptorSetData = vulkanCommandBufferContainer->usedDescriptorSetDatas[i];
 
-	for (i = 0; i < vulkanCommandBufferContainer->boundBufferCount; i += 1)
-	{
-		vulkanCommandBufferContainer->submittedBuffers[i] = vulkanCommandBufferContainer->boundBuffers[i];
-	}
-	vulkanCommandBufferContainer->submittedBufferCount = vulkanCommandBufferContainer->boundBufferCount;
-	vulkanCommandBufferContainer->boundBufferCount = 0;
+		descriptorSetData->parent->inactiveDescriptorSets[descriptorSetData->parent->inactiveDescriptorSetCount] = descriptorSetData->descriptorSet;
+		descriptorSetData->parent->inactiveDescriptorSetCount += 1;
 
+		SDL_free(descriptorSetData);
+	}
+	vulkanCommandBufferContainer->usedDescriptorSetDataCount = 0;
+
+	SDL_UnlockMutex(renderer->descriptorLock);
+
+	SDL_LockMutex(renderer->commandLock);
 	renderer->vkResetCommandBuffer(
 		vulkanCommandBufferContainer->commandBuffer,
 		VK_COMMAND_BUFFER_RESET_RELEASE_RESOURCES_BIT
 	);
+	SDL_UnlockMutex(renderer->commandLock);
 
+	SDL_LockMutex(renderer->cleanupLock);
+	/* Remove this command buffer from the submitted list */
+	for (i = 0; i < renderer->submittedCommandBufferContainerCount; i += 1)
+	{
+		if (renderer->submittedCommandBufferContainers[i] == vulkanCommandBufferContainer)
+		{
+			renderer->submittedCommandBufferContainers[i] = renderer->submittedCommandBufferContainers[renderer->submittedCommandBufferContainerCount - 1];
+			renderer->submittedCommandBufferContainerCount -= 1;
+		}
+	}
+
+	/* Add this command buffer to the inactive list */
 	if (renderer->inactiveCommandBufferContainerCount + 1 > renderer->inactiveCommandBufferContainerCapacity)
 	{
 		renderer->inactiveCommandBufferContainerCapacity = renderer->inactiveCommandBufferContainerCount + 1;
@@ -6021,9 +5931,7 @@ static int VULKAN_INTERNAL_SubmitCleanupThread(
 
 	renderer->inactiveCommandBufferContainers[renderer->inactiveCommandBufferContainerCount] = vulkanCommandBufferContainer;
 	renderer->inactiveCommandBufferContainerCount += 1;
-
-	SDL_UnlockMutex(renderer->commandLock);
-	SDL_UnlockMutex(renderer->allocatorLock);
+	SDL_UnlockMutex(renderer->cleanupLock);
 
 	SDL_free(cleanupData);
 
@@ -6329,15 +6237,25 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	);
 	VULKAN_ERROR_CHECK(result, vkQueueSubmit,)
 
+	SDL_LockMutex(renderer->cleanupLock);
+	if (renderer->submittedCommandBufferContainerCount >= renderer->submittedCommandBufferContainerCapacity)
+	{
+		renderer->submittedCommandBufferContainerCapacity *= 2;
+		renderer->submittedCommandBufferContainers = SDL_realloc(
+			renderer->submittedCommandBufferContainers,
+			renderer->submittedCommandBufferContainerCapacity * sizeof(VulkanCommandBufferContainer*)
+		);
+	}
+
+	renderer->submittedCommandBufferContainers[renderer->submittedCommandBufferContainerCount] = containerToSubmit;
+	renderer->submittedCommandBufferContainerCount += 1;
+	SDL_UnlockMutex(renderer->cleanupLock);
+
 	/* Rotate the UBOs */
 	MOJOSHADER_vkEndFrame(renderer->mojoshaderContext);
 
 	/* Reset the texture staging buffer */
 	VULKAN_INTERNAL_ResetStagingBuffer(renderer);
-
-	/* TODO: rework descriptor set tracking */
-	/* Reset descriptor set data */
-	VULKAN_INTERNAL_ResetDescriptorSetData(renderer);
 
 	/* Present, if applicable */
 	if (present && acquireSuccess)
@@ -9245,6 +9163,9 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 			NULL
 		);
 
+		SDL_free(vulkanCommandBufferContainer->usedDescriptorSetDatas);
+		SDL_free(vulkanCommandBufferContainer->boundBuffers);
+
 		SDL_free(vulkanCommandBufferContainer->renderbuffersToDestroy);
 		SDL_free(vulkanCommandBufferContainer->buffersToDestroy);
 		SDL_free(vulkanCommandBufferContainer->effectsToDestroy);
@@ -9431,8 +9352,12 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	SDL_DestroyMutex(renderer->disposeLock);
 	SDL_DestroyMutex(renderer->allocatorLock);
 	SDL_DestroyMutex(renderer->stagingLock);
+	SDL_DestroyMutex(renderer->cleanupLock);
+	SDL_DestroyMutex(renderer->descriptorLock);
+	SDL_DestroyMutex(renderer->bindLock);
 
 	SDL_free(renderer->inactiveCommandBufferContainers);
+	SDL_free(renderer->submittedCommandBufferContainers);
 
 	renderer->vkDestroyDevice(renderer->logicalDevice, NULL);
 	renderer->vkDestroyInstance(renderer->instance, NULL);
@@ -9588,24 +9513,29 @@ static void VULKAN_DrawInstancedPrimitives(
 		VK_SHADER_STAGE_FRAGMENT_BIT
 	);
 
-	VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
-		renderer,
-		vertShaderResources,
-		fragShaderResources,
-		descriptorSets,
-		dynamicOffsets
-	);
+	if (	renderer->fragSamplerDescriptorSetDataNeedsUpdate ||
+		renderer->vertexSamplerDescriptorSetDataNeedsUpdate	)
+	{
+		VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
+			renderer,
+			vertShaderResources,
+			fragShaderResources,
+			descriptorSets,
+			dynamicOffsets
+		);
 
-	RECORD_CMD(renderer->vkCmdBindDescriptorSets(
-		renderer->currentCommandBufferContainer->commandBuffer,
-		VK_PIPELINE_BIND_POINT_GRAPHICS,
-		renderer->currentPipelineLayout,
-		0,
-		4,
-		descriptorSets,
-		2,
-		dynamicOffsets
-	));
+		RECORD_CMD(renderer->vkCmdBindDescriptorSets(
+			renderer->currentCommandBufferContainer->commandBuffer,
+			VK_PIPELINE_BIND_POINT_GRAPHICS,
+			renderer->currentPipelineLayout,
+			0,
+			4,
+			descriptorSets,
+			2,
+			dynamicOffsets
+		));
+	}
+
 
 	RECORD_CMD(renderer->vkCmdDrawIndexed(
 		renderer->currentCommandBufferContainer->commandBuffer,
@@ -12351,6 +12281,10 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->inactiveCommandBufferContainerCount = 0;
 	renderer->currentCommandCount = 0;
 
+	renderer->submittedCommandBufferContainerCapacity = 1;
+	renderer->submittedCommandBufferContainers = SDL_malloc(sizeof(VulkanCommandBufferContainer*));
+	renderer->submittedCommandBufferContainerCount = 0;
+
 	renderer->defragCommandBufferContainer = VULKAN_INTERNAL_AllocateCommandBuffer(renderer, 1);
 
 	VULKAN_INTERNAL_BeginCommandBuffer(renderer);
@@ -12956,6 +12890,8 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->disposeLock = SDL_CreateMutex();
 	renderer->allocatorLock = SDL_CreateMutex();
 	renderer->stagingLock = SDL_CreateMutex();
+	renderer->descriptorLock = SDL_CreateMutex();
+	renderer->bindLock = SDL_CreateMutex();
 	renderer->cleanupLock = SDL_CreateMutex();
 
 	renderer->activeCleanupThreadCount = 0;
