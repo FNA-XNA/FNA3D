@@ -5359,6 +5359,7 @@ static ShaderResources *ShaderResources_Init(
 		writeDescriptorSet.dstSet = shaderResources->dummySamplerDescriptorSet;
 		writeDescriptorSet.pBufferInfo = NULL;
 		writeDescriptorSet.pImageInfo = &imageInfo;
+		writeDescriptorSet.pTexelBufferView = NULL;
 
 		renderer->vkUpdateDescriptorSets(
 			renderer->logicalDevice,
@@ -5598,6 +5599,7 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 				writeDescriptorSets[i].dstSet = renderer->currentVertexSamplerDescriptorSet;
 				writeDescriptorSets[i].pBufferInfo = NULL;
 				writeDescriptorSets[i].pImageInfo = &imageInfos[i];
+				writeDescriptorSets[i].pTexelBufferView = NULL;
 			}
 
 			renderer->vkUpdateDescriptorSets(
@@ -5670,6 +5672,7 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 				writeDescriptorSets[i].dstSet = renderer->currentFragSamplerDescriptorSet;
 				writeDescriptorSets[i].pBufferInfo = NULL;
 				writeDescriptorSets[i].pImageInfo = &imageInfos[i];
+				writeDescriptorSets[i].pTexelBufferView = NULL;
 			}
 
 			renderer->vkUpdateDescriptorSets(
@@ -10310,6 +10313,8 @@ static void VULKAN_ResetBackbuffer(
 		renderer,
 		presentationParameters
 	);
+
+	VULKAN_INTERNAL_FlushCommands(renderer, 1);
 
 	if (recreateSwapchains)
 	{
