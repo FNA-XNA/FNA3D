@@ -3032,7 +3032,6 @@ static void VULKAN_INTERNAL_MakeMemoryUnavailable(
 
 				allocation->allocator->sortedFreeRegions[j]->sortedIndex = j;
 			}
-
 		}
 
 		allocation->allocator->sortedFreeRegionCount -= 1;
