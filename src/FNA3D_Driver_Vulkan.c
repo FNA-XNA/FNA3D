@@ -4369,12 +4369,12 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 	);
 	VULKAN_ERROR_CHECK(result, vkResetFences, 0)
 
-		result = renderer->vkQueueSubmit(
-			renderer->unifiedQueue,
-			1,
-			&submitInfo,
-			renderer->defragCommandBufferContainer->inFlightFence
-		);
+	result = renderer->vkQueueSubmit(
+		renderer->unifiedQueue,
+		1,
+		&submitInfo,
+		renderer->defragCommandBufferContainer->inFlightFence
+	);
 	VULKAN_ERROR_CHECK(result, vkQueueSubmit, 0)
 
 	renderer->currentCommandBufferContainer = NULL;
@@ -5956,6 +5956,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	VkResult result;
 	VkResult acquireResult = VK_SUCCESS;
 	VkResult presentResult = VK_SUCCESS;
+	uint8_t commandBufferCleaned = 0;
 	uint8_t acquireSuccess = 0;
 	uint8_t performDefrag = 0;
 	uint8_t createSwapchainResult = 0;
@@ -6096,30 +6097,35 @@ static void VULKAN_INTERNAL_SubmitCommands(
 				renderer,
 				renderer->submittedCommandBufferContainers[i]
 			);
+
+			commandBufferCleaned = 1;
 		}
 	}
 
-	/* free empty allocations */
-	SDL_LockMutex(renderer->allocatorLock);
-
-	for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
+	if (commandBufferCleaned)
 	{
-		allocator = &renderer->memoryAllocator->subAllocators[i];
+		/* free empty allocations */
+		SDL_LockMutex(renderer->allocatorLock);
 
-		for (j = allocator->allocationCount - 1; j >= 0; j -= 1)
+		for (i = 0; i < VK_MAX_MEMORY_TYPES; i += 1)
 		{
-			if (allocator->allocations[j]->usedRegionCount == 0)
+			allocator = &renderer->memoryAllocator->subAllocators[i];
+
+			for (j = allocator->allocationCount - 1; j >= 0; j -= 1)
 			{
-				VULKAN_INTERNAL_DeallocateMemory(
-					renderer,
-					allocator,
-					j
-				);
+				if (allocator->allocations[j]->usedRegionCount == 0)
+				{
+					VULKAN_INTERNAL_DeallocateMemory(
+						renderer,
+						allocator,
+						j
+					);
+				}
 			}
 		}
-	}
 
-	SDL_UnlockMutex(renderer->allocatorLock);
+		SDL_UnlockMutex(renderer->allocatorLock);
+	}
 
 	renderer->bufferDefragInProgress = 0;
 
@@ -12517,7 +12523,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		1,
 		1,
 		1,
-		0
+		1
 	);
 	renderer->dummyVertTexture3D = (VulkanTexture*) VULKAN_CreateTexture3D(
 		(FNA3D_Renderer*) renderer,
@@ -12540,7 +12546,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		1,
 		1,
 		1,
-		0
+		1
 	);
 	renderer->dummyFragTexture3D = (VulkanTexture*) VULKAN_CreateTexture3D(
 		(FNA3D_Renderer*) renderer,
