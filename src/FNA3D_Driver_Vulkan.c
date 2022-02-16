@@ -1197,7 +1197,7 @@ typedef struct VulkanCommandBufferContainer
 	VkFence inFlightFence;
 	VkEvent completedEvent;
 
-	DescriptorSetData **usedDescriptorSetDatas;
+	DescriptorSetData *usedDescriptorSetDatas;
 	uint32_t usedDescriptorSetDataCount;
 	uint32_t usedDescriptorSetDataCapacity;
 
@@ -2872,7 +2872,7 @@ static VulkanCommandBufferContainer* VULKAN_INTERNAL_AllocateCommandBuffer(
 	vulkanCommandBufferContainer->usedDescriptorSetDataCapacity = 16;
 	vulkanCommandBufferContainer->usedDescriptorSetDataCount = 0;
 	vulkanCommandBufferContainer->usedDescriptorSetDatas = SDL_malloc(
-		vulkanCommandBufferContainer->usedDescriptorSetDataCapacity * sizeof(DescriptorSetData*)
+		vulkanCommandBufferContainer->usedDescriptorSetDataCapacity * sizeof(DescriptorSetData)
 	);
 
 	/* Bound buffer tracking */
@@ -5477,21 +5477,18 @@ static void VULKAN_INTERNAL_RegisterUsedDescriptorSet(
 	VkDescriptorSet descriptorSet
 ) {
 	VulkanCommandBufferContainer *commandBufferContainer = renderer->currentCommandBufferContainer;
-	DescriptorSetData *descriptorSetData = SDL_malloc(sizeof(DescriptorSetData));
 
 	if (commandBufferContainer->usedDescriptorSetDataCount >= commandBufferContainer->usedDescriptorSetDataCapacity)
 	{
 		commandBufferContainer->usedDescriptorSetDataCapacity *= 2;
 		commandBufferContainer->usedDescriptorSetDatas = SDL_realloc(
 			commandBufferContainer->usedDescriptorSetDatas,
-			commandBufferContainer->usedDescriptorSetDataCapacity * sizeof(DescriptorSetData*)
+			commandBufferContainer->usedDescriptorSetDataCapacity * sizeof(DescriptorSetData)
 		);
 	}
 
-	descriptorSetData->parent = parent;
-	descriptorSetData->descriptorSet = descriptorSet;
-
-	commandBufferContainer->usedDescriptorSetDatas[commandBufferContainer->usedDescriptorSetDataCount] = descriptorSetData;
+	commandBufferContainer->usedDescriptorSetDatas[commandBufferContainer->usedDescriptorSetDataCount].descriptorSet = descriptorSet;
+	commandBufferContainer->usedDescriptorSetDatas[commandBufferContainer->usedDescriptorSetDataCount].parent = parent;
 	commandBufferContainer->usedDescriptorSetDataCount += 1;
 }
 
@@ -5846,12 +5843,10 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 	/* Mark used descriptor sets as inactive */
 	for (i = 0; i < vulkanCommandBufferContainer->usedDescriptorSetDataCount; i += 1)
 	{
-		descriptorSetData = vulkanCommandBufferContainer->usedDescriptorSetDatas[i];
+		descriptorSetData = &vulkanCommandBufferContainer->usedDescriptorSetDatas[i];
 
 		descriptorSetData->parent->inactiveDescriptorSets[descriptorSetData->parent->inactiveDescriptorSetCount] = descriptorSetData->descriptorSet;
 		descriptorSetData->parent->inactiveDescriptorSetCount += 1;
-
-		SDL_free(descriptorSetData);
 	}
 	vulkanCommandBufferContainer->usedDescriptorSetDataCount = 0;
 
@@ -8555,6 +8550,8 @@ static void VULKAN_INTERNAL_MaybeEndRenderPass(
 		renderer->renderPassInProgress = 0;
 		renderer->needNewRenderPass = 1;
 		renderer->drawCallMadeThisPass = 0;
+		renderer->currentPipeline = VK_NULL_HANDLE;
+		renderer->needNewPipeline = 1;
 
 		/* Unlocking long-term lock */
 		SDL_UnlockMutex(renderer->passLock);
