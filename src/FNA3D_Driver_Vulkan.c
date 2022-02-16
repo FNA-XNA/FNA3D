@@ -8961,8 +8961,9 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	PipelineHashArray hashArray;
 	VulkanMemorySubAllocator *allocator;
 	VulkanCommandBufferContainer *vulkanCommandBufferContainer;
-	uint32_t i;
-	int32_t j, k;
+	VkFence *fences;
+	uint32_t fenceCount;
+	int32_t i, j, k;
 	VkResult pipelineCacheResult;
 	size_t pipelineCacheSize;
 	uint8_t *pipelineCacheData;
@@ -8970,7 +8971,29 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	const char *pipelineCacheFileName;
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
-	VULKAN_INTERNAL_FlushCommands(renderer, 1);
+
+	fences = SDL_stack_alloc(VkFence, renderer->submittedCommandBufferContainerCount);
+	fenceCount = renderer->submittedCommandBufferContainerCount;
+
+	for (i = 0; i < renderer->submittedCommandBufferContainerCount; i += 1)
+	{
+		fences[i] = renderer->submittedCommandBufferContainers[i]->inFlightFence;
+	}
+
+	renderer->vkWaitForFences(
+		renderer->logicalDevice,
+		fenceCount,
+		fences,
+		VK_TRUE,
+		UINT64_MAX
+	);
+
+	for (i = renderer->submittedCommandBufferContainerCount - 1; i >= 0; i -= 1)
+	{
+		VULKAN_INTERNAL_CleanCommandBuffer(renderer, renderer->submittedCommandBufferContainers[i]);
+	}
+
+	SDL_stack_free(fences);
 
 	/* Save the pipeline cache to disk */
 
