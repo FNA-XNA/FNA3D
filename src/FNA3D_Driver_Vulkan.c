@@ -1186,7 +1186,6 @@ typedef struct VulkanCommandBufferContainer
 {
 	VkCommandBuffer commandBuffer;
 	VkFence inFlightFence;
-	VkEvent completedEvent;
 
 	DescriptorSetData *usedDescriptorSetDatas;
 	uint32_t usedDescriptorSetDataCount;
@@ -2813,7 +2812,6 @@ static VulkanCommandBufferContainer* VULKAN_INTERNAL_AllocateCommandBuffer(
 ) {
 	VkCommandBufferAllocateInfo allocateInfo;
 	VkFenceCreateInfo fenceCreateInfo;
-	VkEventCreateInfo eventCreateInfo;
 	VkResult result;
 	VulkanCommandBufferContainer *vulkanCommandBufferContainer = SDL_malloc(sizeof(VulkanCommandBufferContainer));
 
@@ -2839,17 +2837,6 @@ static VulkanCommandBufferContainer* VULKAN_INTERNAL_AllocateCommandBuffer(
 		&fenceCreateInfo,
 		NULL,
 		&vulkanCommandBufferContainer->inFlightFence
-	);
-
-	eventCreateInfo.sType = VK_STRUCTURE_TYPE_EVENT_CREATE_INFO;
-	eventCreateInfo.pNext = NULL;
-	eventCreateInfo.flags = 0;
-
-	renderer->vkCreateEvent(
-		renderer->logicalDevice,
-		&eventCreateInfo,
-		NULL,
-		&vulkanCommandBufferContainer->completedEvent
 	);
 
 	/* Transfer buffer tracking */
@@ -2959,13 +2946,6 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 		VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
 		renderer->needNewRenderPass = 1;
 	}
-
-	/* Set this event so we can poll command buffer completion */
-	RECORD_CMD(renderer->vkCmdSetEvent(
-		renderer->currentCommandBufferContainer->commandBuffer,
-		renderer->currentCommandBufferContainer->completedEvent,
-		VK_PIPELINE_STAGE_ALL_COMMANDS_BIT
-	));
 
 	SDL_LockMutex(renderer->commandLock);
 
@@ -5863,12 +5843,6 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 	);
 	SDL_UnlockMutex(renderer->commandLock);
 
-	/* Reset the event */
-	renderer->vkResetEvent(
-		renderer->logicalDevice,
-		vulkanCommandBufferContainer->completedEvent
-	);
-
 	/* Remove this command buffer from the submitted list */
 	for (i = 0; i < renderer->submittedCommandBufferContainerCount; i += 1)
 	{
@@ -6091,12 +6065,16 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	/* Check if we can perform any cleanups */
 	for (i = renderer->submittedCommandBufferContainerCount - 1; i >= 0; i -= 1)
 	{
-		result = renderer->vkGetEventStatus(
+		/* If we set a timeout of 0, we can query the command buffer state */
+		result = renderer->vkWaitForFences(
 			renderer->logicalDevice,
-			renderer->submittedCommandBufferContainers[i]->completedEvent
+			1,
+			&renderer->submittedCommandBufferContainers[i]->inFlightFence,
+			VK_TRUE,
+			0
 		);
 
-		if (result == VK_EVENT_SET)
+		if (result == VK_SUCCESS)
 		{
 			VULKAN_INTERNAL_CleanCommandBuffer(
 				renderer,
@@ -9115,12 +9093,6 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		renderer->vkDestroyFence(
 			renderer->logicalDevice,
 			vulkanCommandBufferContainer->inFlightFence,
-			NULL
-		);
-
-		renderer->vkDestroyEvent(
-			renderer->logicalDevice,
-			vulkanCommandBufferContainer->completedEvent,
 			NULL
 		);
 
