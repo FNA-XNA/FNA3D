@@ -5037,14 +5037,20 @@ static void VULKAN_INTERNAL_CopyToTransferBuffer(
 static void VULKAN_INTERNAL_PrepareCopyFromStagingBuffer(
 	VulkanRenderer *renderer,
 	VkDeviceSize dataLength,
+	VkDeviceSize alignment,
 	VulkanTransferBuffer **pStagingBuffer,
 	void **pStagingBufferPointer
 ) {
+	VkDeviceSize fmtAlignment = VULKAN_INTERNAL_NextHighestAlignment(
+		alignment,
+		renderer->physicalDeviceProperties.properties.limits.optimalBufferCopyOffsetAlignment
+	);
+
 	VulkanTransferBuffer *transferBuffer = VULKAN_INTERNAL_AcquireTransferBuffer(
 		renderer,
 		renderer->currentCommandBufferContainer,
 		dataLength,
-		renderer->physicalDeviceProperties.properties.limits.optimalBufferCopyOffsetAlignment
+		fmtAlignment
 	);
 
 	*pStagingBuffer = transferBuffer;
@@ -5833,6 +5839,15 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 		}
 		else
 		{
+			if (renderer->transferBufferPool.availableSlowTransferBufferCount == renderer->transferBufferPool.availableSlowTransferBufferCapacity)
+			{
+				renderer->transferBufferPool.availableSlowTransferBufferCapacity += 1;
+				renderer->transferBufferPool.availableSlowTransferBuffers = SDL_realloc(
+					renderer->transferBufferPool.availableSlowTransferBuffers,
+					renderer->transferBufferPool.availableSlowTransferBufferCapacity * sizeof(VulkanTransferBuffer*)
+				);
+			}
+
 			renderer->transferBufferPool.availableSlowTransferBuffers[renderer->transferBufferPool.availableSlowTransferBufferCount] = transferBuffer;
 			renderer->transferBufferPool.availableSlowTransferBufferCount += 1;
 		}
@@ -7231,6 +7246,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 	VULKAN_INTERNAL_PrepareCopyFromStagingBuffer(
 		renderer,
 		dataLength,
+		(VkDeviceSize)Texture_GetFormatSize(vulkanTexture->colorFormat),
 		&transferBuffer,
 		(void**) &transferBufferPointer
 	);
