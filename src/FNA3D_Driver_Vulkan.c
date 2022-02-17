@@ -4955,10 +4955,15 @@ static VulkanTransferBuffer* VULKAN_INTERNAL_AcquireTransferBuffer(
 		return NULL;
 	}
 
-	commandBufferContainer->transferBuffers = SDL_realloc(
-		commandBufferContainer->transferBuffers,
-		(commandBufferContainer->transferBufferCount + 1) * sizeof(VulkanTransferBuffer*)
-	);
+	if (commandBufferContainer->transferBufferCount == commandBufferContainer->transferBufferCapacity)
+	{
+		commandBufferContainer->transferBufferCapacity += 1;
+		commandBufferContainer->transferBuffers = SDL_realloc(
+			commandBufferContainer->transferBuffers,
+			commandBufferContainer->transferBufferCapacity * sizeof(VulkanTransferBuffer*)
+		);
+	}
+
 	commandBufferContainer->transferBuffers[commandBufferContainer->transferBufferCount] = transferBuffer;
 	commandBufferContainer->transferBufferCount += 1;
 
