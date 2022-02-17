@@ -5197,8 +5197,8 @@ static void ShaderResources_Destroy(
 	VulkanRenderer *renderer,
 	ShaderResources *shaderResources
 ) {
-	uint32_t i;
-
+	uint32_t i, j;
+	VulkanCommandBufferContainer *commandBufferContainer;
 	for (i = 0; i < shaderResources->samplerDescriptorPoolCount; i += 1)
 	{
 		renderer->vkDestroyDescriptorPool(
@@ -5206,6 +5206,20 @@ static void ShaderResources_Destroy(
 			shaderResources->samplerDescriptorPools[i],
 			NULL
 		);
+	}
+
+	/* Don't return descriptor sets allocated from this shader resource to the inactive pool! */
+	for (i = 0; i < renderer->submittedCommandBufferContainerCount; i += 1)
+	{
+		commandBufferContainer = renderer->submittedCommandBufferContainers[i];
+
+		for (j = 0; j < commandBufferContainer->usedDescriptorSetDataCount; j += 1)
+		{
+			if (commandBufferContainer->usedDescriptorSetDatas[j].parent == shaderResources)
+			{
+				commandBufferContainer->usedDescriptorSetDatas[j].descriptorSet = VK_NULL_HANDLE;
+			}
+		}
 	}
 
 	SDL_free(shaderResources->samplerDescriptorPools);
@@ -5835,8 +5849,11 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 	{
 		descriptorSetData = &vulkanCommandBufferContainer->usedDescriptorSetDatas[i];
 
-		descriptorSetData->parent->inactiveDescriptorSets[descriptorSetData->parent->inactiveDescriptorSetCount] = descriptorSetData->descriptorSet;
-		descriptorSetData->parent->inactiveDescriptorSetCount += 1;
+		if (descriptorSetData->descriptorSet != VK_NULL_HANDLE)
+		{
+			descriptorSetData->parent->inactiveDescriptorSets[descriptorSetData->parent->inactiveDescriptorSetCount] = descriptorSetData->descriptorSet;
+			descriptorSetData->parent->inactiveDescriptorSetCount += 1;
+		}
 	}
 	vulkanCommandBufferContainer->usedDescriptorSetDataCount = 0;
 
