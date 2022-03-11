@@ -136,6 +136,7 @@ target_include_directories(FNA3D PUBLIC
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/Vulkan-Headers/include>
 )
 if(BUILD_DXVK_NATIVE)
+	add_definitions(-DFNA3D_DXVK_NATIVE)
 	target_include_directories(FNA3D PUBLIC
 		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk-native/include/native/directx>
 		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk-native/include/native/windows>
