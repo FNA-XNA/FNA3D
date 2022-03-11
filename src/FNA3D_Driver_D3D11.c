@@ -29,6 +29,7 @@
 #include "FNA3D_Driver.h"
 #include "FNA3D_PipelineCache.h"
 #include "FNA3D_Driver_D3D11.h"
+#include "FNA3D_Driver_D3D11_shaders.h"
 
 #include <SDL.h>
 #ifdef FNA3D_DXVK_NATIVE
@@ -40,15 +41,12 @@
 /* D3D11 Libraries */
 
 #if defined(_WIN32)
-#define D3DCOMPILER_DLL	"d3dcompiler_47.dll"
 #define D3D11_DLL	"d3d11.dll"
 #define DXGI_DLL	"dxgi.dll"
 #elif defined(__APPLE__)
-#define D3DCOMPILER_DLL	"libd3dcompiler.dylib"
 #define D3D11_DLL	"libd3d11.dylib"
 #define DXGI_DLL	"libdxgi.dylib"
 #else
-#define D3DCOMPILER_DLL	"libd3dcompiler.so"
 #define D3D11_DLL	"libd3d11.so"
 #define DXGI_DLL	"libdxgi.so"
 #endif
@@ -494,27 +492,6 @@ static D3D_PRIMITIVE_TOPOLOGY XNAToD3D_Primitive[] =
 	D3D_PRIMITIVE_TOPOLOGY_LINESTRIP,	/* PrimitiveType.LineStrip */
 	D3D_PRIMITIVE_TOPOLOGY_POINTLIST	/* PrimitiveType.PointListEXT */
 };
-
-/* Faux-Backbuffer Blit Shader Sources */
-
-static const char* FAUX_BLIT_VERTEX_SHADER =
-	"void main("
-	"	inout float4 position : SV_POSITION,"
-	"	inout float2 texcoord : TEXCOORD0"
-	") {"
-	"	position.y *= -1;"
-	"	position.zw = float2(0.0f, 1.0f);"
-	"}";
-
-static const char* FAUX_BLIT_PIXEL_SHADER =
-	"Texture2D Texture : register(t0);"
-	"sampler TextureSampler : register(s0);"
-	"float4 main("
-	"	float4 position : SV_POSITION,"
-	"	float2 texcoord : TEXCOORD0"
-	") : SV_TARGET {"
-	"	return Texture.Sample(TextureSampler, texcoord);"
-	"}";
 
 /* Helper Functions */
 
@@ -1044,10 +1021,6 @@ static void D3D11_GetDrawableSize(void *window, int32_t *w, int32_t *h);
 static void* D3D11_PLATFORM_LoadD3D11();
 static void D3D11_PLATFORM_UnloadD3D11(void* module);
 static PFN_D3D11_CREATE_DEVICE D3D11_PLATFORM_GetCreateDeviceFunc(void* module);
-
-static void* D3D11_PLATFORM_LoadCompiler();
-static void D3D11_PLATFORM_UnloadCompiler(void* module);
-static PFN_D3DCOMPILE D3D11_PLATFORM_GetCompileFunc(void* module);
 
 static HRESULT D3D11_PLATFORM_CreateDXGIFactory(
 	void** module,
@@ -4884,9 +4857,6 @@ static void D3D11_INTERNAL_InitializeFauxBackbufferResources(
 	D3D11Renderer *renderer,
 	uint8_t scaleNearest
 ) {
-	void* d3dCompilerModule;
-	PFN_D3DCOMPILE D3DCompileFunc;
-	ID3DBlob *blob;
 	D3D11_INPUT_ELEMENT_DESC ePosition;
 	D3D11_INPUT_ELEMENT_DESC eTexcoord;
 	D3D11_INPUT_ELEMENT_DESC elements[2];
@@ -4903,34 +4873,23 @@ static void D3D11_INTERNAL_InitializeFauxBackbufferResources(
 	D3D11_BLEND_DESC blendDesc;
 	HRESULT res;
 
-	/* Load the D3DCompile function */
-	d3dCompilerModule = D3D11_PLATFORM_LoadCompiler();
-	if (d3dCompilerModule == NULL)
-	{
-		FNA3D_LogError("Could not find " D3DCOMPILER_DLL);
-	}
-	D3DCompileFunc = D3D11_PLATFORM_GetCompileFunc(d3dCompilerModule);
-	if (D3DCompileFunc == NULL)
-	{
-		FNA3D_LogError("Could not load function D3DCompile!");
-	}
-
-	/* Compile and create the vertex shader */
-	res = D3DCompileFunc(
-		FAUX_BLIT_VERTEX_SHADER, SDL_strlen(FAUX_BLIT_VERTEX_SHADER),
-		"Faux-Backbuffer Blit Vertex Shader", NULL, NULL,
-		"main", "vs_4_0", 0, 0, &blob, &blob
-	);
-	ERROR_CHECK_RETURN("Backbuffer vshader failed to compile",)
-
+	/* Compile the shader binaries */
 	res = ID3D11Device_CreateVertexShader(
 		renderer->device,
-		ID3D10Blob_GetBufferPointer(blob),
-		ID3D10Blob_GetBufferSize(blob),
+		FAUX_BLIT_VERTEX_SHADER,
+		sizeof(FAUX_BLIT_VERTEX_SHADER),
 		NULL,
 		&renderer->fauxBackbufferResources.vertexShader
 	);
 	ERROR_CHECK_RETURN("Backbuffer vshader creation failed",)
+	res = ID3D11Device_CreatePixelShader(
+		renderer->device,
+		FAUX_BLIT_PIXEL_SHADER,
+		sizeof(FAUX_BLIT_PIXEL_SHADER),
+		NULL,
+		&renderer->fauxBackbufferResources.pixelShader
+	);
+	ERROR_CHECK_RETURN("Backbuffer pshader creation failed",)
 
 	/* Create the vertex shader input layout */
 	ePosition.SemanticName = "SV_POSITION";
@@ -4955,31 +4914,11 @@ static void D3D11_INTERNAL_InitializeFauxBackbufferResources(
 		renderer->device,
 		elements,
 		2,
-		ID3D10Blob_GetBufferPointer(blob),
-		ID3D10Blob_GetBufferSize(blob),
+		FAUX_BLIT_VERTEX_SHADER,
+		sizeof(FAUX_BLIT_VERTEX_SHADER),
 		&renderer->fauxBackbufferResources.inputLayout
 	);
 	ERROR_CHECK_RETURN("Backbuffer input layout creation failed",)
-
-	/* Compile and create the pixel shader */
-	res = D3DCompileFunc(
-		FAUX_BLIT_PIXEL_SHADER, SDL_strlen(FAUX_BLIT_PIXEL_SHADER),
-		"Faux-Backbuffer Blit Pixel Shader", NULL, NULL,
-		"main", "ps_4_0", 0, 0, &blob, &blob
-	);
-	ERROR_CHECK_RETURN("Backbuffer pshader failed to compile",)
-
-	ID3D11Device_CreatePixelShader(
-		renderer->device,
-		ID3D10Blob_GetBufferPointer(blob),
-		ID3D10Blob_GetBufferSize(blob),
-		NULL,
-		&renderer->fauxBackbufferResources.pixelShader
-	);
-	ERROR_CHECK_RETURN("Backbuffer pshader creation failed",)
-
-	/* We're done with the compiler now */
-	D3D11_PLATFORM_UnloadCompiler(d3dCompilerModule);
 
 	/* Create the faux backbuffer sampler state */
 	samplerDesc.Filter = (
@@ -5317,20 +5256,6 @@ static PFN_D3D11_CREATE_DEVICE D3D11_PLATFORM_GetCreateDeviceFunc(void* module)
 	return D3D11CreateDevice;
 }
 
-static void* D3D11_PLATFORM_LoadCompiler()
-{
-	return (size_t) 42069;
-}
-static void D3D11_PLATFORM_UnloadCompiler(void* module)
-{
-	/* No-op */
-}
-
-static PFN_D3DCOMPILE D3D11_PLATFORM_GetCompileFunc(void* module)
-{
-	return D3DCompile;
-}
-
 static HRESULT D3D11_PLATFORM_CreateDXGIFactory(
 	void** module,
 	void** factory
@@ -5465,24 +5390,6 @@ static PFN_D3D11_CREATE_DEVICE D3D11_PLATFORM_GetCreateDeviceFunc(void* module)
 		module,
 		"D3D11CreateDevice"
 	);
-#pragma GCC diagnostic pop
-}
-
-static void* D3D11_PLATFORM_LoadCompiler()
-{
-	return SDL_LoadObject(D3DCOMPILER_DLL);
-}
-
-static void D3D11_PLATFORM_UnloadCompiler(void* module)
-{
-	SDL_UnloadObject(module);
-}
-
-static PFN_D3DCOMPILE D3D11_PLATFORM_GetCompileFunc(void* module)
-{
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wpedantic"
-	return (PFN_D3DCOMPILE) SDL_LoadFunction(module, "D3DCompile");
 #pragma GCC diagnostic pop
 }
 
