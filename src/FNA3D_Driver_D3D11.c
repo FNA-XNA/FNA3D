@@ -512,6 +512,7 @@ static void D3D11_INTERNAL_LogError(
 	}
 
 	/* Try to get the message from the system errors. */
+#ifdef _WIN32
 	dwChars = FormatMessage(
 		FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
 		NULL,
@@ -521,6 +522,10 @@ static void D3D11_INTERNAL_LogError(
 		MAX_ERROR_LEN,
 		NULL
 	);
+#else
+	/* FIXME: Do we have error strings in dxvk-native? -flibit */
+	dwChars = 0;
+#endif
 
 	/* No message? Screw it, just post the code. */
 	if (dwChars == 0)
@@ -4724,6 +4729,7 @@ static int32_t D3D11_GetMaxMultiSampleCount(
 
 static void D3D11_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 {
+#ifdef _WIN32
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	wchar_t wstr[256];
 	MultiByteToWideChar(CP_ACP, 0, text, -1, wstr, 256);
@@ -4731,6 +4737,9 @@ static void D3D11_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 		renderer->annotation,
 		wstr
 	);
+#else
+	/* FIXME: Is this supported in dxvk-native? -flibit */
+#endif
 }
 
 /* External Interop */
