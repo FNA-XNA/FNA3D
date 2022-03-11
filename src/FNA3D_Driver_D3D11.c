@@ -44,11 +44,11 @@
 #define D3D11_DLL	"d3d11.dll"
 #define DXGI_DLL	"dxgi.dll"
 #elif defined(__APPLE__)
-#define D3D11_DLL	"libd3d11.dylib"
-#define DXGI_DLL	"libdxgi.dylib"
+#define D3D11_DLL	"libdxvk_d3d11.dylib"
+#define DXGI_DLL	"libdxvk_dxgi.dylib"
 #else
-#define D3D11_DLL	"libd3d11.so"
-#define DXGI_DLL	"libdxgi.so"
+#define D3D11_DLL	"libdxvk_d3d11.so"
+#define DXGI_DLL	"libdxvk_dxgi.so"
 #endif
 
 #ifdef __WINRT__
