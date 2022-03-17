@@ -4783,8 +4783,9 @@ static FNA3D_Texture* D3D11_CreateSysTexture(
 
 static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 {
-	void* module = NULL;
+	void* module;
 	PFN_D3D11_CREATE_DEVICE D3D11CreateDeviceFunc;
+	MOJOSHADER_d3d11Context *shaderContext;
 	D3D_FEATURE_LEVEL levels[] =
 	{
 		D3D_FEATURE_LEVEL_11_1,
@@ -4793,6 +4794,20 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 		D3D_FEATURE_LEVEL_10_0
 	};
 	HRESULT res;
+
+	/* Check to see if we can compile HLSL */
+	shaderContext = MOJOSHADER_d3d11CreateContext(
+		NULL,
+		NULL,
+		NULL,
+		NULL,
+		NULL
+	);
+	if (shaderContext == NULL)
+	{
+		return 0;
+	}
+	MOJOSHADER_d3d11DestroyContext(shaderContext);
 
 	module = D3D11_PLATFORM_LoadD3D11();
 	if (module == NULL)
