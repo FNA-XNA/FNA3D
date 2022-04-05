@@ -6,7 +6,6 @@ project(FNA3D C)
 # Options
 option(BUILD_SHARED_LIBS "Build shared library" ON)
 option(TRACING_SUPPORT "Build with tracing enabled" OFF)
-option(DISABLE_D3D11 "Disable D3D11 backend" OFF)
 option(BUILD_DXVK_NATIVE "Enable support for dxvk-native" OFF)
 
 # Version
@@ -61,7 +60,7 @@ if(TRACING_SUPPORT)
 	add_definitions(-DFNA3D_TRACING)
 endif()
 
-if((WIN32 AND NOT DISABLE_D3D11) OR BUILD_DXVK_NATIVE)
+if(WIN32 OR BUILD_DXVK_NATIVE)
 	add_definitions(
 		-DFNA3D_DRIVER_D3D11
 	)
