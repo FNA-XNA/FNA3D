@@ -1501,12 +1501,7 @@ static VkComponentMapping XNAToVK_SurfaceSwizzle[] =
 		VK_COMPONENT_SWIZZLE_R,
 		VK_COMPONENT_SWIZZLE_ONE
 	},
-	{			/* SurfaceFormat.Bgra5551 */
-		VK_COMPONENT_SWIZZLE_B,
-		VK_COMPONENT_SWIZZLE_G,
-		VK_COMPONENT_SWIZZLE_R,
-		VK_COMPONENT_SWIZZLE_A
-	},
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.Bgra5551 */
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.Bgra4444 */
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.Dxt1 */
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.Dxt3 */
