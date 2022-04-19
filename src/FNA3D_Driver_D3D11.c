@@ -215,6 +215,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	IDXGIAdapter1 *adapter;
 	ID3DUserDefinedAnnotation *annotation;
 	SDL_mutex *ctxLock;
+	SDL_iconv_t iconv;
 
 	/* Window surfaces */
 	D3D11SwapchainData** swapchainDatas;
@@ -1133,10 +1134,14 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 	}
 	SDL_free(renderer->inputLayoutCache.elements);
 
-	/* Release the annotation, if applicable */
+	/* Release the annotation/iconv, if applicable */
 	if (renderer->annotation != NULL)
 	{
 		ID3DUserDefinedAnnotation_Release(renderer->annotation);
+	}
+	if (renderer->iconv != NULL)
+	{
+		SDL_iconv_close(renderer->iconv);
 	}
 
 	/* Release the factory */
@@ -4729,17 +4734,43 @@ static int32_t D3D11_GetMaxMultiSampleCount(
 
 static void D3D11_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 {
-#ifdef _WIN32
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	wchar_t wstr[256];
-	MultiByteToWideChar(CP_ACP, 0, text, -1, wstr, 256);
-	ID3DUserDefinedAnnotation_SetMarker(
-		renderer->annotation,
-		wstr
+	wchar_t *out = wstr;
+	size_t inlen, outlen, result;
+
+	if (renderer->iconv == NULL)
+	{
+		renderer->iconv = SDL_iconv_open("WCHAR_T", "UTF-8");
+		SDL_assert(renderer->iconv);
+	}
+
+	/* Convert... */
+	inlen = SDL_strlen(text) + 1;
+	outlen = sizeof(wstr);
+	result = SDL_iconv(
+		renderer->iconv,
+		&text,
+		&inlen,
+		(char**) &out,
+		&outlen
 	);
-#else
-	/* FIXME: Is this supported in dxvk-native? -flibit */
-#endif
+
+	/* Check... */
+	switch (result)
+	{
+	case SDL_ICONV_ERROR:
+	case SDL_ICONV_E2BIG:
+	case SDL_ICONV_EILSEQ:
+	case SDL_ICONV_EINVAL:
+		FNA3D_LogWarn("Failed to convert string marker to wchar_t!");
+		return;
+	default:
+		break;
+	}
+
+	/* Mark, finally. */
+	ID3DUserDefinedAnnotation_SetMarker(renderer->annotation, wstr);
 }
 
 /* External Interop */
