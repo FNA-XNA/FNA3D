@@ -1060,6 +1060,7 @@ static void D3D11_INTERNAL_UpdateSwapchainRT(
 static void D3D11_DestroyDevice(FNA3D_Device *device)
 {
 	D3D11Renderer* renderer = (D3D11Renderer*) device->driverData;
+	D3D11SwapchainData *swapchainData;
 	int32_t i;
 
 	/* Unbind all render objects */
@@ -1083,8 +1084,14 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 	/* Release swapchain */
 	for (i = 0; i < renderer->swapchainDataCount; i += 1)
 	{
-		ID3D11RenderTargetView_Release(renderer->swapchainDatas[i]->swapchainRTView);
-		IDXGISwapChain_Release(renderer->swapchainDatas[i]->swapchain);
+		swapchainData = renderer->swapchainDatas[i];
+		ID3D11RenderTargetView_Release(swapchainData->swapchainRTView);
+		IDXGISwapChain_Release(swapchainData->swapchain);
+		SDL_SetWindowData(
+			(SDL_Window*) swapchainData->windowHandle,
+			WINDOW_SWAPCHAIN_DATA,
+			NULL
+		);
 		SDL_free(renderer->swapchainDatas[i]);
 	}
 	SDL_free(renderer->swapchainDatas);
