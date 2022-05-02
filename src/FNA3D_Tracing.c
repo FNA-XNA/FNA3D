@@ -171,6 +171,11 @@ void FNA3D_Trace_RegisterEffect(FNA3D_Effect *effect, MOJOSHADER_effect *effectD
 #undef TRACE_OBJECT
 
 #define CHECK_AND_FLUSH_BUFFER(len) \
+	if (len > traceBufferSize) \
+	{ \
+		traceBuffer = SDL_realloc(traceBuffer, len); \
+		traceBufferSize = len; \
+	} \
 	if (traceBufferCurrentSize + len > traceBufferSize) \
 	{ \
 		FNA3D_Trace_FlushMemory(); \
