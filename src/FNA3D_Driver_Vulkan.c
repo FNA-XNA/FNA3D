@@ -6858,6 +6858,7 @@ static void VULKAN_INTERNAL_MarkBufferForDestroy(
 	VulkanBuffer *vulkanBuffer
 ) {
 	/* Queue buffer for destruction */
+	SDL_LockMutex(renderer->commandLock);
 	if (renderer->currentCommandBufferContainer->buffersToDestroyCount + 1 >= renderer->currentCommandBufferContainer->buffersToDestroyCapacity)
 	{
 		renderer->currentCommandBufferContainer->buffersToDestroyCapacity *= 2;
@@ -6872,6 +6873,7 @@ static void VULKAN_INTERNAL_MarkBufferForDestroy(
 		renderer->currentCommandBufferContainer->buffersToDestroyCount
 	] = vulkanBuffer;
 	renderer->currentCommandBufferContainer->buffersToDestroyCount += 1;
+	SDL_UnlockMutex(renderer->commandLock);
 }
 
 static void VULKAN_INTERNAL_MarkBufferAsBound(
@@ -10496,6 +10498,7 @@ static void VULKAN_AddDisposeTexture(
 	}
 
 	/* Queue texture for destruction */
+	SDL_LockMutex(renderer->commandLock);
 	if (renderer->currentCommandBufferContainer->texturesToDestroyCount + 1 >= renderer->currentCommandBufferContainer->texturesToDestroyCapacity)
 	{
 		renderer->currentCommandBufferContainer->texturesToDestroyCapacity *= 2;
@@ -10507,6 +10510,7 @@ static void VULKAN_AddDisposeTexture(
 	}
 	renderer->currentCommandBufferContainer->texturesToDestroy[renderer->currentCommandBufferContainer->texturesToDestroyCount] = vulkanTexture;
 	renderer->currentCommandBufferContainer->texturesToDestroyCount += 1;
+	SDL_UnlockMutex(renderer->commandLock);
 }
 
 static void VULKAN_INTERNAL_SetTextureData(
@@ -11084,6 +11088,7 @@ static void VULKAN_AddDisposeRenderbuffer(
 		}
 	}
 
+	SDL_LockMutex(renderer->commandLock);
 	if (renderer->currentCommandBufferContainer->renderbuffersToDestroyCount + 1 >= renderer->currentCommandBufferContainer->renderbuffersToDestroyCapacity)
 	{
 		renderer->currentCommandBufferContainer->renderbuffersToDestroyCapacity *= 2;
@@ -11096,6 +11101,7 @@ static void VULKAN_AddDisposeRenderbuffer(
 
 	renderer->currentCommandBufferContainer->renderbuffersToDestroy[renderer->currentCommandBufferContainer->renderbuffersToDestroyCount] = vlkRenderBuffer;
 	renderer->currentCommandBufferContainer->renderbuffersToDestroyCount += 1;
+	SDL_UnlockMutex(renderer->commandLock);
 }
 
 /* Buffers */
@@ -11468,6 +11474,7 @@ static void VULKAN_AddDisposeEffect(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanEffect *vulkanEffect = (VulkanEffect*) effect;
 
+	SDL_LockMutex(renderer->commandLock);
 	if (renderer->currentCommandBufferContainer->effectsToDestroyCount + 1 >= renderer->currentCommandBufferContainer->effectsToDestroyCapacity)
 	{
 		renderer->currentCommandBufferContainer->effectsToDestroyCapacity *= 2;
@@ -11480,6 +11487,7 @@ static void VULKAN_AddDisposeEffect(
 
 	renderer->currentCommandBufferContainer->effectsToDestroy[renderer->currentCommandBufferContainer->effectsToDestroyCount] = vulkanEffect;
 	renderer->currentCommandBufferContainer->effectsToDestroyCount += 1;
+	SDL_UnlockMutex(renderer->commandLock);
 }
 
 static void VULKAN_SetEffectTechnique(
