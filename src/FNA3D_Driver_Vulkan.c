@@ -2415,6 +2415,29 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 
 /* Vulkan: vkInstance/vkDevice Creation */
 
+static VkBool32 VULKAN_INTERNAL_DebugCallback(
+	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+	VkDebugUtilsMessageTypeFlagsEXT messageTypes,
+	const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
+	void* pUserData
+) {
+	void (*logFunc)(const char *fmt, ...);
+	if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT)
+	{
+		logFunc = FNA3D_LogError;
+	}
+	else if (messageSeverity >= VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT)
+	{
+		logFunc = FNA3D_LogWarn;
+	}
+	else
+	{
+		logFunc = FNA3D_LogInfo;
+	}
+	logFunc("VULKAN DEBUG: %s", pCallbackData->pMessage);
+	return VK_FALSE;
+}
+
 static uint8_t VULKAN_INTERNAL_CreateInstance(
 	VulkanRenderer *renderer,
 	FNA3D_PresentationParameters *presentationParameters
@@ -2424,6 +2447,7 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 	const char **instanceExtensionNames;
 	uint32_t instanceExtensionCount;
 	VkInstanceCreateInfo createInfo;
+	VkDebugUtilsMessengerCreateInfoEXT debugMessengerCreateInfo;
 	static const char *layerNames[] = { "VK_LAYER_KHRONOS_validation" };
 
 	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
@@ -2483,18 +2507,39 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 		goto create_instance_fail;
 	}
 
-	if (renderer->supportsDebugUtils)
+	if (renderer->debugMode)
 	{
-		/* Append the debug extension to the end */
-		instanceExtensionNames[instanceExtensionCount++] =
-			VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
-	}
-	else
-	{
-		FNA3D_LogWarn(
-			"%s is not supported!",
-			VK_EXT_DEBUG_UTILS_EXTENSION_NAME
-		);
+		if (renderer->supportsDebugUtils)
+		{
+			/* Append the debug extension to the end */
+			instanceExtensionNames[instanceExtensionCount++] =
+				VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+
+			debugMessengerCreateInfo.sType =
+				VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+			debugMessengerCreateInfo.pNext = NULL;
+			debugMessengerCreateInfo.flags = 0;
+			debugMessengerCreateInfo.messageSeverity = (
+				VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+				VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+				VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+				VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
+			);
+			debugMessengerCreateInfo.messageType = (
+				VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+				VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+				VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
+			);
+			debugMessengerCreateInfo.pfnUserCallback = VULKAN_INTERNAL_DebugCallback;
+			debugMessengerCreateInfo.pUserData = NULL;
+		}
+		else
+		{
+			FNA3D_LogWarn(
+				"%s is not supported!",
+				VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+			);
+		}
 	}
 
 	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -2517,6 +2562,11 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 		{
 			FNA3D_LogWarn("Validation layers not found, continuing without validation");
 			createInfo.enabledLayerCount = 0;
+		}
+
+		if (renderer->supportsDebugUtils)
+		{
+			createInfo.pNext = &debugMessengerCreateInfo;
 		}
 	}
 	else
