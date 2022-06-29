@@ -2415,7 +2415,7 @@ static uint8_t VULKAN_INTERNAL_IsDeviceSuitable(
 
 /* Vulkan: vkInstance/vkDevice Creation */
 
-static VkBool32 VULKAN_INTERNAL_DebugCallback(
+static VkBool32 VKAPI_PTR VULKAN_INTERNAL_DebugCallback(
 	VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 	VkDebugUtilsMessageTypeFlagsEXT messageTypes,
 	const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
