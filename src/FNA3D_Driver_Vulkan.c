@@ -2626,6 +2626,17 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer,
 		physicalDevices
 	);
 
+	/* This should be impossible to hit, but from what I can tell this can
+	 * be triggerd not because the array is too small, but because there
+	 * were drivers that turned out to be bogus, so this is the loader's way
+	 * of telling us that the list is now smaller than expected :shrug:
+	 */
+	if (vulkanResult == VK_INCOMPLETE)
+	{
+		FNA3D_LogWarn("vkEnumeratePhysicalDevices returned VK_INCOMPLETE, will keep trying anyway...");
+		vulkanResult = VK_SUCCESS;
+	}
+
 	if (vulkanResult != VK_SUCCESS)
 	{
 		FNA3D_LogWarn(
