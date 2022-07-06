@@ -176,10 +176,16 @@ typedef struct D3D12Renderer /* Cast FNA3D_Renderer* to this! */
 	D3D12CommandBufferContainer *currentCommandBufferContainer;
 	uint32_t numActiveCommands;
 
-	/* Special command buffer for performing defrag copies */
-	D3D12CommandBufferContainer *defragCommandBufferContainer;
+	D3D12CommandBufferContainer *defragCommandBufferContainer; /* Special command buffer for performing defrag copies */
 
 	D3D12TransferBufferPool transferBufferPool;
+
+	/* Dynamic State */
+	FNA3D_Viewport viewport;
+	FNA3D_Rect scissorRect;
+	FNA3D_Color blendFactor;
+	int32_t multiSampleMask;
+	int32_t stencilRef;
 
 	/* Threading */
 	SDL_mutex *commandLock;
@@ -703,48 +709,123 @@ static void D3D12_DrawPrimitives(
 static void D3D12_SetViewport(FNA3D_Renderer *driverData, FNA3D_Viewport *viewport)
 {
 	D3D12Renderer *renderer = (D3D12Renderer*) driverData;
-	SDL_assert(0 && "unimplemented");
+	D3D12_VIEWPORT vp =
+	{
+		(float) viewport->x,
+		(float) viewport->y,
+		(float) viewport->w,
+		(float) viewport->h,
+		viewport->minDepth,
+		viewport->maxDepth
+	};
+
+	if (renderer->viewport.x != viewport->x ||
+		renderer->viewport.y != viewport->y ||
+		renderer->viewport.w != viewport->w ||
+		renderer->viewport.h != viewport->h ||
+		renderer->viewport.minDepth != viewport->minDepth ||
+		renderer->viewport.maxDepth != viewport->maxDepth)
+	{
+		renderer->viewport = *viewport;
+		ID3D12GraphicsCommandList_RSSetViewports(
+			renderer->currentCommandBufferContainer->commandList,
+			1,
+			&vp
+		);
+	}
 }
 
 static void D3D12_SetScissorRect(FNA3D_Renderer *driverData, FNA3D_Rect *scissor)
 {
-	SDL_assert(0 && "unimplemented");
+	D3D12Renderer *renderer = (D3D12Renderer*) driverData;
+	D3D12_RECT rect =
+	{
+		scissor->x,
+		scissor->y,
+		scissor->x + scissor->w,
+		scissor->y + scissor->h
+	};
+
+	/* FIXME: Handle case where rasterizer state scissorTest is disabled */
+
+	if (renderer->scissorRect.x != scissor->x ||
+		renderer->scissorRect.y != scissor->y ||
+		renderer->scissorRect.w != scissor->w ||
+		renderer->scissorRect.h != scissor->h)
+	{
+		renderer->scissorRect = *scissor;
+		ID3D12GraphicsCommandList_RSSetScissorRects(
+			renderer->currentCommandBufferContainer->commandList,
+			1,
+			&rect
+		);
+	}
 }
 
 static void D3D12_GetBlendFactor(
 	FNA3D_Renderer *driverData,
 	FNA3D_Color *blendFactor
 ) {
-	SDL_assert(0 && "unimplemented");
+	D3D12Renderer *renderer = (D3D12Renderer*) driverData;
+	*blendFactor = renderer->blendFactor;
 }
 
 static void D3D12_SetBlendFactor(
 	FNA3D_Renderer *driverData,
 	FNA3D_Color *blendFactor
 ) {
-	SDL_assert(0 && "unimplemented");
+	D3D12Renderer *renderer = (D3D12Renderer*) driverData;
+	float factor[4];
+	if (renderer->blendFactor.r != blendFactor->r ||
+		renderer->blendFactor.g != blendFactor->g ||
+		renderer->blendFactor.b != blendFactor->b ||
+		renderer->blendFactor.a != blendFactor->a)
+	{
+		factor[0] = blendFactor->r / 255.0f;
+		factor[1] = blendFactor->g / 255.0f;
+		factor[2] = blendFactor->b / 255.0f;
+		factor[3] = blendFactor->a / 255.0f;
+		renderer->blendFactor = *blendFactor;
+		ID3D12GraphicsCommandList_OMSetBlendFactor(
+			renderer->currentCommandBufferContainer->commandList,
+			factor
+		);
+	}
 }
 
 static int32_t D3D12_GetMultiSampleMask(FNA3D_Renderer *driverData)
 {
-	SDL_assert(0 && "unimplemented");
-	return 0;
+	D3D12Renderer *renderer = (D3D12Renderer*) driverData;
+	return renderer->multiSampleMask;
 }
 
 static void D3D12_SetMultiSampleMask(FNA3D_Renderer *driverData, int32_t mask)
 {
-	SDL_assert(0 && "unimplemented");
+	D3D12Renderer *renderer = (D3D12Renderer*) driverData;
+	if (renderer->multiSampleMask != mask)
+	{
+		renderer->multiSampleMask = mask;
+		/* FIXME: What should we do here? */
+	}
 }
 
 static int32_t D3D12_GetReferenceStencil(FNA3D_Renderer *driverData)
 {
-	SDL_assert(0 && "unimplemented");
-	return 0;
+	D3D12Renderer *renderer = (D3D12Renderer*) driverData;
+	return renderer->stencilRef;
 }
 
 static void D3D12_SetReferenceStencil(FNA3D_Renderer *driverData, int32_t ref)
 {
-	SDL_assert(0 && "unimplemented");
+	D3D12Renderer *renderer = (D3D12Renderer*) driverData;
+	if (renderer->stencilRef != ref)
+	{
+		renderer->stencilRef = ref;
+		ID3D12GraphicsCommandList_OMSetStencilRef(
+			renderer->currentCommandBufferContainer->commandList,
+			ref
+		);
+	}
 }
 
 /* Immutable Render States */
@@ -785,7 +866,12 @@ static void D3D12_VerifyVertexSampler(
 	FNA3D_Texture *texture,
 	FNA3D_SamplerState *sampler
 ) {
-	SDL_assert(0 && "unimplemented");
+	D3D12_VerifySampler(
+		driverData,
+		MAX_TEXTURE_SAMPLERS + index,
+		texture,
+		sampler
+	);
 }
 
 /* Vertex State */
