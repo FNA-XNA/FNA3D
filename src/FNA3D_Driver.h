@@ -822,6 +822,7 @@ extern FNA3D_Driver VulkanDriver;
 extern FNA3D_Driver D3D11Driver;
 extern FNA3D_Driver OpenGLDriver;
 extern FNA3D_Driver GNMXDriver;
+extern FNA3D_Driver D3D12Driver;
 
 #endif /* FNA3D_DRIVER_H */
 

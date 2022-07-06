@@ -48,6 +48,9 @@ static const FNA3D_Driver *drivers[] = {
 #if FNA3D_DRIVER_GNMX
 	&GNMXDriver,
 #endif
+#if FNA3D_DRIVER_D3D12
+	&D3D12Driver,
+#endif
 	NULL
 };
 
