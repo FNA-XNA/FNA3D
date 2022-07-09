@@ -548,6 +548,7 @@ static void D3D12_INTERNAL_CreateSwapChain(D3D12Renderer *renderer, void* window
 static void D3D12_INTERNAL_UpdateSwapchainRT(D3D12Renderer *renderer, D3D12SwapchainData *swapchainData, DXGI_FORMAT format);
 static HRESULT D3D12_INTERNAL_DeviceWaitIdle(D3D12Renderer *renderer);
 static void D3D12_INTERNAL_PerformDeferredDestroys(D3D12Renderer *renderer, D3D12CommandBufferContainer *d3d12CommandBufferContainer);
+static void D3D12_INTERNAL_DisposeBackbuffer(D3D12Renderer* renderer);
 
 /* D3D12: Command Buffers */
 
@@ -1379,10 +1380,28 @@ static void D3D12_INTERNAL_PerformDeferredDestroys(
 
 static void D3D12_DestroyDevice(FNA3D_Device *device)
 {
-	D3D12Renderer* renderer = (D3D12Renderer*) device->driverData;
-	ID3D12DebugDevice *debugDevice;
+	D3D12Renderer *renderer = (D3D12Renderer*) device->driverData;
+	ID3D12DebugDevice *debugDevice = NULL;
+	D3D12CommandBufferContainer *d3d12CommandBufferContainer;
 	int32_t i;
 	HRESULT res;
+
+	/* Grab the debug device, if applicable */
+	if (renderer->debugMode)
+	{
+		res = ID3D12Device_QueryInterface(
+			renderer->device,
+			&D3D_IID_ID3D12DebugDevice,
+			&debugDevice
+		);
+		if (FAILED(res))
+		{
+			FNA3D_LogWarn("Could not get D3D12 debug device for live object reporting. Error: 0x%08", res);
+		}
+	}
+
+	/* Destroy the faux backbuffer */
+	D3D12_INTERNAL_DisposeBackbuffer(renderer);
 
 	/* Release the swapchain */
 	for (i = 0; i < renderer->swapchainDataCount; i += 1)
@@ -1395,18 +1414,59 @@ static void D3D12_DestroyDevice(FNA3D_Device *device)
 	/* Flush any pending commands */
 	D3D12_INTERNAL_FlushCommands(renderer, 1);
 
-	/* Release the DXGI factory */
-	IDXGIFactory2_Release(renderer->factory);
+	/* FIXME: We should wait for all submitted command buffer fences to complete instead of this. */
+	D3D12_INTERNAL_DeviceWaitIdle(renderer);
+
+	/* Clear out all the command buffers and associated resources */
+	for (i = renderer->submittedCommandBufferContainerCount - 1; i >= 0; i -= 1)
+	{
+		D3D12_INTERNAL_CleanCommandBuffer(renderer, renderer->submittedCommandBufferContainers[i]);
+	}
 
 	/* Release the descriptor heaps */
 	ID3D12DescriptorHeap_Release(renderer->srvDescriptorHeap);
 	ID3D12DescriptorHeap_Release(renderer->rtvDescriptorHeap);
 	ID3D12DescriptorHeap_Release(renderer->dsvDescriptorHeap);
 
-	/* Release the WaitIdle fence */
+	/* Release the WaitIdle object and fence */
+	CloseHandle(renderer->waitIdleEvent);
 	ID3D12Fence_Release(renderer->waitIdleFence);
 
-	/* TODO: Release command buffers, allocators, and containers */
+	/* Add the current command buffer to the inactive list */
+	if (renderer->inactiveCommandBufferContainerCount + 1 > renderer->inactiveCommandBufferContainerCapacity)
+	{
+		renderer->inactiveCommandBufferContainerCapacity = renderer->inactiveCommandBufferContainerCount + 1;
+		renderer->inactiveCommandBufferContainers = SDL_realloc(
+			renderer->inactiveCommandBufferContainers,
+			renderer->inactiveCommandBufferContainerCapacity * sizeof(D3D12CommandBufferContainer*)
+		);
+	}
+
+	renderer->inactiveCommandBufferContainers[renderer->inactiveCommandBufferContainerCount] = renderer->currentCommandBufferContainer;
+	renderer->inactiveCommandBufferContainerCount += 1;
+
+	/* Release all the inactive command buffers */
+	for (i = 0; i < renderer->inactiveCommandBufferContainerCount; i += 1)
+	{
+		d3d12CommandBufferContainer = renderer->inactiveCommandBufferContainers[i];
+
+		ID3D12GraphicsCommandList_Release(d3d12CommandBufferContainer->commandList);
+		ID3D12Fence_Release(d3d12CommandBufferContainer->inFlightFence);
+		ID3D12CommandAllocator_Release(d3d12CommandBufferContainer->allocator);
+
+		SDL_free(d3d12CommandBufferContainer->transferBuffers);
+		SDL_free(d3d12CommandBufferContainer->boundBuffers);
+
+		SDL_free(d3d12CommandBufferContainer->renderbuffersToDestroy);
+		SDL_free(d3d12CommandBufferContainer->buffersToDestroy);
+		SDL_free(d3d12CommandBufferContainer->effectsToDestroy);
+		SDL_free(d3d12CommandBufferContainer->texturesToDestroy);
+
+		SDL_free(d3d12CommandBufferContainer);
+	}
+
+	SDL_free(renderer->inactiveCommandBufferContainers);
+	SDL_free(renderer->submittedCommandBufferContainers);
 
 	/* Release the queue */
 	ID3D12CommandQueue_Release(renderer->commandQueue);
@@ -1417,22 +1477,18 @@ static void D3D12_DestroyDevice(FNA3D_Device *device)
 	/* Release the adapter */
 	IDXGIAdapter_Release(renderer->adapter);
 
+	/* Release the DXGI factory */
+	IDXGIFactory2_Release(renderer->factory);
+
 	/* Report live objects, if we can */
-	if (renderer->debugMode)
+	if (debugDevice != NULL)
 	{
-		res = ID3D12Device_QueryInterface(
-			renderer->device,
-			&D3D_IID_ID3D12DebugDevice,
-			&debugDevice
+		/* This counts as a reference for renderer->device, so the expected final Refcount is 1. */
+		ID3D12DebugDevice_ReportLiveDeviceObjects(
+			debugDevice,
+			D3D12_RLDO_IGNORE_INTERNAL | D3D12_RLDO_DETAIL
 		);
-		if (SUCCEEDED(res))
-		{
-			ID3D12DebugDevice_ReportLiveDeviceObjects(
-				debugDevice,
-				D3D12_RLDO_IGNORE_INTERNAL | D3D12_RLDO_DETAIL
-			);
-			ID3D12DebugDevice_Release(debugDevice);
-		}
+		ID3D12DebugDevice_Release(debugDevice);
 	}
 
 	/* Unload the DLLs */
