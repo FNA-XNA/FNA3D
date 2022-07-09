@@ -546,6 +546,7 @@ static void D3D12_GetDrawableSize(void* window, int32_t *w, int32_t *h);
 static void D3D12_INTERNAL_CreateSwapChain(D3D12Renderer *renderer, void* windowHandle, FNA3D_SurfaceFormat format);
 static void D3D12_INTERNAL_UpdateSwapchainRT(D3D12Renderer *renderer, D3D12SwapchainData *swapchainData, DXGI_FORMAT format);
 static HRESULT D3D12_INTERNAL_DeviceWaitIdle(D3D12Renderer *renderer);
+static void D3D12_INTERNAL_PerformDeferredDestroys(D3D12Renderer *renderer, D3D12CommandBufferContainer *d3d12CommandBufferContainer);
 
 /* D3D12: Command Buffers */
 
@@ -710,6 +711,9 @@ static void D3D12_INTERNAL_CleanCommandBuffer(
 	D3D12CommandBufferContainer* d3d12CommandBufferContainer
 ) {
 	uint32_t i;
+
+	/* Destroy resources marked for destruction */
+	D3D12_INTERNAL_PerformDeferredDestroys(renderer, d3d12CommandBufferContainer);
 
 	/* Remove this command buffer from the submitted list */
 	for (i = 0; i < renderer->submittedCommandBufferContainerCount; i += 1)
@@ -1261,6 +1265,53 @@ static void D3D12_INTERNAL_DestroyTexture(
 	/* FIXME: Free non-committed allocation! */
 
 	SDL_free(texture);
+}
+
+static void D3D12_INTERNAL_PerformDeferredDestroys(
+	D3D12Renderer *renderer,
+	D3D12CommandBufferContainer *d3d12CommandBufferContainer
+) {
+	uint32_t i;
+
+	/* Destroy submitted resources */
+
+#if 0
+	for (i = 0; i < d3d12CommandBufferContainer->renderbuffersToDestroyCount; i += 1)
+	{
+		D3D12_INTERNAL_DestroyRenderbuffer(
+			renderer,
+			d3d12CommandBufferContainer->renderbuffersToDestroy[i]
+		);
+	}
+	d3d12CommandBufferContainer->renderbuffersToDestroyCount = 0;
+
+	for (i = 0; i < d3d12CommandBufferContainer->buffersToDestroyCount; i += 1)
+	{
+		D3D12_INTERNAL_DestroyBuffer(
+			renderer,
+			d3d12CommandBufferContainer->buffersToDestroy[i]
+		);
+	}
+	d3d12CommandBufferContainer->buffersToDestroyCount = 0;
+
+	for (i = 0; i < d3d12CommandBufferContainer->effectsToDestroyCount; i += 1)
+	{
+		D3D12_INTERNAL_DestroyEffect(
+			renderer,
+			d3d12CommandBufferContainer->effectsToDestroy[i]
+		);
+	}
+	d3d12CommandBufferContainer->effectsToDestroyCount = 0;
+#endif
+
+	for (i = 0; i < d3d12CommandBufferContainer->texturesToDestroyCount; i += 1)
+	{
+		D3D12_INTERNAL_DestroyTexture(
+			renderer,
+			d3d12CommandBufferContainer->texturesToDestroy[i]
+		);
+	}
+	d3d12CommandBufferContainer->texturesToDestroyCount = 0;
 }
 
 /* Renderer Implementation */
@@ -1925,6 +1976,24 @@ static void D3D12_INTERNAL_CreateBackbuffer(
 		}
 		else
 		{
+			/* Release the existing descriptors */
+			D3D12_INTERNAL_DestroyDescriptor(
+				renderer,
+				renderer->rtvDescriptorHeap,
+				swapchainData->swapchainViews[0]
+			);
+			D3D12_INTERNAL_DestroyDescriptor(
+				renderer,
+				renderer->rtvDescriptorHeap,
+				swapchainData->swapchainViews[1]
+			);
+			swapchainData->swapchainViews[0].ptr = 0;
+			swapchainData->swapchainViews[1].ptr = 0;
+
+			/* Release the existing resource handles */
+			IDXGIResource_Release(swapchainData->resourceHandles[0]);
+			IDXGIResource_Release(swapchainData->resourceHandles[1]);
+
 			/* Resize the swapchain to the new window size */
 			res = IDXGISwapChain3_ResizeBuffers(
 				swapchainData->swapchain,
@@ -1934,7 +2003,7 @@ static void D3D12_INTERNAL_CreateBackbuffer(
 				DXGI_FORMAT_UNKNOWN,	/* keep the old format */
 				0
 			);
-			ERROR_CHECK_RETURN("Could not resize swapchain", )
+			ERROR_CHECK_RETURN("Could not resize swapchain", );
 		}
 	}
 	else
@@ -2043,7 +2112,14 @@ static void D3D12_ResetBackbuffer(
 	FNA3D_Renderer *driverData,
 	FNA3D_PresentationParameters *presentationParameters
 ) {
-	SDL_assert(0 && "unimplemented");
+	D3D12Renderer *renderer = (D3D12Renderer*) driverData;
+
+	D3D12_INTERNAL_FlushCommands(renderer, 1);
+
+	D3D12_INTERNAL_CreateBackbuffer(renderer, presentationParameters);
+
+	/* FIXME: Is this necessary? This is how it's done in Vulkan... */
+	D3D12_INTERNAL_FlushCommands(renderer, 1);
 }
 
 static void D3D12_ReadBackbuffer(
@@ -2134,7 +2210,45 @@ static void D3D12_AddDisposeTexture(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture
 ) {
-	SDL_assert(0 && "unimplemented");
+	D3D12Renderer *renderer = (D3D12Renderer*) driverData;
+	D3D12Texture *d3d12Texture = (D3D12Texture*) texture;
+	uint32_t i;
+
+	/* Unbind the texture if it's being used as an RT. */
+	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
+	{
+		if (renderer->colorViews[i].ptr == d3d12Texture->rtvDescriptorHandle.ptr)
+		{
+			renderer->colorViews[i].ptr = 0;
+		}
+	}
+
+	/* FIXME */
+#if 0
+	for (i = 0; i < MAX_TOTAL_SAMPLERS; i += 1)
+	{
+		if (d3d12Texture == renderer->textures[i])
+		{
+			renderer->textures[i] = &NullTexture;
+			renderer->textureNeedsUpdate[i] = 1;
+		}
+	}
+#endif
+
+	/* Queue texture for destruction */
+	SDL_LockMutex(renderer->commandLock);
+	if (renderer->currentCommandBufferContainer->texturesToDestroyCount + 1 >= renderer->currentCommandBufferContainer->texturesToDestroyCapacity)
+	{
+		renderer->currentCommandBufferContainer->texturesToDestroyCapacity *= 2;
+
+		renderer->currentCommandBufferContainer->texturesToDestroy = SDL_realloc(
+			renderer->currentCommandBufferContainer->texturesToDestroy,
+			sizeof(D3D12Texture*) * renderer->currentCommandBufferContainer->texturesToDestroyCapacity
+		);
+	}
+	renderer->currentCommandBufferContainer->texturesToDestroy[renderer->currentCommandBufferContainer->texturesToDestroyCount] = d3d12Texture;
+	renderer->currentCommandBufferContainer->texturesToDestroyCount += 1;
+	SDL_UnlockMutex(renderer->commandLock);
 }
 
 static void D3D12_SetTextureData2D(
@@ -2513,8 +2627,29 @@ static int32_t D3D12_GetMaxMultiSampleCount(
 	FNA3D_SurfaceFormat format,
 	int32_t multiSampleCount
 ) {
-	SDL_assert(0 && "unimplemented");
-	return 0;
+	D3D12Renderer *renderer = (D3D12Renderer*) driverData;
+	D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS featureData;
+
+	featureData.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
+	featureData.Format = XNAToD3D_TextureFormat[format];
+	featureData.NumQualityLevels = 0;
+	featureData.SampleCount = multiSampleCount;
+
+	do
+	{
+		ID3D12Device_CheckFeatureSupport(
+			renderer->device,
+			D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS,
+			&featureData,
+			sizeof(featureData)
+		);
+		if (featureData.NumQualityLevels > 0)
+		{
+			break;
+		}
+		featureData.SampleCount >>= 1;
+	} while (featureData.SampleCount > 0);
+	return featureData.SampleCount;
 }
 
 /* Debugging */
