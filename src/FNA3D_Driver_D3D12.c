@@ -63,6 +63,8 @@ static const IID D3D_IID_IDXGIFactory2 = { 0x50c83a1c,0xe072,0x4c48,{0x87,0xb0,0
 static const IID D3D_IID_IDXGIFactory6 = { 0xc1b6694f,0xff09,0x44a9,{0xb0,0x3c,0x77,0x90,0x0a,0x0a,0x1d,0x17} };
 static const IID D3D_IID_IDXGIAdapter1 = { 0x29038f61,0x3839,0x4626,{0x91,0xfd,0x08,0x68,0x79,0x01,0x1a,0x05} };
 static const IID D3D_IID_ID3D12Debug = { 0x344488b7,0x6846,0x474b,{0xb9,0x89,0xf0,0x27,0x44,0x82,0x45,0xe0} };
+static const IID D3D_IID_ID3D12DebugDevice = { 0x3febd6dd,0x4973,0x4787,{0x81,0x94,0xe4,0x5f,0x9e,0x28,0x92,0x3e} };
+static const IID D3D_IID_ID3D12InfoQueue = { 0x0742a90b,0xc387,0x483f,{0xb9,0x46,0x30,0xa7,0xe4,0xe6,0x14,0x58} };
 static const IID D3D_IID_ID3D12CommandQueue = { 0x0ec870a6,0x5d7e,0x4c22,{0x8c,0xfc,0x5b,0xaa,0xe0,0x76,0x16,0xed} };
 static const IID D3D_IID_ID3D12CommandAllocator = { 0x6102dee4,0xaf59,0x4b09,{0xb9,0x99,0xb4,0x4d,0x73,0xf0,0x9b,0x24} };
 static const IID D3D_IID_ID3D12GraphicsCommandList = { 0x5b160d0f,0xac1b,0x4185,{0x8b,0xa8,0xb3,0xae,0x42,0xa5,0xa4,0x55} };
@@ -202,7 +204,7 @@ typedef struct D3D12Backbuffer
 	uint32_t multiSampleCount;
 	D3D12Texture *depthStencilTexture;
 	D3D12Texture *colorTexture;
-	D3D12Texture *multiSampleColorTexture;
+	D3D12Texture *msaaResolveColorTexture;
 } D3D12Backbuffer;
 
 typedef struct D3D12Renderer /* Cast FNA3D_Renderer* to this! */
@@ -239,7 +241,6 @@ typedef struct D3D12Renderer /* Cast FNA3D_Renderer* to this! */
 	uint32_t dsvDescriptorIncrementSize;
 
 	/* Debug */
-	ID3D12Debug* debug;
 	uint8_t debugMode;
 
 	/* Command Buffers */
@@ -784,6 +785,7 @@ static void D3D12_INTERNAL_SubmitCommands(
 ) {
 	D3D12CommandBufferContainer *containerToSubmit;
 	D3D12SwapchainData *swapchainData;
+	D3D12Texture *backBufferColorTex;
 	int32_t i, backBufferIndex;
 	uint64_t fenceValue;
 
@@ -814,6 +816,40 @@ static void D3D12_INTERNAL_SubmitCommands(
 			);
 		}
 
+		backBufferColorTex = renderer->backbuffer.colorTexture;
+
+		/* Resolve the faux backbuffer, if applicable */
+		if (renderer->backbuffer.multiSampleCount > 1)
+		{
+			/* The MSAA texture needs to be in RESOLVE_SOURCE mode. */
+			D3D12_INTERNAL_TransitionIfNeeded(
+				renderer,
+				renderer->backbuffer.colorTexture->resourceHandle,
+				0,
+				&renderer->backbuffer.colorTexture->resourceState,
+				D3D12_RESOURCE_STATE_RESOLVE_SOURCE
+			);
+
+			/* The resolve texture needs to be in RESOLVE_DEST mode. */
+			D3D12_INTERNAL_TransitionIfNeeded(
+				renderer,
+				renderer->backbuffer.msaaResolveColorTexture->resourceHandle,
+				0,
+				&renderer->backbuffer.msaaResolveColorTexture->resourceState,
+				D3D12_RESOURCE_STATE_RESOLVE_DEST
+			);
+
+			ID3D12GraphicsCommandList_ResolveSubresource(
+				renderer->currentCommandBufferContainer->commandList,
+				renderer->backbuffer.msaaResolveColorTexture->resourceHandle,
+				0,
+				renderer->backbuffer.colorTexture->resourceHandle,
+				0,
+				XNAToD3D_TextureFormat[renderer->backbuffer.msaaResolveColorTexture->colorFormat]
+			);
+			backBufferColorTex = renderer->backbuffer.msaaResolveColorTexture;
+		}
+
 		/* Blit or copy the faux-backbuffer to the real backbuffer */
 		backBufferIndex = IDXGISwapChain3_GetCurrentBackBufferIndex(swapchainData->swapchain);
 
@@ -829,16 +865,16 @@ static void D3D12_INTERNAL_SubmitCommands(
 
 			D3D12_INTERNAL_TransitionIfNeeded(
 				renderer,
-				renderer->backbuffer.colorTexture->resourceHandle,
+				backBufferColorTex->resourceHandle,
 				0,
-				&renderer->backbuffer.colorTexture->resourceState,
+				&backBufferColorTex->resourceState,
 				D3D12_RESOURCE_STATE_COPY_SOURCE
 			);
 
 			ID3D12GraphicsCommandList_CopyResource(
 				renderer->currentCommandBufferContainer->commandList,
 				swapchainData->resourceHandles[backBufferIndex],
-				renderer->backbuffer.colorTexture->resourceHandle
+				backBufferColorTex->resourceHandle
 			);
 		}
 		else
@@ -853,16 +889,17 @@ static void D3D12_INTERNAL_SubmitCommands(
 
 			D3D12_INTERNAL_TransitionIfNeeded(
 				renderer,
-				renderer->backbuffer.colorTexture->resourceHandle,
+				backBufferColorTex->resourceHandle,
 				0,
-				&renderer->backbuffer.colorTexture->resourceState,
+				&backBufferColorTex->resourceState,
 				D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE
 			);
 
 			/* FIXME: Blit the faux backbuffer! */
 		}
 
-		/* Back to normal... */
+		/* Transition back to normal... */
+		/* FIXME: Do we need to transition the msaa resolve texture too? */
 		D3D12_INTERNAL_TransitionIfNeeded(
 			renderer,
 			swapchainData->resourceHandles[backBufferIndex],
@@ -1045,6 +1082,7 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 	D3D12_RENDER_TARGET_VIEW_DESC rtvDesc;
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc;
 	D3D12_RESOURCE_STATES resourceState;
+	uint8_t createSRV;
 	HRESULT res;
 
 	/* Create the resource description */
@@ -1058,49 +1096,54 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 	resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
 	resourceDesc.MipLevels = levelCount;
 	resourceDesc.SampleDesc.Count = samples;
-	resourceDesc.SampleDesc.Quality = 1;
+	resourceDesc.SampleDesc.Quality = 0;
 	resourceDesc.Width = width;
 	resourceDesc.Height = height;
 
-	/* Create the SRV description */
-	srvDesc.Format = format;
-	srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING; /* swizzle */
-	if (!isCube)
+	/* We only want SRVs for non-MSAA textures */
+	createSRV = (samples == 1);
+	if (createSRV)
 	{
-		if (depth == 1)
+		/* Create the SRV description */
+		srvDesc.Format = format;
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING; /* swizzle */
+		if (!isCube)
 		{
-			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-			srvDesc.Texture2D.MipLevels = levelCount;
-			srvDesc.Texture2D.MostDetailedMip = 0;
-			srvDesc.Texture2D.PlaneSlice = 0;
-			srvDesc.Texture2D.ResourceMinLODClamp = 0;
+			if (depth == 1)
+			{
+				srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+				srvDesc.Texture2D.MipLevels = levelCount;
+				srvDesc.Texture2D.MostDetailedMip = 0;
+				srvDesc.Texture2D.PlaneSlice = 0;
+				srvDesc.Texture2D.ResourceMinLODClamp = 0;
+			}
+			else
+			{
+				srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
+				srvDesc.Texture3D.MipLevels = levelCount;
+				srvDesc.Texture3D.MostDetailedMip = 0;
+				srvDesc.Texture3D.ResourceMinLODClamp = 0;
+			}
 		}
 		else
 		{
-			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE3D;
-			srvDesc.Texture3D.MipLevels = levelCount;
-			srvDesc.Texture3D.MostDetailedMip = 0;
-			srvDesc.Texture3D.ResourceMinLODClamp = 0;
+			srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
+			srvDesc.TextureCube.MipLevels = levelCount;
+			srvDesc.TextureCube.MostDetailedMip = 0;
+			srvDesc.TextureCube.ResourceMinLODClamp = 0;
 		}
-	}
-	else
-	{
-		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURECUBE;
-		srvDesc.TextureCube.MipLevels = levelCount;
-		srvDesc.TextureCube.MostDetailedMip = 0;
-		srvDesc.TextureCube.ResourceMinLODClamp = 0;
-	}
 
-	/* Get the SRV descriptor handle */
-	ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(
-		renderer->srvDescriptorHeap,
-		&texture->srvDescriptorHandle
-	);
-	texture->srvDescriptorHandle.ptr += (
-		renderer->srvDescriptorIncrementSize *
-		renderer->srvDescriptorHeapIndex
-	);
-	renderer->srvDescriptorHeapIndex++;
+		/* Get the SRV descriptor handle */
+		ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(
+			renderer->srvDescriptorHeap,
+			&texture->srvDescriptorHandle
+		);
+		texture->srvDescriptorHandle.ptr += (
+			renderer->srvDescriptorIncrementSize *
+			renderer->srvDescriptorHeapIndex
+			);
+		renderer->srvDescriptorHeapIndex++;
+	}
 
 	if (isRenderTarget)
 	{
@@ -1111,7 +1154,14 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 
 			dsvDesc.Format = format;
 			dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
-			dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+			if (samples == 1)
+			{
+				dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+			}
+			else
+			{
+				dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DMS;
+			}
 			dsvDesc.Texture2D.MipSlice = 0;
 		}
 		else
@@ -1126,7 +1176,14 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 			}
 			else
 			{
-				rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+				if (samples == 1)
+				{
+					rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2D;
+				}
+				else
+				{
+					rtvDesc.ViewDimension = D3D12_RTV_DIMENSION_TEXTURE2DMS;
+				}
 				rtvDesc.Texture2D.PlaneSlice = 0;
 				rtvDesc.Texture2D.MipSlice = 0;
 			}
@@ -1187,13 +1244,15 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 		}
 		else
 		{
-			/* Create the shader resource view */
-			ID3D12Device_CreateShaderResourceView(
-				renderer->device,
-				texture->resourceHandle,
-				&srvDesc,
-				texture->srvDescriptorHandle
-			);
+			if (createSRV)
+			{
+				ID3D12Device_CreateShaderResourceView(
+					renderer->device,
+					texture->resourceHandle,
+					&srvDesc,
+					texture->srvDescriptorHandle
+				);
+			}
 
 			/* Get the RTV descriptor handle */
 			ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(
@@ -1321,7 +1380,19 @@ static void D3D12_INTERNAL_PerformDeferredDestroys(
 static void D3D12_DestroyDevice(FNA3D_Device *device)
 {
 	D3D12Renderer* renderer = (D3D12Renderer*) device->driverData;
+	ID3D12DebugDevice *debugDevice;
+	int32_t i;
+	HRESULT res;
 
+	/* Release the swapchain */
+	for (i = 0; i < renderer->swapchainDataCount; i += 1)
+	{
+		ID3D12Resource_Release(renderer->swapchainDatas[i]->resourceHandles[0]);
+		ID3D12Resource_Release(renderer->swapchainDatas[i]->resourceHandles[1]);
+		IDXGISwapChain_Release(renderer->swapchainDatas[i]->swapchain);
+	}
+
+	/* Flush any pending commands */
 	D3D12_INTERNAL_FlushCommands(renderer, 1);
 
 	/* Release the DXGI factory */
@@ -1343,13 +1414,32 @@ static void D3D12_DestroyDevice(FNA3D_Device *device)
 	/* Release the device */
 	ID3D12Device_Release(renderer->device);
 
-	/* Release the debug interface, if applicable */
-	ID3D12Debug_Release(renderer->debug);
+	/* Release the adapter */
+	IDXGIAdapter_Release(renderer->adapter);
+
+	/* Report live objects, if we can */
+	if (renderer->debugMode)
+	{
+		res = ID3D12Device_QueryInterface(
+			renderer->device,
+			&D3D_IID_ID3D12DebugDevice,
+			&debugDevice
+		);
+		if (SUCCEEDED(res))
+		{
+			ID3D12DebugDevice_ReportLiveDeviceObjects(
+				debugDevice,
+				D3D12_RLDO_IGNORE_INTERNAL | D3D12_RLDO_DETAIL
+			);
+			ID3D12DebugDevice_Release(debugDevice);
+		}
+	}
 
 	/* Unload the DLLs */
 	SDL_UnloadObject(renderer->d3d12_dll);
 	SDL_UnloadObject(renderer->dxgi_dll);
 
+	/* Delete the FNA3D structs */
 	SDL_free(renderer);
 	SDL_free(device);
 }
@@ -1769,13 +1859,13 @@ static void D3D12_INTERNAL_DisposeBackbuffer(D3D12Renderer *renderer)
 		renderer->backbuffer.colorTexture = NULL;
 	}
 
-	if (renderer->backbuffer.multiSampleColorTexture != NULL)
+	if (renderer->backbuffer.msaaResolveColorTexture != NULL)
 	{
 		D3D12_AddDisposeTexture(
 			(FNA3D_Renderer*) renderer,
-			(FNA3D_Texture*) renderer->backbuffer.multiSampleColorTexture
+			(FNA3D_Texture*) renderer->backbuffer.msaaResolveColorTexture
 		);
-		renderer->backbuffer.multiSampleColorTexture = NULL;
+		renderer->backbuffer.msaaResolveColorTexture = NULL;
 	}
 
 	if (renderer->backbuffer.depthStencilTexture != NULL)
@@ -1871,6 +1961,8 @@ static void D3D12_INTERNAL_CreateSwapChain(
 				res
 			);
 		}
+
+		IDXGIFactory2_Release(pParent);
 	}
 
 	swapchainData = (D3D12SwapchainData*) SDL_malloc(sizeof(D3D12SwapchainData));
@@ -2029,7 +2121,7 @@ static void D3D12_INTERNAL_CreateBackbuffer(
 		0,
 		1,
 		0,
-		1,
+		SDL_max(1, renderer->backbuffer.multiSampleCount),
 		1,
 		XNAToD3D_TextureFormat[presentationParameters->backBufferFormat],
 		renderer->backbuffer.colorTexture
@@ -2038,10 +2130,10 @@ static void D3D12_INTERNAL_CreateBackbuffer(
 		return;
 	}
 
-	renderer->backbuffer.multiSampleColorTexture = NULL;
-	if (renderer->backbuffer.multiSampleCount > 0)
+	renderer->backbuffer.msaaResolveColorTexture = NULL;
+	if (renderer->backbuffer.multiSampleCount > 1)
 	{
-		renderer->backbuffer.multiSampleColorTexture = (D3D12Texture*) SDL_malloc(
+		renderer->backbuffer.msaaResolveColorTexture = (D3D12Texture*) SDL_malloc(
 			sizeof(D3D12Texture)
 		);
 
@@ -2053,12 +2145,12 @@ static void D3D12_INTERNAL_CreateBackbuffer(
 			0,
 			1,
 			0,
-			renderer->backbuffer.multiSampleCount,
+			1,
 			1,
 			XNAToD3D_TextureFormat[presentationParameters->backBufferFormat],
-			renderer->backbuffer.multiSampleColorTexture
+			renderer->backbuffer.msaaResolveColorTexture
 		)) {
-			FNA3D_LogError("Failed to create faux backbuffer multisample color attachment");
+			FNA3D_LogError("Failed to create faux backbuffer multisample resolve color attachment");
 			return;
 		}
 	}
@@ -2078,7 +2170,7 @@ static void D3D12_INTERNAL_CreateBackbuffer(
 			0,
 			1,
 			1,
-			1,
+			SDL_max(1, renderer->backbuffer.multiSampleCount),
 			1,
 			XNAToD3D_DepthFormat[presentationParameters->depthStencilFormat],
 			renderer->backbuffer.depthStencilTexture
@@ -2761,6 +2853,13 @@ static HRESULT D3D12_PLATFORM_CreateD3D12Device(
 	PFN_D3D12_CREATE_DEVICE D3D12CreateDeviceFunc;
 	IDXGIFactory6 *factory6;
 	DXGI_ADAPTER_DESC1 adapterDesc;
+	ID3D12Debug *debugInterface;
+	ID3D12InfoQueue *infoQueue;
+	D3D12_INFO_QUEUE_FILTER infoQueueFilter;
+	D3D12_MESSAGE_ID infoQueueDenyMessages[] =
+	{
+		D3D12_MESSAGE_ID_CLEARRENDERTARGETVIEW_MISMATCHINGCLEARVALUE
+	};
 	HRESULT res;
 
 	/* Load DXGI... */
@@ -2805,6 +2904,7 @@ static HRESULT D3D12_PLATFORM_CreateD3D12Device(
 			&D3D_IID_IDXGIAdapter1,
 			&renderer->adapter
 		);
+		IDXGIFactory6_Release(factory6);
 	}
 	else
 	{
@@ -2831,7 +2931,7 @@ static HRESULT D3D12_PLATFORM_CreateD3D12Device(
 	 */
 	if (debugMode)
 	{
-		/* Load GetDebugInterface... */
+		/* Load D3D12GetDebugInterface... */
 		D3D12GetDebugInterfaceFunc = (PFN_D3D12_GET_DEBUG_INTERFACE) SDL_LoadFunction(
 			renderer->d3d12_dll,
 			"D3D12GetDebugInterface"
@@ -2843,7 +2943,7 @@ static HRESULT D3D12_PLATFORM_CreateD3D12Device(
 		else
 		{
 			/* Get the debug interface */
-			res = D3D12GetDebugInterfaceFunc(&D3D_IID_ID3D12Debug, &renderer->debug);
+			res = D3D12GetDebugInterfaceFunc(&D3D_IID_ID3D12Debug, &debugInterface);
 			if (FAILED(res))
 			{
 				FNA3D_LogWarn("Could not get D3D12 debug interface. Error code: 0x%08", res);
@@ -2851,7 +2951,8 @@ static HRESULT D3D12_PLATFORM_CreateD3D12Device(
 			else
 			{
 				/* Enable the debug layer */
-				ID3D12Debug_EnableDebugLayer(renderer->debug);
+				ID3D12Debug_EnableDebugLayer(debugInterface);
+				ID3D12Debug_Release(debugInterface);
 			}
 		}
 	}
@@ -2875,6 +2976,25 @@ static HRESULT D3D12_PLATFORM_CreateD3D12Device(
 		&renderer->device
 	);
 	ERROR_CHECK_RETURN("Could not create D3D12 device", -1);
+
+	/* Silence unhelpful debug warnings */
+	if (debugMode)
+	{
+		res = ID3D12Device_QueryInterface(renderer->device, &D3D_IID_ID3D12InfoQueue, &infoQueue);
+		if (FAILED(res))
+		{
+			FNA3D_LogWarn("Could not get D3D12 debug info queue. Error code: 0x%08", res);
+		}
+		else
+		{
+			SDL_zero(infoQueueFilter);
+			infoQueueFilter.DenyList.NumIDs = SDL_arraysize(infoQueueDenyMessages);
+			infoQueueFilter.DenyList.pIDList = infoQueueDenyMessages;
+
+			ID3D12InfoQueue_AddStorageFilterEntries(infoQueue, &infoQueueFilter);
+			ID3D12InfoQueue_Release(infoQueue);
+		}
+	}
 
 	/* Print driver info */
 	FNA3D_LogInfo("FNA3D Driver: D3D12");
