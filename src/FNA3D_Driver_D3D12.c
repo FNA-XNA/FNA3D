@@ -1103,6 +1103,7 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 		if (isDepthStencil)
 		{
 			resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+			resourceState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
 
 			dsvDesc.Format = format;
 			dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
@@ -1112,6 +1113,7 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 		else
 		{
 			resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+			resourceState = D3D12_RESOURCE_STATE_RENDER_TARGET;
 
 			rtvDesc.Format = format;
 			if (isCube)
@@ -1125,8 +1127,6 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 				rtvDesc.Texture2D.MipSlice = 0;
 			}
 		}
-
-		resourceState = D3D12_RESOURCE_STATE_RENDER_TARGET; /* FIXME: Is this right for depth-stencil? */
 
 		/* Set up committed resource heap information */
 		committedHeapProperties.Type = D3D12_HEAP_TYPE_DEFAULT;
@@ -1160,15 +1160,6 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 
 		texture->resourceState = resourceState;
 
-		/* Create the shader resource view */
-		/* FIXME: Do depth-stencil images need an SRV? */
-		ID3D12Device_CreateShaderResourceView(
-			renderer->device,
-			texture->resourceHandle,
-			&srvDesc,
-			texture->srvDescriptorHandle
-		);
-
 		if (isDepthStencil)
 		{
 			/* Get the DSV descriptor handle */
@@ -1192,6 +1183,14 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 		}
 		else
 		{
+			/* Create the shader resource view */
+			ID3D12Device_CreateShaderResourceView(
+				renderer->device,
+				texture->resourceHandle,
+				&srvDesc,
+				texture->srvDescriptorHandle
+			);
+
 			/* Get the RTV descriptor handle */
 			ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart(
 				renderer->rtvDescriptorHeap,
