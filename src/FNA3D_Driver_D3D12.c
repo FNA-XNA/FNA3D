@@ -1072,9 +1072,11 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 	uint8_t isDepthStencil,
 	uint8_t samples,
 	uint32_t levelCount,
-	DXGI_FORMAT format,
-	D3D12Texture *texture
+	FNA3D_SurfaceFormat fnaFormat,
+	D3D12Texture **ppTexture
 ) {
+	D3D12Texture *texture;
+	DXGI_FORMAT dxgiFormat;
 	D3D12_RESOURCE_DESC resourceDesc;
 	D3D12_HEAP_PROPERTIES committedHeapProperties;
 	D3D12_HEAP_FLAGS committedHeapFlags;
@@ -1086,6 +1088,25 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 	uint8_t createSRV;
 	HRESULT res;
 
+	/* Allocate the texture */
+	texture = (D3D12Texture*) SDL_malloc(sizeof(D3D12Texture));
+	SDL_zerop(texture);
+
+	/* Fill out the texture struct and determine the DXGI format to use */
+	texture->isRenderTarget = isRenderTarget;
+	texture->rtType = (isCube) ? FNA3D_RENDERTARGET_TYPE_CUBE : FNA3D_RENDERTARGET_TYPE_CUBE;
+	texture->external = 0;
+	if (!isDepthStencil)
+	{
+		texture->colorFormat = fnaFormat;
+		dxgiFormat = XNAToD3D_TextureFormat[fnaFormat];
+	}
+	else
+	{
+		texture->depthStencilFormat = (FNA3D_DepthFormat) fnaFormat;
+		dxgiFormat = XNAToD3D_DepthFormat[fnaFormat];
+	}
+
 	/* Create the resource description */
 	resourceDesc.Alignment = 0; /* Defaults to 64KB for most textures, 4MB for MSAA textures */
 	resourceDesc.DepthOrArraySize = (isCube) ? 6 : depth;
@@ -1093,7 +1114,7 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 		? D3D12_RESOURCE_DIMENSION_TEXTURE2D
 		: D3D12_RESOURCE_DIMENSION_TEXTURE3D;
 	resourceDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-	resourceDesc.Format = format;
+	resourceDesc.Format = dxgiFormat;
 	resourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
 	resourceDesc.MipLevels = levelCount;
 	resourceDesc.SampleDesc.Count = samples;
@@ -1106,7 +1127,7 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 	if (createSRV)
 	{
 		/* Create the SRV description */
-		srvDesc.Format = format;
+		srvDesc.Format = dxgiFormat;
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING; /* swizzle */
 		if (!isCube)
 		{
@@ -1153,7 +1174,7 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 			resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 			resourceState = D3D12_RESOURCE_STATE_DEPTH_WRITE;
 
-			dsvDesc.Format = format;
+			dsvDesc.Format = dxgiFormat;
 			dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
 			if (samples == 1)
 			{
@@ -1170,7 +1191,7 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 			resourceDesc.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 			resourceState = D3D12_RESOURCE_STATE_RENDER_TARGET;
 
-			rtvDesc.Format = format;
+			rtvDesc.Format = dxgiFormat;
 			if (isCube)
 			{
 				/* FIXME */
@@ -1203,7 +1224,7 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 		SDL_zero(optimizedClearValue.Color);
 		optimizedClearValue.DepthStencil.Depth = 0;
 		optimizedClearValue.DepthStencil.Stencil = 0;
-		optimizedClearValue.Format = format;
+		optimizedClearValue.Format = dxgiFormat;
 
 		/* FIXME: Cube RTs? */
 
@@ -1275,11 +1296,13 @@ static uint8_t D3D12_INTERNAL_CreateTexture(
 			);
 		}
 
+		*ppTexture = texture;
 		return 1;
 	}
 
 	/* FIXME: Non-committed textures! */
 
+	*ppTexture = texture;
 	return 0;
 }
 
@@ -2164,11 +2187,6 @@ static void D3D12_INTERNAL_CreateBackbuffer(
 	renderer->backbuffer.height = presentationParameters->backBufferHeight;
 	renderer->backbuffer.multiSampleCount = presentationParameters->multiSampleCount;
 
-	/* FIXME: Do these actually need to be allocated on the heap? */
-	renderer->backbuffer.colorTexture = (D3D12Texture*) SDL_malloc(
-		sizeof(D3D12Texture)
-	);
-
 	if (!D3D12_INTERNAL_CreateTexture(
 		renderer,
 		presentationParameters->backBufferWidth,
@@ -2179,8 +2197,8 @@ static void D3D12_INTERNAL_CreateBackbuffer(
 		0,
 		SDL_max(1, renderer->backbuffer.multiSampleCount),
 		1,
-		XNAToD3D_TextureFormat[presentationParameters->backBufferFormat],
-		renderer->backbuffer.colorTexture
+		presentationParameters->backBufferFormat,
+		&renderer->backbuffer.colorTexture
 	)) {
 		FNA3D_LogError("Failed to create faux backbuffer color attachment");
 		return;
@@ -2189,10 +2207,6 @@ static void D3D12_INTERNAL_CreateBackbuffer(
 	renderer->backbuffer.msaaResolveColorTexture = NULL;
 	if (renderer->backbuffer.multiSampleCount > 1)
 	{
-		renderer->backbuffer.msaaResolveColorTexture = (D3D12Texture*) SDL_malloc(
-			sizeof(D3D12Texture)
-		);
-
 		if (!D3D12_INTERNAL_CreateTexture(
 			renderer,
 			presentationParameters->backBufferWidth,
@@ -2203,8 +2217,8 @@ static void D3D12_INTERNAL_CreateBackbuffer(
 			0,
 			1,
 			1,
-			XNAToD3D_TextureFormat[presentationParameters->backBufferFormat],
-			renderer->backbuffer.msaaResolveColorTexture
+			presentationParameters->backBufferFormat,
+			&renderer->backbuffer.msaaResolveColorTexture
 		)) {
 			FNA3D_LogError("Failed to create faux backbuffer multisample resolve color attachment");
 			return;
@@ -2214,10 +2228,6 @@ static void D3D12_INTERNAL_CreateBackbuffer(
 	renderer->backbuffer.depthStencilTexture = NULL;
 	if (presentationParameters->depthStencilFormat != FNA3D_DEPTHFORMAT_NONE)
 	{
-		renderer->backbuffer.depthStencilTexture = (D3D12Texture*) SDL_malloc(
-			sizeof(D3D12Texture)
-		);
-
 		if (!D3D12_INTERNAL_CreateTexture(
 			renderer,
 			presentationParameters->backBufferWidth,
@@ -2228,8 +2238,8 @@ static void D3D12_INTERNAL_CreateBackbuffer(
 			1,
 			SDL_max(1, renderer->backbuffer.multiSampleCount),
 			1,
-			XNAToD3D_DepthFormat[presentationParameters->depthStencilFormat],
-			renderer->backbuffer.depthStencilTexture
+			(FNA3D_SurfaceFormat) presentationParameters->depthStencilFormat,
+			&renderer->backbuffer.depthStencilTexture
 		)) {
 			FNA3D_LogError("Failed to create faux backbuffer depth stencil attachment");
 			return;
