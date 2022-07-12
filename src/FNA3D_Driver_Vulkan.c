@@ -1557,6 +1557,8 @@ static VkComponentMapping XNAToVK_SurfaceSwizzle[] =
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.ColorBgraEXT */
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.ColorSrgbEXT */
 	IDENTITY_SWIZZLE,	/* SurfaceFormat.Dxt5SrgbEXT */
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.Bc7EXT */
+	IDENTITY_SWIZZLE,	/* SurfaceFormat.Bc7SrgbEXT */
 };
 
 static VkFormat XNAToVK_SurfaceFormat[] =
@@ -1584,8 +1586,8 @@ static VkFormat XNAToVK_SurfaceFormat[] =
 	VK_FORMAT_B8G8R8A8_UNORM,		/* SurfaceFormat.ColorBgraEXT */
 	VK_FORMAT_R8G8B8A8_SRGB,		/* SurfaceFormat.ColorSrgbEXT */
 	VK_FORMAT_BC3_SRGB_BLOCK,		/* SurfaceFormat.Dxt5SrgbEXT */
-	VK_FORMAT_BC7_UNORM_BLOCK,		/* SurfaceFormat.BC7EXT */
-	VK_FORMAT_BC7_SRGB_BLOCK,		/* SurfaceFormat.BC7SrgbEXT */
+	VK_FORMAT_BC7_UNORM_BLOCK,		/* SurfaceFormat.Bc7EXT */
+	VK_FORMAT_BC7_SRGB_BLOCK,		/* SurfaceFormat.Bc7SrgbEXT */
 };
 
 static inline VkFormat XNAToVK_DepthFormat(
