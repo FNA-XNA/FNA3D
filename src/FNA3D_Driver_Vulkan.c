@@ -5880,9 +5880,10 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 	for (i = 0; i < vulkanCommandBufferContainer->transferBufferCount; i += 1)
 	{
 		transferBuffer = vulkanCommandBufferContainer->transferBuffers[i];
+		transferBuffer->offset = 0;
+
 		if (transferBuffer == renderer->transferBufferPool.fastTransferBuffer)
 		{
-			renderer->transferBufferPool.fastTransferBuffer->offset = 0;
 			renderer->transferBufferPool.fastTransferBufferAvailable = 1;
 		}
 		else
