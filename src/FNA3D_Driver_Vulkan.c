@@ -6980,6 +6980,13 @@ static void VULKAN_INTERNAL_SetBufferData(
 	VkBufferCopy bufferCopy;
 	uint32_t i;
 
+	if (	options == FNA3D_SETDATAOPTIONS_NONE &&
+		dataLength == vulkanBuffer->size	)
+	{
+		/* Setting the whole buffer is basically just discard */
+		options = FNA3D_SETDATAOPTIONS_DISCARD;
+	}
+
 	if (options == FNA3D_SETDATAOPTIONS_NONE)
 	{
 		/* If NONE is set, we need to do a buffered copy.
