@@ -4382,6 +4382,33 @@ static void D3D11_INTERNAL_DeleteShader(const void *ctx, void* shader)
 	MOJOSHADER_d3d11DeleteShader(renderer->shaderContext, d3dShader);
 }
 
+static void D3D11_GetShaderContext(
+	FNA3D_Renderer *driverData,
+	MOJOSHADER_effectShaderContext *shaderContext
+) {
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+
+	shaderContext->shaderContext = renderer->shaderContext;
+	shaderContext->compileShader = (MOJOSHADER_compileShaderFunc) MOJOSHADER_d3d11CompileShader;
+	shaderContext->shaderAddRef = (MOJOSHADER_shaderAddRefFunc) MOJOSHADER_d3d11ShaderAddRef;
+	shaderContext->deleteShader = D3D11_INTERNAL_DeleteShader;
+	shaderContext->getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_d3d11GetShaderParseData;
+	shaderContext->bindShaders = (MOJOSHADER_bindShadersFunc) MOJOSHADER_d3d11BindShaders;
+	shaderContext->getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_d3d11GetBoundShaders;
+	shaderContext->mapUniformBufferMemory = (MOJOSHADER_mapUniformBufferMemoryFunc) MOJOSHADER_d3d11MapUniformBufferMemory;
+	shaderContext->unmapUniformBufferMemory = (MOJOSHADER_unmapUniformBufferMemoryFunc) MOJOSHADER_d3d11UnmapUniformBufferMemory;
+	shaderContext->getError = (MOJOSHADER_getErrorFunc) MOJOSHADER_d3d11GetError;
+	shaderContext->m = NULL;
+	shaderContext->f = NULL;
+	shaderContext->malloc_data = driverData;
+}
+
+static void D3D11_SetShadersUpdated(FNA3D_Renderer *driverData)
+{
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+	renderer->effectApplied = 1;
+}
+
 static void D3D11_CreateEffect(
 	FNA3D_Renderer *driverData,
 	uint8_t *effectCode,

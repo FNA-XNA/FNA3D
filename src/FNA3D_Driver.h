@@ -639,6 +639,11 @@ struct FNA3D_Device
 
 	/* Effects */
 
+	void (*GetShaderContext)(
+		FNA3D_Renderer *driverData,
+		MOJOSHADER_effectShaderContext *shaderContext
+	);
+	void (*SetShadersUpdated)(FNA3D_Renderer *driverData);
 	void (*CreateEffect)(
 		FNA3D_Renderer *driverData,
 		uint8_t *effectCode,
@@ -782,6 +787,8 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(AddDisposeIndexBuffer, name) \
 	ASSIGN_DRIVER_FUNC(SetIndexBufferData, name) \
 	ASSIGN_DRIVER_FUNC(GetIndexBufferData, name) \
+	ASSIGN_DRIVER_FUNC(GetShaderContext, name) \
+	ASSIGN_DRIVER_FUNC(SetShadersUpdated, name) \
 	ASSIGN_DRIVER_FUNC(CreateEffect, name) \
 	ASSIGN_DRIVER_FUNC(CloneEffect, name) \
 	ASSIGN_DRIVER_FUNC(AddDisposeEffect, name) \

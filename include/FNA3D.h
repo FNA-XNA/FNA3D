@@ -1319,6 +1319,34 @@ FNA3DAPI void FNA3D_GetIndexBufferData(
 	int32_t dataLength
 );
 
+/* Shaders */
+
+/* FIXME: DO NOT USE THIS API! IT WILL BREAK AND I WILL NOT HELP YOU FIX IT! */
+
+typedef struct FNA3D_Shader FNA3D_Shader;
+
+FNA3DAPI FNA3D_Shader* FNA3D_CompileShader(
+	FNA3D_Device *device,
+	uint8_t *code,
+	uint32_t codeLength
+);
+
+FNA3DAPI void FNA3D_DeleteShader(FNA3D_Device *device, FNA3D_Shader *shader);
+
+FNA3DAPI void FNA3D_BindShaders(
+	FNA3D_Device *device,
+	FNA3D_Shader *vertex,
+	FNA3D_Shader *pixel
+);
+
+FNA3DAPI void FNA3D_MapUniformBufferMemory(
+	FNA3D_Device *device,
+	float **vsf, int32_t **vsi, uint8_t **vsb,
+	float **psf, int32_t **psi, uint8_t **psb
+);
+
+FNA3DAPI void FNA3D_UnmapUniformBufferMemory(FNA3D_Device *device);
+
 /* Effects */
 
 /* When using this API, be sure to include mojoshader.h! */

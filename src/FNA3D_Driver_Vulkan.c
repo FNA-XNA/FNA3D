@@ -11468,6 +11468,36 @@ static void VULKAN_INTERNAL_DeleteShader(const void *shaderContext, void* shader
 	MOJOSHADER_vkDeleteShader(renderer->mojoshaderContext, vkShader);
 }
 
+static void VULKAN_GetShaderContext(
+	FNA3D_Renderer *driverData,
+	MOJOSHADER_effectShaderContext *shaderContext
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+
+	shaderContext->shaderContext = renderer->mojoshaderContext;
+	shaderContext->compileShader = (MOJOSHADER_compileShaderFunc) MOJOSHADER_vkCompileShader;
+	shaderContext->shaderAddRef = (MOJOSHADER_shaderAddRefFunc) MOJOSHADER_vkShaderAddRef;
+	shaderContext->deleteShader = VULKAN_INTERNAL_DeleteShader;
+	shaderContext->getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_vkGetShaderParseData;
+	shaderContext->bindShaders = (MOJOSHADER_bindShadersFunc) MOJOSHADER_vkBindShaders;
+	shaderContext->getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_vkGetBoundShaders;
+	shaderContext->mapUniformBufferMemory = (MOJOSHADER_mapUniformBufferMemoryFunc) MOJOSHADER_vkMapUniformBufferMemory;
+	shaderContext->unmapUniformBufferMemory = (MOJOSHADER_unmapUniformBufferMemoryFunc) MOJOSHADER_vkUnmapUniformBufferMemory;
+	shaderContext->getError = (MOJOSHADER_getErrorFunc) MOJOSHADER_vkGetError;
+	shaderContext->m = NULL;
+	shaderContext->f = NULL;
+	shaderContext->malloc_data = driverData;
+}
+
+static void VULKAN_SetShadersUpdated(FNA3D_Renderer *driverData)
+{
+	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+
+	renderer->vertexSamplerDescriptorSetDataNeedsUpdate = 1;
+	renderer->fragSamplerDescriptorSetDataNeedsUpdate = 1;
+	renderer->needNewPipeline = 1;
+}
+
 static void VULKAN_CreateEffect(
 	FNA3D_Renderer *driverData,
 	uint8_t *effectCode,

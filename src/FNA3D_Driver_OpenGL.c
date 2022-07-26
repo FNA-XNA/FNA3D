@@ -4911,6 +4911,33 @@ static const char* MOJOSHADERCALL OPENGL_INTERNAL_GetShaderError(const void *ctx
 	return MOJOSHADER_glGetError();
 }
 
+static void OPENGL_GetShaderContext(
+	FNA3D_Renderer *driverData,
+	MOJOSHADER_effectShaderContext *shaderContext
+) {
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+
+	shaderContext->shaderContext = renderer->shaderContext;
+	shaderContext->compileShader = OPENGL_INTERNAL_CompileShader;
+	shaderContext->shaderAddRef = (MOJOSHADER_shaderAddRefFunc) MOJOSHADER_glShaderAddRef;
+	shaderContext->deleteShader = OPENGL_INTERNAL_DeleteShader;
+	shaderContext->getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_glGetShaderParseData;
+	shaderContext->bindShaders = OPENGL_INTERNAL_BindShaders;
+	shaderContext->getBoundShaders = OPENGL_INTERNAL_GetBoundShaders;
+	shaderContext->mapUniformBufferMemory = OPENGL_INTERNAL_MapUniformBufferMemory;
+	shaderContext->unmapUniformBufferMemory = OPENGL_INTERNAL_UnmapUniformBufferMemory;
+	shaderContext->getError = OPENGL_INTERNAL_GetShaderError;
+	shaderContext->m = NULL;
+	shaderContext->f = NULL;
+	shaderContext->malloc_data = renderer;
+}
+
+static void OPENGL_SetShadersUpdated(FNA3D_Renderer *driverData)
+{
+	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
+	renderer->effectApplied = 1;
+}
+
 static void OPENGL_CreateEffect(
 	FNA3D_Renderer *driverData,
 	uint8_t *effectCode,

@@ -1177,6 +1177,88 @@ void FNA3D_GetIndexBufferData(
 	);
 }
 
+/* Shaders */
+
+FNA3D_Shader* FNA3D_CompileShader(
+	FNA3D_Device *device,
+	uint8_t *code,
+	uint32_t codeLength
+) {
+	MOJOSHADER_effectShaderContext ctx;
+	if (device == NULL)
+	{
+		return NULL;
+	}
+	device->GetShaderContext(device->driverData, &ctx);
+	void* shader = ctx.compileShader(
+		ctx.shaderContext,
+		NULL,
+		code,
+		codeLength,
+		NULL,
+		0,
+		NULL,
+		0
+	);
+	if (shader == NULL)
+	{
+		FNA3D_LogError("FNA3D_CompileShader failed!");
+	}
+	return (FNA3D_Shader*) shader;
+}
+
+void FNA3D_DeleteShader(FNA3D_Device *device, FNA3D_Shader *shader)
+{
+	MOJOSHADER_effectShaderContext ctx;
+	if (device == NULL)
+	{
+		return;
+	}
+	device->GetShaderContext(device->driverData, &ctx);
+	ctx.deleteShader(ctx.shaderContext, shader);
+}
+
+void FNA3D_BindShaders(
+	FNA3D_Device *device,
+	FNA3D_Shader *vertex,
+	FNA3D_Shader *pixel
+) {
+	MOJOSHADER_effectShaderContext ctx;
+	if (device == NULL)
+	{
+		return;
+	}
+	device->GetShaderContext(device->driverData, &ctx);
+	ctx.bindShaders(ctx.shaderContext, vertex, pixel);
+	device->SetShadersUpdated(device->driverData);
+}
+
+void FNA3D_MapUniformBufferMemory(
+	FNA3D_Device *device,
+	float **vsf, int32_t **vsi, uint8_t **vsb,
+	float **psf, int32_t **psi, uint8_t **psb
+) {
+	MOJOSHADER_effectShaderContext ctx;
+	if (device == NULL)
+	{
+		return;
+	}
+	device->GetShaderContext(device->driverData, &ctx);
+	ctx.mapUniformBufferMemory(ctx.shaderContext, vsf, vsi, vsb, psf, psi, psb);
+}
+
+void FNA3D_UnmapUniformBufferMemory(FNA3D_Device *device)
+{
+	MOJOSHADER_effectShaderContext ctx;
+	if (device == NULL)
+	{
+		return;
+	}
+	device->GetShaderContext(device->driverData, &ctx);
+	ctx.unmapUniformBufferMemory(ctx.shaderContext);
+	device->SetShadersUpdated(device->driverData);
+}
+
 /* Effects */
 
 void FNA3D_CreateEffect(
