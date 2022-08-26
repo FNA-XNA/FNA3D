@@ -4908,10 +4908,29 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 
 static void D3D11_GetDrawableSize(void* window, int32_t *w, int32_t *h)
 {
+	/* TODO: Replace this blobulous mess with SDL_GetWindowSizeInPixels */
+
 #ifdef FNA3D_DXVK_NATIVE
 	SDL_Vulkan_GetDrawableSize((SDL_Window*) window, w, h);
-#else
+#elif defined(__WINRT__)
+	/* WinRT doesn't support DPI awareness the same way Win32 does */
 	SDL_GetWindowSize((SDL_Window*) window, w, h);
+#else
+	RECT rect;
+	SDL_SysWMinfo info;
+	SDL_VERSION(&info.version);
+	SDL_GetWindowWMInfo((SDL_Window*) window, &info);
+	SDL_assert(info.subsystem == SDL_SYSWM_WINDOWS);
+	if (GetClientRect(info.info.win.window, &rect))
+	{
+		*w = rect.right;
+		*h = rect.bottom;
+	}
+	else
+	{
+		*w = 0;
+		*h = 0;
+	}
 #endif /* FNA3D_DXVK_NATIVE */
 }
 
