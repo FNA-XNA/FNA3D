@@ -4833,6 +4833,15 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 	};
 	HRESULT res;
 
+#ifdef FNA3D_DXVK_NATIVE
+	const char *forceDriver = SDL_GetHint("FNA3D_FORCE_DRIVER");
+	if ((forceDriver == NULL) || (SDL_strcmp(forceDriver, "D3D11") != 0))
+	{
+		/* We only use DXVK when explicitly ordered to do so -flibit */
+		return 0;
+	}
+#endif /* FNA3D_DXVK_NATIVE */
+
 	/* Check to see if we can compile HLSL */
 	shaderContext = MOJOSHADER_d3d11CreateContext(
 		NULL,
