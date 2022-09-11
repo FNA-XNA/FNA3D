@@ -8808,6 +8808,8 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	renderer->shouldClearColorOnBeginPass = 0;
 	renderer->shouldClearDepthOnBeginPass = 0;
 	renderer->shouldClearStencilOnBeginPass = 0;
+
+	SDL_UnlockMutex(renderer->passLock);
 }
 
 static void VULKAN_INTERNAL_BeginRenderPassClear(
