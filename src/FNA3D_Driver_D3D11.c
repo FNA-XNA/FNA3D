@@ -1471,15 +1471,9 @@ static void D3D11_INTERNAL_BlitFauxBackbuffer(
 		&renderer->samplers[0]
 	);
 
-	/* Bind the faux-backbuffer */
-	D3D11_SetRenderTargets(
-		(FNA3D_Renderer*) renderer,
-		NULL,
-		0,
-		NULL,
-		FNA3D_DEPTHFORMAT_NONE,
-		0
-	);
+	/* Don't rebind the faux-backbuffer here, this gets done after
+	 * Present is called, since some DXGI modes unset the binding each frame
+	 */
 
 	SDL_UnlockMutex(renderer->ctxLock);
 }
@@ -1607,6 +1601,16 @@ static void D3D11_SwapBuffers(
 
 	/* Present! */
 	IDXGISwapChain_Present(swapchainData->swapchain, renderer->syncInterval, 0);
+
+	/* Bind the faux-backbuffer now, in case DXGI unsets target state */
+	D3D11_SetRenderTargets(
+		(FNA3D_Renderer*) renderer,
+		NULL,
+		0,
+		NULL,
+		FNA3D_DEPTHFORMAT_NONE,
+		0
+	);
 
 	/* An overlay program may seize our context and render with it, so
 	 * unlock _after_ we present so the device context is safe in that time
