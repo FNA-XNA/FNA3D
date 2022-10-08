@@ -501,7 +501,7 @@ static void D3D11_INTERNAL_LogError(
 	const char *msg,
 	HRESULT res
 ) {
-	#define MAX_ERROR_LEN 1024 /* FIXME: Arbitrary! */
+	#define MAX_ERROR_LEN 2048 /* FIXME: Arbitrary! */
 
 	/* Buffer for text, ensure space for \0 terminator after buffer */
 	char wszMsgBuff[MAX_ERROR_LEN + 1];
@@ -5387,8 +5387,10 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	SDL_GetWindowWMInfo((SDL_Window*) windowHandle, &info);
 
 	/* Initialize swapchain descriptor */
-	swapchainDesc.Width = 0;
-	swapchainDesc.Height = 0;
+	int w, h;
+	SDL_GetWindowSize((SDL_Window*) windowHandle, &w, &h);
+	swapchainDesc.Width = w;
+	swapchainDesc.Height = h;
 	swapchainDesc.Format = XNAToD3D_TextureFormat[backBufferFormat];
 	swapchainDesc.Stereo = 0;
 	swapchainDesc.SampleDesc.Count = 1;
