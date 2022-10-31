@@ -6455,6 +6455,26 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
+	if (	swapchainSupportDetails.capabilities.currentExtent.width == 0 ||
+		swapchainSupportDetails.capabilities.currentExtent.height == 0)
+	{
+		renderer->vkDestroySurfaceKHR(
+			renderer->instance,
+			swapchainData->surface,
+			NULL
+		);
+		if (swapchainSupportDetails.formatsLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.formats);
+		}
+		if (swapchainSupportDetails.presentModesLength > 0)
+		{
+			SDL_free(swapchainSupportDetails.presentModes);
+		}
+		SDL_free(swapchainData);
+		return CREATE_SWAPCHAIN_SURFACE_ZERO;
+	}
+
 	swapchainData->swapchainFormat = renderer->backBufferIsSRGB
 		? VK_FORMAT_R8G8B8A8_SRGB
 		: VK_FORMAT_R8G8B8A8_UNORM;
@@ -6539,26 +6559,6 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		drawableHeight > swapchainSupportDetails.capabilities.maxImageExtent.height	)
 	{
 		FNA3D_LogWarn("Drawable size not possible for this VkSurface!");
-
-		if (	swapchainSupportDetails.capabilities.currentExtent.width == 0 ||
-			swapchainSupportDetails.capabilities.currentExtent.height == 0)
-		{
-			renderer->vkDestroySurfaceKHR(
-				renderer->instance,
-				swapchainData->surface,
-				NULL
-			);
-			if (swapchainSupportDetails.formatsLength > 0)
-			{
-				SDL_free(swapchainSupportDetails.formats);
-			}
-			if (swapchainSupportDetails.presentModesLength > 0)
-			{
-				SDL_free(swapchainSupportDetails.presentModes);
-			}
-			SDL_free(swapchainData);
-			return CREATE_SWAPCHAIN_SURFACE_ZERO;
-		}
 
 		if (swapchainSupportDetails.capabilities.currentExtent.width != UINT32_MAX)
 		{
