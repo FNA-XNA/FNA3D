@@ -1300,7 +1300,13 @@ int main(int argc, char **argv)
 
 	if (replayArgIndex == argc)
 	{
-		replay("FNA3D_Trace.bin", forceDebugMode);
+		const char *defaultName = "FNA3D_Trace.bin";
+		const char *rootPath = SDL_GetBasePath();
+		size_t pathLen = SDL_strlen(rootPath) + SDL_strlen(defaultName) + 1;
+		char *path = (char*) SDL_malloc(pathLen);
+		SDL_snprintf(path, pathLen, "%s%s", rootPath, defaultName);
+		replay(path, forceDebugMode);
+		SDL_free(path);
 	}
 	else
 	{
