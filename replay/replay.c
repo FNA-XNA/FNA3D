@@ -231,7 +231,7 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 		if (i == trace##array##Count) \
 		{ \
 			trace##array##Count += 1; \
-			trace##array = SDL_realloc( \
+			trace##array = (FNA3D_##type**) SDL_realloc( \
 				trace##array, \
 				sizeof(FNA3D_##type*) * trace##array##Count \
 			); \
@@ -1105,11 +1105,11 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 			if (i == traceEffectCount)
 			{
 				traceEffectCount += 1;
-				traceEffect = SDL_realloc(
+				traceEffect = (FNA3D_Effect**) SDL_realloc(
 					traceEffect,
 					sizeof(FNA3D_Effect*) * traceEffectCount
 				);
-				traceEffectData = SDL_realloc(
+				traceEffectData = (MOJOSHADER_effect**) SDL_realloc(
 					traceEffectData,
 					sizeof(MOJOSHADER_effect*) * traceEffectCount
 				);
@@ -1137,11 +1137,11 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 			if (i == traceEffectCount)
 			{
 				traceEffectCount += 1;
-				traceEffect = SDL_realloc(
+				traceEffect = (FNA3D_Effect**) SDL_realloc(
 					traceEffect,
 					sizeof(FNA3D_Effect*) * traceEffectCount
 				);
-				traceEffectData = SDL_realloc(
+				traceEffectData = (MOJOSHADER_effect**) SDL_realloc(
 					traceEffectData,
 					sizeof(MOJOSHADER_effect*) * traceEffectCount
 				);
