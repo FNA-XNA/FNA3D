@@ -4680,11 +4680,6 @@ static void VULKAN_INTERNAL_BufferMemoryBarrier(
 	VulkanResourceAccessType prevAccess, nextAccess;
 	const VulkanResourceAccessInfo *prevAccessInfo, *nextAccessInfo;
 
-	if (*resourceAccessType == nextResourceAccessType)
-	{
-		return;
-	}
-
 	SDL_LockMutex(renderer->passLock);
 
 	memoryBarrier.sType = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER;
@@ -4764,11 +4759,6 @@ static void VULKAN_INTERNAL_ImageMemoryBarrier(
 	VkImageMemoryBarrier memoryBarrier;
 	VulkanResourceAccessType prevAccess;
 	const VulkanResourceAccessInfo *pPrevAccessInfo, *pNextAccessInfo;
-
-	if (*resourceAccessType == nextAccess)
-	{
-		return;
-	}
 
 	SDL_LockMutex(renderer->passLock);
 
@@ -4905,13 +4895,6 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	}
 
 	buffer->usedRegion->vulkanBuffer = buffer; /* lol */
-
-	VULKAN_INTERNAL_BufferMemoryBarrier(
-		renderer,
-		buffer->resourceAccessType,
-		buffer->buffer,
-		&buffer->resourceAccessType
-	);
 
 	return buffer;
 }
