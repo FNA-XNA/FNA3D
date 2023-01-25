@@ -1224,6 +1224,7 @@ typedef struct VulkanRenderer
 	VkPhysicalDeviceProperties2 physicalDeviceProperties;
 	VkPhysicalDeviceDriverPropertiesKHR physicalDeviceDriverProperties;
 	VkDevice logicalDevice;
+	uint8_t unifiedMemoryWarning;
 
 	uint32_t queueFamilyIndex;
 	VkQueue unifiedQueue;
@@ -3997,7 +3998,11 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
 		/* Follow-up for the warning logged by FindMemoryType */
-		FNA3D_LogWarn("Out of device local memory, falling back to host memory");
+		if (!renderer->unifiedMemoryWarning)
+		{
+			FNA3D_LogWarn("No unified memory found, falling back to host memory");
+			renderer->unifiedMemoryWarning = 1;
+		}
 
 		while (VULKAN_INTERNAL_FindBufferMemoryRequirements(
 			renderer,
