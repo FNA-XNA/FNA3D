@@ -3996,6 +3996,9 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
+		/* Follow-up for the warning logged by FindMemoryType */
+		FNA3D_LogWarn("Out of device local memory, falling back to host memory");
+
 		while (VULKAN_INTERNAL_FindBufferMemoryRequirements(
 			renderer,
 			buffer,
