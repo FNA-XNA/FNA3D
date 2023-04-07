@@ -201,6 +201,7 @@ typedef enum VulkanResourceAccessType
 	RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
 	RESOURCE_ACCESS_FRAGMENT_SHADER_READ_COLOR_ATTACHMENT,
 	RESOURCE_ACCESS_FRAGMENT_SHADER_READ_DEPTH_STENCIL_ATTACHMENT,
+	RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 	RESOURCE_ACCESS_COLOR_ATTACHMENT_READ,
 	RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ,
 	RESOURCE_ACCESS_TRANSFER_READ,
@@ -305,6 +306,13 @@ static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] =
 		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
 		VK_ACCESS_INPUT_ATTACHMENT_READ_BIT,
 		VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+	},
+
+	/* RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE */
+	{
+		VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+		VK_ACCESS_SHADER_READ_BIT,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 	},
 
 	/* RESOURCE_ACCESS_COLOR_ATTACHMENT_READ */
@@ -4081,6 +4089,7 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 	VkResult result;
 	uint32_t i, level;
 	VulkanResourceAccessType copyResourceAccessType = RESOURCE_ACCESS_NONE;
+	VulkanResourceAccessType originalResourceAccessType;
 
 	SDL_LockMutex(renderer->commandLock);
 	SDL_LockMutex(renderer->allocatorLock);
@@ -4147,6 +4156,8 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 					break;
 				}
 
+				originalResourceAccessType = currentRegion->vulkanBuffer->resourceAccessType;
+
 				VULKAN_INTERNAL_BufferMemoryBarrier(
 					renderer,
 					RESOURCE_ACCESS_TRANSFER_READ,
@@ -4171,6 +4182,13 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 					copyBuffer,
 					1,
 					&bufferCopy
+				);
+
+				VULKAN_INTERNAL_BufferMemoryBarrier(
+					renderer,
+					originalResourceAccessType,
+					copyBuffer,
+					&copyResourceAccessType
 				);
 
 				if (renderer->defragmentedBuffersToDestroyCount >= renderer->defragmentedBuffersToDestroyCapacity)
@@ -4257,6 +4275,8 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 					aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
 				}
 
+				originalResourceAccessType = currentRegion->vulkanTexture->resourceAccessType;
+
 				VULKAN_INTERNAL_ImageMemoryBarrier(
 					renderer,
 					RESOURCE_ACCESS_TRANSFER_READ,
@@ -4314,6 +4334,19 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 					AccessMap[copyResourceAccessType].imageLayout,
 					currentRegion->vulkanTexture->levelCount,
 					imageCopyRegions
+				);
+
+				VULKAN_INTERNAL_ImageMemoryBarrier(
+					renderer,
+					originalResourceAccessType,
+					aspectFlags,
+					0,
+					currentRegion->vulkanTexture->layerCount,
+					0,
+					currentRegion->vulkanTexture->levelCount,
+					0,
+					copyImage,
+					&copyResourceAccessType
 				);
 
 				SDL_stack_free(imageCopyRegions);
@@ -6970,6 +7003,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 	VulkanBuffer *transferBuffer;
 	VkDeviceSize transferOffset;
 	VkBufferCopy bufferCopy;
+	VulkanResourceAccessType accessType = vulkanBuffer->resourceAccessType;
 	uint32_t i;
 
 	if (	options == FNA3D_SETDATAOPTIONS_NONE &&
@@ -7027,6 +7061,13 @@ static void VULKAN_INTERNAL_SetBufferData(
 			&bufferCopy
 		));
 
+		VULKAN_INTERNAL_BufferMemoryBarrier(
+			renderer,
+			accessType,
+			vulkanBuffer->buffer,
+			&vulkanBuffer->resourceAccessType
+		);
+
 		SDL_UnlockMutex(renderer->transferLock);
 		SDL_UnlockMutex(renderer->passLock);
 	}
@@ -7058,6 +7099,13 @@ static void VULKAN_INTERNAL_SetBufferData(
 					vulkanBuffer->usage,
 					vulkanBuffer->preferDeviceLocal,
 					vulkanBuffer->isTransferBuffer
+				);
+
+				VULKAN_INTERNAL_BufferMemoryBarrier(
+					renderer,
+					vulkanBufferContainer->vulkanBuffer->resourceAccessType,
+					vulkanBufferContainer->vulkanBuffer->buffer,
+					&vulkanBufferContainer->vulkanBuffer->resourceAccessType
 				);
 
 				if (vulkanBufferContainer->bufferCount >= vulkanBufferContainer->bufferCapacity)
@@ -8612,6 +8660,9 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 static void VULKAN_INTERNAL_MaybeEndRenderPass(
 	VulkanRenderer *renderer
 ) {
+	int32_t i;
+	VulkanTexture *currentTexture;
+
 	SDL_LockMutex(renderer->passLock);
 
 	if (renderer->renderPassInProgress)
@@ -8623,6 +8674,28 @@ static void VULKAN_INTERNAL_MaybeEndRenderPass(
 		renderer->drawCallMadeThisPass = 0;
 		renderer->currentPipeline = VK_NULL_HANDLE;
 		renderer->needNewPipeline = 1;
+
+		for (i = 0; i < renderer->colorAttachmentCount; i += 1)
+		{
+			currentTexture = renderer->colorAttachments[i];
+
+			/* If the render target can be sampled, transition to sampler layout */
+			if (currentTexture->imageCreateInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+			{
+				VULKAN_INTERNAL_ImageMemoryBarrier(
+					renderer,
+					RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
+					VK_IMAGE_ASPECT_COLOR_BIT,
+					0,
+					currentTexture->layerCount,
+					0,
+					currentTexture->levelCount,
+					0,
+					currentTexture->image,
+					&currentTexture->resourceAccessType
+				);
+			}
+		}
 
 		/* Unlocking long-term lock */
 		SDL_UnlockMutex(renderer->passLock);
@@ -9490,13 +9563,6 @@ static void VULKAN_DrawInstancedPrimitives(
 
 	/* Note that minVertexIndex/numVertices are NOT used! */
 
-	VULKAN_INTERNAL_BufferMemoryBarrier(
-		renderer,
-		RESOURCE_ACCESS_INDEX_BUFFER,
-		indexBuffer->buffer,
-		&indexBuffer->resourceAccessType
-	);
-
 	VULKAN_INTERNAL_MarkBufferAsBound(renderer, indexBuffer);
 
 	if (primitiveType != renderer->currentPrimitiveType)
@@ -9907,7 +9973,6 @@ static void VULKAN_VerifySampler(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkSampler vkSamplerState;
-	VulkanResourceAccessType resourceAccessType;
 
 	if (texture == NULL)
 	{
@@ -9930,31 +9995,6 @@ static void VULKAN_VerifySampler(
 		}
 
 		return;
-	}
-
-	if (!vulkanTexture->external)
-	{
-		if (index >= MAX_TEXTURE_SAMPLERS)
-		{
-			resourceAccessType = RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE;
-		}
-		else
-		{
-			resourceAccessType = RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE;
-		}
-
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			resourceAccessType,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			0,
-			vulkanTexture->layerCount,
-			0,
-			vulkanTexture->levelCount,
-			0,
-			vulkanTexture->image,
-			&vulkanTexture->resourceAccessType
-		);
 	}
 
 	if (vulkanTexture != renderer->textures[index])
@@ -10086,13 +10126,6 @@ static void VULKAN_ApplyVertexBufferBindings(
 
 		renderer->boundVertexBuffers[i] = vertexBuffer->buffer;
 		renderer->boundVertexBufferOffsets[i] = offset;
-
-		VULKAN_INTERNAL_BufferMemoryBarrier(
-			renderer,
-			RESOURCE_ACCESS_VERTEX_BUFFER,
-			vertexBuffer->buffer,
-			&vertexBuffer->resourceAccessType
-		);
 
 		VULKAN_INTERNAL_MarkBufferAsBound(renderer, vertexBuffer);
 	}
@@ -10671,6 +10704,22 @@ static void VULKAN_INTERNAL_SetTextureData(
 		&imageCopy
 	));
 
+	if (texture->imageCreateInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			texture->layerCount,
+			0,
+			texture->levelCount,
+			0,
+			texture->image,
+			&texture->resourceAccessType
+		);
+	}
+
 	SDL_UnlockMutex(renderer->transferLock);
 	SDL_UnlockMutex(renderer->passLock);
 }
@@ -10855,6 +10904,22 @@ static void VULKAN_SetTextureDataYUV(
 		&imageCopy
 	));
 
+	if (tex->imageCreateInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			tex->layerCount,
+			0,
+			tex->levelCount,
+			0,
+			tex->image,
+			&tex->resourceAccessType
+		);
+	}
+
 	/* These apply to both U and V */
 
 	imageCopy.imageExtent.width = uvWidth;
@@ -10890,6 +10955,22 @@ static void VULKAN_SetTextureDataYUV(
 		&imageCopy
 	));
 
+	if (tex->imageCreateInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			tex->layerCount,
+			0,
+			tex->levelCount,
+			0,
+			tex->image,
+			&tex->resourceAccessType
+		);
+	}
+
 	/* V */
 
 	imageCopy.bufferOffset = offset + yDataLength + uvDataLength;
@@ -10917,6 +10998,22 @@ static void VULKAN_SetTextureDataYUV(
 		1,
 		&imageCopy
 	));
+
+	if (tex->imageCreateInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			tex->layerCount,
+			0,
+			tex->levelCount,
+			0,
+			tex->image,
+			&tex->resourceAccessType
+		);
+	}
 
 	SDL_UnlockMutex(renderer->transferLock);
 	SDL_UnlockMutex(renderer->passLock);
