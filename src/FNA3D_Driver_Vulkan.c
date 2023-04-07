@@ -8773,54 +8773,51 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	renderPassBeginInfo.renderArea.extent.height =
 		renderer->colorAttachments[0]->dimensions.height;
 
-	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
+	for (i = 0; i < renderer->colorAttachmentCount; i += 1)
 	{
-		if (renderer->colorAttachments[i] != NULL)
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			renderer->colorAttachments[i]->layerCount,
+			0,
+			1,
+			0,
+			renderer->colorAttachments[i]->image,
+			&renderer->colorAttachments[i]->resourceAccessType
+		);
+
+		/*
+			* In MRT scenarios we need to provide as many clearValue structs
+			* as RTs in the current framebuffer even if they aren't cleared
+			*/
+
+		if (renderer->shouldClearColorOnBeginPass)
 		{
-			VULKAN_INTERNAL_ImageMemoryBarrier(
-				renderer,
-				RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
-				VK_IMAGE_ASPECT_COLOR_BIT,
-				0,
-				renderer->colorAttachments[i]->layerCount,
-				0,
-				1,
-				0,
-				renderer->colorAttachments[i]->image,
-				&renderer->colorAttachments[i]->resourceAccessType
-			);
+			clearColorValue = renderer->clearColorValue;
+		}
+		else
+		{
+			clearColorValue.float32[0] = 0;
+			clearColorValue.float32[1] = 0;
+			clearColorValue.float32[2] = 0;
+			clearColorValue.float32[3] = 0;
+		}
 
-			/*
-			 * In MRT scenarios we need to provide as many clearValue structs
-			 * as RTs in the current framebuffer even if they aren't cleared
-			 */
+		clearValues[clearValueCount].color.float32[0] = clearColorValue.float32[0];
+		clearValues[clearValueCount].color.float32[1] = clearColorValue.float32[1];
+		clearValues[clearValueCount].color.float32[2] = clearColorValue.float32[2];
+		clearValues[clearValueCount].color.float32[3] = clearColorValue.float32[3];
+		clearValueCount += 1;
 
-			if (renderer->shouldClearColorOnBeginPass)
-			{
-				clearColorValue = renderer->clearColorValue;
-			}
-			else
-			{
-				clearColorValue.float32[0] = 0;
-				clearColorValue.float32[1] = 0;
-				clearColorValue.float32[2] = 0;
-				clearColorValue.float32[3] = 0;
-			}
-
+		if (renderer->colorMultiSampleAttachments[i] != NULL)
+		{
 			clearValues[clearValueCount].color.float32[0] = clearColorValue.float32[0];
 			clearValues[clearValueCount].color.float32[1] = clearColorValue.float32[1];
 			clearValues[clearValueCount].color.float32[2] = clearColorValue.float32[2];
 			clearValues[clearValueCount].color.float32[3] = clearColorValue.float32[3];
 			clearValueCount += 1;
-
-			if (renderer->colorMultiSampleAttachments[i] != NULL)
-			{
-				clearValues[clearValueCount].color.float32[0] = clearColorValue.float32[0];
-				clearValues[clearValueCount].color.float32[1] = clearColorValue.float32[1];
-				clearValues[clearValueCount].color.float32[2] = clearColorValue.float32[2];
-				clearValues[clearValueCount].color.float32[3] = clearColorValue.float32[3];
-				clearValueCount += 1;
-			}
 		}
 	}
 
