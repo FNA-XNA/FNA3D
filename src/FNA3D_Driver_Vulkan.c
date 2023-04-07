@@ -4294,8 +4294,8 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 					imageCopyRegions[level].srcSubresource.baseArrayLayer = 0;
 					imageCopyRegions[level].srcSubresource.layerCount = currentRegion->vulkanTexture->layerCount;
 					imageCopyRegions[level].srcSubresource.mipLevel = level;
-					imageCopyRegions[level].extent.width = currentRegion->vulkanTexture->dimensions.width >> level;
-					imageCopyRegions[level].extent.height = currentRegion->vulkanTexture->dimensions.height >> level;
+					imageCopyRegions[level].extent.width = SDL_max(1, currentRegion->vulkanTexture->dimensions.width >> level);
+					imageCopyRegions[level].extent.height = SDL_max(1, currentRegion->vulkanTexture->dimensions.height >> level);
 					imageCopyRegions[level].extent.depth = currentRegion->vulkanTexture->depth;
 					imageCopyRegions[level].dstOffset.x = 0;
 					imageCopyRegions[level].dstOffset.y = 0;
