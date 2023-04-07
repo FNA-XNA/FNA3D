@@ -9502,7 +9502,7 @@ static void VULKAN_DrawInstancedPrimitives(
 	if (primitiveType != renderer->currentPrimitiveType)
 	{
 		renderer->currentPrimitiveType = primitiveType;
-		renderer->needNewRenderPass = 1;
+		renderer->needNewPipeline = 1;
 	}
 
 	VULKAN_INTERNAL_BeginRenderPass(renderer);
@@ -9615,7 +9615,7 @@ static void VULKAN_DrawPrimitives(
 	if (primitiveType != renderer->currentPrimitiveType)
 	{
 		renderer->currentPrimitiveType = primitiveType;
-		renderer->needNewRenderPass = 1;
+		renderer->needNewPipeline = 1;
 	}
 	VULKAN_INTERNAL_BeginRenderPass(renderer);
 	VULKAN_INTERNAL_BindPipeline(renderer);
