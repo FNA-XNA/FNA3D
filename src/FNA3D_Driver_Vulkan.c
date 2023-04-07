@@ -8739,11 +8739,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	{
 		renderer->colorAttachments[i] = renderer->nextRenderPassColorAttachments[i];
 		renderer->attachmentCubeFaces[i] = renderer->nextRenderPassAttachmentCubeFaces[i];
-
-		if (renderer->nextRenderPassMultiSampleCount > 1)
-		{
-			renderer->colorMultiSampleAttachments[i] = renderer->nextRenderPassColorMultiSampleAttachments[i];
-		}
+		renderer->colorMultiSampleAttachments[i] = renderer->nextRenderPassColorMultiSampleAttachments[i]; /* may be NULL */
 	}
 
 	renderer->colorAttachmentCount = renderer->nextRenderPassColorAttachmentCount;
