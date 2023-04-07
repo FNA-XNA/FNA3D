@@ -1294,6 +1294,17 @@ typedef struct VulkanRenderer
 	VulkanTexture *depthStencilAttachment;
 	FNA3D_DepthFormat currentDepthFormat;
 
+	/* Separating the future render pass setting from the current one*/
+	VulkanTexture *nextRenderPassColorAttachments[MAX_RENDERTARGET_BINDINGS];
+	VulkanTexture *nextRenderPassColorMultiSampleAttachments[MAX_RENDERTARGET_BINDINGS];
+	FNA3D_CubeMapFace nextRenderPassAttachmentCubeFaces[MAX_RENDERTARGET_BINDINGS];
+	uint32_t nextRenderPassMultiSampleCount;
+	uint32_t nextRenderPassColorAttachmentCount;
+
+	VulkanTexture *nextRenderPassDepthStencilAttachment;
+	FNA3D_DepthFormat nextRenderPassDepthFormat;
+	uint8_t nextRenderPassPreserveTargetContents;
+
 	FNA3D_Viewport viewport;
 	FNA3D_Rect scissorRect;
 
@@ -1402,7 +1413,6 @@ typedef struct VulkanRenderer
 	uint8_t shouldClearColorOnBeginPass;
 	uint8_t shouldClearDepthOnBeginPass;
 	uint8_t shouldClearStencilOnBeginPass;
-	uint8_t preserveTargetContents;
 	uint8_t drawCallMadeThisPass;
 
 	VkClearColorValue clearColorValue;
@@ -8336,7 +8346,7 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 	hash.clearColor = renderer->shouldClearColorOnBeginPass;
 	hash.clearDepth = renderer->shouldClearDepthOnBeginPass;
 	hash.clearStencil = renderer->shouldClearStencilOnBeginPass;
-	hash.preserveTargetContents = renderer->preserveTargetContents;
+	hash.preserveTargetContents = renderer->nextRenderPassPreserveTargetContents;
 
 	hash.width = renderer->colorAttachments[0]->dimensions.width;
 	hash.height = renderer->colorAttachments[0]->dimensions.height;
@@ -8724,6 +8734,25 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
 
 	SDL_LockMutex(renderer->passLock);
+
+	for (i = 0; i < renderer->nextRenderPassColorAttachmentCount; i += 1)
+	{
+		renderer->colorAttachments[i] = renderer->nextRenderPassColorAttachments[i];
+		renderer->attachmentCubeFaces[i] = renderer->nextRenderPassAttachmentCubeFaces[i];
+
+		if (renderer->nextRenderPassMultiSampleCount > 1)
+		{
+			renderer->colorMultiSampleAttachments[i] = renderer->nextRenderPassColorMultiSampleAttachments[i];
+		}
+	}
+
+	renderer->colorAttachmentCount = renderer->nextRenderPassColorAttachmentCount;
+	renderer->multiSampleCount = renderer->nextRenderPassMultiSampleCount;
+
+	renderer->depthStencilAttachment = renderer->nextRenderPassDepthStencilAttachment;
+	renderer->currentDepthFormat = renderer->nextRenderPassDepthFormat;
+
+	renderer->renderTargetBound = (renderer->nextRenderPassColorAttachments[0] != renderer->fauxBackbufferColor.handle);
 
 	renderer->renderPass = VULKAN_INTERNAL_FetchRenderPass(renderer);
 	framebuffer = VULKAN_INTERNAL_FetchFramebuffer(
@@ -10154,37 +10183,36 @@ static void VULKAN_SetRenderTargets(
 		VULKAN_INTERNAL_BeginRenderPass(renderer);
 	}
 
-	renderer->preserveTargetContents = preserveTargetContents;
+	renderer->nextRenderPassPreserveTargetContents = preserveTargetContents;
 
 	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
 	{
-		renderer->colorAttachments[i] = NULL;
-		renderer->colorMultiSampleAttachments[i] = NULL;
+		renderer->nextRenderPassColorAttachments[i] = NULL;
+		renderer->nextRenderPassColorMultiSampleAttachments[i] = NULL;
 	}
-	renderer->depthStencilAttachment = NULL;
-	renderer->multiSampleCount = renderer->fauxBackbufferMultiSampleCount;
+
+	renderer->nextRenderPassDepthStencilAttachment = NULL;
+	renderer->nextRenderPassMultiSampleCount = renderer->fauxBackbufferMultiSampleCount;
 
 	if (numRenderTargets <= 0)
 	{
-		renderer->colorAttachments[0] = renderer->fauxBackbufferColor.handle;
-		renderer->attachmentCubeFaces[0] = (FNA3D_CubeMapFace) 0;
-		renderer->colorAttachmentCount = 1;
+		renderer->nextRenderPassColorAttachments[0] = renderer->fauxBackbufferColor.handle;
+		renderer->nextRenderPassAttachmentCubeFaces[0] = (FNA3D_CubeMapFace) 0;
+		renderer->nextRenderPassColorAttachmentCount = 1;
 
 		if (renderer->fauxBackbufferMultiSampleCount > 1)
 		{
-			renderer->colorMultiSampleAttachments[0] =
+			renderer->nextRenderPassColorMultiSampleAttachments[0] =
 				renderer->fauxBackbufferMultiSampleColor;
 		}
-		renderer->depthStencilAttachment =
+		renderer->nextRenderPassDepthStencilAttachment =
 			renderer->fauxBackbufferDepthStencil.handle;
-
-		renderer->renderTargetBound = 0;
 	}
 	else
 	{
 		for (i = 0; i < numRenderTargets; i += 1)
 		{
-			renderer->attachmentCubeFaces[i] = (
+			renderer->nextRenderPassAttachmentCubeFaces[i] = (
 				renderTargets[i].type == FNA3D_RENDERTARGET_TYPE_CUBE ?
 					renderTargets[i].cube.face :
 					(FNA3D_CubeMapFace) 0
@@ -10193,37 +10221,35 @@ static void VULKAN_SetRenderTargets(
 			if (renderTargets[i].colorBuffer != NULL)
 			{
 				cb = ((VulkanRenderbuffer*) renderTargets[i].colorBuffer)->colorBuffer;
-				renderer->colorAttachments[i] = cb->handle;
-				renderer->multiSampleCount = cb->multiSampleCount;
+				renderer->nextRenderPassColorAttachments[i] = cb->handle;
+				renderer->nextRenderPassMultiSampleCount = cb->multiSampleCount;
 
 				if (cb->multiSampleCount > 0)
 				{
-					renderer->colorMultiSampleAttachments[i] = cb->multiSampleTexture;
+					renderer->nextRenderPassColorMultiSampleAttachments[i] = cb->multiSampleTexture;
 				}
 			}
 			else
 			{
 				tex = (VulkanTexture*) renderTargets[i].texture;
-				renderer->colorAttachments[i] = tex;
-				renderer->multiSampleCount = 0;
+				renderer->nextRenderPassColorAttachments[i] = tex;
+				renderer->nextRenderPassMultiSampleCount = 0;
 			}
 		}
 
-		renderer->colorAttachmentCount = numRenderTargets;
+		renderer->nextRenderPassColorAttachmentCount = numRenderTargets;
 
 		/* update depth stencil buffer */
 
 		if (depthStencilBuffer != NULL)
 		{
-			renderer->depthStencilAttachment = ((VulkanRenderbuffer*) depthStencilBuffer)->depthBuffer->handle;
-			renderer->currentDepthFormat = depthFormat;
+			renderer->nextRenderPassDepthStencilAttachment = ((VulkanRenderbuffer*) depthStencilBuffer)->depthBuffer->handle;
+			renderer->nextRenderPassDepthFormat = depthFormat;
 		}
 		else
 		{
-			renderer->depthStencilAttachment = NULL;
+			renderer->nextRenderPassDepthStencilAttachment = NULL;
 		}
-
-		renderer->renderTargetBound = 1;
 	}
 
 	renderer->needNewRenderPass = 1;
