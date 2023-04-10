@@ -8259,22 +8259,25 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 
 		if (!renderer->renderTargetBound)
 		{
-			renderer->depthStencilAttachment =
+			renderer->nextRenderPassDepthStencilAttachment =
 				renderer->fauxBackbufferDepthStencil.handle;
+
+			renderer->nextRenderPassDepthFormat =
+				presentationParameters->depthStencilFormat;
 		}
 	}
 
 	if (!renderer->renderTargetBound)
 	{
-		renderer->colorAttachments[0] =
+		renderer->nextRenderPassColorAttachments[0] =
 			renderer->fauxBackbufferColor.handle;
-		renderer->colorAttachmentCount = 1;
+		renderer->nextRenderPassColorAttachmentCount = 1;
 
 		if (renderer->fauxBackbufferMultiSampleCount > 0)
 		{
-			renderer->colorMultiSampleAttachments[0] =
+			renderer->nextRenderPassColorMultiSampleAttachments[0] =
 				renderer->fauxBackbufferMultiSampleColor;
-			renderer->multiSampleCount =
+			renderer->nextRenderPassMultiSampleCount =
 				renderer->fauxBackbufferMultiSampleCount;
 		}
 	}
