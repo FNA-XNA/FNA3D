@@ -201,6 +201,7 @@ typedef enum VulkanResourceAccessType
 	RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE,
 	RESOURCE_ACCESS_FRAGMENT_SHADER_READ_COLOR_ATTACHMENT,
 	RESOURCE_ACCESS_FRAGMENT_SHADER_READ_DEPTH_STENCIL_ATTACHMENT,
+	RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 	RESOURCE_ACCESS_COLOR_ATTACHMENT_READ,
 	RESOURCE_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ,
 	RESOURCE_ACCESS_TRANSFER_READ,
@@ -305,6 +306,13 @@ static const VulkanResourceAccessInfo AccessMap[RESOURCE_ACCESS_TYPES_COUNT] =
 		VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
 		VK_ACCESS_INPUT_ATTACHMENT_READ_BIT,
 		VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL
+	},
+
+	/* RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE */
+	{
+		VK_PIPELINE_STAGE_ALL_COMMANDS_BIT,
+		VK_ACCESS_SHADER_READ_BIT,
+		VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL
 	},
 
 	/* RESOURCE_ACCESS_COLOR_ATTACHMENT_READ */
@@ -1286,6 +1294,17 @@ typedef struct VulkanRenderer
 	VulkanTexture *depthStencilAttachment;
 	FNA3D_DepthFormat currentDepthFormat;
 
+	/* Separating the future render pass setting from the current one*/
+	VulkanTexture *nextRenderPassColorAttachments[MAX_RENDERTARGET_BINDINGS];
+	VulkanTexture *nextRenderPassColorMultiSampleAttachments[MAX_RENDERTARGET_BINDINGS];
+	FNA3D_CubeMapFace nextRenderPassAttachmentCubeFaces[MAX_RENDERTARGET_BINDINGS];
+	uint32_t nextRenderPassMultiSampleCount;
+	uint32_t nextRenderPassColorAttachmentCount;
+
+	VulkanTexture *nextRenderPassDepthStencilAttachment;
+	FNA3D_DepthFormat nextRenderPassDepthFormat;
+	uint8_t nextRenderPassPreserveTargetContents;
+
 	FNA3D_Viewport viewport;
 	FNA3D_Rect scissorRect;
 
@@ -1394,7 +1413,6 @@ typedef struct VulkanRenderer
 	uint8_t shouldClearColorOnBeginPass;
 	uint8_t shouldClearDepthOnBeginPass;
 	uint8_t shouldClearStencilOnBeginPass;
-	uint8_t preserveTargetContents;
 	uint8_t drawCallMadeThisPass;
 
 	VkClearColorValue clearColorValue;
@@ -4081,6 +4099,7 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 	VkResult result;
 	uint32_t i, level;
 	VulkanResourceAccessType copyResourceAccessType = RESOURCE_ACCESS_NONE;
+	VulkanResourceAccessType originalResourceAccessType;
 
 	SDL_LockMutex(renderer->commandLock);
 	SDL_LockMutex(renderer->allocatorLock);
@@ -4147,6 +4166,8 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 					break;
 				}
 
+				originalResourceAccessType = currentRegion->vulkanBuffer->resourceAccessType;
+
 				VULKAN_INTERNAL_BufferMemoryBarrier(
 					renderer,
 					RESOURCE_ACCESS_TRANSFER_READ,
@@ -4171,6 +4192,13 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 					copyBuffer,
 					1,
 					&bufferCopy
+				);
+
+				VULKAN_INTERNAL_BufferMemoryBarrier(
+					renderer,
+					originalResourceAccessType,
+					copyBuffer,
+					&copyResourceAccessType
 				);
 
 				if (renderer->defragmentedBuffersToDestroyCount >= renderer->defragmentedBuffersToDestroyCapacity)
@@ -4257,6 +4285,8 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 					aspectFlags = VK_IMAGE_ASPECT_COLOR_BIT;
 				}
 
+				originalResourceAccessType = currentRegion->vulkanTexture->resourceAccessType;
+
 				VULKAN_INTERNAL_ImageMemoryBarrier(
 					renderer,
 					RESOURCE_ACCESS_TRANSFER_READ,
@@ -4314,6 +4344,19 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 					AccessMap[copyResourceAccessType].imageLayout,
 					currentRegion->vulkanTexture->levelCount,
 					imageCopyRegions
+				);
+
+				VULKAN_INTERNAL_ImageMemoryBarrier(
+					renderer,
+					originalResourceAccessType,
+					aspectFlags,
+					0,
+					currentRegion->vulkanTexture->layerCount,
+					0,
+					currentRegion->vulkanTexture->levelCount,
+					0,
+					copyImage,
+					&copyResourceAccessType
 				);
 
 				SDL_stack_free(imageCopyRegions);
@@ -6970,6 +7013,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 	VulkanBuffer *transferBuffer;
 	VkDeviceSize transferOffset;
 	VkBufferCopy bufferCopy;
+	VulkanResourceAccessType accessType = vulkanBuffer->resourceAccessType;
 	uint32_t i;
 
 	if (	options == FNA3D_SETDATAOPTIONS_NONE &&
@@ -7027,6 +7071,13 @@ static void VULKAN_INTERNAL_SetBufferData(
 			&bufferCopy
 		));
 
+		VULKAN_INTERNAL_BufferMemoryBarrier(
+			renderer,
+			accessType,
+			vulkanBuffer->buffer,
+			&vulkanBuffer->resourceAccessType
+		);
+
 		SDL_UnlockMutex(renderer->transferLock);
 		SDL_UnlockMutex(renderer->passLock);
 	}
@@ -7058,6 +7109,13 @@ static void VULKAN_INTERNAL_SetBufferData(
 					vulkanBuffer->usage,
 					vulkanBuffer->preferDeviceLocal,
 					vulkanBuffer->isTransferBuffer
+				);
+
+				VULKAN_INTERNAL_BufferMemoryBarrier(
+					renderer,
+					vulkanBufferContainer->vulkanBuffer->resourceAccessType,
+					vulkanBufferContainer->vulkanBuffer->buffer,
+					&vulkanBufferContainer->vulkanBuffer->resourceAccessType
 				);
 
 				if (vulkanBufferContainer->bufferCount >= vulkanBufferContainer->bufferCapacity)
@@ -8201,22 +8259,25 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 
 		if (!renderer->renderTargetBound)
 		{
-			renderer->depthStencilAttachment =
+			renderer->nextRenderPassDepthStencilAttachment =
 				renderer->fauxBackbufferDepthStencil.handle;
+
+			renderer->nextRenderPassDepthFormat =
+				presentationParameters->depthStencilFormat;
 		}
 	}
 
 	if (!renderer->renderTargetBound)
 	{
-		renderer->colorAttachments[0] =
+		renderer->nextRenderPassColorAttachments[0] =
 			renderer->fauxBackbufferColor.handle;
-		renderer->colorAttachmentCount = 1;
+		renderer->nextRenderPassColorAttachmentCount = 1;
 
 		if (renderer->fauxBackbufferMultiSampleCount > 0)
 		{
-			renderer->colorMultiSampleAttachments[0] =
+			renderer->nextRenderPassColorMultiSampleAttachments[0] =
 				renderer->fauxBackbufferMultiSampleColor;
-			renderer->multiSampleCount =
+			renderer->nextRenderPassMultiSampleCount =
 				renderer->fauxBackbufferMultiSampleCount;
 		}
 	}
@@ -8288,7 +8349,7 @@ static VkRenderPass VULKAN_INTERNAL_FetchRenderPass(VulkanRenderer *renderer)
 	hash.clearColor = renderer->shouldClearColorOnBeginPass;
 	hash.clearDepth = renderer->shouldClearDepthOnBeginPass;
 	hash.clearStencil = renderer->shouldClearStencilOnBeginPass;
-	hash.preserveTargetContents = renderer->preserveTargetContents;
+	hash.preserveTargetContents = renderer->nextRenderPassPreserveTargetContents;
 
 	hash.width = renderer->colorAttachments[0]->dimensions.width;
 	hash.height = renderer->colorAttachments[0]->dimensions.height;
@@ -8612,6 +8673,9 @@ static VkFramebuffer VULKAN_INTERNAL_FetchFramebuffer(
 static void VULKAN_INTERNAL_MaybeEndRenderPass(
 	VulkanRenderer *renderer
 ) {
+	int32_t i;
+	VulkanTexture *currentTexture;
+
 	SDL_LockMutex(renderer->passLock);
 
 	if (renderer->renderPassInProgress)
@@ -8623,6 +8687,28 @@ static void VULKAN_INTERNAL_MaybeEndRenderPass(
 		renderer->drawCallMadeThisPass = 0;
 		renderer->currentPipeline = VK_NULL_HANDLE;
 		renderer->needNewPipeline = 1;
+
+		for (i = 0; i < renderer->colorAttachmentCount; i += 1)
+		{
+			currentTexture = renderer->colorAttachments[i];
+
+			/* If the render target can be sampled, transition to sampler layout */
+			if (currentTexture->imageCreateInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+			{
+				VULKAN_INTERNAL_ImageMemoryBarrier(
+					renderer,
+					RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
+					VK_IMAGE_ASPECT_COLOR_BIT,
+					0,
+					currentTexture->layerCount,
+					0,
+					currentTexture->levelCount,
+					0,
+					currentTexture->image,
+					&currentTexture->resourceAccessType
+				);
+			}
+		}
 
 		/* Unlocking long-term lock */
 		SDL_UnlockMutex(renderer->passLock);
@@ -8652,6 +8738,21 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 
 	SDL_LockMutex(renderer->passLock);
 
+	for (i = 0; i < renderer->nextRenderPassColorAttachmentCount; i += 1)
+	{
+		renderer->colorAttachments[i] = renderer->nextRenderPassColorAttachments[i];
+		renderer->attachmentCubeFaces[i] = renderer->nextRenderPassAttachmentCubeFaces[i];
+		renderer->colorMultiSampleAttachments[i] = renderer->nextRenderPassColorMultiSampleAttachments[i]; /* may be NULL */
+	}
+
+	renderer->colorAttachmentCount = renderer->nextRenderPassColorAttachmentCount;
+	renderer->multiSampleCount = renderer->nextRenderPassMultiSampleCount;
+
+	renderer->depthStencilAttachment = renderer->nextRenderPassDepthStencilAttachment;
+	renderer->currentDepthFormat = renderer->nextRenderPassDepthFormat;
+
+	renderer->renderTargetBound = (renderer->nextRenderPassColorAttachments[0] != renderer->fauxBackbufferColor.handle);
+
 	renderer->renderPass = VULKAN_INTERNAL_FetchRenderPass(renderer);
 	framebuffer = VULKAN_INTERNAL_FetchFramebuffer(
 		renderer,
@@ -8671,54 +8772,51 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	renderPassBeginInfo.renderArea.extent.height =
 		renderer->colorAttachments[0]->dimensions.height;
 
-	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
+	for (i = 0; i < renderer->colorAttachmentCount; i += 1)
 	{
-		if (renderer->colorAttachments[i] != NULL)
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			renderer->colorAttachments[i]->layerCount,
+			0,
+			1,
+			0,
+			renderer->colorAttachments[i]->image,
+			&renderer->colorAttachments[i]->resourceAccessType
+		);
+
+		/*
+			* In MRT scenarios we need to provide as many clearValue structs
+			* as RTs in the current framebuffer even if they aren't cleared
+			*/
+
+		if (renderer->shouldClearColorOnBeginPass)
 		{
-			VULKAN_INTERNAL_ImageMemoryBarrier(
-				renderer,
-				RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
-				VK_IMAGE_ASPECT_COLOR_BIT,
-				0,
-				renderer->colorAttachments[i]->layerCount,
-				0,
-				1,
-				0,
-				renderer->colorAttachments[i]->image,
-				&renderer->colorAttachments[i]->resourceAccessType
-			);
+			clearColorValue = renderer->clearColorValue;
+		}
+		else
+		{
+			clearColorValue.float32[0] = 0;
+			clearColorValue.float32[1] = 0;
+			clearColorValue.float32[2] = 0;
+			clearColorValue.float32[3] = 0;
+		}
 
-			/*
-			 * In MRT scenarios we need to provide as many clearValue structs
-			 * as RTs in the current framebuffer even if they aren't cleared
-			 */
+		clearValues[clearValueCount].color.float32[0] = clearColorValue.float32[0];
+		clearValues[clearValueCount].color.float32[1] = clearColorValue.float32[1];
+		clearValues[clearValueCount].color.float32[2] = clearColorValue.float32[2];
+		clearValues[clearValueCount].color.float32[3] = clearColorValue.float32[3];
+		clearValueCount += 1;
 
-			if (renderer->shouldClearColorOnBeginPass)
-			{
-				clearColorValue = renderer->clearColorValue;
-			}
-			else
-			{
-				clearColorValue.float32[0] = 0;
-				clearColorValue.float32[1] = 0;
-				clearColorValue.float32[2] = 0;
-				clearColorValue.float32[3] = 0;
-			}
-
+		if (renderer->colorMultiSampleAttachments[i] != NULL)
+		{
 			clearValues[clearValueCount].color.float32[0] = clearColorValue.float32[0];
 			clearValues[clearValueCount].color.float32[1] = clearColorValue.float32[1];
 			clearValues[clearValueCount].color.float32[2] = clearColorValue.float32[2];
 			clearValues[clearValueCount].color.float32[3] = clearColorValue.float32[3];
 			clearValueCount += 1;
-
-			if (renderer->colorMultiSampleAttachments[i] != NULL)
-			{
-				clearValues[clearValueCount].color.float32[0] = clearColorValue.float32[0];
-				clearValues[clearValueCount].color.float32[1] = clearColorValue.float32[1];
-				clearValues[clearValueCount].color.float32[2] = clearColorValue.float32[2];
-				clearValues[clearValueCount].color.float32[3] = clearColorValue.float32[3];
-				clearValueCount += 1;
-			}
 		}
 	}
 
@@ -9490,13 +9588,6 @@ static void VULKAN_DrawInstancedPrimitives(
 
 	/* Note that minVertexIndex/numVertices are NOT used! */
 
-	VULKAN_INTERNAL_BufferMemoryBarrier(
-		renderer,
-		RESOURCE_ACCESS_INDEX_BUFFER,
-		indexBuffer->buffer,
-		&indexBuffer->resourceAccessType
-	);
-
 	VULKAN_INTERNAL_MarkBufferAsBound(renderer, indexBuffer);
 
 	if (primitiveType != renderer->currentPrimitiveType)
@@ -9907,7 +9998,6 @@ static void VULKAN_VerifySampler(
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 	VulkanTexture *vulkanTexture = (VulkanTexture*) texture;
 	VkSampler vkSamplerState;
-	VulkanResourceAccessType resourceAccessType;
 
 	if (texture == NULL)
 	{
@@ -9930,31 +10020,6 @@ static void VULKAN_VerifySampler(
 		}
 
 		return;
-	}
-
-	if (!vulkanTexture->external)
-	{
-		if (index >= MAX_TEXTURE_SAMPLERS)
-		{
-			resourceAccessType = RESOURCE_ACCESS_VERTEX_SHADER_READ_SAMPLED_IMAGE;
-		}
-		else
-		{
-			resourceAccessType = RESOURCE_ACCESS_FRAGMENT_SHADER_READ_SAMPLED_IMAGE;
-		}
-
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			resourceAccessType,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			0,
-			vulkanTexture->layerCount,
-			0,
-			vulkanTexture->levelCount,
-			0,
-			vulkanTexture->image,
-			&vulkanTexture->resourceAccessType
-		);
 	}
 
 	if (vulkanTexture != renderer->textures[index])
@@ -10087,13 +10152,6 @@ static void VULKAN_ApplyVertexBufferBindings(
 		renderer->boundVertexBuffers[i] = vertexBuffer->buffer;
 		renderer->boundVertexBufferOffsets[i] = offset;
 
-		VULKAN_INTERNAL_BufferMemoryBarrier(
-			renderer,
-			RESOURCE_ACCESS_VERTEX_BUFFER,
-			vertexBuffer->buffer,
-			&vertexBuffer->resourceAccessType
-		);
-
 		VULKAN_INTERNAL_MarkBufferAsBound(renderer, vertexBuffer);
 	}
 }
@@ -10121,37 +10179,36 @@ static void VULKAN_SetRenderTargets(
 		VULKAN_INTERNAL_BeginRenderPass(renderer);
 	}
 
-	renderer->preserveTargetContents = preserveTargetContents;
+	renderer->nextRenderPassPreserveTargetContents = preserveTargetContents;
 
 	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
 	{
-		renderer->colorAttachments[i] = NULL;
-		renderer->colorMultiSampleAttachments[i] = NULL;
+		renderer->nextRenderPassColorAttachments[i] = NULL;
+		renderer->nextRenderPassColorMultiSampleAttachments[i] = NULL;
 	}
-	renderer->depthStencilAttachment = NULL;
-	renderer->multiSampleCount = renderer->fauxBackbufferMultiSampleCount;
+
+	renderer->nextRenderPassDepthStencilAttachment = NULL;
+	renderer->nextRenderPassMultiSampleCount = renderer->fauxBackbufferMultiSampleCount;
 
 	if (numRenderTargets <= 0)
 	{
-		renderer->colorAttachments[0] = renderer->fauxBackbufferColor.handle;
-		renderer->attachmentCubeFaces[0] = (FNA3D_CubeMapFace) 0;
-		renderer->colorAttachmentCount = 1;
+		renderer->nextRenderPassColorAttachments[0] = renderer->fauxBackbufferColor.handle;
+		renderer->nextRenderPassAttachmentCubeFaces[0] = (FNA3D_CubeMapFace) 0;
+		renderer->nextRenderPassColorAttachmentCount = 1;
 
 		if (renderer->fauxBackbufferMultiSampleCount > 1)
 		{
-			renderer->colorMultiSampleAttachments[0] =
+			renderer->nextRenderPassColorMultiSampleAttachments[0] =
 				renderer->fauxBackbufferMultiSampleColor;
 		}
-		renderer->depthStencilAttachment =
+		renderer->nextRenderPassDepthStencilAttachment =
 			renderer->fauxBackbufferDepthStencil.handle;
-
-		renderer->renderTargetBound = 0;
 	}
 	else
 	{
 		for (i = 0; i < numRenderTargets; i += 1)
 		{
-			renderer->attachmentCubeFaces[i] = (
+			renderer->nextRenderPassAttachmentCubeFaces[i] = (
 				renderTargets[i].type == FNA3D_RENDERTARGET_TYPE_CUBE ?
 					renderTargets[i].cube.face :
 					(FNA3D_CubeMapFace) 0
@@ -10160,37 +10217,35 @@ static void VULKAN_SetRenderTargets(
 			if (renderTargets[i].colorBuffer != NULL)
 			{
 				cb = ((VulkanRenderbuffer*) renderTargets[i].colorBuffer)->colorBuffer;
-				renderer->colorAttachments[i] = cb->handle;
-				renderer->multiSampleCount = cb->multiSampleCount;
+				renderer->nextRenderPassColorAttachments[i] = cb->handle;
+				renderer->nextRenderPassMultiSampleCount = cb->multiSampleCount;
 
 				if (cb->multiSampleCount > 0)
 				{
-					renderer->colorMultiSampleAttachments[i] = cb->multiSampleTexture;
+					renderer->nextRenderPassColorMultiSampleAttachments[i] = cb->multiSampleTexture;
 				}
 			}
 			else
 			{
 				tex = (VulkanTexture*) renderTargets[i].texture;
-				renderer->colorAttachments[i] = tex;
-				renderer->multiSampleCount = 0;
+				renderer->nextRenderPassColorAttachments[i] = tex;
+				renderer->nextRenderPassMultiSampleCount = 0;
 			}
 		}
 
-		renderer->colorAttachmentCount = numRenderTargets;
+		renderer->nextRenderPassColorAttachmentCount = numRenderTargets;
 
 		/* update depth stencil buffer */
 
 		if (depthStencilBuffer != NULL)
 		{
-			renderer->depthStencilAttachment = ((VulkanRenderbuffer*) depthStencilBuffer)->depthBuffer->handle;
-			renderer->currentDepthFormat = depthFormat;
+			renderer->nextRenderPassDepthStencilAttachment = ((VulkanRenderbuffer*) depthStencilBuffer)->depthBuffer->handle;
+			renderer->nextRenderPassDepthFormat = depthFormat;
 		}
 		else
 		{
-			renderer->depthStencilAttachment = NULL;
+			renderer->nextRenderPassDepthStencilAttachment = NULL;
 		}
-
-		renderer->renderTargetBound = 1;
 	}
 
 	renderer->needNewRenderPass = 1;
@@ -10671,6 +10726,22 @@ static void VULKAN_INTERNAL_SetTextureData(
 		&imageCopy
 	));
 
+	if (texture->imageCreateInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			texture->layerCount,
+			0,
+			texture->levelCount,
+			0,
+			texture->image,
+			&texture->resourceAccessType
+		);
+	}
+
 	SDL_UnlockMutex(renderer->transferLock);
 	SDL_UnlockMutex(renderer->passLock);
 }
@@ -10855,6 +10926,22 @@ static void VULKAN_SetTextureDataYUV(
 		&imageCopy
 	));
 
+	if (tex->imageCreateInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			tex->layerCount,
+			0,
+			tex->levelCount,
+			0,
+			tex->image,
+			&tex->resourceAccessType
+		);
+	}
+
 	/* These apply to both U and V */
 
 	imageCopy.imageExtent.width = uvWidth;
@@ -10890,6 +10977,22 @@ static void VULKAN_SetTextureDataYUV(
 		&imageCopy
 	));
 
+	if (tex->imageCreateInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			tex->layerCount,
+			0,
+			tex->levelCount,
+			0,
+			tex->image,
+			&tex->resourceAccessType
+		);
+	}
+
 	/* V */
 
 	imageCopy.bufferOffset = offset + yDataLength + uvDataLength;
@@ -10917,6 +11020,22 @@ static void VULKAN_SetTextureDataYUV(
 		1,
 		&imageCopy
 	));
+
+	if (tex->imageCreateInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+	{
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			tex->layerCount,
+			0,
+			tex->levelCount,
+			0,
+			tex->image,
+			&tex->resourceAccessType
+		);
+	}
 
 	SDL_UnlockMutex(renderer->transferLock);
 	SDL_UnlockMutex(renderer->passLock);
