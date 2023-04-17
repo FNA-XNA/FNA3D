@@ -518,7 +518,7 @@ STBIDEF int   stbi_zlib_decode_noheader_buffer(char *obuffer, int olen, const ch
 #if defined(STBI_ONLY_JPEG) || defined(STBI_ONLY_PNG) || defined(STBI_ONLY_BMP) \
   || defined(STBI_ONLY_TGA) || defined(STBI_ONLY_GIF) || defined(STBI_ONLY_PSD) \
   || defined(STBI_ONLY_HDR) || defined(STBI_ONLY_PIC) || defined(STBI_ONLY_PNM) \
-  || defined(STBI_ONLY_ZLIB)
+  || defined(STBI_ONLY_QOI) || defined(STBI_ONLY_ZLIB)
    #ifndef STBI_ONLY_JPEG
    #define STBI_NO_JPEG
    #endif
@@ -545,6 +545,9 @@ STBIDEF int   stbi_zlib_decode_noheader_buffer(char *obuffer, int olen, const ch
    #endif
    #ifndef STBI_ONLY_PNM
    #define STBI_NO_PNM
+   #endif
+   #ifndef STBI_ONLY_QOI
+   #define STBI_NO_QOI
    #endif
 #endif
 
@@ -932,6 +935,12 @@ static void    *stbi__pnm_load(stbi__context *s, int *x, int *y, int *comp, int 
 static int      stbi__pnm_info(stbi__context *s, int *x, int *y, int *comp);
 #endif
 
+#ifndef STBI_NO_QOI
+static int      stbi__qoi_test(stbi__context *s);
+static void    *stbi__qoi_load(stbi__context *s, int *x, int *y, int *comp, int req_comp, stbi__result_info *ri);
+static int      stbi__qoi_info(stbi__context *s, int *x, int *y, int *comp);
+#endif
+
 static
 #ifdef STBI_THREAD_LOCAL
 STBI_THREAD_LOCAL
@@ -1124,6 +1133,10 @@ static void *stbi__load_main(stbi__context *s, int *x, int *y, int *comp, int re
    }
    #endif
 
+   #ifndef STBI_NO_QOI
+    if (stbi__qoi_test(s)) return stbi__qoi_load(s,x,y,comp,req_comp, ri);
+   #endif
+
    #ifndef STBI_NO_TGA
    // test tga last because it's a crappy test!
    if (stbi__tga_test(s))
@@ -1276,7 +1289,7 @@ STBI_EXTERN __declspec(dllimport) int __stdcall WideCharToMultiByte(unsigned int
 #if defined(_MSC_VER) && defined(STBI_WINDOWS_UTF8)
 STBIDEF int stbi_convert_wchar_to_utf8(char *buffer, size_t bufferlen, const wchar_t* input)
 {
-	return WideCharToMultiByte(65001 /* UTF8 */, 0, input, -1, buffer, (int) bufferlen, NULL, NULL);
+    return WideCharToMultiByte(65001 /* UTF8 */, 0, input, -1, buffer, (int) bufferlen, NULL, NULL);
 }
 #endif
 
@@ -1286,15 +1299,15 @@ static FILE *stbi__fopen(char const *filename, char const *mode)
 #if defined(_MSC_VER) && defined(STBI_WINDOWS_UTF8)
    wchar_t wMode[64];
    wchar_t wFilename[1024];
-	if (0 == MultiByteToWideChar(65001 /* UTF8 */, 0, filename, -1, wFilename, sizeof(wFilename)))
+    if (0 == MultiByteToWideChar(65001 /* UTF8 */, 0, filename, -1, wFilename, sizeof(wFilename)))
       return 0;
 
-	if (0 == MultiByteToWideChar(65001 /* UTF8 */, 0, mode, -1, wMode, sizeof(wMode)))
+    if (0 == MultiByteToWideChar(65001 /* UTF8 */, 0, mode, -1, wMode, sizeof(wMode)))
       return 0;
 
 #if _MSC_VER >= 1400
-	if (0 != _wfopen_s(&f, wFilename, wMode))
-		f = 0;
+    if (0 != _wfopen_s(&f, wFilename, wMode))
+        f = 0;
 #else
    f = _wfopen(wFilename, wMode);
 #endif
@@ -1644,7 +1657,7 @@ static int stbi__get16be(stbi__context *s)
 }
 #endif
 
-#if defined(STBI_NO_PNG) && defined(STBI_NO_PSD) && defined(STBI_NO_PIC)
+#if defined(STBI_NO_PNG) && defined(STBI_NO_PSD) && defined(STBI_NO_PIC) && defined(STBI_NO_QOI)
 // nothing
 #else
 static stbi__uint32 stbi__get32be(stbi__context *s)
@@ -5190,7 +5203,7 @@ static int stbi__png_is16(stbi__context *s)
    stbi__png p;
    p.s = s;
    if (!stbi__png_info_raw(&p, NULL, NULL, NULL))
-	   return 0;
+       return 0;
    if (p.depth != 16) {
       stbi__rewind(p.s);
       return 0;
@@ -7412,6 +7425,160 @@ static int      stbi__pnm_info(stbi__context *s, int *x, int *y, int *comp)
 }
 #endif
 
+#ifndef STBI_NO_QOI
+
+#define QOI_OP_INDEX  0x00 /* 00xxxxxx */
+#define QOI_OP_DIFF   0x40 /* 01xxxxxx */
+#define QOI_OP_LUMA   0x80 /* 10xxxxxx */
+#define QOI_OP_RUN    0xc0 /* 11xxxxxx */
+#define QOI_OP_RGB    0xfe /* 11111110 */
+#define QOI_OP_RGBA   0xff /* 11111111 */
+#define QOI_MASK_2    0xc0 /* 11000000 */
+#define QOI_COLOR_HASH(C) (C.rgba.r*3 + C.rgba.g*5 + C.rgba.b*7 + C.rgba.a*11)
+
+typedef union {
+	struct { unsigned char r, g, b, a; } rgba;
+	unsigned int v;
+} qoi_rgba_t;
+
+static int   stbi__qoi_test(stbi__context *s)
+{
+    int i;
+    for (i = 0; i < 4; i++) {
+        if (stbi__get8(s) != "qoif"[i]) {
+            stbi__rewind(s);
+            return 0;
+        }
+    }
+   return 1;
+}
+
+static void *stbi__qoi_load(stbi__context *s, int *x, int *y, int *comp, int req_comp, stbi__result_info *ri)
+{
+    stbi_uc *pixels;
+    qoi_rgba_t index[64];
+
+    qoi_rgba_t px;
+    int px_pos, px_len;
+    int p = 0, run = 0;
+    int b1, b2, vg;
+
+    if (!stbi__qoi_info(s, (int *)&s->img_x, (int *)&s->img_y, &s->img_n))
+        return NULL;
+
+    if (req_comp == 3 || req_comp == 4) {
+        s->img_n = req_comp;
+    }
+
+    if (x) *x = s->img_x;
+    if (y) *y = s->img_y;
+    if (comp) *comp = s->img_n;
+
+    if (!stbi__mad3sizes_valid(s->img_x, s->img_y, s->img_n, 0))
+        return stbi__errpuc("too large", "QOI too large");
+
+    pixels = (stbi_uc *) stbi__malloc_mad3(s->img_x, s->img_y, s->img_n, 0);
+    if (!pixels)
+        return stbi__errpuc("outofmem", "Out of memory");
+
+    px_len = s->img_x * s->img_y * s->img_n;
+
+    memset(index, 0, sizeof(index));
+    px.rgba.r = 0;
+	px.rgba.g = 0;
+	px.rgba.b = 0;
+	px.rgba.a = 255;
+
+    for (px_pos = 0; px_pos < px_len; px_pos += s->img_n) {
+		if (run > 0) {
+			run--;
+		}
+		else {
+            b1 = stbi__get8(s);
+
+            if (b1 == QOI_OP_RGB) {
+				px.rgba.r = stbi__get8(s);
+				px.rgba.g = stbi__get8(s);
+				px.rgba.b = stbi__get8(s);
+			}
+			else if (b1 == QOI_OP_RGBA) {
+				px.rgba.r = stbi__get8(s);
+				px.rgba.g = stbi__get8(s);
+				px.rgba.b = stbi__get8(s);
+				px.rgba.a = stbi__get8(s);
+			}
+			else if ((b1 & QOI_MASK_2) == QOI_OP_INDEX) {
+				px = index[b1];
+			}
+			else if ((b1 & QOI_MASK_2) == QOI_OP_DIFF) {
+				px.rgba.r += ((b1 >> 4) & 0x03) - 2;
+				px.rgba.g += ((b1 >> 2) & 0x03) - 2;
+				px.rgba.b += ( b1       & 0x03) - 2;
+			}
+			else if ((b1 & QOI_MASK_2) == QOI_OP_LUMA) {
+				b2 = stbi__get8(s);;
+				vg = (b1 & 0x3f) - 32;
+				px.rgba.r += vg - 8 + ((b2 >> 4) & 0x0f);
+				px.rgba.g += vg;
+				px.rgba.b += vg - 8 +  (b2       & 0x0f);
+			}
+			else if ((b1 & QOI_MASK_2) == QOI_OP_RUN) {
+				run = (b1 & 0x3f);
+			}
+
+			index[QOI_COLOR_HASH(px) % 64] = px;
+		}
+
+		pixels[px_pos + 0] = px.rgba.r;
+		pixels[px_pos + 1] = px.rgba.g;
+		pixels[px_pos + 2] = px.rgba.b;
+
+		if (s->img_n == 4) {
+			pixels[px_pos + 3] = px.rgba.a;
+		}
+	}
+
+    return pixels;
+}
+
+static int   stbi__qoi_info(stbi__context *s, int *x, int *y, int *comp)
+{
+    stbi__uint32 length;
+    int channels, colorspace, i;
+
+    stbi__rewind(s);
+
+    for (i = 0; i < 4; i++) {
+        if (stbi__get8(s) != "qoif"[i]) {
+            stbi__rewind(s);
+            return 0;
+        }
+    }
+
+    length = stbi__get32be(s);
+    if (x) *x = (int) length;
+
+    length = stbi__get32be(s);
+    if (y) *y = (int) length;
+
+    channels = stbi__get8(s);
+    colorspace = stbi__get8(s) != 0;
+
+    if (comp) *comp = channels;
+
+    return 1 + colorspace;
+}
+
+#undef QOI_OP_INDEX
+#undef QOI_OP_DIFF
+#undef QOI_OP_LUMA
+#undef QOI_OP_RUN
+#undef QOI_OP_RGB
+#undef QOI_OP_RGBA
+#undef QOI_MASK_2
+#undef QOI_COLOR_HASH
+#endif
+
 static int stbi__info_main(stbi__context *s, int *x, int *y, int *comp)
 {
    #ifndef STBI_NO_JPEG
@@ -7444,6 +7611,10 @@ static int stbi__info_main(stbi__context *s, int *x, int *y, int *comp)
 
    #ifndef STBI_NO_HDR
    if (stbi__hdr_info(s, x, y, comp))  return 1;
+   #endif
+
+   #ifndef STBI_NO_QOI
+   if (stbi__qoi_info(s, x, y, comp)) return 1;
    #endif
 
    // test tga last because it's a crappy test!

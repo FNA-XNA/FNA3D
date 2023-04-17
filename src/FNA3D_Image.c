@@ -82,6 +82,7 @@ extern void FNA3D_LogWarn(const char *fmt, ...);
 #define STBI_ONLY_GIF
 #define STBI_ONLY_PNG
 #define STBI_ONLY_JPEG
+#define STBI_ONLY_QOI
 
 /* These are per the Texture2D.SaveAs* spec */
 #define STBIW_ONLY_PNG
