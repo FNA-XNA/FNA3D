@@ -7460,7 +7460,7 @@ static void *stbi__qoi_load(stbi__context *s, int *x, int *y, int *comp, int req
 
     qoi_rgba_t px;
     int px_pos, px_len;
-    int p = 0, run = 0;
+    int run = 0;
     int b1, b2, vg;
 
     if (!stbi__qoi_info(s, (int *)&s->img_x, (int *)&s->img_y, &s->img_n))
