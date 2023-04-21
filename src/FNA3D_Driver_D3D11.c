@@ -967,14 +967,19 @@ static ID3D11InputLayout* D3D11_INTERNAL_FetchBindingsInputLayout(
 		}
 	}
 
-	MOJOSHADER_d3d11CompileVertexShader(
+	if (MOJOSHADER_d3d11CompileVertexShader(
 		renderer->shaderContext,
 		(unsigned long long) *hash,
 		elements,
 		numElements,
 		&bytecode,
 		&bytecodeLength
-	);
+	) < 0) {
+		FNA3D_LogError(
+			"%s", MOJOSHADER_d3d11GetError(renderer->shaderContext)
+		);
+		return NULL;
+	}
 	res = ID3D11Device_CreateInputLayout(
 		renderer->device,
 		elements,
@@ -2180,6 +2185,11 @@ static void D3D11_ApplyVertexBufferBindings(
 		numBindings,
 		&hash
 	);
+	if (inputLayout == NULL)
+	{
+		SDL_UnlockMutex(renderer->ctxLock);
+		return;
+	}
 
 	if (renderer->inputLayout != inputLayout)
 	{
@@ -2216,10 +2226,14 @@ static void D3D11_ApplyVertexBufferBindings(
 		}
 	}
 
-	MOJOSHADER_d3d11ProgramReady(
+	if (MOJOSHADER_d3d11ProgramReady(
 		renderer->shaderContext,
 		(unsigned long long) hash
-	);
+	) < 0) {
+		FNA3D_LogError(
+			"%s", MOJOSHADER_d3d11GetError(renderer->shaderContext)
+		);
+	}
 	renderer->effectApplied = 0;
 
 	SDL_UnlockMutex(renderer->ctxLock);
