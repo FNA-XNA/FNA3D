@@ -2969,6 +2969,7 @@ static void D3D11_ReadBackbuffer(
 	backbufferTexture.twod.width = renderer->backbuffer->width;
 	backbufferTexture.twod.height = renderer->backbuffer->height;
 	backbufferTexture.levelCount = 1;
+	backbufferTexture.isRenderTarget = 1;
 	backbufferTexture.staging = (ID3D11Resource*) renderer->backbuffer->stagingBuffer;
 
 	if (renderer->backbuffer->type == BACKBUFFER_TYPE_D3D11)
