@@ -148,7 +148,7 @@ uint32_t FNA3D_PrepareWindowAttributes(void)
 	{
 		if (hint != NULL)
 		{
-			if (SDL_strcmp(hint, drivers[i]->Name) != 0)
+			if (SDL_strcasecmp(hint, drivers[i]->Name) != 0)
 			{
 				continue;
 			}
