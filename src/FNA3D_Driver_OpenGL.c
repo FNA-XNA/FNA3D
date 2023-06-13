@@ -5723,22 +5723,22 @@ static uint8_t OPENGL_PrepareWindowAttributes(uint32_t *flags)
 	depthFormatHint = SDL_GetHint("FNA3D_OPENGL_WINDOW_DEPTHSTENCILFORMAT");
 	if (depthFormatHint != NULL)
 	{
-		if (SDL_strcmp(depthFormatHint, "None") == 0)
+		if (SDL_strcasecmp(depthFormatHint, "None") == 0)
 		{
 			depthSize = 0;
 			stencilSize = 0;
 		}
-		else if (SDL_strcmp(depthFormatHint, "Depth16") == 0)
+		else if (SDL_strcasecmp(depthFormatHint, "Depth16") == 0)
 		{
 			depthSize = 16;
 			stencilSize = 0;
 		}
-		else if (SDL_strcmp(depthFormatHint, "Depth24") == 0)
+		else if (SDL_strcasecmp(depthFormatHint, "Depth24") == 0)
 		{
 			depthSize = 24;
 			stencilSize = 0;
 		}
-		else if (SDL_strcmp(depthFormatHint, "Depth24Stencil8") == 0)
+		else if (SDL_strcasecmp(depthFormatHint, "Depth24Stencil8") == 0)
 		{
 			depthSize = 24;
 			stencilSize = 8;
@@ -5974,7 +5974,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 		);
 
 		/* SPIR-V is very new and not really necessary. */
-		if (	(SDL_strcmp(renderer->shaderProfile, "glspirv") == 0) &&
+		if (	(SDL_strcasecmp(renderer->shaderProfile, "glspirv") == 0) &&
 			!renderer->useCoreProfile	)
 		{
 			renderer->shaderProfile = "glsl120";
