@@ -112,6 +112,7 @@
     <ClCompile Include="..\src\FNA3D_Driver_Vulkan.c" />
     <ClCompile Include="..\src\FNA3D_Image.c" />
     <ClCompile Include="..\src\FNA3D_Driver_OpenGL.c" />
+    <ClCompile Include="..\src\FNA3D_Memory.c" />
     <ClCompile Include="..\src\FNA3D_PipelineCache.c" />
     <ClCompile Include="..\src\FNA3D_Tracing.c" />
   </ItemGroup>
@@ -123,6 +124,7 @@
     <ClInclude Include="..\src\FNA3D_Driver_OpenGL.h" />
     <ClInclude Include="..\src\FNA3D_Driver_OpenGL_glfuncs.h" />
     <ClInclude Include="..\src\FNA3D_Driver_Vulkan_vkfuncs.h" />
+    <ClInclude Include="..\src\FNA3D_Memory.h" />
     <ClInclude Include="..\src\FNA3D_PipelineCache.h" />
     <ClInclude Include="..\src\FNA3D_Tracing.h" />
   </ItemGroup>

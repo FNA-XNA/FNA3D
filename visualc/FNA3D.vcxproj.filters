@@ -44,6 +44,7 @@
     </ClCompile>
     <ClCompile Include="..\src\FNA3D_Driver_Vulkan.c" />
     <ClCompile Include="..\src\FNA3D_Tracing.c" />
+    <ClCompile Include="..\src\FNA3D_Memory.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\include\FNA3D.h" />
@@ -55,6 +56,7 @@
     <ClInclude Include="..\src\FNA3D_Driver_D3D11.h" />
     <ClInclude Include="..\src\FNA3D_Driver_Vulkan_vkfuncs.h" />
     <ClInclude Include="..\src\FNA3D_Tracing.h" />
+    <ClInclude Include="..\src\FNA3D_Memory.h" />
   </ItemGroup>
   <ItemGroup>
     <Filter Include="mojoshader">

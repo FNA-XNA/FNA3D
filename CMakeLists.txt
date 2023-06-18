@@ -91,6 +91,7 @@ add_library(FNA3D
 	src/FNA3D_Driver_OpenGL_glfuncs.h
 	src/FNA3D_Driver_Vulkan_vkfuncs.h
 	src/FNA3D_PipelineCache.h
+	src/FNA3D_Memory.h
 	# Source Files
 	src/FNA3D.c
 	src/FNA3D_Driver_D3D11.c
@@ -99,6 +100,7 @@ add_library(FNA3D
 	src/FNA3D_Image.c
 	src/FNA3D_PipelineCache.c
 	src/FNA3D_Tracing.c
+	src/FNA3D_Memory.c
 )
 add_library(mojoshader STATIC
 	MojoShader/mojoshader.c
