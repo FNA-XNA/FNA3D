@@ -2975,62 +2975,231 @@ static void VULKAN_INTERNAL_EndCommandBuffer(
 
 /* Vulkan: Memory Allocation */
 
-static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
-	VulkanRenderer *renderer,
-	VkBuffer buffer,
-	VkMemoryPropertyFlags requiredMemoryProperties,
-	VkMemoryPropertyFlags ignoredMemoryProperties,
-	VkMemoryRequirements2KHR *pMemoryRequirements,
-	uint32_t *pMemoryTypeIndex
+static uint8_t VULKAN_INTERNAL_BindBufferMemoryCallback(
+	FNA3D_Memory_Context *context,
+	FNA3D_Memory_MemoryUsedRegion *usedRegion,
+	VkDeviceSize alignedOffset,
+	void* nativeBuffer
 ) {
-	VkBufferMemoryRequirementsInfo2KHR bufferRequirementsInfo;
-	bufferRequirementsInfo.sType =
-		VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2_KHR;
-	bufferRequirementsInfo.pNext = NULL;
-	bufferRequirementsInfo.buffer = buffer;
+	VulkanRenderer *renderer = (VulkanRenderer*)context->renderer;
+
+	VkResult vulkanResult = renderer->vkBindBufferMemory(
+		renderer->logicalDevice,
+		(VkBuffer)nativeBuffer,
+		usedRegion->allocation->memory,
+		alignedOffset
+	);
+
+	VULKAN_ERROR_CHECK(vulkanResult, vkBindBufferMemory, 0)
+
+	return 1;
+}
+
+static uint8_t VULKAN_INTERNAL_BindTextureMemoryCallback(
+	FNA3D_Memory_Context *context,
+	FNA3D_Memory_MemoryUsedRegion *usedRegion,
+	VkDeviceSize alignedOffset,
+	VkImage image
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*)context->renderer;
+
+	VkResult vulkanResult = renderer->vkBindImageMemory(
+		renderer->logicalDevice,
+		image,
+		usedRegion->allocation->memory,
+		alignedOffset
+	);
+
+	VULKAN_ERROR_CHECK(vulkanResult, vkBindImageMemory, 0)
+
+	return 1;
+}
+
+static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirementsCallback(
+	FNA3D_Memory_Context *context,
+	void* nativeBuffer,
+	uint8_t preferDeviceLocal,
+	FNA3D_Memory_Properties *memoryProperties
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*)context->renderer;
+	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
+	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
+	uint8_t result;
+
+	VkBufferMemoryRequirementsInfo2KHR bufferRequirementsInfo =
+	{
+		VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2_KHR,
+		NULL,
+		nativeBuffer
+	};
+
+	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
+		NULL
+	};
+
+	VkMemoryRequirements2KHR memoryRequirements =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
+		&dedicatedRequirements
+	};
+
+	requiredMemoryPropertyFlags =
+		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+	if (preferDeviceLocal)
+	{
+		requiredMemoryPropertyFlags |=
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+	}
+
+	ignoredMemoryPropertyFlags = 0;
 
 	renderer->vkGetBufferMemoryRequirements2KHR(
 		renderer->logicalDevice,
 		&bufferRequirementsInfo,
-		pMemoryRequirements
+		&memoryRequirements
 	);
 
-	return VULKAN_INTERNAL_FindMemoryType(
+	result = VULKAN_INTERNAL_FindMemoryType(
 		renderer,
-		pMemoryRequirements->memoryRequirements.memoryTypeBits,
-		requiredMemoryProperties,
-		ignoredMemoryProperties,
-		pMemoryTypeIndex
+		memoryRequirements.memoryRequirements.memoryTypeBits,
+		requiredMemoryPropertyFlags,
+		ignoredMemoryPropertyFlags,
+		&memoryProperties->memoryTypeIndex
 	);
+
+	if (result)
+	{
+		memoryProperties->shouldAllocDedicated =
+			/* FIXME: forced dedicated? */
+			dedicatedRequirements.prefersDedicatedAllocation ||
+			dedicatedRequirements.requiresDedicatedAllocation;
+
+		memoryProperties->isHostVisible =
+			(renderer->memoryProperties.memoryTypes[memoryProperties->memoryTypeIndex].propertyFlags &
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
+
+		memoryProperties->isDeviceLocal =
+			(renderer->memoryProperties.memoryTypes[memoryProperties->memoryTypeIndex].propertyFlags &
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
+
+		memoryProperties->requiredAlignment = memoryRequirements.memoryRequirements.alignment;
+		memoryProperties->requiredSize = memoryRequirements.memoryRequirements.size;
+	}
+
+	return result;
 }
 
-static uint8_t VULKAN_INTERNAL_FindImageMemoryRequirements(
-	VulkanRenderer *renderer,
-	VkImage image,
-	VkMemoryPropertyFlags requiredMemoryPropertyFlags,
-	VkMemoryPropertyFlags ignoredMemoryPropertyFlags,
-	VkMemoryRequirements2KHR *pMemoryRequirements,
-	uint32_t *pMemoryTypeIndex
+static uint8_t VULKAN_INTERNAL_FindTextureMemoryRequirementsCallback(
+	FNA3D_Memory_Context *context,
+	void* nativeTexture,
+	uint8_t preferDeviceLocal,
+	FNA3D_Memory_Properties *memoryProperties
 ) {
-	VkImageMemoryRequirementsInfo2KHR imageRequirementsInfo;
-	imageRequirementsInfo.sType =
-		VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR;
-	imageRequirementsInfo.pNext = NULL;
-	imageRequirementsInfo.image = image;
+	VulkanRenderer *renderer = (VulkanRenderer*) context->renderer;
+	uint8_t result;
+	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
+	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
+
+	VkImageMemoryRequirementsInfo2KHR imageRequirementsInfo =
+	{
+		VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR,
+		NULL,
+		nativeTexture
+	};
+
+	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
+		NULL
+	};
+
+	VkMemoryRequirements2KHR memoryRequirements =
+	{
+		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
+		&dedicatedRequirements
+	};
+
+	requiredMemoryPropertyFlags = preferDeviceLocal ? VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT : 0;
+	ignoredMemoryPropertyFlags = 0;
 
 	renderer->vkGetImageMemoryRequirements2KHR(
 		renderer->logicalDevice,
 		&imageRequirementsInfo,
-		pMemoryRequirements
+		&memoryRequirements
 	);
 
-	return VULKAN_INTERNAL_FindMemoryType(
+	result = VULKAN_INTERNAL_FindMemoryType(
 		renderer,
-		pMemoryRequirements->memoryRequirements.memoryTypeBits,
+		memoryRequirements.memoryRequirements.memoryTypeBits,
 		requiredMemoryPropertyFlags,
 		ignoredMemoryPropertyFlags,
-		pMemoryTypeIndex
+		&memoryProperties->memoryTypeIndex
 	);
+
+	if (result)
+	{
+		memoryProperties->shouldAllocDedicated =
+			/* FIXME: forced dedicated? */
+			dedicatedRequirements.prefersDedicatedAllocation ||
+			dedicatedRequirements.requiresDedicatedAllocation;
+
+		memoryProperties->isHostVisible =
+			(renderer->memoryProperties.memoryTypes[memoryProperties->memoryTypeIndex].propertyFlags &
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
+
+		memoryProperties->isDeviceLocal =
+			(renderer->memoryProperties.memoryTypes[memoryProperties->memoryTypeIndex].propertyFlags &
+			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
+
+		memoryProperties->requiredAlignment = memoryRequirements.memoryRequirements.alignment;
+		memoryProperties->requiredSize = memoryRequirements.memoryRequirements.size;
+	}
+
+	return 1;
+}
+
+static uint8_t VULKAN_INTERNAL_AllocateMemoryCallback(
+	FNA3D_Memory_Context *context,
+	void* userdata,
+	void** allocation
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*) context->renderer;
+	VkMemoryAllocateInfo *allocInfo = (VkMemoryAllocateInfo*) userdata;
+	VkResult result;
+
+	result = renderer->vkAllocateMemory(
+		renderer->logicalDevice,
+		allocInfo,
+		NULL,
+		(VkDeviceMemory*)allocation
+	);
+	VULKAN_ERROR_CHECK(result, vkAllocateMemory, 0);
+
+	return 1;
+}
+
+static uint8_t VULKAN_INTERNAL_MapMemoryCallback(
+	FNA3D_Memory_Context *context,
+	FNA3D_Memory_MemoryAllocation *allocation
+) {
+	VulkanRenderer *renderer = (VulkanRenderer*)context->renderer;
+	VkResult result;
+
+	result = renderer->vkMapMemory(
+		renderer->logicalDevice,
+		allocation->memory,
+		0,
+		VK_WHOLE_SIZE,
+		0,
+		(void**)&allocation->mapPointer
+	);
+	VULKAN_ERROR_CHECK(result, vkMapMemory, 0);
+
+	return 1;
 }
 
 static void VULKAN_INTERNAL_FreeMemoryCallback(
@@ -3045,6 +3214,7 @@ static void VULKAN_INTERNAL_FreeMemoryCallback(
 	);
 }
 
+// FIXME: Should turn this into a callback
 static void VULKAN_INTERNAL_DeallocateMemory(
 	VulkanRenderer *renderer,
 	FNA3D_Memory_MemorySubAllocator *allocator,
@@ -3067,51 +3237,7 @@ static void VULKAN_INTERNAL_DeallocateMemory(
 	);
 }
 
-static uint8_t VULKAN_INTERNAL_AllocateMemoryCallback(
-	FNA3D_Memory_Context *context,
-	void* userdata,
-	void** allocation
-) {
-	VulkanRenderer *renderer = (VulkanRenderer*) context->renderer;
-	VkMemoryAllocateInfo *allocInfo = (VkMemoryAllocateInfo*) userdata;
-	VkResult result;
-
-	result = renderer->vkAllocateMemory(
-		renderer->logicalDevice,
-		allocInfo,
-		NULL,
-		(VkDeviceMemory*) allocation
-	);
-
-	if (result != VK_SUCCESS)
-	{
-		FNA3D_LogWarn("vkAllocateMemory: %s", VkErrorMessages(result));
-		return 0;
-	}
-
-	return 1;
-}
-
-static uint8_t VULKAN_INTERNAL_MapMemoryCallback(
-	FNA3D_Memory_Context *context,
-	FNA3D_Memory_MemoryAllocation *allocation
-) {
-	VulkanRenderer *renderer = (VulkanRenderer*) context->renderer;
-	VkResult result;
-
-	result = renderer->vkMapMemory(
-		renderer->logicalDevice,
-		allocation->memory,
-		0,
-		VK_WHOLE_SIZE,
-		0,
-		(void**) &allocation->mapPointer
-	);
-	VULKAN_ERROR_CHECK(result, vkMapMemory, 0);
-
-	return 1;
-}
-
+// FIXME: Should turn this into a callback
 static uint8_t VULKAN_INTERNAL_AllocateMemory(
 	VulkanRenderer *renderer,
 	VkBuffer buffer,
@@ -3156,515 +3282,6 @@ static uint8_t VULKAN_INTERNAL_AllocateMemory(
 	);
 
 	return result;
-}
-
-static uint8_t VULKAN_INTERNAL_BindBufferMemory(
-	VulkanRenderer *renderer,
-	FNA3D_Memory_MemoryUsedRegion *usedRegion,
-	VkDeviceSize alignedOffset,
-	VkBuffer buffer
-) {
-	VkResult vulkanResult;
-
-	SDL_LockMutex(usedRegion->allocation->mapLock);
-
-	vulkanResult = renderer->vkBindBufferMemory(
-		renderer->logicalDevice,
-		buffer,
-		usedRegion->allocation->memory,
-		alignedOffset
-	);
-
-	SDL_UnlockMutex(usedRegion->allocation->mapLock);
-
-	VULKAN_ERROR_CHECK(vulkanResult, vkBindBufferMemory, 0)
-
-	return 1;
-}
-
-static uint8_t VULKAN_INTERNAL_BindImageMemory(
-	VulkanRenderer *renderer,
-	FNA3D_Memory_MemoryUsedRegion *usedRegion,
-	VkDeviceSize alignedOffset,
-	VkImage image
-) {
-	VkResult vulkanResult;
-
-	SDL_LockMutex(usedRegion->allocation->mapLock);
-
-	vulkanResult = renderer->vkBindImageMemory(
-		renderer->logicalDevice,
-		image,
-		usedRegion->allocation->memory,
-		alignedOffset
-	);
-
-	SDL_UnlockMutex(usedRegion->allocation->mapLock);
-
-	VULKAN_ERROR_CHECK(vulkanResult, vkBindBufferMemory, 0)
-
-	return 1;
-}
-
-static uint8_t VULKAN_INTERNAL_BindResourceMemory(
-	VulkanRenderer* renderer,
-	uint32_t memoryTypeIndex,
-	VkMemoryRequirements2KHR* memoryRequirements,
-	VkMemoryDedicatedRequirementsKHR* dedicatedRequirements,
-	uint8_t forceDedicated,
-	VkDeviceSize resourceSize, /* may be different from requirements size! */
-	VkBuffer buffer, /* may be VK_NULL_HANDLE */
-	VkImage image, /* may be VK_NULL_HANDLE */
-	FNA3D_Memory_MemoryUsedRegion** pMemoryUsedRegion
-) {
-	FNA3D_Memory_MemoryAllocation *allocation;
-	FNA3D_Memory_MemorySubAllocator *allocator;
-	FNA3D_Memory_MemoryFreeRegion *region;
-	FNA3D_Memory_MemoryUsedRegion *usedRegion;
-
-	VkDeviceSize requiredSize, allocationSize;
-	VkDeviceSize alignedOffset;
-	uint32_t newRegionSize, newRegionOffset;
-	uint8_t shouldAllocDedicated =
-		forceDedicated ||
-		dedicatedRequirements->prefersDedicatedAllocation ||
-		dedicatedRequirements->requiresDedicatedAllocation;
-	uint8_t isDeviceLocal, isHostVisible, allocationResult;
-
-	isHostVisible =
-		(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0;
-
-	isDeviceLocal =
-		(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
-		VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0;
-
-	allocator = &renderer->memoryContext->memoryAllocator->subAllocators[memoryTypeIndex];
-	requiredSize = memoryRequirements->memoryRequirements.size;
-
-	if (	(buffer == VK_NULL_HANDLE && image == VK_NULL_HANDLE) ||
-		(buffer != VK_NULL_HANDLE && image != VK_NULL_HANDLE)	)
-	{
-		FNA3D_LogError("BindResourceMemory must be given either a VulkanBuffer or a VulkanTexture");
-		return 0;
-	}
-
-	SDL_LockMutex(renderer->memoryContext->allocatorLock);
-
-	/* find the largest free region and use it */
-	if (!shouldAllocDedicated && allocator->sortedFreeRegionCount > 0)
-	{
-		region = allocator->sortedFreeRegions[0];
-		allocation = region->allocation;
-
-		alignedOffset = FNA3D_Memory_NextHighestAlignment(
-			region->offset,
-			memoryRequirements->memoryRequirements.alignment
-		);
-
-		if (alignedOffset + requiredSize <= region->offset + region->size)
-		{
-			usedRegion = FNA3D_Memory_NewMemoryUsedRegion(
-				renderer->memoryContext,
-				allocation,
-				region->offset,
-				requiredSize + (alignedOffset - region->offset),
-				alignedOffset,
-				resourceSize,
-				memoryRequirements->memoryRequirements.alignment
-			);
-
-			usedRegion->isBuffer = buffer != VK_NULL_HANDLE;
-
-			newRegionSize = region->size - ((alignedOffset - region->offset) + requiredSize);
-			newRegionOffset = alignedOffset + requiredSize;
-
-			/* remove and add modified region to re-sort */
-			FNA3D_Memory_RemoveMemoryFreeRegion(renderer->memoryContext, region);
-
-			/* if size is 0, no need to re-insert */
-			if (newRegionSize != 0)
-			{
-				FNA3D_Memory_NewMemoryFreeRegion(
-					renderer->memoryContext,
-					allocation,
-					newRegionOffset,
-					newRegionSize
-				);
-			}
-
-			SDL_UnlockMutex(renderer->memoryContext->allocatorLock);
-
-			if (buffer != VK_NULL_HANDLE)
-			{
-				if (!VULKAN_INTERNAL_BindBufferMemory(
-					renderer,
-					usedRegion,
-					alignedOffset,
-					buffer
-				)) {
-					FNA3D_Memory_RemoveMemoryUsedRegion(
-						renderer->memoryContext,
-						usedRegion
-					);
-
-					return 0;
-				}
-			}
-			else if (image != VK_NULL_HANDLE)
-			{
-				if (!VULKAN_INTERNAL_BindImageMemory(
-					renderer,
-					usedRegion,
-					alignedOffset,
-					image
-				)) {
-					FNA3D_Memory_RemoveMemoryUsedRegion(
-						renderer->memoryContext,
-						usedRegion
-					);
-
-					return 0;
-				}
-			}
-
-			*pMemoryUsedRegion = usedRegion;
-			return 1;
-		}
-	}
-
-	/* No suitable free regions exist, allocate a new memory region */
-
-	if (shouldAllocDedicated)
-	{
-		allocationSize = requiredSize;
-	}
-	else if (requiredSize > allocator->nextAllocationSize)
-	{
-		/* allocate a page of required size aligned to ALLOCATION_INCREMENT increments */
-		allocationSize = FNA3D_Memory_NextHighestAlignment(requiredSize, ALLOCATION_INCREMENT);
-	}
-	else
-	{
-		allocationSize = allocator->nextAllocationSize;
-	}
-
-	if (	isDeviceLocal &&
-		(renderer->deviceLocalHeapUsage + allocationSize > renderer->maxDeviceLocalHeapUsage)	)
-	{
-		/* we are oversubscribing device local memory */
-		SDL_UnlockMutex(renderer->memoryContext->allocatorLock);
-		return 2;
-	}
-
-	allocationResult = VULKAN_INTERNAL_AllocateMemory(
-		renderer,
-		buffer,
-		image,
-		memoryTypeIndex,
-		allocationSize,
-		shouldAllocDedicated,
-		isHostVisible,
-		&allocation
-	);
-
-	/* Uh oh, we're out of memory */
-	if (allocationResult == 0)
-	{
-		SDL_UnlockMutex(renderer->memoryContext->allocatorLock);
-
-		/* Responsibility of the caller to handle being out of memory */
-		FNA3D_LogWarn("Failed to allocate memory!");
-		return 2;
-	}
-
-	if (isDeviceLocal)
-	{
-		renderer->deviceLocalHeapUsage += allocationSize;
-	}
-
-	usedRegion = FNA3D_Memory_NewMemoryUsedRegion(
-		renderer->memoryContext,
-		allocation,
-		0,
-		requiredSize,
-		0,
-		resourceSize,
-		memoryRequirements->memoryRequirements.alignment
-	);
-
-	usedRegion->isBuffer = buffer != VK_NULL_HANDLE;
-
-	region = allocation->freeRegions[0];
-
-	newRegionOffset = region->offset + requiredSize;
-	newRegionSize = region->size - requiredSize;
-
-	FNA3D_Memory_RemoveMemoryFreeRegion(renderer->memoryContext, region);
-
-	if (newRegionSize != 0)
-	{
-		FNA3D_Memory_NewMemoryFreeRegion(
-			renderer->memoryContext,
-			allocation,
-			newRegionOffset,
-			newRegionSize
-		);
-	}
-
-	SDL_UnlockMutex(renderer->memoryContext->allocatorLock);
-
-	if (buffer != VK_NULL_HANDLE)
-	{
-		if (!VULKAN_INTERNAL_BindBufferMemory(
-			renderer,
-			usedRegion,
-			0,
-			buffer
-		)) {
-			FNA3D_Memory_RemoveMemoryUsedRegion(
-				renderer->memoryContext,
-				usedRegion
-			);
-
-			return 0;
-		}
-	}
-	else if (image != VK_NULL_HANDLE)
-	{
-		if (!VULKAN_INTERNAL_BindImageMemory(
-			renderer,
-			usedRegion,
-			0,
-			image
-		)) {
-			FNA3D_Memory_RemoveMemoryUsedRegion(
-				renderer->memoryContext,
-				usedRegion
-			);
-
-			return 0;
-		}
-	}
-
-	*pMemoryUsedRegion = usedRegion;
-	return 1;
-}
-
-static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
-	VulkanRenderer* renderer,
-	VkImage image,
-	uint8_t isRenderTarget,
-	FNA3D_Memory_MemoryUsedRegion** usedRegion
-) {
-	uint8_t bindResult = 0;
-	uint32_t memoryTypeIndex = 0;
-	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
-	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
-	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
-	{
-		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
-		NULL
-	};
-	VkMemoryRequirements2KHR memoryRequirements =
-	{
-		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
-		&dedicatedRequirements
-	};
-
-	/* Prefer GPU allocation */
-	requiredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-	ignoredMemoryPropertyFlags = 0;
-
-	while (VULKAN_INTERNAL_FindImageMemoryRequirements(
-		renderer,
-		image,
-		requiredMemoryPropertyFlags,
-		ignoredMemoryPropertyFlags,
-		&memoryRequirements,
-		&memoryTypeIndex
-	)) {
-		bindResult = VULKAN_INTERNAL_BindResourceMemory(
-			renderer,
-			memoryTypeIndex,
-			&memoryRequirements,
-			&dedicatedRequirements,
-			isRenderTarget,
-			memoryRequirements.memoryRequirements.size,
-			VK_NULL_HANDLE,
-			image,
-			usedRegion
-		);
-
-		if (bindResult == 1)
-		{
-			break;
-		}
-		else /* Bind failed, try the next device-local heap */
-		{
-			memoryTypeIndex += 1;
-		}
-	}
-
-	/* Bind _still_ failed, try again without device local */
-	if (bindResult != 1)
-	{
-		memoryTypeIndex = 0;
-		requiredMemoryPropertyFlags = 0;
-		ignoredMemoryPropertyFlags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
-
-		if (isRenderTarget)
-		{
-			FNA3D_LogWarn("RenderTarget is allocated in host memory, pre-allocate your targets!");
-		}
-
-		FNA3D_LogWarn("Out of device local memory, falling back to host memory");
-
-		while (VULKAN_INTERNAL_FindImageMemoryRequirements(
-			renderer,
-			image,
-			requiredMemoryPropertyFlags,
-			ignoredMemoryPropertyFlags,
-			&memoryRequirements,
-			&memoryTypeIndex
-		)) {
-			bindResult = VULKAN_INTERNAL_BindResourceMemory(
-				renderer,
-				memoryTypeIndex,
-				&memoryRequirements,
-				&dedicatedRequirements,
-				isRenderTarget,
-				memoryRequirements.memoryRequirements.size,
-				VK_NULL_HANDLE,
-				image,
-				usedRegion
-			);
-
-			if (bindResult == 1)
-			{
-				break;
-			}
-			else /* Bind failed, try the next heap */
-			{
-				memoryTypeIndex += 1;
-			}
-		}
-	}
-
-	return bindResult;
-}
-
-static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
-	VulkanRenderer* renderer,
-	VkBuffer buffer,
-	VkDeviceSize size,
-	uint8_t preferDeviceLocal,
-	uint8_t isTransferBuffer,
-	FNA3D_Memory_MemoryUsedRegion** usedRegion
-) {
-	uint8_t bindResult = 0;
-	uint32_t memoryTypeIndex = 0;
-	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
-	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
-	VkMemoryDedicatedRequirementsKHR dedicatedRequirements =
-	{
-		VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS_KHR,
-		NULL
-	};
-	VkMemoryRequirements2KHR memoryRequirements =
-	{
-		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
-		&dedicatedRequirements
-	};
-
-	requiredMemoryPropertyFlags =
-		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-	if (preferDeviceLocal)
-	{
-		requiredMemoryPropertyFlags |=
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-	}
-	ignoredMemoryPropertyFlags = 0;
-
-	while (VULKAN_INTERNAL_FindBufferMemoryRequirements(
-		renderer,
-		buffer,
-		requiredMemoryPropertyFlags,
-		ignoredMemoryPropertyFlags,
-		&memoryRequirements,
-		&memoryTypeIndex
-	)) {
-		bindResult = VULKAN_INTERNAL_BindResourceMemory(
-			renderer,
-			memoryTypeIndex,
-			&memoryRequirements,
-			&dedicatedRequirements,
-			isTransferBuffer,
-			size,
-			buffer,
-			VK_NULL_HANDLE,
-			usedRegion
-		);
-
-		if (bindResult == 1)
-		{
-			break;
-		}
-		else /* Bind failed, try the next device-local heap */
-		{
-			memoryTypeIndex += 1;
-		}
-	}
-
-	/* Bind failed, try again if originally preferred device local */
-	if (bindResult != 1 && preferDeviceLocal)
-	{
-		memoryTypeIndex = 0;
-		requiredMemoryPropertyFlags =
-			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-		/* Follow-up for the warning logged by FindMemoryType */
-		if (!renderer->unifiedMemoryWarning)
-		{
-			FNA3D_LogWarn("No unified memory found, falling back to host memory");
-			renderer->unifiedMemoryWarning = 1;
-		}
-
-		while (VULKAN_INTERNAL_FindBufferMemoryRequirements(
-			renderer,
-			buffer,
-			requiredMemoryPropertyFlags,
-			ignoredMemoryPropertyFlags,
-			&memoryRequirements,
-			&memoryTypeIndex
-		)) {
-			bindResult = VULKAN_INTERNAL_BindResourceMemory(
-				renderer,
-				memoryTypeIndex,
-				&memoryRequirements,
-				&dedicatedRequirements,
-				isTransferBuffer,
-				size,
-				buffer,
-				VK_NULL_HANDLE,
-				usedRegion
-			);
-
-			if (bindResult == 1)
-			{
-				break;
-			}
-			else /* Bind failed, try the next heap */
-			{
-				memoryTypeIndex += 1;
-			}
-		}
-	}
-
-	return bindResult;
 }
 
 static uint8_t VULKAN_INTERNAL_DefragmentMemory(
@@ -3736,8 +3353,8 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 				VULKAN_ERROR_CHECK(result, vkCreateBuffer, 0)
 
 				if (
-					VULKAN_INTERNAL_BindMemoryForBuffer(
-						renderer,
+					FNA3D_Memory_BindMemoryForBuffer(
+						renderer->memoryContext,
 						copyBuffer,
 						currentRegion->resourceSize,
 						currentRegionBuffer->preferDeviceLocal,
@@ -3847,8 +3464,8 @@ static uint8_t VULKAN_INTERNAL_DefragmentMemory(
 
 				VULKAN_ERROR_CHECK(result, vkCreateImage, 0)
 
-				if (VULKAN_INTERNAL_BindMemoryForImage(
-					renderer,
+				if (FNA3D_Memory_BindMemoryForTexture(
+					renderer->memoryContext,
 					copyImage,
 					0,
 					&newRegion
@@ -4520,8 +4137,8 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 
 	buffer->bufferCreateInfo = bufferCreateInfo;
 
-	bindResult = VULKAN_INTERNAL_BindMemoryForBuffer(
-		renderer,
+	bindResult = FNA3D_Memory_BindMemoryForBuffer(
+		renderer->memoryContext,
 		buffer->buffer,
 		buffer->size,
 		buffer->preferDeviceLocal,
@@ -6804,8 +6421,8 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	texture->isRenderTarget = isRenderTarget;
 	texture->imageCreateInfo = imageCreateInfo;
 
-	bindResult = VULKAN_INTERNAL_BindMemoryForImage(
-		renderer,
+	bindResult = FNA3D_Memory_BindMemoryForTexture(
+		renderer->memoryContext,
 		texture->image,
 		isRenderTarget,
 		&texture->usedRegion
@@ -11914,9 +11531,13 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->memoryContext = (FNA3D_Memory_Context*) SDL_malloc(sizeof(FNA3D_Memory_Context));
 	renderer->memoryContext->renderer = (FNA3D_Renderer*) renderer;
 
-	renderer->memoryContext->allocateMemoryFunc = VULKAN_INTERNAL_AllocateMemoryCallback;
-	renderer->memoryContext->freeMemoryFunc = VULKAN_INTERNAL_FreeMemoryCallback;
-	renderer->memoryContext->mapMemoryFunc = VULKAN_INTERNAL_MapMemoryCallback;
+	renderer->memoryContext->allocateMemory = VULKAN_INTERNAL_AllocateMemoryCallback;
+	renderer->memoryContext->freeMemory = VULKAN_INTERNAL_FreeMemoryCallback;
+	renderer->memoryContext->mapMemory = VULKAN_INTERNAL_MapMemoryCallback;
+	renderer->memoryContext->findBufferMemoryRequirements = VULKAN_INTERNAL_FindBufferMemoryRequirementsCallback;
+	renderer->memoryContext->findTextureMemoryRequirements = VULKAN_INTERNAL_FindTextureMemoryRequirementsCallback;
+	renderer->memoryContext->bindBufferMemory = VULKAN_INTERNAL_BindBufferMemoryCallback;
+	renderer->memoryContext->bindTextureMemory = VULKAN_INTERNAL_BindTextureMemoryCallback;
 
 	renderer->memoryContext->bufferDefragInProgress = 0;
 	renderer->memoryContext->needDefrag = 0;

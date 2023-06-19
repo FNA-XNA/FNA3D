@@ -115,11 +115,25 @@ typedef struct FNA3D_Memory_MemoryAllocator
 	uint8_t numSubAllocators;
 } FNA3D_Memory_MemoryAllocator;
 
+typedef struct FNA3D_Memory_Properties
+{
+	FNA3D_Memory_MemorySize requiredSize;
+	FNA3D_Memory_MemorySize requiredAlignment;
+	uint32_t memoryTypeIndex;
+	uint8_t shouldAllocDedicated;
+	uint8_t isHostVisible;
+	uint8_t isDeviceLocal;
+} FNA3D_Memory_Properties;
+
 typedef struct FNA3D_Memory_Context FNA3D_Memory_Context;
 
 typedef void (FNA3DCALL * FNA3D_Memory_FreeMemoryFunc)(FNA3D_Memory_Context *context, void* memory);
-typedef uint8_t (FNA3DCALL * FNA3D_Memory_AllocateMemoryFunc)(FNA3D_Memory_Context *context, void* userdata, void** allocation);
+typedef uint8_t (FNA3DCALL * FNA3D_Memory_AllocateMemoryFunc)(FNA3D_Memory_Context *context, void* userdata, void** pAllocation);
 typedef uint8_t (FNA3DCALL * FNA3D_Memory_MapMemoryFunc)(FNA3D_Memory_Context *context, FNA3D_Memory_MemoryAllocation *allocation);
+typedef uint8_t (FNA3DCALL * FNA3D_Memory_FindBufferMemoryRequirementsFunc)(FNA3D_Memory_Context *context, void* nativeBuffer, uint8_t preferDeviceLocal, FNA3D_Memory_Properties *pMemoryProperties);
+typedef uint8_t (FNA3DCALL * FNA3D_Memory_FindTextureMemoryRequirementsFunc)(FNA3D_Memory_Context *context, void* nativeTexture, uint8_t preferDeviceLocal, FNA3D_Memory_Properties *pMemoryProperties);
+typedef uint8_t (FNA3DCALL * FNA3D_Memory_BindBufferMemoryFunc)(FNA3D_Memory_Context *context, FNA3D_Memory_MemoryUsedRegion *usedRegion, FNA3D_Memory_MemorySize alignedOffset, void* nativeBuffer);
+typedef uint8_t (FNA3DCALL * FNA3D_Memory_BindTextureMemoryFunc)(FNA3D_Memory_Context *context, FNA3D_Memory_MemoryUsedRegion *usedRegion, FNA3D_Memory_MemorySize alignedOffset, void* nativeTexture);
 
 typedef struct FNA3D_Memory_Context
 {
@@ -134,9 +148,13 @@ typedef struct FNA3D_Memory_Context
 	SDL_mutex *allocatorLock;
 
 	/* Driver-specific callbacks */
-	FNA3D_Memory_FreeMemoryFunc freeMemoryFunc;
-	FNA3D_Memory_AllocateMemoryFunc allocateMemoryFunc;
-	FNA3D_Memory_MapMemoryFunc mapMemoryFunc;
+	FNA3D_Memory_FreeMemoryFunc freeMemory;
+	FNA3D_Memory_AllocateMemoryFunc allocateMemory;
+	FNA3D_Memory_MapMemoryFunc mapMemory;
+	FNA3D_Memory_FindBufferMemoryRequirementsFunc findBufferMemoryRequirements;
+	FNA3D_Memory_FindTextureMemoryRequirementsFunc findTextureMemoryRequirements;
+	FNA3D_Memory_BindBufferMemoryFunc bindBufferMemory;
+	FNA3D_Memory_BindTextureMemoryFunc bindTextureMemory;
 
 } FNA3D_Memory_Context;
 
@@ -144,28 +162,6 @@ typedef struct FNA3D_Memory_Context
 
 void FNA3D_Memory_MakeMemoryUnavailable(
 	FNA3D_Memory_MemoryAllocation *allocation
-);
-
-void FNA3D_Memory_RemoveMemoryFreeRegion(
-	FNA3D_Memory_Context *context,
-	FNA3D_Memory_MemoryFreeRegion *freeRegion
-);
-
-void FNA3D_Memory_NewMemoryFreeRegion(
-	FNA3D_Memory_Context *context,
-	FNA3D_Memory_MemoryAllocation *allocation,
-	FNA3D_Memory_MemorySize offset,
-	FNA3D_Memory_MemorySize size
-);
-
-FNA3D_Memory_MemoryUsedRegion* FNA3D_Memory_NewMemoryUsedRegion(
-	FNA3D_Memory_Context *context,
-	FNA3D_Memory_MemoryAllocation *allocation,
-	FNA3D_Memory_MemorySize offset,
-	FNA3D_Memory_MemorySize size,
-	FNA3D_Memory_MemorySize resourceOffset,
-	FNA3D_Memory_MemorySize resourceSize,
-	FNA3D_Memory_MemorySize alignment
 );
 
 void FNA3D_Memory_RemoveMemoryUsedRegion(
@@ -193,6 +189,22 @@ uint8_t FNA3D_Memory_FindAllocationToDefragment(
 	FNA3D_Memory_Context *context,
 	FNA3D_Memory_MemorySubAllocator *allocator,
 	uint32_t *allocationIndexToDefrag
+);
+
+uint8_t FNA3D_Memory_BindMemoryForBuffer(
+	FNA3D_Memory_Context *context,
+	void* nativeBuffer,
+	FNA3D_Memory_MemorySize size,
+	uint8_t preferDeviceLocal,
+	uint8_t isTransferBuffer,
+	FNA3D_Memory_MemoryUsedRegion **pMemoryUsedRegion
+);
+
+uint8_t FNA3D_Memory_BindMemoryForTexture(
+	FNA3D_Memory_Context *context,
+	void* nativeTexture,
+	uint8_t isRenderTarget,
+	FNA3D_Memory_MemoryUsedRegion** usedRegion
 );
 
 #endif /* FNA3D_MEMORY_H */

@@ -54,7 +54,7 @@ void FNA3D_Memory_MakeMemoryUnavailable(
 	}
 }
 
-void FNA3D_Memory_RemoveMemoryFreeRegion(
+static void MEMORY_INTERNAL_RemoveMemoryFreeRegion(
 	FNA3D_Memory_Context *context,
 	FNA3D_Memory_MemoryFreeRegion *freeRegion
 ) {
@@ -98,7 +98,7 @@ void FNA3D_Memory_RemoveMemoryFreeRegion(
 	SDL_UnlockMutex(context->allocatorLock);
 }
 
-void FNA3D_Memory_NewMemoryFreeRegion(
+static void MEMORY_INTERNAL_NewMemoryFreeRegion(
 	FNA3D_Memory_Context *context,
 	FNA3D_Memory_MemoryAllocation *allocation,
 	FNA3D_Memory_MemorySize offset,
@@ -120,8 +120,8 @@ void FNA3D_Memory_NewMemoryFreeRegion(
 			newOffset = allocation->freeRegions[i]->offset;
 			newSize = allocation->freeRegions[i]->size + size;
 
-			FNA3D_Memory_RemoveMemoryFreeRegion(context, allocation->freeRegions[i]);
-			FNA3D_Memory_NewMemoryFreeRegion(context, allocation, newOffset, newSize);
+			MEMORY_INTERNAL_RemoveMemoryFreeRegion(context, allocation->freeRegions[i]);
+			MEMORY_INTERNAL_NewMemoryFreeRegion(context, allocation, newOffset, newSize);
 
 			SDL_UnlockMutex(context->allocatorLock);
 			return;
@@ -133,8 +133,8 @@ void FNA3D_Memory_NewMemoryFreeRegion(
 			newOffset = offset;
 			newSize = allocation->freeRegions[i]->size + size;
 
-			FNA3D_Memory_RemoveMemoryFreeRegion(context, allocation->freeRegions[i]);
-			FNA3D_Memory_NewMemoryFreeRegion(context, allocation, newOffset, newSize);
+			MEMORY_INTERNAL_RemoveMemoryFreeRegion(context, allocation->freeRegions[i]);
+			MEMORY_INTERNAL_NewMemoryFreeRegion(context, allocation, newOffset, newSize);
 
 			SDL_UnlockMutex(context->allocatorLock);
 			return;
@@ -202,7 +202,7 @@ void FNA3D_Memory_NewMemoryFreeRegion(
 	SDL_UnlockMutex(context->allocatorLock);
 }
 
-FNA3D_Memory_MemoryUsedRegion* FNA3D_Memory_NewMemoryUsedRegion(
+static FNA3D_Memory_MemoryUsedRegion* MEMORY_INTERNAL_NewMemoryUsedRegion(
 	FNA3D_Memory_Context *context,
 	FNA3D_Memory_MemoryAllocation *allocation,
 	FNA3D_Memory_MemorySize offset,
@@ -270,7 +270,7 @@ void FNA3D_Memory_RemoveMemoryUsedRegion(
 
 	usedRegion->allocation->usedRegionCount -= 1;
 
-	FNA3D_Memory_NewMemoryFreeRegion(
+	MEMORY_INTERNAL_NewMemoryFreeRegion(
 		context,
 		usedRegion->allocation,
 		usedRegion->offset,
@@ -301,7 +301,7 @@ void FNA3D_Memory_DeallocateMemory(
 
 	for (i = 0; i < allocation->freeRegionCount; i += 1)
 	{
-		FNA3D_Memory_RemoveMemoryFreeRegion(
+		MEMORY_INTERNAL_RemoveMemoryFreeRegion(
 			context,
 			allocation->freeRegions[i]
 		);
@@ -313,7 +313,7 @@ void FNA3D_Memory_DeallocateMemory(
 	 */
 	SDL_free(allocation->usedRegions);
 
-	context->freeMemoryFunc(context, allocation->memory);
+	context->freeMemory(context, allocation->memory);
 
 	SDL_DestroyMutex(allocation->mapLock);
 	SDL_free(allocation);
@@ -378,7 +378,7 @@ uint8_t FNA3D_Memory_AllocateMemory(
 
 	allocation->allocator = allocator;
 
-	result = context->allocateMemoryFunc(
+	result = context->allocateMemory(
 		context,
 		userdata,
 		&allocation->memory
@@ -403,7 +403,7 @@ uint8_t FNA3D_Memory_AllocateMemory(
 	/* persistent mapping for host memory */
 	if (isHostVisible)
 	{
-		result = context->mapMemoryFunc(
+		result = context->mapMemory(
 			context,
 			allocation
 		);
@@ -419,7 +419,7 @@ uint8_t FNA3D_Memory_AllocateMemory(
 		allocation->mapPointer = NULL;
 	}
 
-	FNA3D_Memory_NewMemoryFreeRegion(
+	MEMORY_INTERNAL_NewMemoryFreeRegion(
 		context,
 		allocation,
 		0,
@@ -452,4 +452,429 @@ uint8_t FNA3D_Memory_FindAllocationToDefragment(
 	}
 
 	return 0;
+}
+
+static uint8_t MEMORY_INTERNAL_BindBufferMemory(
+	FNA3D_Memory_Context *context,
+	FNA3D_Memory_MemoryUsedRegion *usedRegion,
+	FNA3D_Memory_MemorySize alignedOffset,
+	void* nativeBuffer
+) {
+	uint8_t result;
+
+	SDL_LockMutex(usedRegion->allocation->mapLock);
+
+	result = context->bindBufferMemory(
+		context,
+		usedRegion,
+		alignedOffset,
+		nativeBuffer
+	);
+
+	SDL_UnlockMutex(usedRegion->allocation->mapLock);
+
+	return result;
+}
+
+static uint8_t MEMORY_INTERNAL_BindTextureMemory(
+	FNA3D_Memory_Context *context,
+	FNA3D_Memory_MemoryUsedRegion *usedRegion,
+	FNA3D_Memory_MemorySize alignedOffset,
+	void* nativeTexture
+) {
+	uint8_t result;
+
+	SDL_LockMutex(usedRegion->allocation->mapLock);
+
+	result = context->bindTextureMemory(
+		context,
+		usedRegion,
+		alignedOffset,
+		nativeTexture
+	);
+
+	SDL_UnlockMutex(usedRegion->allocation->mapLock);
+
+	return result;
+}
+
+static uint8_t MEMORY_INTERNAL_BindResourceMemory(
+	FNA3D_Memory_Context *context,
+	FNA3D_Memory_Properties *memoryProperties,
+	uint8_t isBuffer,
+	void* resource, /* may be NULL! */
+	FNA3D_Memory_MemorySize resourceSize, /* may be different from memoryProperties->requiredSize! */
+	FNA3D_Memory_MemoryUsedRegion **pMemoryUsedRegion
+) {
+	FNA3D_Memory_MemoryAllocation *allocation;
+	FNA3D_Memory_MemorySubAllocator *allocator;
+	FNA3D_Memory_MemoryFreeRegion *region;
+	FNA3D_Memory_MemoryUsedRegion *usedRegion;
+
+	FNA3D_Memory_MemorySize allocationSize;
+	FNA3D_Memory_MemorySize alignedOffset;
+	FNA3D_Memory_MemorySize newRegionSize, newRegionOffset;
+	uint8_t allocationResult;
+
+	allocator = &context->memoryAllocator->subAllocators[memoryProperties->memoryTypeIndex];
+
+	if (resource == NULL)
+	{
+		FNA3D_LogError("BindResourceMemory must be given either a Buffer or a Texture");
+		return 0;
+	}
+
+	SDL_LockMutex(context->allocatorLock);
+
+	/* find the largest free region and use it */
+	if (!memoryProperties->shouldAllocDedicated && allocator->sortedFreeRegionCount > 0)
+	{
+		region = allocator->sortedFreeRegions[0];
+		allocation = region->allocation;
+
+		alignedOffset = FNA3D_Memory_NextHighestAlignment(
+			region->offset,
+			memoryProperties->requiredAlignment
+		);
+
+		if (alignedOffset + memoryProperties->requiredSize <= region->offset + region->size)
+		{
+			usedRegion = MEMORY_INTERNAL_NewMemoryUsedRegion(
+				context,
+				allocation,
+				region->offset,
+				memoryProperties->requiredSize + (alignedOffset - region->offset),
+				alignedOffset,
+				resourceSize,
+				memoryProperties->requiredAlignment
+			);
+
+			usedRegion->isBuffer = isBuffer;
+
+			newRegionSize = region->size - ((alignedOffset - region->offset) + memoryProperties->requiredSize);
+			newRegionOffset = alignedOffset + memoryProperties->requiredSize;
+
+			/* remove and add modified region to re-sort */
+			MEMORY_INTERNAL_RemoveMemoryFreeRegion(context, region);
+
+			/* if size is 0, no need to re-insert */
+			if (newRegionSize != 0)
+			{
+				MEMORY_INTERNAL_NewMemoryFreeRegion(
+					context,
+					allocation,
+					newRegionOffset,
+					newRegionSize
+				);
+			}
+
+			SDL_UnlockMutex(context->allocatorLock);
+
+			if (isBuffer)
+			{
+				if (!MEMORY_INTERNAL_BindBufferMemory(
+					context,
+					usedRegion,
+					alignedOffset,
+					resource
+				)) {
+					FNA3D_Memory_RemoveMemoryUsedRegion(
+						context,
+						usedRegion
+					);
+
+					return 0;
+				}
+			}
+			else
+			{
+				// FIXME
+				if (!MEMORY_INTERNAL_BindTextureMemory(
+					context,
+					usedRegion,
+					alignedOffset,
+					resource
+				)) {
+					FNA3D_Memory_RemoveMemoryUsedRegion(
+						context,
+						usedRegion
+					);
+
+					return 0;
+				}
+			}
+
+			*pMemoryUsedRegion = usedRegion;
+			return 1;
+		}
+	}
+
+	/* No suitable free regions exist, allocate a new memory region */
+
+	if (memoryProperties->shouldAllocDedicated)
+	{
+		allocationSize = memoryProperties->requiredSize;
+	}
+	else if (memoryProperties->requiredSize > allocator->nextAllocationSize)
+	{
+		/* allocate a page of required size aligned to ALLOCATION_INCREMENT increments */
+		allocationSize = FNA3D_Memory_NextHighestAlignment(memoryProperties->requiredSize, ALLOCATION_INCREMENT);
+	}
+	else
+	{
+		allocationSize = allocator->nextAllocationSize;
+	}
+
+	// FIXME
+	//if (	memoryProperties->isDeviceLocal &&
+	//	(renderer->deviceLocalHeapUsage + allocationSize > renderer->maxDeviceLocalHeapUsage))
+	//{
+	//	/* we are oversubscribing device local memory */
+	//	SDL_UnlockMutex(renderer->memoryContext->allocatorLock);
+	//	return 2;
+	//}
+
+	allocationResult = FNA3D_Memory_AllocateMemory(
+		context,
+		resource,
+		memoryProperties->memoryTypeIndex,
+		allocationSize,
+		memoryProperties->shouldAllocDedicated,
+		memoryProperties->isHostVisible,
+		&allocation
+	);
+
+	/* Uh oh, we're out of memory */
+	if (allocationResult == 0)
+	{
+		SDL_UnlockMutex(context->allocatorLock);
+
+		/* Responsibility of the caller to handle being out of memory */
+		FNA3D_LogWarn("Failed to allocate memory!");
+		return 2;
+	}
+
+	// FIXME
+	//if (memoryProperties->isDeviceLocal)
+	//{
+	//	renderer->deviceLocalHeapUsage += allocationSize;
+	//}
+
+	usedRegion = MEMORY_INTERNAL_NewMemoryUsedRegion(
+		context,
+		allocation,
+		0,
+		memoryProperties->requiredSize,
+		0,
+		resourceSize,
+		memoryProperties->requiredAlignment
+	);
+
+	usedRegion->isBuffer = isBuffer;
+
+	region = allocation->freeRegions[0];
+
+	newRegionOffset = region->offset + memoryProperties->requiredSize;
+	newRegionSize = region->size - memoryProperties->requiredSize;
+
+	MEMORY_INTERNAL_RemoveMemoryFreeRegion(context, region);
+
+	if (newRegionSize != 0)
+	{
+		MEMORY_INTERNAL_NewMemoryFreeRegion(
+			context,
+			allocation,
+			newRegionOffset,
+			newRegionSize
+		);
+	}
+
+	SDL_UnlockMutex(context->allocatorLock);
+
+	if (isBuffer)
+	{
+		if (!MEMORY_INTERNAL_BindBufferMemory(
+			context,
+			usedRegion,
+			0,
+			resource
+		)) {
+			FNA3D_Memory_RemoveMemoryUsedRegion(
+				context,
+				usedRegion
+			);
+
+			return 0;
+		}
+	}
+	else
+	{
+		if (!MEMORY_INTERNAL_BindTextureMemory(
+			context,
+			usedRegion,
+			0,
+			resource
+		)) {
+			FNA3D_Memory_RemoveMemoryUsedRegion(
+				context,
+				usedRegion
+			);
+
+			return 0;
+		}
+	}
+
+	*pMemoryUsedRegion = usedRegion;
+	return 1;
+}
+
+uint8_t FNA3D_Memory_BindMemoryForBuffer(
+	FNA3D_Memory_Context *context,
+	void* nativeBuffer,
+	FNA3D_Memory_MemorySize size,
+	uint8_t preferDeviceLocal,
+	uint8_t isTransferBuffer,
+	FNA3D_Memory_MemoryUsedRegion **pMemoryUsedRegion
+) {
+	uint8_t bindResult = 0;
+	FNA3D_Memory_Properties memoryProperties = { 0 };
+
+	while (context->findBufferMemoryRequirements(
+		context,
+		nativeBuffer,
+		preferDeviceLocal,
+		&memoryProperties
+	)) {
+		bindResult = MEMORY_INTERNAL_BindResourceMemory(
+			context,
+			&memoryProperties,
+			1,
+			nativeBuffer,
+			size,
+			pMemoryUsedRegion
+		);
+
+		if (bindResult == 1)
+		{
+			break;
+		}
+		else /* Bind failed, try the next memory type */
+		{
+			memoryProperties.memoryTypeIndex += 1;
+		}
+	}
+
+	/* Bind failed, try again if originally preferred device local */
+	if (bindResult != 1 && preferDeviceLocal)
+	{
+		memoryProperties.memoryTypeIndex = 0;
+
+		// FIXME
+		///* Follow-up for the warning logged by FindMemoryType */
+		//if (!context->unifiedMemoryWarning)
+		//{
+		//	FNA3D_LogWarn("No unified memory found, falling back to host memory");
+		//	context->unifiedMemoryWarning = 1;
+		//}
+
+		while (context->findBufferMemoryRequirements(
+			context,
+			nativeBuffer,
+			0,
+			&memoryProperties
+		)) {
+			bindResult = MEMORY_INTERNAL_BindResourceMemory(
+				context,
+				&memoryProperties,
+				1,
+				nativeBuffer,
+				size,
+				pMemoryUsedRegion
+			);
+
+			if (bindResult == 1)
+			{
+				break;
+			}
+			else /* Bind failed, try the next heap */
+			{
+				memoryProperties.memoryTypeIndex += 1;
+			}
+		}
+	}
+
+	return bindResult;
+}
+
+uint8_t FNA3D_Memory_BindMemoryForTexture(
+	FNA3D_Memory_Context *context,
+	void* nativeTexture,
+	uint8_t isRenderTarget,
+	FNA3D_Memory_MemoryUsedRegion** usedRegion
+) {
+	uint8_t bindResult = 0;
+	FNA3D_Memory_Properties memoryProperties = { 0 };
+
+	while (context->findTextureMemoryRequirements(
+		context,
+		nativeTexture,
+		1,
+		&memoryProperties
+	)) {
+		bindResult = MEMORY_INTERNAL_BindResourceMemory(
+			context,
+			&memoryProperties,
+			0,
+			nativeTexture,
+			memoryProperties.requiredSize,
+			usedRegion
+		);
+
+		if (bindResult == 1)
+		{
+			break;
+		}
+		else /* Bind failed, try the next device-local heap */
+		{
+			memoryProperties.memoryTypeIndex += 1;
+		}
+	}
+
+	/* Bind _still_ failed, try again without device local */
+	if (bindResult != 1)
+	{
+		if (isRenderTarget)
+		{
+			FNA3D_LogWarn("RenderTarget is allocated in host memory, pre-allocate your targets!");
+		}
+
+		FNA3D_LogWarn("Out of device local memory, falling back to host memory");
+
+		while (context->findTextureMemoryRequirements(
+			context,
+			nativeTexture,
+			0,
+			&memoryProperties
+		)) {
+			bindResult = MEMORY_INTERNAL_BindResourceMemory(
+				context,
+				&memoryProperties,
+				0,
+				nativeTexture,
+				memoryProperties.requiredSize,
+				usedRegion
+			);
+
+			if (bindResult == 1)
+			{
+				break;
+			}
+			else /* Bind failed, try the next heap */
+			{
+				memoryProperties.memoryTypeIndex += 1;
+			}
+		}
+	}
+
+	return bindResult;
 }
