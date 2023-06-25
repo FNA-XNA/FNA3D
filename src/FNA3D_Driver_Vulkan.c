@@ -1044,7 +1044,7 @@ struct VulkanBuffer
 	VkBufferUsageFlags usage;
 	uint8_t preferDeviceLocal;
 	uint8_t isTransferBuffer;
-	uint8_t bound;
+	SDL_atomic_t refcount;
 };
 
 typedef struct VulkanColorBuffer
@@ -3676,7 +3676,7 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	buffer->usage = usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
 	buffer->preferDeviceLocal = preferDeviceLocal;
 	buffer->isTransferBuffer = isTransferBuffer;
-	buffer->bound = 0;
+	SDL_AtomicSet(&buffer->refcount, 0);
 
 	bufferCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufferCreateInfo.pNext = NULL;
@@ -4680,7 +4680,9 @@ static void VULKAN_INTERNAL_CleanCommandBuffer(
 	{
 		if (vulkanCommandBufferContainer->boundBuffers[i] != NULL)
 		{
-			vulkanCommandBufferContainer->boundBuffers[i]->bound = 0;
+			SDL_AtomicDecRef(
+				&vulkanCommandBufferContainer->boundBuffers[i]->refcount
+			);
 		}
 	}
 	vulkanCommandBufferContainer->boundBufferCount = 0;
@@ -5711,12 +5713,18 @@ static void VULKAN_INTERNAL_MarkBufferAsBound(
 	VulkanRenderer *renderer,
 	VulkanBuffer *vulkanBuffer
 ) {
-	if (vulkanBuffer->bound)
+	uint32_t i;
+
+	for (i = 0; i < renderer->currentCommandBufferContainer->boundBufferCount; i += 1)
 	{
-		return;
+		if (vulkanBuffer == renderer->currentCommandBufferContainer->boundBuffers[i])
+		{
+			/* Buffer is already referenced, nothing to do */
+			return;
+		}
 	}
 
-	vulkanBuffer->bound = 1;
+	SDL_AtomicIncRef(&vulkanBuffer->refcount);
 
 	if (renderer->currentCommandBufferContainer->boundBufferCount >= renderer->currentCommandBufferContainer->boundBufferCapacity)
 	{
@@ -5818,7 +5826,7 @@ static void VULKAN_INTERNAL_SetBufferData(
 	}
 	else
 	{
-		if (options == FNA3D_SETDATAOPTIONS_DISCARD && vulkanBuffer->bound)
+		if (options == FNA3D_SETDATAOPTIONS_DISCARD && SDL_AtomicGet(&vulkanBuffer->refcount) > 0)
 		{
 			/* If DISCARD is set and the buffer was bound,
 			 * we have to replace the buffer pointer.
@@ -11268,7 +11276,7 @@ static uint8_t VULKAN_Memory_BufferHandleInUse(
 	FNA3D_BufferHandle *buffer
 ) {
 	VulkanBuffer *vulkanBuffer = (VulkanBuffer*) buffer;
-	return vulkanBuffer->bound;
+	return SDL_AtomicGet(&vulkanBuffer->refcount) > 0;
 }
 
 /* Driver */
