@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		021FF3972A4A764500A63B55 /* FNA3D_Memory.c in Sources */ = {isa = PBXBuildFile; fileRef = 021FF3962A4A764500A63B55 /* FNA3D_Memory.c */; };
+		021FF3982A4A764500A63B55 /* FNA3D_Memory.c in Sources */ = {isa = PBXBuildFile; fileRef = 021FF3962A4A764500A63B55 /* FNA3D_Memory.c */; };
 		7B8B6CBE24452690001C08D6 /* mojoshader_common.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B8B6CB824452690001C08D6 /* mojoshader_common.c */; };
 		7B8B6CBF24452690001C08D6 /* mojoshader_common.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B8B6CB824452690001C08D6 /* mojoshader_common.c */; };
 		7B8B6CC224452690001C08D6 /* mojoshader.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B8B6CBA24452690001C08D6 /* mojoshader.c */; };
@@ -51,6 +53,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		021FF3962A4A764500A63B55 /* FNA3D_Memory.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = FNA3D_Memory.c; path = ../src/FNA3D_Memory.c; sourceTree = "<group>"; };
 		7B1CDD452190C0A200175C7B /* libFNA3D.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libFNA3D.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B7E140D2190E0CB00616654 /* libFNA3D.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libFNA3D.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B8B6CB824452690001C08D6 /* mojoshader_common.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = mojoshader_common.c; path = ../MojoShader/mojoshader_common.c; sourceTree = "<group>"; };
@@ -108,6 +111,7 @@
 		7B1CDDA62190C50300175C7B /* Library Source */ = {
 			isa = PBXGroup;
 			children = (
+				021FF3962A4A764500A63B55 /* FNA3D_Memory.c */,
 				7BF94B99275C042200050413 /* FNA3D_Driver_Vulkan.c */,
 				7BF8206C2445254300736AB0 /* FNA3D_Image.c */,
 				7BF8206E2445254300736AB0 /* FNA3D_PipelineCache.c */,
@@ -216,6 +220,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				021FF3972A4A764500A63B55 /* FNA3D_Memory.c in Sources */,
 				7BF94BA0275C046100050413 /* mojoshader_profile_spirv.c in Sources */,
 				7B8B6CC9244526A7001C08D6 /* mojoshader_profile_common.c in Sources */,
 				7BF94B9A275C042200050413 /* FNA3D_Driver_Vulkan.c in Sources */,
@@ -233,6 +238,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				021FF3982A4A764500A63B55 /* FNA3D_Memory.c in Sources */,
 				7BF94BA1275C046100050413 /* mojoshader_profile_spirv.c in Sources */,
 				7B8B6CCA244526A7001C08D6 /* mojoshader_profile_common.c in Sources */,
 				7BF94B9B275C042200050413 /* FNA3D_Driver_Vulkan.c in Sources */,
