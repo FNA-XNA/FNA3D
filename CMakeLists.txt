@@ -90,6 +90,7 @@ add_library(FNA3D
 	src/FNA3D_Driver_OpenGL.h
 	src/FNA3D_Driver_OpenGL_glfuncs.h
 	src/FNA3D_Driver_Vulkan_vkfuncs.h
+	src/FNA3D_CommandBuffer.h
 	src/FNA3D_Memory.h
 	src/FNA3D_PipelineCache.h
 	# Source Files
@@ -98,6 +99,7 @@ add_library(FNA3D
 	src/FNA3D_Driver_OpenGL.c
 	src/FNA3D_Driver_Vulkan.c
 	src/FNA3D_Image.c
+	src/FNA3D_CommandBuffer.c
 	src/FNA3D_Memory.c
 	src/FNA3D_PipelineCache.c
 	src/FNA3D_Tracing.c
