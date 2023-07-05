@@ -108,6 +108,7 @@
       <CompileAs>CompileAsCpp</CompileAs>
     </ClCompile>
     <ClCompile Include="..\src\FNA3D.c" />
+    <ClCompile Include="..\src\FNA3D_CommandBuffer.c" />
     <ClCompile Include="..\src\FNA3D_Driver_D3D11.c" />
     <ClCompile Include="..\src\FNA3D_Driver_OpenGL.c" />
     <ClCompile Include="..\src\FNA3D_Driver_Vulkan.c" />
@@ -119,6 +120,7 @@
   <ItemGroup>
     <ClInclude Include="..\include\FNA3D.h" />
     <ClInclude Include="..\include\FNA3D_Image.h" />
+    <ClInclude Include="..\src\FNA3D_CommandBuffer.h" />
     <ClInclude Include="..\src\FNA3D_Driver.h" />
     <ClInclude Include="..\src\FNA3D_Driver_D3D11.h" />
     <ClInclude Include="..\src\FNA3D_Driver_OpenGL.h" />
