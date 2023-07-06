@@ -1675,50 +1675,10 @@ static inline const char* VkErrorMessages(VkResult code)
 
 /* Forward Declarations */
 
-static void VULKAN_GetBackbufferSize(
-	FNA3D_Renderer *driverData,
-	int32_t *w,
-	int32_t *h
-);
-
-static void VULKAN_GetTextureData2D(
-	FNA3D_Renderer *driverData,
-	FNA3D_Texture *texture,
-	int32_t x,
-	int32_t y,
-	int32_t w,
-	int32_t h,
-	int32_t level,
-	void* data,
-	int32_t dataLength
-);
-
-static void VULKAN_INTERNAL_BufferMemoryBarrier(
-	VulkanRenderer *renderer,
-	VulkanResourceAccessType nextResourceAccessType,
-	VkBuffer buffer,
-	VulkanResourceAccessType *resourceAccessType
-);
-
-static void VULKAN_INTERNAL_ImageMemoryBarrier(
-	VulkanRenderer *renderer,
-	VulkanResourceAccessType nextAccess,
-	VkImageAspectFlags aspectMask,
-	uint32_t baseLayer,
-	uint32_t layerCount,
-	uint32_t baseLevel,
-	uint32_t levelCount,
-	uint8_t discardContents,
-	VkImage image,
-	VulkanResourceAccessType *resourceAccessType
-);
-
 static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(VulkanRenderer* renderer, void* windowHandle);
 static void VULKAN_INTERNAL_RecreateSwapchain(VulkanRenderer *renderer, void *windowHandle);
 
 static void VULKAN_INTERNAL_MaybeEndRenderPass(VulkanRenderer *renderer);
-
-static void VULKAN_INTERNAL_FlushCommands(VulkanRenderer *renderer, uint8_t sync);
 
 /* Vulkan: Internal Implementation */
 
@@ -8487,13 +8447,14 @@ static void VULKAN_ReadBackbuffer(
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
 
-	VULKAN_GetTextureData2D(
+	VULKAN_INTERNAL_GetTextureData(
 		driverData,
 		(FNA3D_Texture*) renderer->fauxBackbufferColor.handle,
 		x,
 		y,
 		w,
 		h,
+		0,
 		0,
 		data,
 		dataLength
