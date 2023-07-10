@@ -24,10 +24,10 @@
  *
  */
 
+#ifdef FNA3D_TRACING
+
 #include "mojoshader.h"
 #include "FNA3D_Tracing.h"
-
-#ifdef FNA3D_TRACING
 
 #include <SDL.h>
 

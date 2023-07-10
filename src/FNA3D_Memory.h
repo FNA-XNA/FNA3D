@@ -29,6 +29,8 @@
 
 #include "FNA3D_Driver.h"
 
+#include <stddef.h> /* for size_t */
+
 /* Driver-defined memory structures  */
 
 typedef uint64_t FNA3D_MemoryPlatformHandle;
