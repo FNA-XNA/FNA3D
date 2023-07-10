@@ -25,7 +25,6 @@
  */
 
 #include <SDL.h>
-#include "FNA3D_Driver.h"
 #include "FNA3D_Memory.h"
 
 /*

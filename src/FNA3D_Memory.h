@@ -27,7 +27,7 @@
 #ifndef FNA3D_MEMORY_H
 #define FNA3D_MEMORY_H
 
-#include <SDL.h>
+#include "FNA3D_Driver.h"
 
 /* Driver-defined memory structures  */
 
@@ -132,17 +132,17 @@ typedef struct FNA3D_MemoryAllocator FNA3D_MemoryAllocator;
 
 typedef struct FNA3D_MemoryUsedRegion FNA3D_MemoryUsedRegion;
 
-FNA3D_MemoryAllocator* FNA3D_CreateMemoryAllocator(
+FNA3D_SHAREDINTERNAL FNA3D_MemoryAllocator* FNA3D_CreateMemoryAllocator(
 	FNA3D_MemoryDriver *driver,
 	size_t numSubAllocators
 );
 
-void FNA3D_DestroyMemoryAllocator(FNA3D_MemoryAllocator *allocator);
+FNA3D_SHAREDINTERNAL void FNA3D_DestroyMemoryAllocator(FNA3D_MemoryAllocator *allocator);
 
-void FNA3D_Memory_LockAllocator(FNA3D_MemoryAllocator *allocator);
-void FNA3D_Memory_UnlockAllocator(FNA3D_MemoryAllocator *allocator);
+FNA3D_SHAREDINTERNAL void FNA3D_Memory_LockAllocator(FNA3D_MemoryAllocator *allocator);
+FNA3D_SHAREDINTERNAL void FNA3D_Memory_UnlockAllocator(FNA3D_MemoryAllocator *allocator);
 
-uint8_t FNA3D_Memory_BindResource(
+FNA3D_SHAREDINTERNAL uint8_t FNA3D_Memory_BindResource(
 	FNA3D_MemoryAllocator *allocator,
 	size_t subAllocatorIndex,
 	size_t requiredSize,
@@ -157,18 +157,18 @@ uint8_t FNA3D_Memory_BindResource(
 	FNA3D_MemoryUsedRegion** pMemoryUsedRegion
 );
 
-uint8_t* FNA3D_Memory_GetHostPointer(
+FNA3D_SHAREDINTERNAL uint8_t* FNA3D_Memory_GetHostPointer(
 	FNA3D_MemoryUsedRegion *usedRegion,
 	size_t offset
 );
 
-void FNA3D_Memory_FreeEmptyAllocations(FNA3D_MemoryAllocator *allocator);
+FNA3D_SHAREDINTERNAL void FNA3D_Memory_FreeEmptyAllocations(FNA3D_MemoryAllocator *allocator);
 
-uint8_t FNA3D_Memory_Defragment(FNA3D_MemoryAllocator *allocator);
+FNA3D_SHAREDINTERNAL uint8_t FNA3D_Memory_Defragment(FNA3D_MemoryAllocator *allocator);
 
-uint8_t FNA3D_Memory_DestroyDefragmentedRegions(FNA3D_MemoryAllocator *allocator);
+FNA3D_SHAREDINTERNAL uint8_t FNA3D_Memory_DestroyDefragmentedRegions(FNA3D_MemoryAllocator *allocator);
 
-uint8_t FNA3D_INTERNAL_RemoveMemoryUsedRegion(
+FNA3D_SHAREDINTERNAL uint8_t FNA3D_INTERNAL_RemoveMemoryUsedRegion(
 	FNA3D_MemoryAllocator *allocator,
 	FNA3D_MemoryUsedRegion *usedRegion
 );
@@ -190,22 +190,22 @@ uint8_t FNA3D_INTERNAL_RemoveMemoryUsedRegion(
  */
 typedef struct FNA3D_BufferContainer FNA3D_BufferContainer;
 
-FNA3D_BufferContainer* FNA3D_Memory_CreateBufferContainer(
+FNA3D_SHAREDINTERNAL FNA3D_BufferContainer* FNA3D_Memory_CreateBufferContainer(
 	FNA3D_MemoryAllocator *allocator,
 	uint8_t isVertexData,
 	size_t sizeInBytes
 );
 
-void FNA3D_Memory_DestroyBufferContainer(
+FNA3D_SHAREDINTERNAL void FNA3D_Memory_DestroyBufferContainer(
 	FNA3D_MemoryAllocator *allocator,
 	FNA3D_BufferContainer *container
 );
 
-FNA3D_BufferHandle* FNA3D_Memory_GetActiveBuffer(
+FNA3D_SHAREDINTERNAL FNA3D_BufferHandle* FNA3D_Memory_GetActiveBuffer(
 	FNA3D_BufferContainer *container
 );
 
-FNA3D_BufferHandle* FNA3D_Memory_DiscardActiveBuffer(
+FNA3D_SHAREDINTERNAL FNA3D_BufferHandle* FNA3D_Memory_DiscardActiveBuffer(
 	FNA3D_MemoryAllocator *allocator,
 	FNA3D_BufferContainer *container
 );
