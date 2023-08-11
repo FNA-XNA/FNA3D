@@ -5345,12 +5345,19 @@ static const char *debugTypeStr[] = {
 	"GL_DEBUG_TYPE_PERFORMANCE",
 	"GL_DEBUG_TYPE_OTHER"
 };
-static const char *debugSeverityStr[] = {
-	"GL_DEBUG_SEVERITY_HIGH",
-	"GL_DEBUG_SEVERITY_MEDIUM",
-	"GL_DEBUG_SEVERITY_LOW",
-	"GL_DEBUG_SEVERITY_NOTIFICATION"
-};
+/* Debug severity values are disjointed */
+static inline const char *GetSeverityString(GLenum severity)
+{
+	switch (severity)
+	{
+	case GL_DEBUG_SEVERITY_HIGH: return "GL_DEBUG_SEVERITY_HIGH";
+	case GL_DEBUG_SEVERITY_MEDIUM: return "GL_DEBUG_SEVERITY_MEDIUM";
+	case GL_DEBUG_SEVERITY_LOW: return "GL_DEBUG_SEVERITY_LOW";
+	case GL_DEBUG_SEVERITY_NOTIFICATION: return "GL_DEBUG_SEVERITY_NOTIFICATION";
+	default:
+		return "FNA3D_UNKNOWN_SEVERITY";
+	}
+}
 
 static void GLAPIENTRY DebugCall(
 	GLenum source,
@@ -5368,7 +5375,7 @@ static void GLAPIENTRY DebugCall(
 			message,
 			debugSourceStr[source - GL_DEBUG_SOURCE_API],
 			debugTypeStr[type - GL_DEBUG_TYPE_ERROR],
-			debugSeverityStr[severity - GL_DEBUG_SEVERITY_HIGH]
+			GetSeverityString(severity)
 		);
 	}
 	else
@@ -5378,7 +5385,7 @@ static void GLAPIENTRY DebugCall(
 			message,
 			debugSourceStr[source - GL_DEBUG_SOURCE_API],
 			debugTypeStr[type - GL_DEBUG_TYPE_ERROR],
-			debugSeverityStr[severity - GL_DEBUG_SEVERITY_HIGH]
+			GetSeverityString(severity)
 		);
 	}
 }
