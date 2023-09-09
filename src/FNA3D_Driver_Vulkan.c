@@ -58,7 +58,7 @@ typedef struct VulkanExtensions
 
 	/* Globally supported */
 	uint8_t KHR_swapchain;
-	/* Core since 1.1 */
+	/* Core since 1.1, needed for negative VkViewport::height */
 	uint8_t KHR_maintenance1;
 
 	/* These extensions are optional! */

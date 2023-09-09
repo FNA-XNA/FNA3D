@@ -56,7 +56,7 @@ VULKAN_INSTANCE_FUNCTION(vkGetPhysicalDeviceImageFormatProperties)
 VULKAN_INSTANCE_FUNCTION(vkGetPhysicalDeviceMemoryProperties)
 VULKAN_INSTANCE_FUNCTION(vkGetPhysicalDeviceProperties)
 
-/* VK_KHR_get_physical_device_properties2 */
+/* VK_KHR_get_physical_device_properties2, needed for KHR_driver_properties */
 VULKAN_INSTANCE_FUNCTION(vkGetPhysicalDeviceProperties2KHR)
 
 /* VK_KHR_surface */
