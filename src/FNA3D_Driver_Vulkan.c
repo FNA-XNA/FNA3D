@@ -1834,15 +1834,15 @@ static uint8_t VULKAN_INTERNAL_QuerySwapChainSupport(
 		&supportsPresent
 	);
 
+	/* Initialize these in case anything fails */
+	outputDetails->formatsLength = 0;
+	outputDetails->presentModesLength = 0;
+
 	if (!supportsPresent)
 	{
 		FNA3D_LogWarn("This surface does not support presenting!");
 		return 0;
 	}
-
-	/* Initialize these in case anything fails */
-	outputDetails->formatsLength = 0;
-	outputDetails->presentModesLength = 0;
 
 	/* Run the device surface queries */
 	result = renderer->vkGetPhysicalDeviceSurfaceCapabilitiesKHR(
