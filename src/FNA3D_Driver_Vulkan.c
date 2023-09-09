@@ -1270,6 +1270,7 @@ typedef struct VulkanRenderer
 	uint8_t supportsS3tc;
 	uint8_t supportsBc7;
 	uint8_t supportsDebugUtils;
+	uint8_t supportsDeviceProperties2;
 	uint8_t supportsSRGBRenderTarget;
 	uint8_t debugMode;
 	VulkanExtensions supports;
@@ -1698,6 +1699,7 @@ static inline uint8_t SupportsInstanceExtension(
 static uint8_t VULKAN_INTERNAL_CheckInstanceExtensions(
 	const char **requiredExtensions,
 	uint32_t requiredExtensionsLength,
+	uint8_t *supportsDeviceProperties2,
 	uint8_t *supportsDebugUtils
 ) {
 	uint32_t extensionCount, i;
@@ -1730,7 +1732,12 @@ static uint8_t VULKAN_INTERNAL_CheckInstanceExtensions(
 		}
 	}
 
-	/* This is optional, but nice to have! */
+	/* These are optional, but nice to have! */
+	*supportsDeviceProperties2 = SupportsInstanceExtension(
+		VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
+		availableExtensions,
+		extensionCount
+	);
 	*supportsDebugUtils = SupportsInstanceExtension(
 		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 		availableExtensions,
@@ -2291,19 +2298,29 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 		goto create_instance_fail;
 	}
 
-	/* Core since 1.1 */
-	instanceExtensionNames[instanceExtensionCount++] =
-		VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME;
-
 	if (!VULKAN_INTERNAL_CheckInstanceExtensions(
 		instanceExtensionNames,
 		instanceExtensionCount,
+		&renderer->supportsDeviceProperties2,
 		&renderer->supportsDebugUtils
 	)) {
 		FNA3D_LogWarn(
 			"Required Vulkan instance extensions not supported"
 		);
 		goto create_instance_fail;
+	}
+
+	if (renderer->supportsDeviceProperties2)
+	{
+		instanceExtensionNames[instanceExtensionCount++] =
+			VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME;
+	}
+	else
+	{
+		FNA3D_LogWarn(
+			"%s is not supported!",
+			VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME
+		);
 	}
 
 	if (renderer->debugMode)
@@ -2497,26 +2514,34 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer,
 		return 0;
 	}
 
-	renderer->physicalDeviceProperties.sType =
-		VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
-	if (renderer->supports.KHR_driver_properties)
+	if (	renderer->supportsDeviceProperties2 &&
+		renderer->supports.KHR_driver_properties	)
 	{
+		renderer->physicalDeviceProperties.sType =
+			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+		renderer->physicalDeviceProperties.pNext =
+			&renderer->physicalDeviceDriverProperties;
+
 		renderer->physicalDeviceDriverProperties.sType =
 			VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES_KHR;
 		renderer->physicalDeviceDriverProperties.pNext = NULL;
 
-		renderer->physicalDeviceProperties.pNext =
-			&renderer->physicalDeviceDriverProperties;
+		renderer->vkGetPhysicalDeviceProperties2KHR(
+			renderer->physicalDevice,
+			&renderer->physicalDeviceProperties
+		);
 	}
 	else
 	{
+		/* These won't be used, just initialize them to something */
+		renderer->physicalDeviceProperties.sType = ~0;
 		renderer->physicalDeviceProperties.pNext = NULL;
-	}
 
-	renderer->vkGetPhysicalDeviceProperties2KHR(
-		renderer->physicalDevice,
-		&renderer->physicalDeviceProperties
-	);
+		renderer->vkGetPhysicalDeviceProperties(
+			renderer->physicalDevice,
+			&renderer->physicalDeviceProperties.properties
+		);
+	}
 
 	renderer->vkGetPhysicalDeviceMemoryProperties(
 		renderer->physicalDevice,
@@ -11129,7 +11154,8 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		"Vulkan Device: %s",
 		renderer->physicalDeviceProperties.properties.deviceName
 	);
-	if (renderer->supports.KHR_driver_properties)
+	if (	renderer->supportsDeviceProperties2 &&
+		renderer->supports.KHR_driver_properties	)
 	{
 		FNA3D_LogInfo(
 			"Vulkan Driver: %s %s",
