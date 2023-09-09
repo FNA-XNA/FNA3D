@@ -60,7 +60,6 @@ typedef struct VulkanExtensions
 	uint8_t KHR_swapchain;
 	/* Core since 1.1 */
 	uint8_t KHR_maintenance1;
-	uint8_t KHR_get_memory_requirements2;
 
 	/* These extensions are optional! */
 
@@ -92,7 +91,6 @@ static inline uint8_t CheckDeviceExtensions(
 			}
 		CHECK(KHR_swapchain)
 		else CHECK(KHR_maintenance1)
-		else CHECK(KHR_get_memory_requirements2)
 		else CHECK(KHR_driver_properties)
 		else CHECK(EXT_vertex_attribute_divisor)
 		else CHECK(KHR_portability_subset)
@@ -101,8 +99,7 @@ static inline uint8_t CheckDeviceExtensions(
 	}
 
 	return (	supports->KHR_swapchain &&
-			supports->KHR_maintenance1 &&
-			supports->KHR_get_memory_requirements2	);
+			supports->KHR_maintenance1	);
 }
 
 static inline uint32_t GetDeviceExtensionCount(VulkanExtensions *supports)
@@ -110,7 +107,6 @@ static inline uint32_t GetDeviceExtensionCount(VulkanExtensions *supports)
 	return (
 		supports->KHR_swapchain +
 		supports->KHR_maintenance1 +
-		supports->KHR_get_memory_requirements2 +
 		supports->KHR_driver_properties +
 		supports->EXT_vertex_attribute_divisor +
 		supports->KHR_portability_subset +
@@ -130,7 +126,6 @@ static inline void CreateDeviceExtensionArray(
 		}
 	CHECK(KHR_swapchain)
 	CHECK(KHR_maintenance1)
-	CHECK(KHR_get_memory_requirements2)
 	CHECK(KHR_driver_properties)
 	CHECK(EXT_vertex_attribute_divisor)
 	CHECK(KHR_portability_subset)
@@ -2671,24 +2666,18 @@ static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
 	VkBuffer buffer,
 	VkMemoryPropertyFlags requiredMemoryProperties,
 	VkMemoryPropertyFlags ignoredMemoryProperties,
-	VkMemoryRequirements2KHR *pMemoryRequirements,
+	VkMemoryRequirements *pMemoryRequirements,
 	uint32_t *pMemoryTypeIndex
 ) {
-	VkBufferMemoryRequirementsInfo2KHR bufferRequirementsInfo;
-	bufferRequirementsInfo.sType =
-		VK_STRUCTURE_TYPE_BUFFER_MEMORY_REQUIREMENTS_INFO_2_KHR;
-	bufferRequirementsInfo.pNext = NULL;
-	bufferRequirementsInfo.buffer = buffer;
-
-	renderer->vkGetBufferMemoryRequirements2KHR(
+	renderer->vkGetBufferMemoryRequirements(
 		renderer->logicalDevice,
-		&bufferRequirementsInfo,
+		buffer,
 		pMemoryRequirements
 	);
 
 	return VULKAN_INTERNAL_FindMemoryType(
 		renderer,
-		pMemoryRequirements->memoryRequirements.memoryTypeBits,
+		pMemoryRequirements->memoryTypeBits,
 		requiredMemoryProperties,
 		ignoredMemoryProperties,
 		pMemoryTypeIndex
@@ -2700,24 +2689,18 @@ static uint8_t VULKAN_INTERNAL_FindImageMemoryRequirements(
 	VkImage image,
 	VkMemoryPropertyFlags requiredMemoryPropertyFlags,
 	VkMemoryPropertyFlags ignoredMemoryPropertyFlags,
-	VkMemoryRequirements2KHR *pMemoryRequirements,
+	VkMemoryRequirements *pMemoryRequirements,
 	uint32_t *pMemoryTypeIndex
 ) {
-	VkImageMemoryRequirementsInfo2KHR imageRequirementsInfo;
-	imageRequirementsInfo.sType =
-		VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2_KHR;
-	imageRequirementsInfo.pNext = NULL;
-	imageRequirementsInfo.image = image;
-
-	renderer->vkGetImageMemoryRequirements2KHR(
+	renderer->vkGetImageMemoryRequirements(
 		renderer->logicalDevice,
-		&imageRequirementsInfo,
+		image,
 		pMemoryRequirements
 	);
 
 	return VULKAN_INTERNAL_FindMemoryType(
 		renderer,
-		pMemoryRequirements->memoryRequirements.memoryTypeBits,
+		pMemoryRequirements->memoryTypeBits,
 		requiredMemoryPropertyFlags,
 		ignoredMemoryPropertyFlags,
 		pMemoryTypeIndex
@@ -2735,11 +2718,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 	uint32_t memoryTypeIndex = 0;
 	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
 	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
-	VkMemoryRequirements2KHR memoryRequirements =
-	{
-		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
-		NULL
-	};
+	VkMemoryRequirements memoryRequirements;
 
 	/* Prefer GPU allocation */
 	requiredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
@@ -2756,14 +2735,14 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 		bindResult = FNA3D_Memory_BindResource(
 			renderer->allocator,
 			memoryTypeIndex,
-			memoryRequirements.memoryRequirements.size,
-			memoryRequirements.memoryRequirements.alignment,
+			memoryRequirements.size,
+			memoryRequirements.alignment,
 			(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
 				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0,
 			(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
 				VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0,
 			isRenderTarget,
-			memoryRequirements.memoryRequirements.size,
+			memoryRequirements.size,
 			1,
 			(FNA3D_MemoryPlatformHandle) (size_t) image,
 			imageHandle,
@@ -2805,14 +2784,14 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 			bindResult = FNA3D_Memory_BindResource(
 				renderer->allocator,
 				memoryTypeIndex,
-				memoryRequirements.memoryRequirements.size,
-				memoryRequirements.memoryRequirements.alignment,
+				memoryRequirements.size,
+				memoryRequirements.alignment,
 				(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
 					VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0,
 				(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
 					VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0,
 				isRenderTarget,
-				memoryRequirements.memoryRequirements.size,
+				memoryRequirements.size,
 				1,
 				(FNA3D_MemoryPlatformHandle) (size_t) image,
 				imageHandle,
@@ -2846,11 +2825,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 	uint32_t memoryTypeIndex = 0;
 	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
 	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
-	VkMemoryRequirements2KHR memoryRequirements =
-	{
-		VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2_KHR,
-		NULL
-	};
+	VkMemoryRequirements memoryRequirements;
 
 	requiredMemoryPropertyFlags =
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
@@ -2874,8 +2849,8 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 		bindResult = FNA3D_Memory_BindResource(
 			renderer->allocator,
 			memoryTypeIndex,
-			memoryRequirements.memoryRequirements.size,
-			memoryRequirements.memoryRequirements.alignment,
+			memoryRequirements.size,
+			memoryRequirements.alignment,
 			(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
 				VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0,
 			(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
@@ -2924,8 +2899,8 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 			bindResult = FNA3D_Memory_BindResource(
 				renderer->allocator,
 				memoryTypeIndex,
-				memoryRequirements.memoryRequirements.size,
-				memoryRequirements.memoryRequirements.alignment,
+				memoryRequirements.size,
+				memoryRequirements.alignment,
 				(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
 					VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0,
 				(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &

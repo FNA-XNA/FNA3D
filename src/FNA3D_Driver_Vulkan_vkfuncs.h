@@ -146,6 +146,8 @@ VULKAN_DEVICE_FUNCTION(vkFreeMemory)
 VULKAN_DEVICE_FUNCTION(vkGetDeviceQueue)
 VULKAN_DEVICE_FUNCTION(vkGetPipelineCacheData)
 VULKAN_DEVICE_FUNCTION(vkGetFenceStatus)
+VULKAN_DEVICE_FUNCTION(vkGetBufferMemoryRequirements)
+VULKAN_DEVICE_FUNCTION(vkGetImageMemoryRequirements)
 VULKAN_DEVICE_FUNCTION(vkMapMemory)
 VULKAN_DEVICE_FUNCTION(vkQueueSubmit)
 VULKAN_DEVICE_FUNCTION(vkQueueWaitIdle)
@@ -167,10 +169,6 @@ VULKAN_DEVICE_FUNCTION(vkCreateSwapchainKHR)
 VULKAN_DEVICE_FUNCTION(vkDestroySwapchainKHR)
 VULKAN_DEVICE_FUNCTION(vkQueuePresentKHR)
 VULKAN_DEVICE_FUNCTION(vkGetSwapchainImagesKHR)
-
-/* VK_KHR_get_memory_requirements2 */
-VULKAN_DEVICE_FUNCTION(vkGetBufferMemoryRequirements2KHR)
-VULKAN_DEVICE_FUNCTION(vkGetImageMemoryRequirements2KHR)
 
 /*
  * Redefine these every time you include this header!
