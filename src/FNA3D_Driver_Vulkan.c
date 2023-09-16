@@ -6860,6 +6860,12 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 		renderer->attachmentCubeFaces[i] = renderer->nextRenderPassAttachmentCubeFaces[i];
 		renderer->colorMultiSampleAttachments[i] = renderer->nextRenderPassColorMultiSampleAttachments[i]; /* may be NULL */
 	}
+	for (; i < MAX_RENDERTARGET_BINDINGS; i += 1)
+	{
+		renderer->colorAttachments[i] = NULL;
+		renderer->attachmentCubeFaces[i] = 0;
+		renderer->colorMultiSampleAttachments[i] = NULL;
+	}
 
 	renderer->colorAttachmentCount = renderer->nextRenderPassColorAttachmentCount;
 	renderer->multiSampleCount = renderer->nextRenderPassMultiSampleCount;
