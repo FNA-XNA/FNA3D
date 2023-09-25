@@ -5576,58 +5576,6 @@ static void D3D11_PLATFORM_GetDefaultAdapter(
 	}
 }
 
-static void ResolveSwapChainModeDescription(
-	IUnknown* device,
-	IDXGIAdapter* adapter,
-	IDXGIFactory1 *factory,
-	HWND window,
-	DXGI_MODE_DESC* modeDescription,
-	DXGI_MODE_DESC* swapChainDescription
-) {
-#ifdef FNA3D_DXVK_NATIVE
-	IDXGIOutput *output;
-	IDXGIAdapter_EnumOutputs(
-		adapter,
-		0,
-		&output
-	);
-	IDXGIOutput_FindClosestMatchingMode(
-		output,
-		modeDescription,
-		swapChainDescription,
-		device
-	);
-#else
-	HMONITOR monitor;
-	int iAdapter = 0, iOutput;
-	IDXGIAdapter1* pAdapter;
-	IDXGIOutput *output;
-	DXGI_OUTPUT_DESC description;
-
-	/* Find the output (on any adapter) attached to the monitor that holds our window */
-	monitor = MonitorFromWindow(window, MONITOR_DEFAULTTOPRIMARY);
-	while (SUCCEEDED(IDXGIFactory1_EnumAdapters1(factory, iAdapter++, &pAdapter)))
-	{
-		iOutput = 0;
-		while (SUCCEEDED(IDXGIAdapter_EnumOutputs(pAdapter, iOutput++, &output)))
-		{
-			IDXGIOutput_GetDesc(output, &description);
-			if (description.Monitor == monitor)
-			{
-				if (SUCCEEDED(IDXGIOutput_FindClosestMatchingMode(output, modeDescription, swapChainDescription, device)))
-				{
-					IDXGIOutput_Release(output);
-					IDXGIAdapter1_Release(pAdapter);
-					return;
-				}
-			}
-			IDXGIOutput_Release(output);
-		}
-		IDXGIAdapter1_Release(pAdapter);
-	}
-#endif /* FNA3D_DXVK_NATIVE */
-}
-
 static void D3D11_PLATFORM_CreateSwapChain(
 	D3D11Renderer *renderer,
 	FNA3D_SurfaceFormat backBufferFormat,
@@ -5635,7 +5583,6 @@ static void D3D11_PLATFORM_CreateSwapChain(
 ) {
 	IDXGIFactory1* pParent;
 	DXGI_SWAP_CHAIN_DESC swapchainDesc;
-	DXGI_MODE_DESC swapchainBufferDesc;
 	IDXGISwapChain *swapchain;
 	D3D11SwapchainData *swapchainData;
 	HWND dxgiHandle;
@@ -5651,25 +5598,15 @@ static void D3D11_PLATFORM_CreateSwapChain(
 #endif /* FNA3D_DXVK_NATIVE */
 
 	/* Initialize swapchain buffer descriptor */
-	swapchainBufferDesc.Width = 0;
-	swapchainBufferDesc.Height = 0;
-	swapchainBufferDesc.RefreshRate.Numerator = 0;
-	swapchainBufferDesc.RefreshRate.Denominator = 0;
-	swapchainBufferDesc.Format = XNAToD3D_TextureFormat[backBufferFormat];
-	swapchainBufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
-	swapchainBufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
-
-	ResolveSwapChainModeDescription(
-		(IUnknown*) renderer->device,
-		(IDXGIAdapter*) renderer->adapter,
-		(IDXGIFactory1*) renderer->factory,
-		dxgiHandle,
-		&swapchainBufferDesc,
-		&swapchainDesc.BufferDesc
-	);
+	swapchainDesc.BufferDesc.Width = 0;
+	swapchainDesc.BufferDesc.Height = 0;
+	swapchainDesc.BufferDesc.RefreshRate.Numerator = 0;
+	swapchainDesc.BufferDesc.RefreshRate.Denominator = 0;
+	swapchainDesc.BufferDesc.Format = XNAToD3D_TextureFormat[backBufferFormat];
+	swapchainDesc.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
+	swapchainDesc.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
 
 	/* Initialize the swapchain descriptor */
-	swapchainDesc.BufferDesc = swapchainBufferDesc;
 	swapchainDesc.SampleDesc.Count = 1;
 	swapchainDesc.SampleDesc.Quality = 0;
 	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
