@@ -32,11 +32,9 @@
 #include "FNA3D_Driver_D3D11_shaders.h"
 
 #include <SDL.h>
-#ifdef FNA3D_DXVK_NATIVE
-#include <SDL_vulkan.h>
-#else
+#ifndef FNA3D_DXVK_NATIVE
 #include <SDL_syswm.h>
-#endif /* FNA3D_DXVK_NATIVE */
+#endif /* !FNA3D_DXVK_NATIVE */
 
 /* D3D11 Libraries */
 
@@ -1027,8 +1025,6 @@ static void D3D11_GetTextureData2D(
 	int32_t dataLength
 );
 
-static void D3D11_GetDrawableSize(void *window, int32_t *w, int32_t *h);
-
 static void* D3D11_PLATFORM_LoadD3D11();
 static void D3D11_PLATFORM_UnloadD3D11(void* module);
 static PFN_D3D11_CREATE_DEVICE D3D11_PLATFORM_GetCreateDeviceFunc(void* module);
@@ -1501,8 +1497,8 @@ static void D3D11_SwapBuffers(
 	if (renderer->backbuffer->type == BACKBUFFER_TYPE_D3D11)
 	{
 		/* Determine the regions to present */
-		D3D11_GetDrawableSize(
-			overrideWindowHandle,
+		SDL_GetWindowSizeInPixels(
+			(SDL_Window*) overrideWindowHandle,
 			&drawableWidth,
 			&drawableHeight
 		);
@@ -2640,7 +2636,7 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 	if (!useFauxBackbuffer)
 	{
 		int32_t drawX, drawY;
-		D3D11_GetDrawableSize(
+		SDL_GetWindowSizeInPixels(
 			(SDL_Window*) parameters->deviceWindowHandle,
 			&drawX,
 			&drawY
@@ -4934,34 +4930,6 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 	return 1;
 }
 
-static void D3D11_GetDrawableSize(void* window, int32_t *w, int32_t *h)
-{
-	/* TODO: Replace this blobulous mess with SDL_GetWindowSizeInPixels */
-
-#ifdef FNA3D_DXVK_NATIVE
-	SDL_Vulkan_GetDrawableSize((SDL_Window*) window, w, h);
-#elif defined(__WINRT__)
-	/* WinRT doesn't support DPI awareness the same way Win32 does */
-	SDL_GetWindowSize((SDL_Window*) window, w, h);
-#else
-	RECT rect;
-	SDL_SysWMinfo info;
-	SDL_VERSION(&info.version);
-	SDL_GetWindowWMInfo((SDL_Window*) window, &info);
-	SDL_assert(info.subsystem == SDL_SYSWM_WINDOWS);
-	if (GetClientRect(info.info.win.window, &rect))
-	{
-		*w = rect.right;
-		*h = rect.bottom;
-	}
-	else
-	{
-		*w = 0;
-		*h = 0;
-	}
-#endif /* FNA3D_DXVK_NATIVE */
-}
-
 static void D3D11_INTERNAL_InitializeFauxBackbufferResources(
 	D3D11Renderer *renderer,
 	uint8_t scaleNearest
@@ -5697,7 +5665,6 @@ static HRESULT D3D11_PLATFORM_ResizeSwapChain(
 FNA3D_Driver D3D11Driver = {
 	"D3D11",
 	D3D11_PrepareWindowAttributes,
-	D3D11_GetDrawableSize,
 	D3D11_CreateDevice
 };
 

@@ -817,7 +817,6 @@ typedef struct FNA3D_Driver
 {
 	const char *Name;
 	uint8_t (*PrepareWindowAttributes)(uint32_t *flags);
-	void (*GetDrawableSize)(void* window, int32_t *w, int32_t *h);
 	FNA3D_Device* (*CreateDevice)(
 		FNA3D_PresentationParameters *presentationParameters,
 		uint8_t debugMode

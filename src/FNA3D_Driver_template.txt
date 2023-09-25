@@ -875,10 +875,6 @@ static uint8_t TEMPLATE_PrepareWindowAttributes(uint32_t *flags)
 	return 0; /* Set this to 1 when the driver is usable! */
 }
 
-static void TEMPLATE_GetDrawableSize(void* window, int32_t *w, int32_t *h)
-{
-}
-
 static FNA3D_Device* TEMPLATE_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters,
 	uint8_t debugMode
@@ -895,7 +891,6 @@ static FNA3D_Device* TEMPLATE_CreateDevice(
 FNA3D_Driver TemplateDriver = {
 	"Template",
 	TEMPLATE_PrepareWindowAttributes,
-	TEMPLATE_GetDrawableSize,
 	TEMPLATE_CreateDevice
 };
 

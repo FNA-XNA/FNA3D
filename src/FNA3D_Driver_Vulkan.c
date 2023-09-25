@@ -4741,7 +4741,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		return CREATE_SWAPCHAIN_FAIL;
 	}
 
-	SDL_Vulkan_GetDrawableSize(
+	SDL_GetWindowSizeInPixels(
 		(SDL_Window*) windowHandle,
 		&drawableWidth,
 		&drawableHeight
@@ -11025,11 +11025,6 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 	return result;
 }
 
-static void VULKAN_GetDrawableSize(void* window, int32_t *w, int32_t *h)
-{
-	SDL_Vulkan_GetDrawableSize((SDL_Window*) window, w, h);
-}
-
 static FNA3D_Device* VULKAN_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters,
 	uint8_t debugMode
@@ -11330,11 +11325,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	}
 	else
 	{
-#if SDL_VERSION_ATLEAST(2, 0, 10)
 		pipelineCacheBytes = SDL_LoadFile(pipelineCacheFileName, &pipelineCacheSize);
-#else
-		pipelineCacheBytes = SDL_LoadFile_RW(SDL_RWFromFile(pipelineCacheFileName, "rb"), &pipelineCacheSize, 1);
-#endif /* SDL_VERSION_ATLEAST(2, 0, 10) */
 	}
 
 	if (pipelineCacheBytes != NULL)
@@ -11887,7 +11878,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 FNA3D_Driver VulkanDriver = {
 	"Vulkan",
 	VULKAN_PrepareWindowAttributes,
-	VULKAN_GetDrawableSize,
 	VULKAN_CreateDevice
 };
 

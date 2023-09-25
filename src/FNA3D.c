@@ -29,8 +29,8 @@
 
 #include <SDL.h>
 
-#if !SDL_VERSION_ATLEAST(2, 0, 12)
-#error "SDL version older than 2.0.12"
+#if !SDL_VERSION_ATLEAST(2, 26, 0)
+#error "SDL version older than 2.26.0"
 #endif /* !SDL_VERSION_ATLEAST */
 
 /* Drivers */
@@ -171,13 +171,7 @@ uint32_t FNA3D_PrepareWindowAttributes(void)
 
 FNA3DAPI void FNA3D_GetDrawableSize(void* window, int32_t *w, int32_t *h)
 {
-	if (selectedDriver < 0)
-	{
-		FNA3D_LogError("Call FNA3D_PrepareWindowAttributes first!");
-		return;
-	}
-
-	drivers[selectedDriver]->GetDrawableSize(window, w, h);
+	SDL_GetWindowSizeInPixels((SDL_Window*) window, w, h);
 }
 
 /* Init/Quit */
