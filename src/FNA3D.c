@@ -135,6 +135,19 @@ uint32_t FNA3D_LinkedVersion(void)
 	return FNA3D_COMPILED_VERSION;
 }
 
+
+/* Environment */
+
+const char* FNA3D_GetEnv(const char* name)
+{
+	return SDL_GetHint(name);
+}
+
+void FNA3D_SetEnv(const char* name, const char* value)
+{
+	SDL_SetHintWithPriority(name, value, SDL_HINT_OVERRIDE);
+}
+
 /* Driver Functions */
 
 static int32_t selectedDriver = -1;
@@ -143,7 +156,7 @@ uint32_t FNA3D_PrepareWindowAttributes(void)
 {
 	uint32_t result = 0;
 	uint32_t i;
-	const char *hint = SDL_GetHint("FNA3D_FORCE_DRIVER");
+	const char *hint = FNA3D_GetEnv("FNA3D_FORCE_DRIVER");
 	for (i = 0; drivers[i] != NULL; i += 1)
 	{
 		if (hint != NULL)

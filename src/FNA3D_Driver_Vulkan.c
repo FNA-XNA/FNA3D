@@ -2528,7 +2528,7 @@ static uint8_t VULKAN_INTERNAL_DeterminePhysicalDevice(VulkanRenderer *renderer,
 		&renderer->memoryProperties
 	);
 
-	deviceLocalHeapUsageFactorStr = SDL_GetHint("FNA3D_VULKAN_DEVICE_LOCAL_HEAP_USAGE_FACTOR");
+	deviceLocalHeapUsageFactorStr = FNA3D_GetEnv("FNA3D_VULKAN_DEVICE_LOCAL_HEAP_USAGE_FACTOR");
 	if (deviceLocalHeapUsageFactorStr != NULL)
 	{
 		double factor = SDL_atof(deviceLocalHeapUsageFactorStr);
@@ -7267,7 +7267,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 
 	if (pipelineCacheResult == VK_SUCCESS)
 	{
-		pipelineCacheFileName = SDL_GetHint("FNA3D_VULKAN_PIPELINE_CACHE_FILE_NAME");
+		pipelineCacheFileName = FNA3D_GetEnv("FNA3D_VULKAN_PIPELINE_CACHE_FILE_NAME");
 		if (pipelineCacheFileName == NULL)
 		{
 			pipelineCacheFileName = DEFAULT_PIPELINE_CACHE_FILE_NAME;
@@ -11311,7 +11311,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	pipelineCacheCreateInfo.pNext = NULL;
 	pipelineCacheCreateInfo.flags = 0;
 
-	pipelineCacheFileName = SDL_GetHint("FNA3D_VULKAN_PIPELINE_CACHE_FILE_NAME");
+	pipelineCacheFileName = FNA3D_GetEnv("FNA3D_VULKAN_PIPELINE_CACHE_FILE_NAME");
 	if (pipelineCacheFileName == NULL)
 	{
 		pipelineCacheFileName = DEFAULT_PIPELINE_CACHE_FILE_NAME;

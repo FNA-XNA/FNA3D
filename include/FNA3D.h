@@ -493,6 +493,20 @@ FNA3DAPI void FNA3D_HookLogFunctions(
 	FNA3D_LogFunc error
 );
 
+/* Environment */
+
+/* Gets the value of an environment variable.
+ *
+ * Note that runtime changes to the process environment may not be returned unless set by FNA3D_SetEnv.
+ */
+FNA3DAPI const char* FNA3D_GetEnv(const char* name);
+
+/* Overwrites the value of an environment variable for FNA3D_GetEnv
+ *
+ * Note that this may be implemented as an 'overlay'. The underlying process environment may not be modified.
+ */
+FNA3DAPI void FNA3D_SetEnv(const char* name, const char* value);
+
 /* Init/Quit */
 
 /* Selects the most suitable graphics rendering backend for the system, then

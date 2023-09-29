@@ -5727,7 +5727,7 @@ static uint8_t OPENGL_PrepareWindowAttributes(uint32_t *flags)
 	/* Window depth format */
 	depthSize = 24;
 	stencilSize = 8;
-	depthFormatHint = SDL_GetHint("FNA3D_OPENGL_WINDOW_DEPTHSTENCILFORMAT");
+	depthFormatHint = FNA3D_GetEnv("FNA3D_OPENGL_WINDOW_DEPTHSTENCILFORMAT");
 	if (depthFormatHint != NULL)
 	{
 		if (SDL_strcasecmp(depthFormatHint, "None") == 0)
@@ -5969,7 +5969,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	LoadEntryPoints(renderer, driverInfo, debugMode);
 
 	/* Initialize shader context */
-	renderer->shaderProfile = SDL_GetHint("FNA3D_MOJOSHADER_PROFILE");
+	renderer->shaderProfile = FNA3D_GetEnv("FNA3D_MOJOSHADER_PROFILE");
 	if (renderer->shaderProfile == NULL || renderer->shaderProfile[0] == '\0')
 	{
 		renderer->shaderProfile = MOJOSHADER_glBestProfile(
