@@ -4848,6 +4848,11 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 	};
 	HRESULT res;
 
+	const char* useWarp = SDL_GetHint("FNA3D_D3D11_USE_WARP");
+	const uint32_t driverType = (useWarp == NULL) || (SDL_strcmp(useWarp, "1") != 0)
+		? D3D_DRIVER_TYPE_HARDWARE
+		: D3D_DRIVER_TYPE_WARP;
+
 #ifdef FNA3D_DXVK_NATIVE
 	const char *forceDriver = SDL_GetHint("FNA3D_FORCE_DRIVER");
 	if ((forceDriver == NULL) || (SDL_strcmp(forceDriver, "D3D11") != 0))
@@ -4885,7 +4890,7 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 
 	res = D3D11CreateDeviceFunc(
 		NULL,
-		D3D_DRIVER_TYPE_HARDWARE,
+		driverType,
 		NULL,
 		D3D11_CREATE_DEVICE_BGRA_SUPPORT,
 		levels,
@@ -4901,7 +4906,7 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 		FNA3D_LogWarn("Creating device with feature level 11_1 failed. Lowering feature level.", res);
 		res = D3D11CreateDeviceFunc(
 			NULL,
-			D3D_DRIVER_TYPE_HARDWARE,
+			driverType,
 			NULL,
 			D3D11_CREATE_DEVICE_BGRA_SUPPORT,
 			&levels[1],
@@ -5110,6 +5115,11 @@ static FNA3D_Device* D3D11_CreateDevice(
 	int32_t i;
 	HRESULT res;
 
+	const char* useWarp = SDL_GetHint("FNA3D_D3D11_USE_WARP");
+	const uint32_t driverType = (useWarp == NULL) || (SDL_strcmp(useWarp, "1") != 0)
+		? D3D_DRIVER_TYPE_UNKNOWN /* Must be UNKNOWN if adapter is non-null according to spec */
+		: D3D_DRIVER_TYPE_WARP;
+
 	/* Allocate and zero out the renderer */
 	renderer = (D3D11Renderer*) SDL_malloc(sizeof(D3D11Renderer));
 	SDL_memset(renderer, '\0', sizeof(D3D11Renderer));
@@ -5177,8 +5187,8 @@ try_create_device:
 	for (i = 0; i < 2; i += 1)
 	{
 		res = D3D11CreateDeviceFunc(
-			(IDXGIAdapter*) renderer->adapter,
-			D3D_DRIVER_TYPE_UNKNOWN, /* Must be UNKNOWN if adapter is non-null according to spec */
+			driverType == D3D_DRIVER_TYPE_WARP ? NULL : (IDXGIAdapter*) renderer->adapter,
+			driverType, 
 			NULL,
 			flags,
 			&levels[i],
