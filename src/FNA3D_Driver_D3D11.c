@@ -4848,8 +4848,7 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 	};
 	HRESULT res;
 
-	const char* useWarp = SDL_GetHint("FNA3D_D3D11_USE_WARP");
-	const uint32_t driverType = (useWarp == NULL) || (SDL_strcmp(useWarp, "1") != 0)
+	const uint32_t driverType = SDL_GetHintBoolean("FNA3D_D3D11_USE_WARP", SDL_FALSE)
 		? D3D_DRIVER_TYPE_HARDWARE
 		: D3D_DRIVER_TYPE_WARP;
 
@@ -5115,8 +5114,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 	int32_t i;
 	HRESULT res;
 
-	const char* useWarp = SDL_GetHint("FNA3D_D3D11_USE_WARP");
-	const uint32_t driverType = (useWarp == NULL) || (SDL_strcmp(useWarp, "1") != 0)
+	const uint32_t driverType = SDL_GetHintBoolean("FNA3D_D3D11_USE_WARP", SDL_FALSE)
 		? D3D_DRIVER_TYPE_UNKNOWN /* Must be UNKNOWN if adapter is non-null according to spec */
 		: D3D_DRIVER_TYPE_WARP;
 
@@ -5187,7 +5185,7 @@ try_create_device:
 	for (i = 0; i < 2; i += 1)
 	{
 		res = D3D11CreateDeviceFunc(
-			driverType == D3D_DRIVER_TYPE_WARP ? NULL : (IDXGIAdapter*) renderer->adapter,
+			(driverType == D3D_DRIVER_TYPE_WARP) ? NULL : (IDXGIAdapter*) renderer->adapter,
 			driverType, 
 			NULL,
 			flags,
