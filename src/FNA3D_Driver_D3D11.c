@@ -4849,8 +4849,8 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 	HRESULT res;
 
 	const uint32_t driverType = SDL_GetHintBoolean("FNA3D_D3D11_USE_WARP", SDL_FALSE)
-		? D3D_DRIVER_TYPE_HARDWARE
-		: D3D_DRIVER_TYPE_WARP;
+		? D3D_DRIVER_TYPE_WARP
+		: D3D_DRIVER_TYPE_HARDWARE;
 
 #ifdef FNA3D_DXVK_NATIVE
 	const char *forceDriver = SDL_GetHint("FNA3D_FORCE_DRIVER");
@@ -5115,8 +5115,8 @@ static FNA3D_Device* D3D11_CreateDevice(
 	HRESULT res;
 
 	const uint32_t driverType = SDL_GetHintBoolean("FNA3D_D3D11_USE_WARP", SDL_FALSE)
-		? D3D_DRIVER_TYPE_UNKNOWN /* Must be UNKNOWN if adapter is non-null according to spec */
-		: D3D_DRIVER_TYPE_WARP;
+		? D3D_DRIVER_TYPE_WARP
+		: D3D_DRIVER_TYPE_UNKNOWN; /* Must be UNKNOWN if adapter is non-null according to spec */
 
 	/* Allocate and zero out the renderer */
 	renderer = (D3D11Renderer*) SDL_malloc(sizeof(D3D11Renderer));
