@@ -5726,7 +5726,7 @@ static HRESULT D3D11_PLATFORM_ResizeSwapChain(
 		0,			/* get width from window */
 		0,			/* get height from window */
 		DXGI_FORMAT_UNKNOWN,	/* keep the old format */
-		0
+		renderer->supportsTearing ? 2048 : 0 /* See CreateSwapChain */
 	);
 }
 
