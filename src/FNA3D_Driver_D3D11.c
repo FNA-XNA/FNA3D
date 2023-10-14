@@ -56,6 +56,10 @@
 #include <dxgi.h>
 #endif
 
+#ifndef DXGI_PRESENT_ALLOW_TEARING
+#define DXGI_PRESENT_ALLOW_TEARING 0x00000200UL
+#endif /* DXGI_PRESENT_ALLOW_TEARING */
+
 #define ERROR_CHECK(msg) \
 	if (FAILED(res)) \
 	{ \
@@ -212,6 +216,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	void* factory; /* IDXGIFactory1 or IDXGIFactory2 */
 	IDXGIAdapter1 *adapter;
 	ID3DUserDefinedAnnotation *annotation;
+	BOOL supportsTearing;
 	SDL_mutex *ctxLock;
 	SDL_iconv_t iconv;
 
@@ -1489,6 +1494,7 @@ static void D3D11_SwapBuffers(
 	int32_t drawableWidth, drawableHeight;
 	FNA3D_Rect srcRect, dstRect;
 	D3D11SwapchainData *swapchainData;
+	uint32_t presentFlags;
 
 	/* Only the faux-backbuffer supports presenting
 	 * specific regions given to Present().
@@ -1601,7 +1607,19 @@ static void D3D11_SwapBuffers(
 	}
 
 	/* Present! */
-	IDXGISwapChain_Present(swapchainData->swapchain, renderer->syncInterval, 0);
+	if (renderer->syncInterval == 0 && renderer->supportsTearing)
+	{
+		presentFlags = DXGI_PRESENT_ALLOW_TEARING;
+	}
+	else
+	{
+		presentFlags = 0;
+	}
+	IDXGISwapChain_Present(
+		swapchainData->swapchain,
+		renderer->syncInterval,
+		presentFlags
+	);
 
 	/* Bind the faux-backbuffer now, in case DXGI unsets target state */
 	D3D11_SetRenderTargets(
@@ -5111,6 +5129,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 		D3D_FEATURE_LEVEL_10_0
 	};
 	uint32_t flags, supportsDxt3, supportsDxt5, supportsSrgb;
+	void* factory5;
 	int32_t i;
 	HRESULT res;
 
@@ -5128,6 +5147,25 @@ static FNA3D_Device* D3D11_CreateDevice(
 		&renderer->factory
 	);
 	ERROR_CHECK_RETURN("Could not create DXGIFactory", NULL)
+
+	/* Check for explicit tearing support */
+	if (SUCCEEDED(IDXGIFactory1_QueryInterface(
+		(IDXGIFactory1*) renderer->factory,
+		&D3D_IID_IDXGIFactory5,
+		(void**) &factory5
+	))) {
+		if (FAILED(IDXGIFactory5_CheckFeatureSupport(
+			(IDXGIFactory5*) factory5,
+			DXGI_FEATURE_PRESENT_ALLOW_TEARING,
+			&renderer->supportsTearing,
+			sizeof(renderer->supportsTearing)
+		))) {
+			renderer->supportsTearing = FALSE;
+		}
+		IDXGIFactory5_Release((IDXGIFactory5*) factory5);
+	}
+
+	/* Select the appropriate device for rendering */
 	D3D11_PLATFORM_GetDefaultAdapter(
 		renderer->factory,
 		&renderer->adapter
@@ -5591,7 +5629,15 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	swapchainDesc.BufferCount = 3;
 	swapchainDesc.OutputWindow = dxgiHandle;
 	swapchainDesc.Windowed = 1;
-	swapchainDesc.Flags = 0;
+	if (renderer->supportsTearing)
+	{
+		/* This enum may not be complete, so use the magic number */
+		swapchainDesc.Flags = 2048; /* DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING; */
+	}
+	else
+	{
+		swapchainDesc.Flags = 0;
+	}
 
 	/* For Windows 10+, use a better form of discard swap behavior */
 	if (SUCCEEDED(IDXGIFactory1_QueryInterface(
