@@ -304,6 +304,9 @@ struct IDXGIFactory6
 	struct IDXGIFactory6Vtbl *lpVtbl;
 };
 
+#define IDXGIFactory6_Release(This)	\
+	( (This)->lpVtbl -> Release(This) )
+
 #define IDXGIFactory6_EnumAdapterByGpuPreference(This,Adapter,GpuPreference,riid,ppvAdapter)	\
 	( (This)->lpVtbl -> EnumAdapterByGpuPreference(This,Adapter,GpuPreference,riid,ppvAdapter) ) 
 

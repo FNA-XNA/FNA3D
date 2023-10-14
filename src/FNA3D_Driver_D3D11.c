@@ -5541,6 +5541,7 @@ static void D3D11_PLATFORM_GetDefaultAdapter(
 			&D3D_IID_IDXGIAdapter1,
 			(void**) adapter
 		);
+		IDXGIFactory6_Release((IDXGIFactory6*) factory6);
 	}
 	else
 	{
