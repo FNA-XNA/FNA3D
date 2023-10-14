@@ -5149,20 +5149,23 @@ static FNA3D_Device* D3D11_CreateDevice(
 	ERROR_CHECK_RETURN("Could not create DXGIFactory", NULL)
 
 	/* Check for explicit tearing support */
-	if (SUCCEEDED(IDXGIFactory1_QueryInterface(
-		(IDXGIFactory1*) renderer->factory,
-		&D3D_IID_IDXGIFactory5,
-		(void**) &factory5
-	))) {
-		if (FAILED(IDXGIFactory5_CheckFeatureSupport(
-			(IDXGIFactory5*) factory5,
-			DXGI_FEATURE_PRESENT_ALLOW_TEARING,
-			&renderer->supportsTearing,
-			sizeof(renderer->supportsTearing)
+	if (!SDL_GetHintBoolean("FNA3D_D3D11_FORCE_BITBLT", SDL_FALSE))
+	{
+		if (SUCCEEDED(IDXGIFactory1_QueryInterface(
+			(IDXGIFactory1*) renderer->factory,
+			&D3D_IID_IDXGIFactory5,
+			(void**) &factory5
 		))) {
-			renderer->supportsTearing = FALSE;
+			if (FAILED(IDXGIFactory5_CheckFeatureSupport(
+				(IDXGIFactory5*) factory5,
+				DXGI_FEATURE_PRESENT_ALLOW_TEARING,
+				&renderer->supportsTearing,
+				sizeof(renderer->supportsTearing)
+			))) {
+				renderer->supportsTearing = FALSE;
+			}
+			IDXGIFactory5_Release((IDXGIFactory5*) factory5);
 		}
-		IDXGIFactory5_Release((IDXGIFactory5*) factory5);
 	}
 
 	/* Select the appropriate device for rendering */
@@ -5633,25 +5636,31 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	{
 		/* This enum may not be complete, so use the magic number */
 		swapchainDesc.Flags = 2048; /* DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING; */
+
+		/* To support tearing we needed DXGI 1.5, so this is always available */
+		swapchainDesc.SwapEffect = (DXGI_SWAP_EFFECT) 4; /* DXGI_SWAP_EFFECT_FLIP_DISCARD */
 	}
 	else
 	{
 		swapchainDesc.Flags = 0;
-	}
 
-	/* For Windows 10+, use a better form of discard swap behavior */
-	if (!SDL_GetHintBoolean("FNA3D_D3D11_FORCE_BITBLT", SDL_FALSE) && SUCCEEDED(IDXGIFactory1_QueryInterface(
-		(IDXGIFactory1*) renderer->factory,
-		&D3D_IID_IDXGIFactory4,
-		(void**) &factory4
-	))) {
-		/* This enum may not be complete, so use the magic number */
-		swapchainDesc.SwapEffect = (DXGI_SWAP_EFFECT) 4; /* DXGI_SWAP_EFFECT_FLIP_DISCARD */
-		IDXGIFactory4_Release((IDXGIFactory4*) factory4);
-	}
-	else
-	{
-		swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+		/* For Windows 10+, use a better form of discard swap behavior */
+		if (!SDL_GetHintBoolean(
+			"FNA3D_D3D11_FORCE_BITBLT",
+			SDL_FALSE
+		) && SUCCEEDED(IDXGIFactory1_QueryInterface(
+			(IDXGIFactory1*) renderer->factory,
+			&D3D_IID_IDXGIFactory4,
+			(void**) &factory4
+		))) {
+			/* This enum may not be complete, so use the magic number */
+			swapchainDesc.SwapEffect = (DXGI_SWAP_EFFECT) 4; /* DXGI_SWAP_EFFECT_FLIP_DISCARD */
+			IDXGIFactory4_Release((IDXGIFactory4*) factory4);
+		}
+		else
+		{
+			swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+		}
 	}
 
 	/* Create the swapchain! */
