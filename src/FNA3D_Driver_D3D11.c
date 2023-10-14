@@ -5640,7 +5640,7 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	}
 
 	/* For Windows 10+, use a better form of discard swap behavior */
-	if (SUCCEEDED(IDXGIFactory1_QueryInterface(
+	if (!SDL_GetHintBoolean("FNA3D_D3D11_FORCE_BITBLT", SDL_FALSE) && SUCCEEDED(IDXGIFactory1_QueryInterface(
 		(IDXGIFactory1*) renderer->factory,
 		&D3D_IID_IDXGIFactory4,
 		(void**) &factory4
