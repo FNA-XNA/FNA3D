@@ -5563,6 +5563,7 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	IDXGISwapChain *swapchain;
 	D3D11SwapchainData *swapchainData;
 	HWND dxgiHandle;
+	void* factory4;
 	HRESULT res;
 
 #ifdef FNA3D_DXVK_NATIVE
@@ -5590,8 +5591,22 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	swapchainDesc.BufferCount = 3;
 	swapchainDesc.OutputWindow = dxgiHandle;
 	swapchainDesc.Windowed = 1;
-	swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
 	swapchainDesc.Flags = 0;
+
+	/* For Windows 10+, use a better form of discard swap behavior */
+	if (SUCCEEDED(IDXGIFactory1_QueryInterface(
+		(IDXGIFactory1*) renderer->factory,
+		&D3D_IID_IDXGIFactory4,
+		(void**) &factory4
+	))) {
+		/* This enum may not be complete, so use the magic number */
+		swapchainDesc.SwapEffect = (DXGI_SWAP_EFFECT) 4; /* DXGI_SWAP_EFFECT_FLIP_DISCARD */
+		IDXGIFactory4_Release((IDXGIFactory4*) factory4);
+	}
+	else
+	{
+		swapchainDesc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+	}
 
 	/* Create the swapchain! */
 	res = IDXGIFactory1_CreateSwapChain(

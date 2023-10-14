@@ -36,6 +36,7 @@
 
 static const IID D3D_IID_IDXGIFactory1 = {0x770aae78,0xf26f,0x4dba,{0xa8,0x29,0x25,0x3c,0x83,0xd1,0xb3,0x87}};
 static const IID D3D_IID_IDXGIFactory2 = {0x50c83a1c,0xe072,0x4c48,{0x87,0xb0,0x36,0x30,0xfa,0x36,0xa6,0xd0}};
+static const IID D3D_IID_IDXGIFactory4 = {0x7632e1f5,0xee65,0x4dca,{0x87,0xfd,0x84,0xcd,0x75,0xf8,0x83,0x8d}};
 static const IID D3D_IID_IDXGIFactory6 = {0xc1b6694f,0xff09,0x44a9,{0xb0,0x3c,0x77,0x90,0x0a,0x0a,0x1d,0x17}};
 static const IID D3D_IID_IDXGIAdapter1 = {0x29038f61,0x3839,0x4626,{0x91,0xfd,0x08,0x68,0x79,0x01,0x1a,0x05}};
 static const IID D3D_IID_ID3D11Texture2D = {0x6f15aaf2,0xd208,0x4e89,{0x9a,0xb4,0x48,0x95,0x35,0xd3,0x4f,0x9c}};
@@ -125,8 +126,165 @@ struct ID3DUserDefinedAnnotation
 #define ID3DUserDefinedAnnotation_GetStatus(This)	\
 	( (This)->lpVtbl -> GetStatus(This) )
 
+/* IDXGIFactory4 */
+/* From dxgi1_4.h, cleaned up a bit... */
+
+typedef struct IDXGIFactory4 IDXGIFactory4;
+typedef struct IDXGIFactory4Vtbl
+{
+	HRESULT ( STDMETHODCALLTYPE *QueryInterface )( 
+		IDXGIFactory4 * This,
+		REFIID riid,
+		void **ppvObject);
+		
+	ULONG ( STDMETHODCALLTYPE *AddRef )( 
+		IDXGIFactory4 * This);
+		
+	ULONG ( STDMETHODCALLTYPE *Release )( 
+		IDXGIFactory4 * This);
+		
+	HRESULT ( STDMETHODCALLTYPE *SetPrivateData )( 
+		IDXGIFactory4 * This,
+		REFGUID Name,
+		UINT DataSize,
+		const void *pData);
+		
+	HRESULT ( STDMETHODCALLTYPE *SetPrivateDataInterface )( 
+		IDXGIFactory4 * This,
+		REFGUID Name,
+		const IUnknown *pUnknown);
+		
+	HRESULT ( STDMETHODCALLTYPE *GetPrivateData )( 
+		IDXGIFactory4 * This,
+		REFGUID Name,
+		UINT *pDataSize,
+		void *pData);
+		
+	HRESULT ( STDMETHODCALLTYPE *GetParent )( 
+		IDXGIFactory4 * This,
+		REFIID riid,
+		void **ppParent);
+		
+	HRESULT ( STDMETHODCALLTYPE *EnumAdapters )( 
+		IDXGIFactory4 * This,
+		UINT Adapter,
+		IDXGIAdapter **ppAdapter);
+		
+	HRESULT ( STDMETHODCALLTYPE *MakeWindowAssociation )( 
+		IDXGIFactory4 * This,
+		HWND WindowHandle,
+		UINT Flags);
+		
+	HRESULT ( STDMETHODCALLTYPE *GetWindowAssociation )( 
+		IDXGIFactory4 * This,
+		HWND *pWindowHandle);
+		
+	HRESULT ( STDMETHODCALLTYPE *CreateSwapChain )( 
+		IDXGIFactory4 * This,
+		IUnknown *pDevice,
+		DXGI_SWAP_CHAIN_DESC *pDesc,
+		IDXGISwapChain **ppSwapChain);
+		
+	HRESULT ( STDMETHODCALLTYPE *CreateSoftwareAdapter )( 
+		IDXGIFactory4 * This,
+		HMODULE Module,
+		IDXGIAdapter **ppAdapter);
+		
+	HRESULT ( STDMETHODCALLTYPE *EnumAdapters1 )( 
+		IDXGIFactory4 * This,
+		UINT Adapter,
+		IDXGIAdapter1 **ppAdapter);
+		
+	BOOL ( STDMETHODCALLTYPE *IsCurrent )( 
+		IDXGIFactory4 * This);
+		
+	BOOL ( STDMETHODCALLTYPE *IsWindowedStereoEnabled )( 
+		IDXGIFactory4 * This);
+		
+	HRESULT ( STDMETHODCALLTYPE *CreateSwapChainForHwnd )( 
+		IDXGIFactory4 * This,
+		IUnknown *pDevice,
+		HWND hWnd,
+		void *pDesc,
+		void *pFullscreenDesc,
+		void *pRestrictToOutput,
+		void **ppSwapChain);
+		
+	HRESULT ( STDMETHODCALLTYPE *CreateSwapChainForCoreWindow )( 
+		IDXGIFactory4 * This,
+		IUnknown *pDevice,
+		IUnknown *pWindow,
+		void *pDesc,
+		void *pRestrictToOutput,
+		void **ppSwapChain);
+		
+	HRESULT ( STDMETHODCALLTYPE *GetSharedResourceAdapterLuid )( 
+		IDXGIFactory4 * This,
+		HANDLE hResource,
+		LUID *pLuid);
+		
+	HRESULT ( STDMETHODCALLTYPE *RegisterStereoStatusWindow )( 
+		IDXGIFactory4 * This,
+		HWND WindowHandle,
+		UINT wMsg,
+		DWORD *pdwCookie);
+		
+	HRESULT ( STDMETHODCALLTYPE *RegisterStereoStatusEvent )( 
+		IDXGIFactory4 * This,
+		HANDLE hEvent,
+		DWORD *pdwCookie);
+		
+	void ( STDMETHODCALLTYPE *UnregisterStereoStatus )( 
+		IDXGIFactory4 * This,
+		DWORD dwCookie);
+		
+	HRESULT ( STDMETHODCALLTYPE *RegisterOcclusionStatusWindow )( 
+		IDXGIFactory4 * This,
+		HWND WindowHandle,
+		UINT wMsg,
+		DWORD *pdwCookie);
+		
+	HRESULT ( STDMETHODCALLTYPE *RegisterOcclusionStatusEvent )( 
+		IDXGIFactory4 * This,
+		HANDLE hEvent,
+		DWORD *pdwCookie);
+		
+	void ( STDMETHODCALLTYPE *UnregisterOcclusionStatus )( 
+		IDXGIFactory4 * This,
+		DWORD dwCookie);
+		
+	HRESULT ( STDMETHODCALLTYPE *CreateSwapChainForComposition )( 
+		IDXGIFactory4 * This,
+		IUnknown *pDevice,
+		void *pDesc,
+		void *pRestrictToOutput,
+		void **ppSwapChain);
+		
+	UINT ( STDMETHODCALLTYPE *GetCreationFlags )( 
+		IDXGIFactory4 * This);
+		
+	HRESULT ( STDMETHODCALLTYPE *EnumAdapterByLuid )( 
+		IDXGIFactory4 * This,
+		LUID AdapterLuid,
+		REFIID riid,
+		void **ppvAdapter);
+		
+	HRESULT ( STDMETHODCALLTYPE *EnumWarpAdapter )( 
+		IDXGIFactory4 * This,
+		REFIID riid,
+		void **ppvAdapter);
+} IDXGIFactory4Vtbl;
+
+struct IDXGIFactory4
+{
+	struct IDXGIFactory4Vtbl *lpVtbl;
+};
+
+#define IDXGIFactory4_Release(This)	\
+	( (This)->lpVtbl -> Release(This) )
+
 /* IDXGIFactory6 */
-/* From igdx1_6.h, cleaned up a bit... */
+/* From dxgi1_6.h, cleaned up a bit... */
 
 typedef enum
 {
