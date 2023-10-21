@@ -3576,7 +3576,8 @@ static FNA3D_Texture* OPENGL_CreateTexture2D(
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLTexture *result;
 	GLenum glFormat, glInternalFormat, glType;
-	int32_t levelWidth, levelHeight, i;
+	int32_t blockSize, levelWidth, levelHeight, i;
+	uint32_t requiredBytes;
 	FNA3D_Command cmd;
 
 	if (renderer->threadID != SDL_ThreadID())
@@ -3609,6 +3610,12 @@ static FNA3D_Texture* OPENGL_CreateTexture2D(
 		{
 			levelWidth = SDL_max(width >> i, 1);
 			levelHeight = SDL_max(height >> i, 1);
+			blockSize = Texture_GetBlockSize(format);
+			requiredBytes =
+				(int32_t) ((levelWidth + (blockSize-1)) / blockSize) *
+				(int32_t) ((levelHeight + (blockSize-1)) / blockSize) *
+				Texture_GetFormatSize(format);
+
 			renderer->glCompressedTexImage2D(
 				GL_TEXTURE_2D,
 				i,
@@ -3616,7 +3623,7 @@ static FNA3D_Texture* OPENGL_CreateTexture2D(
 				levelWidth,
 				levelHeight,
 				0,
-				((levelWidth + 3) / 4) * ((levelHeight + 3) / 4) * Texture_GetFormatSize(format),
+				requiredBytes,
 				NULL
 			);
 		}
@@ -3709,7 +3716,8 @@ static FNA3D_Texture* OPENGL_CreateTextureCube(
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLTexture *result;
 	GLenum glFormat, glInternalFormat;
-	int32_t levelSize, i, l;
+	int32_t blockSize, levelSize, i, l;
+	uint32_t requiredBytes;
 	FNA3D_Command cmd;
 
 	if (renderer->threadID != SDL_ThreadID())
@@ -3741,6 +3749,12 @@ static FNA3D_Texture* OPENGL_CreateTextureCube(
 			for (l = 0; l < levelCount; l += 1)
 			{
 				levelSize = SDL_max(size >> l, 1);
+				blockSize = Texture_GetBlockSize(format);
+				requiredBytes =
+					(int32_t) ((levelSize + (blockSize-1)) / blockSize) *
+					(int32_t) ((levelSize + (blockSize-1)) / blockSize) *
+					Texture_GetFormatSize(format);
+
 				renderer->glCompressedTexImage2D(
 					GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
 					l,
@@ -3748,7 +3762,7 @@ static FNA3D_Texture* OPENGL_CreateTextureCube(
 					levelSize,
 					levelSize,
 					0,
-					((levelSize + 3) / 4) * ((levelSize + 3) / 4) * Texture_GetFormatSize(format),
+					requiredBytes,
 					NULL
 				);
 			}
