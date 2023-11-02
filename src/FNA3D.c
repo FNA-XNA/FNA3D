@@ -188,7 +188,7 @@ FNA3D_Device* FNA3D_CreateDevice(
 	}
 
 	/* Force debug mode if the user set the hint */
-	if (SDL_GetHintBoolean("FNA3D_D3D11_FORCE_DEBUG", SDL_FALSE))
+	if (SDL_GetHintBoolean("FNA3D_FORCE_DEBUG", SDL_FALSE))
 	{
 		debugMode = 1;
 	}
