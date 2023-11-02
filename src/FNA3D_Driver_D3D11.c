@@ -56,18 +56,6 @@
 #include <dxgi.h>
 #endif
 
-#ifndef DXGI_SWAP_EFFECT_FLIP_DISCARD
-#define DXGI_SWAP_EFFECT_FLIP_DISCARD 4
-#endif
-
-#ifndef DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING
-#define DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING 2048
-#endif
-
-#ifndef DXGI_PRESENT_ALLOW_TEARING
-#define DXGI_PRESENT_ALLOW_TEARING 0x00000200UL
-#endif
-
 #define ERROR_CHECK(msg) \
 	if (FAILED(res)) \
 	{ \
@@ -1673,7 +1661,7 @@ static void D3D11_SwapBuffers(
 	/* Present! */
 	if (renderer->syncInterval == 0 && renderer->supportsTearing && !swapchainData->inExclusiveFullScreen)
 	{
-		presentFlags = DXGI_PRESENT_ALLOW_TEARING;
+		presentFlags = 0x00000200UL; /* DXGI_PRESENT_ALLOW_TEARING */
 	}
 	else
 	{
@@ -3089,7 +3077,7 @@ static HRESULT D3D11_INTERNAL_ResizeAfterFullScreenTransition(
 		swapchainTextureDesc.Width,		/* keep width the same */
 		swapchainTextureDesc.Height,	/* keep height the same*/
 		DXGI_FORMAT_UNKNOWN,			/* keep the old format */
-		renderer->supportsTearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0 /* See CreateSwapChain */
+		renderer->supportsTearing ? 2048 : 0 /* See CreateSwapChain */
 	);
 	ERROR_CHECK_RETURN("Couldn't resize swapchain after full screen transition", res)
 
@@ -5390,12 +5378,6 @@ static FNA3D_Device* D3D11_CreateDevice(
 		? D3D_DRIVER_TYPE_WARP
 		: D3D_DRIVER_TYPE_UNKNOWN; /* Must be UNKNOWN if adapter is non-null according to spec */
 
-	/* Force debug mode if the user set the hint */
-	if (SDL_GetHintBoolean("FNA3D_D3D11_FORCE_DEBUG", SDL_FALSE))
-	{
-		debugMode = 1;
-	}
-
 	/* Allocate and zero out the renderer */
 	renderer = (D3D11Renderer*) SDL_malloc(sizeof(D3D11Renderer));
 	SDL_memset(renderer, '\0', sizeof(D3D11Renderer));
@@ -6000,7 +5982,7 @@ static HRESULT D3D11_PLATFORM_ResizeSwapChain(
 		0,			/* get width from window */
 		0,			/* get height from window */
 		DXGI_FORMAT_UNKNOWN,	/* keep the old format */
-		renderer->supportsTearing ? DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING : 0 /* See CreateSwapChain */
+		renderer->supportsTearing ? 2048 : 0 /* See CreateSwapChain */
 	);
 }
 
