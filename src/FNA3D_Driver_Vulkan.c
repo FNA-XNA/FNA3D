@@ -5368,6 +5368,10 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 			imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
 			imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
 
+			/* The rtView should only contain one level and one layer */
+			imageViewCreateInfo.subresourceRange.levelCount = 1;
+			imageViewCreateInfo.subresourceRange.layerCount = 1;
+
 			result = renderer->vkCreateImageView(
 				renderer->logicalDevice,
 				&imageViewCreateInfo,
