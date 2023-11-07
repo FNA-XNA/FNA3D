@@ -6903,7 +6903,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 			0,
 			renderer->colorAttachments[i]->layerCount,
 			0,
-			1,
+			renderer->colorAttachments[i]->levelCount,
 			0,
 			renderer->colorAttachments[i]->image,
 			&renderer->colorAttachments[i]->resourceAccessType
