@@ -5360,7 +5360,7 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	SDL_memset(texture->rtViews, '\0', sizeof(texture->rtViews));
 	if (isRenderTarget)
 	{
-		if (!isCube && levelCount == 1)
+		if (!isCube)
 		{
 			/* Framebuffer views don't like swizzling */
 			imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -5368,9 +5368,8 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 			imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
 			imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
 
-			/* The rtView should only contain one level and one layer */
+			/* The view should only contain one level */
 			imageViewCreateInfo.subresourceRange.levelCount = 1;
-			imageViewCreateInfo.subresourceRange.layerCount = 1;
 
 			result = renderer->vkCreateImageView(
 				renderer->logicalDevice,
