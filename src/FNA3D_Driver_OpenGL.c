@@ -5343,6 +5343,12 @@ static void OPENGL_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 	}
 }
 
+static void OPENGL_SetTextureName(FNA3D_Renderer* driverData, FNA3D_Texture* texture, const char* text)
+{
+	// No OpenGL API for this that I'm aware of -kg
+	return;
+}
+
 static const char *debugSourceStr[] = {
 	"GL_DEBUG_SOURCE_API",
 	"GL_DEBUG_SOURCE_WINDOW_SYSTEM",

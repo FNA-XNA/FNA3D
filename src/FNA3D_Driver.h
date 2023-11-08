@@ -718,6 +718,7 @@ struct FNA3D_Device
 	/* Debugging */
 
 	void (*SetStringMarker)(FNA3D_Renderer *driverData, const char *text);
+	void (*SetTextureName)(FNA3D_Renderer *driverData, FNA3D_Texture *texture, const char *text);
 
 	/* External Interop */
 
@@ -810,6 +811,7 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(GetMaxTextureSlots, name) \
 	ASSIGN_DRIVER_FUNC(GetMaxMultiSampleCount, name) \
 	ASSIGN_DRIVER_FUNC(SetStringMarker, name) \
+	ASSIGN_DRIVER_FUNC(SetTextureName, name) \
 	ASSIGN_DRIVER_FUNC(GetSysRenderer, name) \
 	ASSIGN_DRIVER_FUNC(CreateSysTexture, name)
 

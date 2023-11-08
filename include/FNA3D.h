@@ -1530,6 +1530,14 @@ FNA3DAPI int32_t FNA3D_GetMaxMultiSampleCount(
  */
 FNA3DAPI void FNA3D_SetStringMarker(FNA3D_Device *device, const char *text);
 
+/* Sets an arbitrary string constant to be stored in a rendering API trace,
+ * useful for labeling textures for debugging purposes.
+ *
+ * texture: The texture to attach the name to.
+ * text: The string constant to mark as the name of the texture.
+ */
+FNA3DAPI void FNA3D_SetTextureName(FNA3D_Device *device, FNA3D_Texture *texture, const char *text);
+
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */

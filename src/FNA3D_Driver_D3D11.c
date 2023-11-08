@@ -4813,6 +4813,16 @@ static void D3D11_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 	ID3DUserDefinedAnnotation_SetMarker(renderer->annotation, wstr);
 }
 
+const GUID GUID_D3DDebugObjectName = { 0x429b8c22, 0x9188, 0x4b0c, 0x87, 0x42, 0xac, 0xb0, 0xbf, 0x85, 0xc2, 0x00 };
+
+static void D3D11_SetTextureName(FNA3D_Renderer* driverData, FNA3D_Texture* texture, const char* text)
+{
+	D3D11Renderer* renderer = (D3D11Renderer*)driverData;
+	D3D11Texture* d3dTexture = (D3D11Texture*)texture;
+
+	ID3D11DeviceChild_SetPrivateData(d3dTexture->handle, &GUID_D3DDebugObjectName, strlen(text), text);
+}
+
 /* External Interop */
 
 static void D3D11_GetSysRenderer(

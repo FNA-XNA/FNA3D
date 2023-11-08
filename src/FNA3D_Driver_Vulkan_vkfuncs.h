@@ -68,6 +68,7 @@ VULKAN_INSTANCE_FUNCTION(vkGetPhysicalDeviceSurfaceSupportKHR)
 
 /* VK_EXT_debug_utils, Optional debug feature used by SetStringMarker */
 VULKAN_INSTANCE_FUNCTION(vkCmdInsertDebugUtilsLabelEXT)
+VULKAN_INSTANCE_FUNCTION(vkSetDebugUtilsObjectNameEXT)
 
 /*
  * vkDevice, created by a vkInstance
