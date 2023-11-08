@@ -5442,7 +5442,8 @@ static void VULKAN_INTERNAL_GetTextureData(
 	VULKAN_INTERNAL_PrepareCopyFromTransferBuffer(
 		renderer,
 		dataLength,
-		(VkDeviceSize)Texture_GetFormatSize(vulkanTexture->colorFormat),
+		// The Vulkan spec states: bufferOffset must be a multiple of 4 (https://vulkan.lunarg.com/doc/view/1.2.141.0/windows/1.2-extensions/vkspec.html#VUID-VkBufferImageCopy-bufferOffset-00194)
+		(VkDeviceSize)SDL_max(Texture_GetFormatSize(vulkanTexture->colorFormat), 4),
 		&transferBuffer,
 		(void**) &transferBufferPointer
 	);
@@ -8688,6 +8689,12 @@ static void VULKAN_INTERNAL_SetTextureData(
 	int32_t bufferImageHeight = h;
 	int32_t blockSize = Texture_GetBlockSize(texture->colorFormat);
 
+	if (blockSize > 1)
+	{
+		bufferRowLength = (bufferRowLength + blockSize - 1) & ~(blockSize - 1);
+		bufferImageHeight = (bufferImageHeight + blockSize - 1) & ~(blockSize - 1);
+	}
+
 	if (dataLength > uploadLength)
 	{
 		FNA3D_LogWarn(
@@ -8735,8 +8742,8 @@ static void VULKAN_INTERNAL_SetTextureData(
 	);
 
 	/* Block compressed texture buffers must be at least 1 block in width and height */
-	bufferRowLength = SDL_max(blockSize, w);
-	bufferImageHeight = SDL_max(blockSize, h);
+	bufferRowLength = SDL_max(blockSize, bufferRowLength);
+	bufferImageHeight = SDL_max(blockSize, bufferImageHeight);
 
 	imageCopy.imageExtent.width = w;
 	imageCopy.imageExtent.height = h;
