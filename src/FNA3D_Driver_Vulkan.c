@@ -10008,7 +10008,6 @@ static void VULKAN_SetTextureName(FNA3D_Renderer* driverData, FNA3D_Texture* tex
 {
 	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
 	VulkanTexture* vkTexture = (VulkanTexture*)texture;
-	VulkanCommandBuffer* commandBuffer;
 	VkDebugUtilsObjectNameInfoEXT nameInfo;
 
 	if (renderer->supportsDebugUtils)
@@ -10019,13 +10018,10 @@ static void VULKAN_SetTextureName(FNA3D_Renderer* driverData, FNA3D_Texture* tex
 		nameInfo.objectType = VK_OBJECT_TYPE_IMAGE;
 		nameInfo.objectHandle = vkTexture->image;
 
-		commandBuffer = (VulkanCommandBuffer*)FNA3D_CommandBuffer_GetCurrent(
-			renderer->commandBuffers
-		);
-		RECORD_CMD(renderer->vkSetDebugUtilsObjectNameEXT(
-			commandBuffer->commandBuffer,
+		renderer->vkSetDebugUtilsObjectNameEXT(
+			renderer->logicalDevice,
 			&nameInfo
-		));
+		);
 	}
 }
 
