@@ -8302,7 +8302,6 @@ static void VULKAN_ResolveTarget(
 	int32_t layerCount = (target->type == FNA3D_RENDERTARGET_TYPE_CUBE) ? 6 : 1;
 	int32_t level;
 	VulkanResourceAccessType *levelAccessType;
-	VulkanResourceAccessType originalAccessType = vulkanTexture->resourceAccessType;
 	VkImageBlit blit;
 
 	/* The target is resolved during the render pass */
