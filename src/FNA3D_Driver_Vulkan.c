@@ -6901,12 +6901,12 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
-			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
+			RESOURCE_ACCESS_COLOR_ATTACHMENT_WRITE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
 			renderer->colorAttachments[i]->layerCount,
 			0,
-			1,
+			renderer->colorAttachments[i]->levelCount,
 			0,
 			renderer->colorAttachments[i]->image,
 			&renderer->colorAttachments[i]->resourceAccessType
@@ -6961,7 +6961,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 			0,
 			renderer->depthStencilAttachment->layerCount,
 			0,
-			1,
+			renderer->depthStencilAttachment->levelCount,
 			0,
 			renderer->depthStencilAttachment->image,
 			&renderer->depthStencilAttachment->resourceAccessType
@@ -8301,10 +8301,11 @@ static void VULKAN_ResolveTarget(
 	VulkanCommandBuffer *commandBuffer;
 	int32_t layerCount = (target->type == FNA3D_RENDERTARGET_TYPE_CUBE) ? 6 : 1;
 	int32_t level;
-	VulkanResourceAccessType *origAccessType;
+	VulkanResourceAccessType *levelAccessType;
+	VulkanResourceAccessType originalAccessType = vulkanTexture->resourceAccessType;
 	VkImageBlit blit;
 
-	/* The target is resolved during the render pass. */
+	/* The target is resolved during the render pass */
 
 	/* If the target has mipmaps, regenerate them now */
 	if (target->levelCount > 1)
@@ -8312,13 +8313,13 @@ static void VULKAN_ResolveTarget(
 		VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
 
 		/* Store the original image layout... */
-		origAccessType = SDL_stack_alloc(
+		levelAccessType = SDL_stack_alloc(
 			VulkanResourceAccessType,
 			target->levelCount
 		);
 		for (level = 0; level < target->levelCount; level += 1)
 		{
-			origAccessType[level] = vulkanTexture->resourceAccessType;
+			levelAccessType[level] = vulkanTexture->resourceAccessType;
 		}
 
 		/* Blit each mip sequentially. Barriers, barriers everywhere! */
@@ -8360,7 +8361,7 @@ static void VULKAN_ResolveTarget(
 				1,
 				0,
 				vulkanTexture->image,
-				&origAccessType[level - 1]
+				&levelAccessType[level - 1]
 			);
 
 			VULKAN_INTERNAL_ImageMemoryBarrier(
@@ -8373,7 +8374,7 @@ static void VULKAN_ResolveTarget(
 				1,
 				1,
 				vulkanTexture->image,
-				&origAccessType[level]
+				&levelAccessType[level]
 			);
 
 			commandBuffer = (VulkanCommandBuffer*) FNA3D_CommandBuffer_GetCurrent(
@@ -8391,26 +8392,38 @@ static void VULKAN_ResolveTarget(
 			));
 		}
 
-		/* Revert to the old image layout.
-		 * Not as graceful as a single barrier call, but oh well
-		 */
-		for (level = 0; level < target->levelCount; level += 1)
-		{
-			VULKAN_INTERNAL_ImageMemoryBarrier(
-				renderer,
-				vulkanTexture->resourceAccessType,
-				VK_IMAGE_ASPECT_COLOR_BIT,
-				0,
-				layerCount,
-				level,
-				1,
-				0,
-				vulkanTexture->image,
-				&origAccessType[level]
-			);
-		}
+		/* Transition final level to READ */
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_TRANSFER_READ,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			layerCount,
+			level,
+			1,
+			1,
+			vulkanTexture->image,
+			&levelAccessType[level]
+		);
 
-		SDL_stack_free(origAccessType);
+		/* The whole texture is in READ layout now, so set the type on the texture */
+		vulkanTexture->resourceAccessType = RESOURCE_ACCESS_TRANSFER_READ;
+
+		/* Revert entire image to the original image layout */
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			originalAccessType,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			layerCount,
+			0,
+			vulkanTexture->levelCount,
+			0,
+			vulkanTexture->image,
+			&vulkanTexture->resourceAccessType
+		);
+
+		SDL_stack_free(levelAccessType);
 	}
 }
 
