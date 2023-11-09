@@ -6901,7 +6901,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 	{
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
-			RESOURCE_ACCESS_COLOR_ATTACHMENT_WRITE,
+			RESOURCE_ACCESS_COLOR_ATTACHMENT_READ_WRITE,
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
 			renderer->colorAttachments[i]->layerCount,
