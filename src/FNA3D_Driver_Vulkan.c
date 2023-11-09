@@ -8406,22 +8406,25 @@ static void VULKAN_ResolveTarget(
 			&levelAccessType[level]
 		);
 
-		/* The whole texture is in READ layout now, so set the type on the texture */
+		/* The whole texture is in READ layout now, so set the access type on the texture */
 		vulkanTexture->resourceAccessType = RESOURCE_ACCESS_TRANSFER_READ;
 
-		/* Revert entire image to the original image layout */
-		VULKAN_INTERNAL_ImageMemoryBarrier(
-			renderer,
-			originalAccessType,
-			VK_IMAGE_ASPECT_COLOR_BIT,
-			0,
-			layerCount,
-			0,
-			vulkanTexture->levelCount,
-			0,
-			vulkanTexture->image,
-			&vulkanTexture->resourceAccessType
-		);
+		/* Transition to sampler read if necessary */
+		if (vulkanTexture->imageCreateInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT)
+		{
+			VULKAN_INTERNAL_ImageMemoryBarrier(
+				renderer,
+				RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
+				VK_IMAGE_ASPECT_COLOR_BIT,
+				0,
+				layerCount,
+				0,
+				vulkanTexture->levelCount,
+				0,
+				vulkanTexture->image,
+				&vulkanTexture->resourceAccessType
+			);
+		}
 
 		SDL_stack_free(levelAccessType);
 	}
