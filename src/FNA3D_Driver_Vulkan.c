@@ -5442,7 +5442,9 @@ static void VULKAN_INTERNAL_GetTextureData(
 	VULKAN_INTERNAL_PrepareCopyFromTransferBuffer(
 		renderer,
 		dataLength,
-		// The Vulkan spec states: bufferOffset must be a multiple of 4 (https://vulkan.lunarg.com/doc/view/1.2.141.0/windows/1.2-extensions/vkspec.html#VUID-VkBufferImageCopy-bufferOffset-00194)
+		/* The Vulkan spec states: bufferOffset must be a multiple of 4
+		 * https://vulkan.lunarg.com/doc/view/1.2.141.0/windows/1.2-extensions/vkspec.html#VUID-VkBufferImageCopy-bufferOffset-00194
+		 */
 		(VkDeviceSize)SDL_max(Texture_GetFormatSize(vulkanTexture->colorFormat), 4),
 		&transferBuffer,
 		(void**) &transferBufferPointer
