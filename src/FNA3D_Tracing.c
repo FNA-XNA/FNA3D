@@ -1549,6 +1549,12 @@ void FNA3D_Trace_SetStringMarker(const char *text)
 	SDL_UnlockMutex(traceLock);
 }
 
+void FNA3D_Trace_SetTextureName(void *texture, const char *text)
+{
+	SDL_assert(0 && "Trace_SetTextureName not implemented -kg");
+	return;
+}
+
 #undef WRITE
 
 #else

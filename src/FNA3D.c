@@ -1474,6 +1474,18 @@ void FNA3D_SetStringMarker(FNA3D_Device *device, const char *text)
 	device->SetStringMarker(device->driverData, text);
 }
 
+void FNA3D_SetTextureName(FNA3D_Device* device, FNA3D_Texture* texture, const char* text)
+{
+	TRACE_SETTEXTURENAME
+	if ((device == NULL) || (texture == NULL))
+	{
+		return;
+	}
+
+	SDL_assert(text);
+
+	device->SetTextureName(device->driverData, texture, text);
+}
 /* External Interop */
 
 void FNA3D_GetSysRendererEXT(

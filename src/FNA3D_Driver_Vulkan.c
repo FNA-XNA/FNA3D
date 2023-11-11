@@ -10013,6 +10013,27 @@ static void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 	}
 }
 
+static void VULKAN_SetTextureName(FNA3D_Renderer* driverData, FNA3D_Texture* texture, const char* text)
+{
+	VulkanRenderer* renderer = (VulkanRenderer*)driverData;
+	VulkanTexture* vkTexture = (VulkanTexture*)texture;
+	VkDebugUtilsObjectNameInfoEXT nameInfo;
+
+	if (renderer->supportsDebugUtils)
+	{
+		nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
+		nameInfo.pNext = NULL;
+		nameInfo.pObjectName = text;
+		nameInfo.objectType = VK_OBJECT_TYPE_IMAGE;
+		nameInfo.objectHandle = vkTexture->image;
+
+		renderer->vkSetDebugUtilsObjectNameEXT(
+			renderer->logicalDevice,
+			&nameInfo
+		);
+	}
+}
+
 /* External Interop */
 
 static void VULKAN_GetSysRenderer(

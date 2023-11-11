@@ -85,6 +85,7 @@
 #define MARK_QUERYEND				54
 #define MARK_QUERYPIXELCOUNT			55
 #define MARK_SETSTRINGMARKER			56
+#define MARK_SETTEXTURENAME			57
 
 static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 {
@@ -1227,6 +1228,9 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 			ops->read(ops, miscBuffer, dataLength, 1);
 			FNA3D_SetStringMarker(device, (char*) miscBuffer);
 			SDL_free(miscBuffer);
+			break;
+		case MARK_SETTEXTURENAME:
+			SDL_assert(0 && "Not implemented: SETTEXTURENAME");
 			break;
 		case MARK_CREATEDEVICE:
 		case MARK_DESTROYDEVICE:
