@@ -5360,13 +5360,16 @@ static uint8_t VULKAN_INTERNAL_CreateTexture(
 	SDL_memset(texture->rtViews, '\0', sizeof(texture->rtViews));
 	if (isRenderTarget)
 	{
-		if (!isCube && levelCount == 1)
+		if (!isCube)
 		{
 			/* Framebuffer views don't like swizzling */
 			imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_IDENTITY;
 			imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_IDENTITY;
 			imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_IDENTITY;
 			imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_IDENTITY;
+
+			/* The view should only contain one level */
+			imageViewCreateInfo.subresourceRange.levelCount = 1;
 
 			result = renderer->vkCreateImageView(
 				renderer->logicalDevice,
@@ -6906,7 +6909,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 			0,
 			renderer->colorAttachments[i]->layerCount,
 			0,
-			1,
+			renderer->colorAttachments[i]->levelCount,
 			0,
 			renderer->colorAttachments[i]->image,
 			&renderer->colorAttachments[i]->resourceAccessType
@@ -6961,7 +6964,7 @@ static void VULKAN_INTERNAL_BeginRenderPass(
 			0,
 			renderer->depthStencilAttachment->layerCount,
 			0,
-			1,
+			renderer->depthStencilAttachment->levelCount,
 			0,
 			renderer->depthStencilAttachment->image,
 			&renderer->depthStencilAttachment->resourceAccessType
@@ -8301,10 +8304,10 @@ static void VULKAN_ResolveTarget(
 	VulkanCommandBuffer *commandBuffer;
 	int32_t layerCount = (target->type == FNA3D_RENDERTARGET_TYPE_CUBE) ? 6 : 1;
 	int32_t level;
-	VulkanResourceAccessType *origAccessType;
+	VulkanResourceAccessType *levelAccessType;
 	VkImageBlit blit;
 
-	/* The target is resolved during the render pass. */
+	/* The target is resolved during the render pass */
 
 	/* If the target has mipmaps, regenerate them now */
 	if (target->levelCount > 1)
@@ -8312,13 +8315,13 @@ static void VULKAN_ResolveTarget(
 		VULKAN_INTERNAL_MaybeEndRenderPass(renderer);
 
 		/* Store the original image layout... */
-		origAccessType = SDL_stack_alloc(
+		levelAccessType = SDL_stack_alloc(
 			VulkanResourceAccessType,
 			target->levelCount
 		);
 		for (level = 0; level < target->levelCount; level += 1)
 		{
-			origAccessType[level] = vulkanTexture->resourceAccessType;
+			levelAccessType[level] = vulkanTexture->resourceAccessType;
 		}
 
 		/* Blit each mip sequentially. Barriers, barriers everywhere! */
@@ -8360,7 +8363,7 @@ static void VULKAN_ResolveTarget(
 				1,
 				0,
 				vulkanTexture->image,
-				&origAccessType[level - 1]
+				&levelAccessType[level - 1]
 			);
 
 			VULKAN_INTERNAL_ImageMemoryBarrier(
@@ -8373,7 +8376,7 @@ static void VULKAN_ResolveTarget(
 				1,
 				1,
 				vulkanTexture->image,
-				&origAccessType[level]
+				&levelAccessType[level]
 			);
 
 			commandBuffer = (VulkanCommandBuffer*) FNA3D_CommandBuffer_GetCurrent(
@@ -8391,26 +8394,41 @@ static void VULKAN_ResolveTarget(
 			));
 		}
 
-		/* Revert to the old image layout.
-		 * Not as graceful as a single barrier call, but oh well
-		 */
-		for (level = 0; level < target->levelCount; level += 1)
+		/* Transition final level to READ */
+		VULKAN_INTERNAL_ImageMemoryBarrier(
+			renderer,
+			RESOURCE_ACCESS_TRANSFER_READ,
+			VK_IMAGE_ASPECT_COLOR_BIT,
+			0,
+			layerCount,
+			target->levelCount - 1,
+			1,
+			1,
+			vulkanTexture->image,
+			&levelAccessType[target->levelCount - 1]
+		);
+
+		/* The whole texture is in READ layout now, so set the access type on the texture */
+		vulkanTexture->resourceAccessType = RESOURCE_ACCESS_TRANSFER_READ;
+
+		/* Transition to sampler read if necessary */
+		if (vulkanTexture->imageCreateInfo.usage & VK_IMAGE_USAGE_SAMPLED_BIT)
 		{
 			VULKAN_INTERNAL_ImageMemoryBarrier(
 				renderer,
-				vulkanTexture->resourceAccessType,
+				RESOURCE_ACCESS_ANY_SHADER_READ_SAMPLED_IMAGE,
 				VK_IMAGE_ASPECT_COLOR_BIT,
 				0,
 				layerCount,
-				level,
-				1,
+				0,
+				target->levelCount,
 				0,
 				vulkanTexture->image,
-				&origAccessType[level]
+				&vulkanTexture->resourceAccessType
 			);
 		}
 
-		SDL_stack_free(origAccessType);
+		SDL_stack_free(levelAccessType);
 	}
 }
 
