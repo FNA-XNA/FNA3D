@@ -8398,11 +8398,11 @@ static void VULKAN_ResolveTarget(
 			VK_IMAGE_ASPECT_COLOR_BIT,
 			0,
 			layerCount,
-			level,
+			level - 1,
 			1,
 			1,
 			vulkanTexture->image,
-			&levelAccessType[level]
+			&levelAccessType[level - 1]
 		);
 
 		/* The whole texture is in READ layout now, so set the access type on the texture */
