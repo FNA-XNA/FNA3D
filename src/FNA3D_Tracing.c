@@ -1551,7 +1551,7 @@ void FNA3D_Trace_SetStringMarker(const char *text)
 
 void FNA3D_Trace_SetTextureName(void *texture, const char *text)
 {
-	// FIXME: Not implemented -kg
+	SDL_assert(0 && "Trace_SetTextureName not implemented -kg");
 	return;
 }
 
