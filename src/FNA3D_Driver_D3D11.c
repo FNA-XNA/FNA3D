@@ -3347,6 +3347,12 @@ static void D3D11_AddDisposeTexture(
 		}
 	}
 
+	if (tex->staging)
+	{
+		ID3D11Resource_Release(tex->staging);
+		tex->staging = NULL;
+	}
+
 	/* Release the shader resource view and texture */
 	ID3D11ShaderResourceView_Release(tex->shaderView);
 	IUnknown_Release(tex->handle);
