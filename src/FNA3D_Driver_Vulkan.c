@@ -10043,7 +10043,7 @@ static void VULKAN_SetTextureName(FNA3D_Renderer* driverData, FNA3D_Texture* tex
 		nameInfo.pNext = NULL;
 		nameInfo.pObjectName = text;
 		nameInfo.objectType = VK_OBJECT_TYPE_IMAGE;
-		nameInfo.objectHandle = vkTexture->image;
+		nameInfo.objectHandle = (uint64_t) vkTexture->image;
 
 		renderer->vkSetDebugUtilsObjectNameEXT(
 			renderer->logicalDevice,
