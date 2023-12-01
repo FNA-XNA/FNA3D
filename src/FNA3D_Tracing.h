@@ -379,6 +379,8 @@ void FNA3D_Trace_QueryPixelCount(
 
 void FNA3D_Trace_SetStringMarker(const char *text);
 
+void FNA3D_Trace_SetTextureName(void *texture, const char *text);
+
 #define TRACE_CREATEDEVICE FNA3D_Trace_CreateDevice(presentationParameters, debugMode);
 #define TRACE_DESTROYDEVICE FNA3D_Trace_DestroyDevice();
 #define TRACE_SWAPBUFFERS FNA3D_Trace_SwapBuffers(sourceRectangle, destinationRectangle, overrideWindowHandle);
