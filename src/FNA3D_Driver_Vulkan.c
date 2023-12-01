@@ -10015,7 +10015,7 @@ static void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 	VulkanCommandBuffer *commandBuffer;
 	VkDebugUtilsLabelEXT labelInfo;
 
-	if (renderer->supportsDebugUtils)
+	if (renderer->debugMode && renderer->supportsDebugUtils)
 	{
 		labelInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
 		labelInfo.pNext = NULL;
@@ -10037,7 +10037,7 @@ static void VULKAN_SetTextureName(FNA3D_Renderer* driverData, FNA3D_Texture* tex
 	VulkanTexture* vkTexture = (VulkanTexture*)texture;
 	VkDebugUtilsObjectNameInfoEXT nameInfo;
 
-	if (renderer->supportsDebugUtils)
+	if (renderer->debugMode && renderer->supportsDebugUtils)
 	{
 		nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
 		nameInfo.pNext = NULL;
