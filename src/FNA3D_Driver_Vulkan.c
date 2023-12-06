@@ -1697,6 +1697,7 @@ static inline uint8_t SupportsInstanceExtension(
 }
 
 static uint8_t VULKAN_INTERNAL_CheckInstanceExtensions(
+	uint8_t debugMode,
 	const char **requiredExtensions,
 	uint32_t requiredExtensionsLength,
 	uint8_t *supportsDeviceProperties2,
@@ -1738,7 +1739,7 @@ static uint8_t VULKAN_INTERNAL_CheckInstanceExtensions(
 		availableExtensions,
 		extensionCount
 	);
-	*supportsDebugUtils = SupportsInstanceExtension(
+	*supportsDebugUtils = debugMode && SupportsInstanceExtension(
 		VK_EXT_DEBUG_UTILS_EXTENSION_NAME,
 		availableExtensions,
 		extensionCount
@@ -2299,6 +2300,7 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 	}
 
 	if (!VULKAN_INTERNAL_CheckInstanceExtensions(
+		renderer->debugMode,
 		instanceExtensionNames,
 		instanceExtensionCount,
 		&renderer->supportsDeviceProperties2,
@@ -2323,39 +2325,17 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 		);
 	}
 
-	if (renderer->debugMode)
+	if (renderer->supportsDebugUtils)
 	{
-		if (renderer->supportsDebugUtils)
-		{
-			/* Append the debug extension to the end */
-			instanceExtensionNames[instanceExtensionCount++] =
-				VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
-
-			debugMessengerCreateInfo.sType =
-				VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-			debugMessengerCreateInfo.pNext = NULL;
-			debugMessengerCreateInfo.flags = 0;
-			debugMessengerCreateInfo.messageSeverity = (
-				VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-				VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
-				VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-				VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
-			);
-			debugMessengerCreateInfo.messageType = (
-				VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
-				VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-				VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
-			);
-			debugMessengerCreateInfo.pfnUserCallback = VULKAN_INTERNAL_DebugCallback;
-			debugMessengerCreateInfo.pUserData = NULL;
-		}
-		else
-		{
-			FNA3D_LogWarn(
-				"%s is not supported!",
-				VK_EXT_DEBUG_UTILS_EXTENSION_NAME
-			);
-		}
+		instanceExtensionNames[instanceExtensionCount++] =
+			VK_EXT_DEBUG_UTILS_EXTENSION_NAME;
+	}
+	else if (renderer->debugMode)
+	{
+		FNA3D_LogWarn(
+			"%s is not supported!",
+			VK_EXT_DEBUG_UTILS_EXTENSION_NAME
+		);
 	}
 
 	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -2379,15 +2359,32 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 			FNA3D_LogWarn("Validation layers not found, continuing without validation");
 			createInfo.enabledLayerCount = 0;
 		}
-
-		if (renderer->supportsDebugUtils)
-		{
-			createInfo.pNext = &debugMessengerCreateInfo;
-		}
 	}
 	else
 	{
 		createInfo.enabledLayerCount = 0;
+	}
+	if (renderer->supportsDebugUtils)
+	{
+		debugMessengerCreateInfo.sType =
+			VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
+		debugMessengerCreateInfo.pNext = NULL;
+		debugMessengerCreateInfo.flags = 0;
+		debugMessengerCreateInfo.messageSeverity = (
+			VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
+			VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+			VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
+			VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT
+		);
+		debugMessengerCreateInfo.messageType = (
+			VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT |
+			VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+			VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT
+		);
+		debugMessengerCreateInfo.pfnUserCallback = VULKAN_INTERNAL_DebugCallback;
+		debugMessengerCreateInfo.pUserData = NULL;
+
+		createInfo.pNext = &debugMessengerCreateInfo;
 	}
 
 	vulkanResult = vkCreateInstance(&createInfo, NULL, &renderer->instance);
@@ -10015,7 +10012,7 @@ static void VULKAN_SetStringMarker(FNA3D_Renderer *driverData, const char *text)
 	VulkanCommandBuffer *commandBuffer;
 	VkDebugUtilsLabelEXT labelInfo;
 
-	if (renderer->debugMode && renderer->supportsDebugUtils)
+	if (renderer->supportsDebugUtils)
 	{
 		labelInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT;
 		labelInfo.pNext = NULL;
@@ -10037,7 +10034,7 @@ static void VULKAN_SetTextureName(FNA3D_Renderer* driverData, FNA3D_Texture* tex
 	VulkanTexture* vkTexture = (VulkanTexture*)texture;
 	VkDebugUtilsObjectNameInfoEXT nameInfo;
 
-	if (renderer->debugMode && renderer->supportsDebugUtils)
+	if (renderer->supportsDebugUtils)
 	{
 		nameInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT;
 		nameInfo.pNext = NULL;
