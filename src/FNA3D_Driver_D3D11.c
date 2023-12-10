@@ -56,10 +56,6 @@
 #include <dxgi.h>
 #endif
 
-#ifndef DXGI_PRESENT_ALLOW_TEARING
-#define DXGI_PRESENT_ALLOW_TEARING 0x00000200UL
-#endif /* DXGI_PRESENT_ALLOW_TEARING */
-
 #define ERROR_CHECK(msg) \
 	if (FAILED(res)) \
 	{ \
@@ -202,6 +198,9 @@ typedef struct D3D11SwapchainData
 	IDXGISwapChain *swapchain;
 	ID3D11RenderTargetView *swapchainRTView;
 	void *windowHandle;
+	uint8_t isFullScreen;
+	uint8_t inExclusiveFullScreen;
+	uint8_t enterExclusiveFullScreenOnFocus;
 } D3D11SwapchainData;
 
 #define WINDOW_SWAPCHAIN_DATA "FNA3D_D3D11Swapchain"
@@ -252,6 +251,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	D3D_FEATURE_LEVEL featureLevel;
 
 	/* Presentation */
+	uint8_t blockNestedPresentation;
 	uint8_t syncInterval;
 
 	/* Blend State */
@@ -1058,6 +1058,16 @@ static void D3D11_INTERNAL_UpdateSwapchainRT(
 	D3D11SwapchainData *swapchainData,
 	DXGI_FORMAT format
 );
+static HRESULT D3D11_INTERNAL_SetFullScreenState(
+	D3D11Renderer* renderer,
+	D3D11SwapchainData* swapchainData,
+	uint8_t isFullScreen,
+	uint8_t noResize
+);
+static HRESULT D3D11_INTERNAL_ResizeAfterFullScreenTransition(
+	D3D11Renderer* renderer,
+	D3D11SwapchainData* swapchainData
+);
 
 /* Renderer Implementation */
 
@@ -1091,7 +1101,20 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 	for (i = 0; i < renderer->swapchainDataCount; i += 1)
 	{
 		swapchainData = renderer->swapchainDatas[i];
+
 		ID3D11RenderTargetView_Release(swapchainData->swapchainRTView);
+
+		/* Exit exclusive fullscreen if we are in it */
+		if (swapchainData->inExclusiveFullScreen)
+		{
+			D3D11_INTERNAL_SetFullScreenState(
+				renderer,
+				swapchainData,
+				0,	/* no fullscreen */
+				1	/* no resize */
+			);
+		}
+
 		IDXGISwapChain_Release(swapchainData->swapchain);
 		SDL_SetWindowData(
 			(SDL_Window*) swapchainData->windowHandle,
@@ -1490,11 +1513,19 @@ static void D3D11_SwapBuffers(
 	FNA3D_Rect *destinationRectangle,
 	void* overrideWindowHandle
 ) {
+	HRESULT res;
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	int32_t drawableWidth, drawableHeight;
 	FNA3D_Rect srcRect, dstRect;
 	D3D11SwapchainData *swapchainData;
 	uint32_t presentFlags;
+	BOOL fullscreenState;
+
+	if (renderer->blockNestedPresentation)
+	{
+		FNA3D_LogWarn("Blocking nested D3D11_SwapBuffers call");
+		return;
+	}
 
 	/* Only the faux-backbuffer supports presenting
 	 * specific regions given to Present().
@@ -1582,6 +1613,27 @@ static void D3D11_SwapBuffers(
 
 	SDL_LockMutex(renderer->ctxLock);
 
+	/* Enter exclusive fullscreen if we regained focus */
+	if (	swapchainData->enterExclusiveFullScreenOnFocus &&
+		SDL_GetKeyboardFocus() == (SDL_Window*)overrideWindowHandle &&
+		SDL_GetMouseFocus() == (SDL_Window*)overrideWindowHandle &&
+		(SDL_GetWindowFlags((SDL_Window*)overrideWindowHandle) & SDL_WINDOW_SHOWN) &&
+		!(SDL_GetWindowFlags((SDL_Window*)overrideWindowHandle) & SDL_WINDOW_MINIMIZED)	)
+	{
+		res = SDL_GetWindowFlags((SDL_Window*)overrideWindowHandle);
+		FNA3D_LogInfo("Regained focus, attempting to reclaim exclusive fullscreen state");
+		swapchainData->enterExclusiveFullScreenOnFocus = 0;
+
+		renderer->blockNestedPresentation = 1; /* We could reenter SwapBuffers because of window event handlers */
+		res = D3D11_INTERNAL_SetFullScreenState(renderer, swapchainData, 1, 0);
+		renderer->blockNestedPresentation = 0;
+
+		if (FAILED(res))
+		{
+			FNA3D_LogWarn("Couldn't reclaim exclusive fullscreen! Error Code: %08X", res);
+		}
+	}
+
 	if (renderer->backbuffer->type == BACKBUFFER_TYPE_D3D11)
 	{
 		/* Resolve the faux-backbuffer if needed */
@@ -1607,19 +1659,53 @@ static void D3D11_SwapBuffers(
 	}
 
 	/* Present! */
-	if (renderer->syncInterval == 0 && renderer->supportsTearing)
+	if (renderer->syncInterval == 0 && renderer->supportsTearing && !swapchainData->inExclusiveFullScreen)
 	{
-		presentFlags = DXGI_PRESENT_ALLOW_TEARING;
+		presentFlags = 0x00000200UL; /* DXGI_PRESENT_ALLOW_TEARING */
 	}
 	else
 	{
 		presentFlags = 0;
 	}
-	IDXGISwapChain_Present(
+	res = IDXGISwapChain_Present(
 		swapchainData->swapchain,
 		renderer->syncInterval,
 		presentFlags
 	);
+
+	/* Check if we lost our exclusive fullscreen state */
+	if (res == DXGI_ERROR_INVALID_CALL && swapchainData->inExclusiveFullScreen)
+	{
+		res = IDXGISwapChain_GetFullscreenState(
+			swapchainData->swapchain,
+			&fullscreenState,
+			NULL
+		);
+		if (FAILED(res) || !fullscreenState)
+		{
+			FNA3D_LogInfo(
+				"Lost exclusive fullscreen state, switching back to windowed until focus is regained"
+			);
+			swapchainData->inExclusiveFullScreen = 0;
+			swapchainData->enterExclusiveFullScreenOnFocus = 1;
+
+			/* DXGI messes with our window when leaving, so counteract that */
+			renderer->blockNestedPresentation = 1; /* We could reenter SwapBuffers because of window event handlers */
+			SDL_SetWindowFullscreen((SDL_Window*)swapchainData->windowHandle, 0);
+			SDL_SetWindowFullscreen((SDL_Window*)swapchainData->windowHandle, SDL_WINDOW_FULLSCREEN_DESKTOP);
+			renderer->blockNestedPresentation = 0;
+
+			/* Resize so that Present doesn't fail */
+			res = D3D11_INTERNAL_ResizeAfterFullScreenTransition(renderer, swapchainData);
+			ERROR_CHECK("Couldn't resize swapchain after focus loss")
+		}
+		else
+		{
+			res = DXGI_ERROR_INVALID_CALL;
+		}
+	}
+
+	ERROR_CHECK("Present failed")
 
 	/* Bind the faux-backbuffer now, in case DXGI unsets target state */
 	D3D11_SetRenderTargets(
@@ -2592,6 +2678,7 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 	FNA3D_PresentationParameters *parameters
 ) {
 	uint8_t useFauxBackbuffer;
+	uint8_t needsResize;
 	HRESULT res;
 	D3D11_TEXTURE2D_DESC colorBufferDesc;
 	D3D11_RENDER_TARGET_VIEW_DESC colorViewDesc;
@@ -2633,14 +2720,35 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 				(SDL_Window*) parameters->deviceWindowHandle,
 				WINDOW_SWAPCHAIN_DATA
 			);
+
+			needsResize = 0;
 		}
 		else
 		{
-			/* Resize the swapchain to the new window size */
-			ID3D11RenderTargetView_Release(swapchainData->swapchainRTView);
+			/* Release the old swapchain RT */
+			if (swapchainData->swapchainRTView != NULL)
+			{
+				ID3D11RenderTargetView_Release(swapchainData->swapchainRTView);
+				swapchainData->swapchainRTView = NULL;
+			}
+
+			needsResize = 1;
+		}
+
+		/* Update fullscreen state */
+		if (swapchainData->isFullScreen != parameters->isFullScreen)
+		{
+			D3D11_INTERNAL_SetFullScreenState(renderer, swapchainData, parameters->isFullScreen, 0);
+			needsResize = 1;
+		}
+
+		/* Resize the swapchain to the new window size */
+		if (needsResize)
+		{
 			res = D3D11_PLATFORM_ResizeSwapChain(renderer, swapchainData);
 			ERROR_CHECK_RETURN("Could not resize swapchain",)
 		}
+
 		useFauxBackbuffer = renderer->swapchainDataCount > 1;
 	}
 	else
@@ -2930,6 +3038,139 @@ static void D3D11_INTERNAL_SetPresentationInterval(
 			presentInterval
 		);
 	}
+}
+
+static HRESULT D3D11_INTERNAL_ResizeAfterFullScreenTransition(
+	D3D11Renderer* renderer,
+	D3D11SwapchainData* swapchainData
+) {
+	HRESULT res;
+	D3D11_RENDER_TARGET_VIEW_DESC swapchainViewDesc;
+	ID3D11Texture2D* swapchainTexture;
+	D3D11_TEXTURE2D_DESC swapchainTextureDesc;
+
+	/* Query the swapchain RT description */
+	if (swapchainData->swapchainRTView)
+	{
+		ID3D11RenderTargetView_GetDesc(swapchainData->swapchainRTView, &swapchainViewDesc);
+		ID3D11RenderTargetView_Release(swapchainData->swapchainRTView);
+	}
+
+	/* Query the current backbuffer size */
+	res = IDXGISwapChain_GetBuffer(
+		swapchainData->swapchain,
+		0,
+		&D3D_IID_ID3D11Texture2D,
+		(void**)&swapchainTexture
+	);
+	ERROR_CHECK_RETURN("Could not get buffer from swapchain", res)
+
+	ID3D10Texture2D_GetDesc(swapchainTexture, &swapchainTextureDesc);
+
+	ID3D11Texture2D_Release(swapchainTexture);
+	swapchainTexture = NULL;
+
+	/* Resize the backbuffer, keeping the size the same */
+	res = IDXGISwapChain_ResizeBuffers(
+		swapchainData->swapchain,
+		0,								/* keep # of buffers the same */
+		swapchainTextureDesc.Width,		/* keep width the same */
+		swapchainTextureDesc.Height,	/* keep height the same*/
+		DXGI_FORMAT_UNKNOWN,			/* keep the old format */
+		renderer->supportsTearing ? 2048 : 0 /* See CreateSwapChain */
+	);
+	ERROR_CHECK_RETURN("Couldn't resize swapchain after full screen transition", res)
+
+	/* Recreate the swapchain RT if we previously had one */
+	if (swapchainData->swapchainRTView)
+	{
+		D3D11_INTERNAL_UpdateSwapchainRT(renderer, swapchainData, swapchainViewDesc.Format);
+	}
+
+	return S_OK;
+}
+
+static HRESULT D3D11_INTERNAL_SetFullScreenState(
+	D3D11Renderer* renderer,
+	D3D11SwapchainData* swapchainData,
+	uint8_t isFullScreen,
+	uint8_t noResize
+) {
+	HRESULT res;
+	int x, y;
+	int width, height;
+
+	if (SDL_GetHintBoolean("FNA3D_D3D11_NO_EXCLUSIVE_FULLSCREEN", SDL_FALSE))
+	{
+		swapchainData->isFullScreen = isFullScreen;
+		swapchainData->enterExclusiveFullScreenOnFocus = 0;
+		return S_OK;
+	}
+
+	/* Check if we want to enter exclusive fullscreen while hidden */
+	if (	isFullScreen &&
+		(SDL_GetWindowFlags((SDL_Window*)swapchainData->windowHandle) & SDL_WINDOW_HIDDEN)	)
+	{
+		FNA3D_LogInfo("Delaying exclusive fullscreen until window is no longer hidden");
+		swapchainData->isFullScreen = 1;
+		swapchainData->enterExclusiveFullScreenOnFocus = 1;
+		return S_OK;
+	}
+
+	/* Set exclusive fullscreen state */
+	/* DXGI messes with our window when leaving, so counteract that */
+	if (!isFullScreen)
+	{
+		SDL_GetWindowPosition((SDL_Window*)swapchainData->windowHandle, &x, &y);
+		SDL_GetWindowSize((SDL_Window*)swapchainData->windowHandle, &width, &height);
+	}
+
+	res = IDXGISwapChain_SetFullscreenState(
+		swapchainData->swapchain,
+		isFullScreen,
+		NULL
+	);
+
+	if (!isFullScreen && SUCCEEDED(res))
+	{
+		SDL_SetWindowPosition((SDL_Window*)swapchainData->windowHandle, x, y);
+		SDL_SetWindowSize((SDL_Window*)swapchainData->windowHandle, width, height);
+	}
+
+	if (SUCCEEDED(res))
+	{
+		/* We need to resize the swapchain after a fullscreen transition */
+		if (!noResize)
+		{
+			res = D3D11_INTERNAL_ResizeAfterFullScreenTransition(renderer, swapchainData);
+			ERROR_CHECK_RETURN("Couldn't resize swapchain after fullscreen transition", res)
+		}
+
+		if (isFullScreen)
+		{
+			FNA3D_LogInfo("Entered exclusive fullscreen");
+		}
+		else
+		{
+			FNA3D_LogInfo("Left exclusive fullscreen");
+		}
+
+		swapchainData->inExclusiveFullScreen = isFullScreen;
+	}
+	else if (isFullScreen)
+	{
+		FNA3D_LogWarn("Couldn't enter exclusive fullscreen! Error Code: %08X", res);
+	}
+	else
+	{
+		/* Error if we fail to exit exclusive fullscreen */
+		D3D11_INTERNAL_LogError(renderer->device, "Couldn't exit exclusive fullscren", res);
+		return res;
+	}
+
+	swapchainData->isFullScreen = isFullScreen;
+	swapchainData->enterExclusiveFullScreenOnFocus = 0;
+	return S_OK;
 }
 
 static void D3D11_ResetBackbuffer(
@@ -5468,6 +5709,9 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	swapchainData->swapchain = swapchain;
 	swapchainData->windowHandle = windowHandle;
 	swapchainData->swapchainRTView = NULL;
+	swapchainData->isFullScreen = 0;
+	swapchainData->inExclusiveFullScreen = 0;
+	swapchainData->reclaimFullScreenOnFocus = 0;
 	SDL_SetWindowData((SDL_Window*) windowHandle, WINDOW_SWAPCHAIN_DATA, swapchainData);
 	if (renderer->swapchainDataCount >= renderer->swapchainDataCapacity)
 	{
@@ -5727,6 +5971,9 @@ static void D3D11_PLATFORM_CreateSwapChain(
 	swapchainData->swapchain = swapchain;
 	swapchainData->windowHandle = windowHandle;
 	swapchainData->swapchainRTView = NULL;
+	swapchainData->isFullScreen = 0;
+	swapchainData->inExclusiveFullScreen = 0;
+	swapchainData->enterExclusiveFullScreenOnFocus = 0;
 	SDL_SetWindowData((SDL_Window*) windowHandle, WINDOW_SWAPCHAIN_DATA, swapchainData);
 	if (renderer->swapchainDataCount >= renderer->swapchainDataCapacity)
 	{
