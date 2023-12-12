@@ -5736,7 +5736,6 @@ static uint8_t OPENGL_PrepareWindowAttributes(uint32_t *flags)
 	/* Some platforms are GLES only */
 	osVersion = SDL_GetPlatform();
 	forceES3 |= (
-		(SDL_strcmp(osVersion, "WinRT") == 0) ||
 		(SDL_strcmp(osVersion, "iOS") == 0) ||
 		(SDL_strcmp(osVersion, "tvOS") == 0) ||
 		(SDL_strcmp(osVersion, "Stadia") == 0) ||

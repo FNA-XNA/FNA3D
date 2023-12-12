@@ -30,7 +30,10 @@
 #define D3D11_NO_HELPERS
 #define CINTERFACE
 #define COBJMACROS
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 #include <d3d11.h>
+#pragma GCC diagnostic pop
 
 /* IID Imports from https://magnumdb.com */
 
