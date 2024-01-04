@@ -1272,6 +1272,8 @@ typedef struct VulkanRenderer
 	uint8_t supportsDebugUtils;
 	uint8_t supportsDeviceProperties2;
 	uint8_t supportsSRGBRenderTarget;
+	uint8_t supportsPreciseOcclusionQueries;
+	uint8_t supportsBaseVertex;
 	uint8_t debugMode;
 	VulkanExtensions supports;
 
@@ -2604,7 +2606,7 @@ static uint8_t VULKAN_INTERNAL_CreateLogicalDevice(VulkanRenderer *renderer)
 	/* specifying used device features */
 
 	SDL_zero(deviceFeatures);
-	deviceFeatures.occlusionQueryPrecise = VK_TRUE;
+	deviceFeatures.occlusionQueryPrecise = renderer->supportsPreciseOcclusionQueries;
 	deviceFeatures.fillModeNonSolid = VK_TRUE;
 	deviceFeatures.samplerAnisotropy = VK_TRUE;
 
@@ -7686,7 +7688,7 @@ static void VULKAN_DrawInstancedPrimitives(
 		PrimitiveVerts(primitiveType, primitiveCount),
 		instanceCount,
 		startIndex,
-		baseVertex,
+		renderer->supportsBaseVertex ? baseVertex : 0,
 		0
 	));
 
@@ -8125,6 +8127,11 @@ static void VULKAN_ApplyVertexBufferBindings(
 	VulkanBuffer *vertexBuffer;
 	VkDeviceSize offset;
 
+	if (renderer->supportsBaseVertex)
+	{
+		baseVertex = 0;
+	}
+
 	/* Check VertexBufferBindings */
 	MOJOSHADER_vkGetBoundShaders(renderer->mojoshaderContext, &vertexShader, &blah);
 	bindingsResult = PackedVertexBufferBindingsArray_Fetch(
@@ -8183,7 +8190,7 @@ static void VULKAN_ApplyVertexBufferBindings(
 		}
 
 		offset =
-			bindings[i].vertexOffset *
+			(bindings[i].vertexOffset + baseVertex) *
 			bindings[i].vertexDeclaration.vertexStride
 		;
 
@@ -9848,7 +9855,9 @@ static void VULKAN_QueryBegin(FNA3D_Renderer *driverData, FNA3D_Query *query)
 		commandBuffer->commandBuffer,
 		renderer->queryPool,
 		vulkanQuery->index,
-		VK_QUERY_CONTROL_PRECISE_BIT
+		renderer->supportsPreciseOcclusionQueries ?
+			VK_QUERY_CONTROL_PRECISE_BIT :
+			0
 	));
 }
 
@@ -11110,6 +11119,9 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	/* Variables: Check for SRGB Render Target Support */
 	VkFormatProperties formatPropsSrgbRT;
 
+	/* Variables: Check for Precise Occlusion Query Support */
+	VkPhysicalDeviceFeatures physicalDeviceFeatures;
+
 	/* Variables: Create query pool */
 	VkQueryPoolCreateInfo queryPoolCreateInfo;
 
@@ -11523,6 +11535,24 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	renderer->supportsSRGBRenderTarget = (
 		SUPPORTED_FORMAT(formatPropsSrgbRT) && (formatPropsSrgbRT.optimalTilingFeatures & VK_FORMAT_FEATURE_COLOR_ATTACHMENT_BIT)
 	);
+
+	renderer->vkGetPhysicalDeviceFeatures(
+		renderer->physicalDevice,
+		&physicalDeviceFeatures
+	);
+	renderer->supportsPreciseOcclusionQueries = physicalDeviceFeatures.occlusionQueryPrecise;
+
+#ifdef __APPLE__
+	/* The iOS/tvOS simulator and some older (~A8) devices don't support base vertex,
+	 * and unfortunately that's not a queryable Vulkan device feature/property.
+	 * However, according to the Metal Feature Set tables, any device that supports
+	 * "counting occlusion queries" also supports base vertex. So we'll check for that.
+	 * -caleb
+	 */
+	renderer->supportsBaseVertex = renderer->supportsPreciseOcclusionQueries;
+#else
+	renderer->supportsBaseVertex = 1;
+#endif
 
 	/*
 	 * Initialize renderer members not covered by SDL_memset('\0')
