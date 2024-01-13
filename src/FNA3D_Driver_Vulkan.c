@@ -1121,7 +1121,7 @@ typedef struct VulkanRenderer
 	int8_t freeQueryIndexStack[MAX_QUERIES];
 	int8_t freeQueryIndexStackHead;
 
-	int8_t backBufferIsSRGB;
+	FNA3D_SurfaceFormat backbufferFormat;
 	FNA3D_PresentInterval presentInterval;
 
 	VulkanColorBuffer fauxBackbufferColor;
@@ -1956,10 +1956,26 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapSurfaceFormat(
 	VkSurfaceFormatKHR *outputFormat
 ) {
 	uint32_t i;
+	VkColorSpaceKHR colorSpace;
+
+	if (	desiredFormat == VK_FORMAT_A2R10G10B10_UNORM_PACK32 ||
+		desiredFormat == VK_FORMAT_A2B10G10R10_UNORM_PACK32	)
+	{
+		colorSpace = VK_COLOR_SPACE_HDR10_ST2084_EXT;
+	}
+	else if (desiredFormat == VK_FORMAT_R16G16B16A16_SFLOAT)
+	{
+		colorSpace = VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT;
+	}
+	else
+	{
+		colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+	}
+
 	for (i = 0; i < availableFormatsLength; i += 1)
 	{
 		if (	availableFormats[i].format == desiredFormat &&
-			availableFormats[i].colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR	)
+			availableFormats[i].colorSpace == colorSpace	)
 		{
 			*outputFormat = availableFormats[i];
 			return 1;
@@ -4668,9 +4684,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		return CREATE_SWAPCHAIN_SURFACE_ZERO;
 	}
 
-	swapchainData->swapchainFormat = renderer->backBufferIsSRGB
-		? VK_FORMAT_R8G8B8A8_SRGB
-		: VK_FORMAT_R8G8B8A8_UNORM;
+	swapchainData->swapchainFormat = XNAToVK_SurfaceFormat[renderer->backbufferFormat];
 	swapchainData->swapchainSwizzle.r = VK_COMPONENT_SWIZZLE_IDENTITY;
 	swapchainData->swapchainSwizzle.g = VK_COMPONENT_SWIZZLE_IDENTITY;
 	swapchainData->swapchainSwizzle.b = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -4682,10 +4696,23 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 		swapchainSupportDetails.formatsLength,
 		&swapchainData->surfaceFormat
 	)) {
-		FNA3D_LogWarn("RGBA8 swapchain unsupported, falling back to BGRA8 with swizzle");
-		swapchainData->swapchainFormat = renderer->backBufferIsSRGB
-			? VK_FORMAT_B8G8R8A8_SRGB
-			: VK_FORMAT_B8G8R8A8_UNORM;
+		FNA3D_LogWarn("RGBA swapchain unsupported, falling back to BGRA with swizzle");
+		if (renderer->backbufferFormat == FNA3D_SURFACEFORMAT_RGBA1010102)
+		{
+			swapchainData->swapchainFormat = VK_FORMAT_A2B10G10R10_UNORM_PACK32;
+		}
+		else if (renderer->backbufferFormat == FNA3D_SURFACEFORMAT_COLORSRGB_EXT)
+		{
+			swapchainData->swapchainFormat = VK_FORMAT_B8G8R8A8_SRGB;
+		}
+		else if (renderer->backbufferFormat == FNA3D_SURFACEFORMAT_COLOR)
+		{
+			swapchainData->swapchainFormat = VK_FORMAT_B8G8R8A8_UNORM;
+		}
+		else
+		{
+			FNA3D_LogWarn("Unrecognized swapchain format");
+		}
 		swapchainData->swapchainSwizzle.r = VK_COMPONENT_SWIZZLE_B;
 		swapchainData->swapchainSwizzle.g = VK_COMPONENT_SWIZZLE_G;
 		swapchainData->swapchainSwizzle.b = VK_COMPONENT_SWIZZLE_R;
@@ -6212,12 +6239,10 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 	VkFormat format;
 	VkComponentMapping swizzle;
 
-	renderer->backBufferIsSRGB = presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_COLORSRGB_EXT;
+	renderer->backbufferFormat = presentationParameters->backBufferFormat;
 	renderer->presentInterval = presentationParameters->presentationInterval;
 
-	format = renderer->backBufferIsSRGB
-		? VK_FORMAT_R8G8B8A8_SRGB
-		: VK_FORMAT_R8G8B8A8_UNORM;
+	format = XNAToVK_SurfaceFormat[renderer->backbufferFormat];
 
 	swizzle.r = VK_COMPONENT_SWIZZLE_IDENTITY;
 	swizzle.g = VK_COMPONENT_SWIZZLE_IDENTITY;
@@ -6250,8 +6275,7 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 		FNA3D_LogError("Failed to create faux backbuffer colorbuffer");
 		return 0;
 	}
-	renderer->fauxBackbufferColor.handle->colorFormat =
-		presentationParameters->backBufferFormat;
+	renderer->fauxBackbufferColor.handle->colorFormat = renderer->backbufferFormat;
 
 	renderer->fauxBackbufferWidth = presentationParameters->backBufferWidth;
 	renderer->fauxBackbufferHeight = presentationParameters->backBufferHeight;
@@ -6296,7 +6320,7 @@ static uint8_t VULKAN_INTERNAL_CreateFauxBackbuffer(
 			renderer->fauxBackbufferMultiSampleColor
 		);
 		/* FIXME: Swapchain format may not be an FNA3D_SurfaceFormat! */
-		renderer->fauxBackbufferMultiSampleColor->colorFormat = FNA3D_SURFACEFORMAT_COLOR;
+		renderer->fauxBackbufferMultiSampleColor->colorFormat = renderer->backbufferFormat;
 
 		VULKAN_INTERNAL_ImageMemoryBarrier(
 			renderer,
