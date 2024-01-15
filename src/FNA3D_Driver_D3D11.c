@@ -1004,7 +1004,8 @@ static void D3D11_INTERNAL_DisposeBackbuffer(D3D11Renderer *renderer);
 static void D3D11_INTERNAL_CreateSwapChain(
        D3D11Renderer *renderer,
        FNA3D_SurfaceFormat backBufferFormat,
-       void *windowHandle
+       void *windowHandle,
+       D3D11SwapchainData *swapchainData
 );
 static void D3D11_INTERNAL_UpdateSwapchainRT(
 	D3D11Renderer *renderer,
@@ -1540,7 +1541,8 @@ static void D3D11_SwapBuffers(
 		D3D11_INTERNAL_CreateSwapChain(
 			renderer,
 			FNA3D_SURFACEFORMAT_COLOR, /* FIXME: Is there something we can use here? */
-			(SDL_Window*) overrideWindowHandle
+			(SDL_Window*) overrideWindowHandle,
+			NULL
 		);
 		swapchainData = (D3D11SwapchainData*) SDL_GetWindowData(
 			(SDL_Window*) overrideWindowHandle,
@@ -2526,16 +2528,18 @@ static void D3D11_ResolveTarget(
 static void D3D11_INTERNAL_CreateSwapChain(
 	D3D11Renderer *renderer,
 	FNA3D_SurfaceFormat backBufferFormat,
-	void *windowHandle
+	void *windowHandle,
+	D3D11SwapchainData *swapchainData
 ) {
 	IDXGIFactory1* pParent;
 	DXGI_SWAP_CHAIN_DESC swapchainDesc;
 	IDXGISwapChain *swapchain;
-	D3D11SwapchainData *swapchainData;
 	HWND dxgiHandle;
 	void* factory4;
 	IDXGISwapChain3 *swapchain3;
 	HRESULT res;
+
+	uint8_t growSwapchains = (swapchainData == NULL);
 
 #ifdef FNA3D_DXVK_NATIVE
 	dxgiHandle = (HWND) windowHandle;
@@ -2653,22 +2657,28 @@ static void D3D11_INTERNAL_CreateSwapChain(
 		}
 	}
 
-	swapchainData = (D3D11SwapchainData*) SDL_malloc(sizeof(D3D11SwapchainData));
+	if (growSwapchains)
+	{
+		swapchainData = (D3D11SwapchainData*) SDL_malloc(sizeof(D3D11SwapchainData));
+	}
 	swapchainData->swapchain = swapchain;
 	swapchainData->windowHandle = windowHandle;
 	swapchainData->swapchainRTView = NULL;
 	swapchainData->format = backBufferFormat;
 	SDL_SetWindowData((SDL_Window*) windowHandle, WINDOW_SWAPCHAIN_DATA, swapchainData);
-	if (renderer->swapchainDataCount >= renderer->swapchainDataCapacity)
+	if (growSwapchains)
 	{
-		renderer->swapchainDataCapacity *= 2;
-		renderer->swapchainDatas = SDL_realloc(
-			renderer->swapchainDatas,
-			renderer->swapchainDataCapacity * sizeof(D3D11SwapchainData*)
-		);
+		if (renderer->swapchainDataCount >= renderer->swapchainDataCapacity)
+		{
+			renderer->swapchainDataCapacity *= 2;
+			renderer->swapchainDatas = SDL_realloc(
+				renderer->swapchainDatas,
+				renderer->swapchainDataCapacity * sizeof(D3D11SwapchainData*)
+			);
+		}
+		renderer->swapchainDatas[renderer->swapchainDataCount] = swapchainData;
+		renderer->swapchainDataCount += 1;
 	}
-	renderer->swapchainDatas[renderer->swapchainDataCount] = swapchainData;
-	renderer->swapchainDataCount += 1;
 }
 
 static void D3D11_INTERNAL_UpdateSwapchainRT(
@@ -2681,9 +2691,7 @@ static void D3D11_INTERNAL_UpdateSwapchainRT(
 	D3D11_RENDER_TARGET_VIEW_DESC swapchainViewDesc;
 
 	/* Create a render target view for the swapchain */
-	swapchainViewDesc.Format = (format == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB)
-		? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB
-		: DXGI_FORMAT_R8G8B8A8_UNORM;
+	swapchainViewDesc.Format = format;
 	swapchainViewDesc.ViewDimension = D3D11_RTV_DIMENSION_TEXTURE2D;
 	swapchainViewDesc.Texture2D.MipSlice = 0;
 
@@ -2755,7 +2763,8 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 			D3D11_INTERNAL_CreateSwapChain(
 				renderer,
 				parameters->backBufferFormat,
-				parameters->deviceWindowHandle
+				parameters->deviceWindowHandle,
+				NULL
 			);
 			swapchainData = (D3D11SwapchainData*) SDL_GetWindowData(
 				(SDL_Window*) parameters->deviceWindowHandle,
@@ -2764,17 +2773,31 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 		}
 		else
 		{
-			/* Resize the swapchain to the new window size */
 			ID3D11RenderTargetView_Release(swapchainData->swapchainRTView);
-			res = IDXGISwapChain_ResizeBuffers(
-				swapchainData->swapchain,
-				0,			/* keep # of buffers the same */
-				0,			/* get width from window */
-				0,			/* get height from window */
-				DXGI_FORMAT_UNKNOWN,	/* keep the old format */
-				renderer->supportsTearing ? 2048 : 0 /* See INTERNAL_CreateSwapChain */
-			);
-			ERROR_CHECK_RETURN("Could not resize swapchain",)
+			if (swapchainData->format != parameters->backBufferFormat)
+			{
+				/* Surface format changed, recreate entirely */
+				IDXGISwapChain_Release(swapchainData->swapchain);
+				D3D11_INTERNAL_CreateSwapChain(
+					renderer,
+					parameters->backBufferFormat,
+					parameters->deviceWindowHandle,
+					swapchainData
+				);
+			}
+			else
+			{
+				/* Resize the existing swapchain to the new window size */
+				res = IDXGISwapChain_ResizeBuffers(
+					swapchainData->swapchain,
+					0,			/* keep # of buffers the same */
+					0,			/* get width from window */
+					0,			/* get height from window */
+					DXGI_FORMAT_UNKNOWN,	/* keep the old format */
+					renderer->supportsTearing ? 2048 : 0 /* See INTERNAL_CreateSwapChain */
+				);
+				ERROR_CHECK_RETURN("Could not resize swapchain",)
+			}
 		}
 		useFauxBackbuffer = renderer->swapchainDataCount > 1;
 	}
