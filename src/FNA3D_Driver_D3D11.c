@@ -2644,25 +2644,28 @@ static void D3D11_INTERNAL_CreateSwapChain(
 	}
 
 	/* Set colorspace, if applicable */
-	if (SUCCEEDED(IDXGISwapChain_QueryInterface(
-		swapchain,
-		&D3D_IID_IDXGISwapChain3,
-		(void**) &swapchain3
-	))) {
-		if (backBufferFormat == FNA3D_SURFACEFORMAT_RGBA1010102)
-		{
-			colorSpace = DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
+	if (SDL_GetHintBoolean("FNA3D_ENABLE_HDR_COLORSPACE", SDL_FALSE))
+	{
+		if (SUCCEEDED(IDXGISwapChain_QueryInterface(
+			swapchain,
+			&D3D_IID_IDXGISwapChain3,
+			(void**) &swapchain3
+		))) {
+			if (backBufferFormat == FNA3D_SURFACEFORMAT_RGBA1010102)
+			{
+				colorSpace = DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
+			}
+			else if (	backBufferFormat == FNA3D_SURFACEFORMAT_HALFVECTOR4 ||
+					backBufferFormat == FNA3D_SURFACEFORMAT_HDRBLENDABLE	)
+			{
+				colorSpace = DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709;
+			}
+			else
+			{
+				colorSpace = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
+			}
+			IDXGISwapChain3_SetColorSpace1(swapchain3, colorSpace);
 		}
-		else if (	backBufferFormat == FNA3D_SURFACEFORMAT_HALFVECTOR4 ||
-				backBufferFormat == FNA3D_SURFACEFORMAT_HDRBLENDABLE	)
-		{
-			colorSpace = DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709;
-		}
-		else
-		{
-			colorSpace = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
-		}
-		IDXGISwapChain3_SetColorSpace1(swapchain3, colorSpace);
 	}
 
 	if (growSwapchains)

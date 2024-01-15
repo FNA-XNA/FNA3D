@@ -1958,14 +1958,21 @@ static uint8_t VULKAN_INTERNAL_ChooseSwapSurfaceFormat(
 	uint32_t i;
 	VkColorSpaceKHR colorSpace;
 
-	if (	desiredFormat == VK_FORMAT_A2R10G10B10_UNORM_PACK32 ||
-		desiredFormat == VK_FORMAT_A2B10G10R10_UNORM_PACK32	)
+	if (SDL_GetHintBoolean("FNA3D_ENABLE_HDR_COLORSPACE", SDL_FALSE))
 	{
-		colorSpace = VK_COLOR_SPACE_HDR10_ST2084_EXT;
-	}
-	else if (desiredFormat == VK_FORMAT_R16G16B16A16_SFLOAT)
-	{
-		colorSpace = VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT;
+		if (	desiredFormat == VK_FORMAT_A2R10G10B10_UNORM_PACK32 ||
+			desiredFormat == VK_FORMAT_A2B10G10R10_UNORM_PACK32	)
+		{
+			colorSpace = VK_COLOR_SPACE_HDR10_ST2084_EXT;
+		}
+		else if (desiredFormat == VK_FORMAT_R16G16B16A16_SFLOAT)
+		{
+			colorSpace = VK_COLOR_SPACE_EXTENDED_SRGB_LINEAR_EXT;
+		}
+		else
+		{
+			colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
+		}
 	}
 	else
 	{
