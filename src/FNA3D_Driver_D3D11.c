@@ -239,10 +239,6 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 
 	/* Capabilities */
 	uint8_t debugMode;
-	uint32_t supportsDxt1;
-	uint32_t supportsS3tc;
-	uint32_t supportsBc7;
-	uint8_t supportsSRGBRenderTarget;
 	int32_t maxMultiSampleCount;
 	D3D_FEATURE_LEVEL featureLevel;
 
@@ -2706,20 +2702,27 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 	D3D11_TEXTURE2D_DESC depthStencilDesc;
 	D3D11_DEPTH_STENCIL_VIEW_DESC depthStencilViewDesc;
 	D3D11SwapchainData *swapchainData;
-	FNA3D_SurfaceFormat actualFnaFormat = parameters->backBufferFormat;
-	DXGI_FORMAT actualDxgiFormat = XNAToD3D_TextureFormat[actualFnaFormat];
+	uint32_t support;
 
-	if ((actualDxgiFormat == DXGI_FORMAT_R8G8B8A8_UNORM_SRGB) && !renderer->supportsSRGBRenderTarget)
-	{
-		FNA3D_LogWarn("Could not create an SRGB swapchain because this renderer does not support it. Silently falling back to UNORM.");
-		actualFnaFormat = FNA3D_SURFACEFORMAT_COLOR;
-		actualDxgiFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-	}
+	DXGI_FORMAT dxgiFormat = XNAToD3D_TextureFormat[parameters->backBufferFormat];
 
 	/* Dispose of the existing backbuffer in preparation for the new one. */
 	if (renderer->backbuffer != NULL)
 	{
 		D3D11_INTERNAL_DisposeBackbuffer(renderer);
+	}
+
+	/* Check for valid rendering support */
+	ID3D11Device_CheckFormatSupport(
+		renderer->device,
+		dxgiFormat,
+		&support
+	);
+
+	if (!((support & D3D11_FORMAT_SUPPORT_DISPLAY)))
+	{
+		FNA3D_LogError("Unsupported backbuffer DXGI format");
+		return;
 	}
 
 	/* Create or update the swapchain */
@@ -2733,7 +2736,7 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 		{
 			D3D11_INTERNAL_CreateSwapChain(
 				renderer,
-				actualFnaFormat,
+				parameters->backBufferFormat,
 				parameters->deviceWindowHandle
 			);
 			swapchainData = (D3D11SwapchainData*) SDL_GetWindowData(
@@ -2799,7 +2802,7 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 		renderer->backbufferSizeChanged = 1;
 		renderer->backbuffer->width = parameters->backBufferWidth;
 		renderer->backbuffer->height = parameters->backBufferHeight;
-		renderer->backbuffer->d3d11.surfaceFormat = actualFnaFormat;
+		renderer->backbuffer->d3d11.surfaceFormat = parameters->backBufferFormat;
 		renderer->backbuffer->depthFormat = parameters->depthStencilFormat;
 		renderer->backbuffer->multiSampleCount = parameters->multiSampleCount;
 
@@ -2808,7 +2811,7 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 		colorBufferDesc.Height = renderer->backbuffer->height;
 		colorBufferDesc.MipLevels = 1;
 		colorBufferDesc.ArraySize = 1;
-		colorBufferDesc.Format = actualDxgiFormat;
+		colorBufferDesc.Format = dxgiFormat;
 		colorBufferDesc.SampleDesc.Count = (
 			renderer->backbuffer->multiSampleCount > 1 ?
 				renderer->backbuffer->multiSampleCount :
@@ -2857,7 +2860,7 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 			colorBufferDesc.Height = renderer->backbuffer->height;
 			colorBufferDesc.MipLevels = 1;
 			colorBufferDesc.ArraySize = 1;
-			colorBufferDesc.Format = actualDxgiFormat;
+			colorBufferDesc.Format = dxgiFormat;
 			colorBufferDesc.SampleDesc.Count = 1;
 			colorBufferDesc.SampleDesc.Quality = 0;
 			colorBufferDesc.Usage = D3D11_USAGE_DEFAULT;
@@ -2909,7 +2912,7 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 		renderer->backbuffer->width = parameters->backBufferWidth;
 		renderer->backbuffer->height = parameters->backBufferHeight;
 		renderer->backbuffer->depthFormat = parameters->depthStencilFormat;
-		renderer->backbuffer->d3d11.surfaceFormat = actualFnaFormat;
+		renderer->backbuffer->d3d11.surfaceFormat = parameters->backBufferFormat;
 		renderer->backbuffer->multiSampleCount = 0;
 	}
 
@@ -2966,7 +2969,7 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 		D3D11_INTERNAL_UpdateSwapchainRT(
 			renderer,
 			swapchainData,
-			actualDxgiFormat
+			dxgiFormat
 		);
 	}
 
@@ -4823,19 +4826,56 @@ static int32_t D3D11_QueryPixelCount(
 static uint8_t D3D11_SupportsDXT1(FNA3D_Renderer *driverData)
 {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	return renderer->supportsDxt1;
+	uint32_t support;
+
+	ID3D11Device_CheckFormatSupport(
+		renderer->device,
+		XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_DXT1],
+		&support
+	);
+
+	return (support & (
+		D3D11_FORMAT_SUPPORT_TEXTURE2D |
+		D3D11_FORMAT_SUPPORT_TEXTURE3D |
+		D3D11_FORMAT_SUPPORT_TEXTURECUBE
+	)) != 0;
 }
 
 static uint8_t D3D11_SupportsS3TC(FNA3D_Renderer *driverData)
 {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	return renderer->supportsS3tc;
+	uint32_t support;
+
+	/* FIXME: Is there any scenario where 5 is supported and 3 isn't? */
+	ID3D11Device_CheckFormatSupport(
+		renderer->device,
+		XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_DXT5],
+		&support
+	);
+
+	return (support & (
+		D3D11_FORMAT_SUPPORT_TEXTURE2D |
+		D3D11_FORMAT_SUPPORT_TEXTURE3D |
+		D3D11_FORMAT_SUPPORT_TEXTURECUBE
+	)) != 0;
 }
 
 static uint8_t D3D11_SupportsBC7(FNA3D_Renderer *driverData)
 {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	return renderer->supportsBc7;
+	uint32_t support;
+
+	ID3D11Device_CheckFormatSupport(
+		renderer->device,
+		XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_BC7_EXT],
+		&support
+	);
+
+	return (support & (
+		D3D11_FORMAT_SUPPORT_TEXTURE2D |
+		D3D11_FORMAT_SUPPORT_TEXTURE3D |
+		D3D11_FORMAT_SUPPORT_TEXTURECUBE
+	)) != 0;
 }
 
 static uint8_t D3D11_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
@@ -4851,7 +4891,15 @@ static uint8_t D3D11_SupportsNoOverwrite(FNA3D_Renderer *driverData)
 static uint8_t D3D11_SupportsSRGBRenderTargets(FNA3D_Renderer *driverData)
 {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
-	return renderer->supportsSRGBRenderTarget;
+	uint32_t support;
+
+	ID3D11Device_CheckFormatSupport(
+		renderer->device,
+		XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_COLORSRGB_EXT],
+		&support
+	);
+
+	return (support & D3D11_FORMAT_SUPPORT_RENDER_TARGET) != 0;
 }
 
 static void D3D11_GetMaxTextureSlots(
@@ -5265,7 +5313,7 @@ static FNA3D_Device* D3D11_CreateDevice(
 		D3D_FEATURE_LEVEL_10_1,
 		D3D_FEATURE_LEVEL_10_0
 	};
-	uint32_t flags, supportsDxt3, supportsDxt5, supportsSrgb;
+	uint32_t flags;
 	void* factory5;
 	void* factory6;
 	int32_t i;
@@ -5447,37 +5495,6 @@ try_create_device:
 	/* Print driver info */
 	FNA3D_LogInfo("FNA3D Driver: D3D11");
 	FNA3D_LogInfo("D3D11 Adapter: %S", adapterDesc.Description);
-
-	/* Determine DXT/S3TC support.
-	 * Note that we do NOT error check the return values!
-	 */
-	ID3D11Device_CheckFormatSupport(
-		renderer->device,
-		XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_DXT1],
-		&renderer->supportsDxt1
-	);
-	ID3D11Device_CheckFormatSupport(
-		renderer->device,
-		XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_DXT3],
-		&supportsDxt3
-	);
-	ID3D11Device_CheckFormatSupport(
-		renderer->device,
-		XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_DXT5],
-		&supportsDxt5
-	);
-	ID3D11Device_CheckFormatSupport(
-		renderer->device,
-		XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_BC7_EXT],
-		&renderer->supportsBc7
-	);
-	renderer->supportsS3tc = (supportsDxt3 || supportsDxt5);
-	ID3D11Device_CheckFormatSupport(
-		renderer->device,
-		XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_COLORSRGB_EXT],
-		&supportsSrgb
-	);
-	renderer->supportsSRGBRenderTarget = supportsSrgb;
 
 	/* Initialize MojoShader context */
 	renderer->shaderContext = MOJOSHADER_d3d11CreateContext(
