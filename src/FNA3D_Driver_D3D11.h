@@ -149,7 +149,7 @@ typedef struct DXGI_SWAP_CHAIN_DESC1 {
 	UINT Width;
 	UINT Height;
 	DXGI_FORMAT Format;
-	WINBOOL Stereo;
+	BOOL Stereo;
 	DXGI_SAMPLE_DESC SampleDesc;
 	DXGI_USAGE BufferUsage;
 	UINT BufferCount;
@@ -162,7 +162,7 @@ typedef struct DXGI_SWAP_CHAIN_FULLSCREEN_DESC {
 	DXGI_RATIONAL RefreshRate;
 	DXGI_MODE_SCANLINE_ORDER ScanlineOrdering;
 	DXGI_MODE_SCALING Scaling;
-	WINBOOL Windowed;
+	BOOL Windowed;
 } DXGI_SWAP_CHAIN_FULLSCREEN_DESC;
 typedef struct DXGI_PRESENT_PARAMETERS {
 	UINT DirtyRectsCount;
@@ -400,12 +400,12 @@ typedef struct IDXGISwapChain3Vtbl
 
 	HRESULT ( STDMETHODCALLTYPE *SetFullscreenState )(
 		IDXGISwapChain3 *This,
-		WINBOOL fullscreen,
+		BOOL fullscreen,
 		IDXGIOutput *target);
 
 	HRESULT ( STDMETHODCALLTYPE *GetFullscreenState )(
 		IDXGISwapChain3 *This,
-		WINBOOL *fullscreen,
+		BOOL *fullscreen,
 		IDXGIOutput **target);
 
 	HRESULT ( STDMETHODCALLTYPE *GetDesc )(
@@ -460,7 +460,7 @@ typedef struct IDXGISwapChain3Vtbl
 		UINT PresentFlags,
 		const DXGI_PRESENT_PARAMETERS *pPresentParameters);
 
-	WINBOOL ( STDMETHODCALLTYPE *IsTemporaryMonoSupported )(
+	BOOL ( STDMETHODCALLTYPE *IsTemporaryMonoSupported )(
 		IDXGISwapChain3 *This);
 
 	HRESULT ( STDMETHODCALLTYPE *GetRestrictToOutput )(
