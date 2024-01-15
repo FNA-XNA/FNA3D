@@ -43,6 +43,7 @@ static const IID D3D_IID_IDXGIFactory4 = {0x7632e1f5,0xee65,0x4dca,{0x87,0xfd,0x
 static const IID D3D_IID_IDXGIFactory6 = {0xc1b6694f,0xff09,0x44a9,{0xb0,0x3c,0x77,0x90,0x0a,0x0a,0x1d,0x17}};
 static const IID D3D_IID_IDXGIFactory5 = {0x7632e1f5,0xee65,0x4dca,{0x87,0xfd,0x84,0xcd,0x75,0xf8,0x83,0x8d}};
 static const IID D3D_IID_IDXGIAdapter1 = {0x29038f61,0x3839,0x4626,{0x91,0xfd,0x08,0x68,0x79,0x01,0x1a,0x05}};
+static const IID D3D_IID_IDXGISwapChain3 = {0x94d99bdb,0xf1f8,0x4ab0,{0xb2,0x36,0x7d,0xa0,0x17,0x0e,0xda,0xb1}};
 static const IID D3D_IID_ID3D11Texture2D = {0x6f15aaf2,0xd208,0x4e89,{0x9a,0xb4,0x48,0x95,0x35,0xd3,0x4f,0x9c}};
 static const IID D3D_IID_ID3DUserDefinedAnnotation = {0xb2daad8b,0x03d4,0x4dbf,{0x95,0xeb,0x32,0xab,0x4b,0x63,0xd0,0xab}};
 
@@ -130,8 +131,60 @@ struct ID3DUserDefinedAnnotation
 #define ID3DUserDefinedAnnotation_GetStatus(This)	\
 	( (This)->lpVtbl -> GetStatus(This) )
 
-/* IDXGIFactory4 */
+/* From dxgi1_2.h */
+
+typedef enum DXGI_ALPHA_MODE {
+	DXGI_ALPHA_MODE_UNSPECIFIED = 0,
+	DXGI_ALPHA_MODE_PREMULTIPLIED = 1,
+	DXGI_ALPHA_MODE_STRAIGHT = 2,
+	DXGI_ALPHA_MODE_IGNORE = 3,
+	DXGI_ALPHA_MODE_FORCE_DWORD = 0x7fffffff
+} DXGI_ALPHA_MODE;
+typedef enum DXGI_SCALING {
+	DXGI_SCALING_STRETCH = 0,
+	DXGI_SCALING_NONE = 1,
+	DXGI_SCALING_ASPECT_RATIO_STRETCH = 2
+} DXGI_SCALING;
+typedef struct DXGI_SWAP_CHAIN_DESC1 {
+	UINT Width;
+	UINT Height;
+	DXGI_FORMAT Format;
+	WINBOOL Stereo;
+	DXGI_SAMPLE_DESC SampleDesc;
+	DXGI_USAGE BufferUsage;
+	UINT BufferCount;
+	DXGI_SCALING Scaling;
+	DXGI_SWAP_EFFECT SwapEffect;
+	DXGI_ALPHA_MODE AlphaMode;
+	UINT Flags;
+} DXGI_SWAP_CHAIN_DESC1;
+typedef struct DXGI_SWAP_CHAIN_FULLSCREEN_DESC {
+	DXGI_RATIONAL RefreshRate;
+	DXGI_MODE_SCANLINE_ORDER ScanlineOrdering;
+	DXGI_MODE_SCALING Scaling;
+	WINBOOL Windowed;
+} DXGI_SWAP_CHAIN_FULLSCREEN_DESC;
+typedef struct DXGI_PRESENT_PARAMETERS {
+	UINT DirtyRectsCount;
+	RECT *pDirtyRects;
+	RECT *pScrollRect;
+	POINT *pScrollOffset;
+} DXGI_PRESENT_PARAMETERS;
+
+/* From dxgi1_3.h */
+
+typedef struct DXGI_MATRIX_3X2_F {
+	float _11;
+	float _12;
+	float _21;
+	float _22;
+	float _31;
+	float _32;
+} DXGI_MATRIX_3X2_F;
+
 /* From dxgi1_4.h, cleaned up a bit... */
+
+/* IDXGIFactory4 */
 
 typedef struct IDXGIFactory4 IDXGIFactory4;
 typedef struct IDXGIFactory4Vtbl
@@ -286,6 +339,211 @@ struct IDXGIFactory4
 
 #define IDXGIFactory4_Release(This)	\
 	( (This)->lpVtbl -> Release(This) )
+
+/* IDXGISwapChain3 */
+
+typedef struct IDXGISwapChain3 IDXGISwapChain3;
+typedef struct IDXGISwapChain3Vtbl
+{
+	/*** IUnknown methods ***/
+	HRESULT ( STDMETHODCALLTYPE *QueryInterface )(
+		IDXGISwapChain3 *This,
+		REFIID riid,
+		void **ppvObject);
+
+	ULONG ( STDMETHODCALLTYPE *AddRef )(
+		IDXGISwapChain3 *This);
+
+	ULONG ( STDMETHODCALLTYPE *Release )(
+		IDXGISwapChain3 *This);
+
+	/*** IDXGIObject methods ***/
+	HRESULT ( STDMETHODCALLTYPE *SetPrivateData )(
+		IDXGISwapChain3 *This,
+		REFGUID guid,
+		UINT data_size,
+		const void *data);
+
+	HRESULT ( STDMETHODCALLTYPE *SetPrivateDataInterface )(
+		IDXGISwapChain3 *This,
+		REFGUID guid,
+		const IUnknown *object);
+
+	HRESULT ( STDMETHODCALLTYPE *GetPrivateData )(
+		IDXGISwapChain3 *This,
+		REFGUID guid,
+		UINT *data_size,
+		void *data);
+
+	HRESULT ( STDMETHODCALLTYPE *GetParent )(
+		IDXGISwapChain3 *This,
+		REFIID riid,
+		void **parent);
+
+	/*** IDXGIDeviceSubObject methods ***/
+	HRESULT ( STDMETHODCALLTYPE *GetDevice )(
+		IDXGISwapChain3 *This,
+		REFIID riid,
+		void **device);
+
+	/*** IDXGISwapChain methods ***/
+	HRESULT ( STDMETHODCALLTYPE *Present )(
+		IDXGISwapChain3 *This,
+		UINT sync_interval,
+		UINT flags);
+
+	HRESULT ( STDMETHODCALLTYPE *GetBuffer )(
+		IDXGISwapChain3 *This,
+		UINT buffer_idx,
+		REFIID riid,
+		void **surface);
+
+	HRESULT ( STDMETHODCALLTYPE *SetFullscreenState )(
+		IDXGISwapChain3 *This,
+		WINBOOL fullscreen,
+		IDXGIOutput *target);
+
+	HRESULT ( STDMETHODCALLTYPE *GetFullscreenState )(
+		IDXGISwapChain3 *This,
+		WINBOOL *fullscreen,
+		IDXGIOutput **target);
+
+	HRESULT ( STDMETHODCALLTYPE *GetDesc )(
+		IDXGISwapChain3 *This,
+		DXGI_SWAP_CHAIN_DESC *desc);
+
+	HRESULT ( STDMETHODCALLTYPE *ResizeBuffers )(
+		IDXGISwapChain3 *This,
+		UINT buffer_count,
+		UINT width,
+		UINT height,
+		DXGI_FORMAT format,
+		UINT flags);
+
+	HRESULT ( STDMETHODCALLTYPE *ResizeTarget )(
+		IDXGISwapChain3 *This,
+		const DXGI_MODE_DESC *target_mode_desc);
+
+	HRESULT ( STDMETHODCALLTYPE *GetContainingOutput )(
+		IDXGISwapChain3 *This,
+		IDXGIOutput **output);
+
+	HRESULT ( STDMETHODCALLTYPE *GetFrameStatistics )(
+		IDXGISwapChain3 *This,
+		DXGI_FRAME_STATISTICS *stats);
+
+	HRESULT ( STDMETHODCALLTYPE *GetLastPresentCount )(
+		IDXGISwapChain3 *This,
+		UINT *last_present_count);
+
+	/*** IDXGISwapChain1 methods ***/
+	HRESULT ( STDMETHODCALLTYPE *GetDesc1 )(
+		IDXGISwapChain3 *This,
+		DXGI_SWAP_CHAIN_DESC1 *pDesc);
+
+	HRESULT ( STDMETHODCALLTYPE *GetFullscreenDesc )(
+		IDXGISwapChain3 *This,
+		DXGI_SWAP_CHAIN_FULLSCREEN_DESC *pDesc);
+
+	HRESULT ( STDMETHODCALLTYPE *GetHwnd )(
+		IDXGISwapChain3 *This,
+		HWND *pHwnd);
+
+	HRESULT ( STDMETHODCALLTYPE *GetCoreWindow )(
+		IDXGISwapChain3 *This,
+		REFIID refiid,
+		void **ppUnk);
+
+	HRESULT ( STDMETHODCALLTYPE *Present1 )(
+		IDXGISwapChain3 *This,
+		UINT SyncInterval,
+		UINT PresentFlags,
+		const DXGI_PRESENT_PARAMETERS *pPresentParameters);
+
+	WINBOOL ( STDMETHODCALLTYPE *IsTemporaryMonoSupported )(
+		IDXGISwapChain3 *This);
+
+	HRESULT ( STDMETHODCALLTYPE *GetRestrictToOutput )(
+		IDXGISwapChain3 *This,
+		IDXGIOutput **ppRestrictToOutput);
+
+	HRESULT ( STDMETHODCALLTYPE *SetBackgroundColor )(
+		IDXGISwapChain3 *This,
+		const DXGI_RGBA *pColor);
+
+	HRESULT ( STDMETHODCALLTYPE *GetBackgroundColor )(
+		IDXGISwapChain3 *This,
+		DXGI_RGBA *pColor);
+
+	HRESULT ( STDMETHODCALLTYPE *SetRotation )(
+		IDXGISwapChain3 *This,
+		DXGI_MODE_ROTATION Rotation);
+
+	HRESULT ( STDMETHODCALLTYPE *GetRotation )(
+		IDXGISwapChain3 *This,
+		DXGI_MODE_ROTATION *pRotation);
+
+	/*** IDXGISwapChain2 methods ***/
+	HRESULT ( STDMETHODCALLTYPE *SetSourceSize )(
+		IDXGISwapChain3 *This,
+		UINT width,
+		UINT height);
+
+	HRESULT ( STDMETHODCALLTYPE *GetSourceSize )(
+		IDXGISwapChain3 *This,
+		UINT *width,
+		UINT *height);
+
+	HRESULT ( STDMETHODCALLTYPE *SetMaximumFrameLatency )(
+		IDXGISwapChain3 *This,
+		UINT max_latency);
+
+	HRESULT ( STDMETHODCALLTYPE *GetMaximumFrameLatency )(
+		IDXGISwapChain3 *This,
+		UINT *max_latency);
+
+	HANDLE ( STDMETHODCALLTYPE *GetFrameLatencyWaitableObject )(
+		IDXGISwapChain3 *This);
+
+	HRESULT ( STDMETHODCALLTYPE *SetMatrixTransform )(
+		IDXGISwapChain3 *This,
+		const DXGI_MATRIX_3X2_F *matrix);
+
+	HRESULT ( STDMETHODCALLTYPE *GetMatrixTransform )(
+		IDXGISwapChain3 *This,
+		DXGI_MATRIX_3X2_F *matrix);
+
+	/*** IDXGISwapChain3 methods ***/
+	UINT ( STDMETHODCALLTYPE *GetCurrentBackBufferIndex )(
+		IDXGISwapChain3 *This);
+
+	HRESULT ( STDMETHODCALLTYPE *CheckColorSpaceSupport )(
+		IDXGISwapChain3 *This,
+		DXGI_COLOR_SPACE_TYPE colour_space,
+		UINT *colour_space_support);
+
+	HRESULT ( STDMETHODCALLTYPE *SetColorSpace1 )(
+		IDXGISwapChain3 *This,
+		DXGI_COLOR_SPACE_TYPE colour_space);
+
+	HRESULT ( STDMETHODCALLTYPE *ResizeBuffers1 )(
+		IDXGISwapChain3 *This,
+		UINT buffer_count,
+		UINT width,
+		UINT height,
+		DXGI_FORMAT format,
+		UINT flags,
+		const UINT *node_mask,
+		IUnknown *const *present_queue);
+} IDXGISwapChain3Vtbl;
+
+struct IDXGISwapChain3
+{
+	struct IDXGISwapChain3Vtbl *lpVtbl;
+};
+
+#define IDXGISwapChain3_SetColorSpace1(This, colour_space)	\
+	( (This)->lpVtbl -> SetColorSpace1(This, colour_space) )
 
 /* IDXGIFactory5 */
 /* From dxgi1_5.h, cleaned up a bit... */

@@ -197,6 +197,7 @@ typedef struct D3D11SwapchainData
 	IDXGISwapChain *swapchain;
 	ID3D11RenderTargetView *swapchainRTView;
 	void *windowHandle;
+	FNA3D_SurfaceFormat format;
 } D3D11SwapchainData;
 
 #define WINDOW_SWAPCHAIN_DATA "FNA3D_D3D11Swapchain"
@@ -2533,6 +2534,7 @@ static void D3D11_INTERNAL_CreateSwapChain(
 	D3D11SwapchainData *swapchainData;
 	HWND dxgiHandle;
 	void* factory4;
+	IDXGISwapChain3 *swapchain3;
 	HRESULT res;
 
 #ifdef FNA3D_DXVK_NATIVE
@@ -2636,10 +2638,26 @@ static void D3D11_INTERNAL_CreateSwapChain(
 		}
 	}
 
+	/* Set HDR10 colorspace, if applicable */
+	if (backBufferFormat == FNA3D_SURFACEFORMAT_RGBA1010102)
+	{
+		if (SUCCEEDED(IDXGISwapChain_QueryInterface(
+			swapchain,
+			&D3D_IID_IDXGISwapChain3,
+			(void**) &swapchain3
+		))) {
+			IDXGISwapChain3_SetColorSpace1(
+				swapchain3,
+				DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020
+			);
+		}
+	}
+
 	swapchainData = (D3D11SwapchainData*) SDL_malloc(sizeof(D3D11SwapchainData));
 	swapchainData->swapchain = swapchain;
 	swapchainData->windowHandle = windowHandle;
 	swapchainData->swapchainRTView = NULL;
+	swapchainData->format = backBufferFormat;
 	SDL_SetWindowData((SDL_Window*) windowHandle, WINDOW_SWAPCHAIN_DATA, swapchainData);
 	if (renderer->swapchainDataCount >= renderer->swapchainDataCapacity)
 	{
@@ -3124,7 +3142,7 @@ static void D3D11_ReadBackbuffer(
 		ERROR_CHECK_RETURN("Could not get buffer from swapchain", )
 
 		backbufferTexture.handle = (ID3D11Resource*) swapchainBuffer;
-		backbufferTexture.format = FNA3D_SURFACEFORMAT_COLOR;
+		backbufferTexture.format = renderer->swapchainDatas[0]->format;
 	}
 
 	D3D11_GetTextureData2D(
@@ -3160,8 +3178,15 @@ static void D3D11_GetBackbufferSize(
 static FNA3D_SurfaceFormat D3D11_GetBackbufferSurfaceFormat(
 	FNA3D_Renderer *driverData
 ) {
-	/* Copying OpenGL here. -caleb */
-	return FNA3D_SURFACEFORMAT_COLOR;
+	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
+
+	if (renderer->backbuffer->type == BACKBUFFER_TYPE_D3D11)
+	{
+		return renderer->backbuffer->d3d11.surfaceFormat;
+	}
+
+	/* This path is only possible with a single window, 0 is safe */
+	return renderer->swapchainDatas[0]->format;
 }
 
 static FNA3D_DepthFormat D3D11_GetBackbufferDepthFormat(
