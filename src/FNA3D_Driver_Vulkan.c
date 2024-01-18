@@ -9623,6 +9623,13 @@ static void VULKAN_INTERNAL_DeleteShader(const void *shaderContext, void* shader
 	pd = MOJOSHADER_vkGetShaderParseData(vkShader);
 	renderer = (VulkanRenderer*) pd->malloc_data;
 
+	if (MOJOSHADER_vkGetShaderRefCount(vkShader) > 1)
+	{
+		/* Other effects are using this shader, just decrement the refcount */
+		MOJOSHADER_vkDeleteShader(renderer->mojoshaderContext, vkShader);
+		return;
+	}
+
 	ShaderResourcesHashTable_Remove(renderer, vkShader);
 
 	/* invalidate any pipeline containing shader */
