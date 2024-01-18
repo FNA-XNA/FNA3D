@@ -91,15 +91,6 @@ typedef struct FNA3D_CommandBufferDriver
 		FNA3D_BufferHandle *handle
 	);
 
-	void (*IncEffectRef)(
-		FNA3D_Renderer *renderer,
-		FNA3D_Effect *handle
-	);
-	void (*DecEffectRef)(
-		FNA3D_Renderer *renderer,
-		FNA3D_Effect *handle
-	);
-
 	void (*DestroyTexture)(
 		FNA3D_Renderer *driverData,
 		FNA3D_Texture *texture
@@ -111,6 +102,10 @@ typedef struct FNA3D_CommandBufferDriver
 	void (*DestroyRenderbuffer)(
 		FNA3D_Renderer *driverData,
 		FNA3D_Renderbuffer *renderbuffer
+	);
+	void (*DestroyEffect)(
+		FNA3D_Renderer *driverData,
+		FNA3D_Effect *effect
 	);
 
 	FNA3D_Renderer *driverData;
@@ -131,11 +126,10 @@ typedef struct FNA3D_CommandBufferDriver
 	ASSIGN_COMMANDBUFFER_DRIVER_FUNC(IncBufferRef, name) \
 	ASSIGN_COMMANDBUFFER_DRIVER_FUNC(DecBufferRef, name) \
 	ASSIGN_COMMANDBUFFER_DRIVER_FUNC(GetBufferSize, name) \
-	ASSIGN_COMMANDBUFFER_DRIVER_FUNC(IncEffectRef, name) \
-	ASSIGN_COMMANDBUFFER_DRIVER_FUNC(DecEffectRef, name) \
 	ASSIGN_COMMANDBUFFER_DRIVER_FUNC(DestroyTexture, name) \
 	ASSIGN_COMMANDBUFFER_DRIVER_FUNC(DestroyBuffer, name) \
-	ASSIGN_COMMANDBUFFER_DRIVER_FUNC(DestroyRenderbuffer, name)
+	ASSIGN_COMMANDBUFFER_DRIVER_FUNC(DestroyRenderbuffer, name) \
+	ASSIGN_COMMANDBUFFER_DRIVER_FUNC(DestroyEffect, name)
 
 /*
  * Command Buffer Interface
@@ -181,6 +175,10 @@ FNA3D_SHAREDINTERNAL void FNA3D_CommandBuffer_AddDisposeRenderbuffer(
 	FNA3D_CommandBufferManager *manager,
 	FNA3D_Renderbuffer *renderbuffer
 );
+FNA3D_SHAREDINTERNAL void FNA3D_CommandBuffer_AddDisposeEffect(
+	FNA3D_CommandBufferManager *manager,
+	FNA3D_Effect *effect
+);
 FNA3D_SHAREDINTERNAL void FNA3D_CommandBuffer_AddDisposeBuffers(
 	FNA3D_CommandBufferManager *manager,
 	FNA3D_BufferHandle **handles,
@@ -196,10 +194,6 @@ FNA3D_SHAREDINTERNAL FNA3D_CommandBuffer* FNA3D_CommandBuffer_GetDefragBuffer(FN
 FNA3D_SHAREDINTERNAL void FNA3D_CommandBuffer_MarkBufferAsBound(
 	FNA3D_CommandBufferManager *manager,
 	FNA3D_BufferHandle *buffer
-);
-FNA3D_SHAREDINTERNAL void FNA3D_CommandBuffer_MarkEffectAsBound(
-	FNA3D_CommandBufferManager *manager,
-	FNA3D_Effect *effect
 );
 FNA3D_SHAREDINTERNAL FNA3D_TransferBuffer* FNA3D_CommandBuffer_AcquireTransferBuffer(
 	FNA3D_CommandBufferManager *manager,
