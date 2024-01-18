@@ -56,6 +56,10 @@ typedef struct FNA3D_CommandBufferContainer
 	uint32_t boundBufferCount;
 	uint32_t boundBufferCapacity;
 
+	FNA3D_Effect **boundEffects;
+	uint32_t boundEffectCount;
+	uint32_t boundEffectCapacity;
+
 	FNA3D_Renderbuffer **renderbuffersToDestroy;
 	uint32_t renderbuffersToDestroyCount;
 	uint32_t renderbuffersToDestroyCapacity;
@@ -63,10 +67,6 @@ typedef struct FNA3D_CommandBufferContainer
 	FNA3D_BufferHandle **buffersToDestroy;
 	uint32_t buffersToDestroyCount;
 	uint32_t buffersToDestroyCapacity;
-
-	FNA3D_Effect **effectsToDestroy;
-	uint32_t effectsToDestroyCount;
-	uint32_t effectsToDestroyCapacity;
 
 	FNA3D_Texture **texturesToDestroy;
 	uint32_t texturesToDestroyCount;
@@ -116,12 +116,18 @@ static FNA3D_CommandBufferContainer* FNA3D_INTERNAL_CreateCommandBufferContainer
 	result->transferBufferCount = 0;
 	result->transferBuffers = NULL;
 
-	/* Bound buffer tracking */
+	/* Bound resources tracking */
 
 	result->boundBufferCapacity = 4;
 	result->boundBufferCount = 0;
 	result->boundBuffers = (FNA3D_BufferHandle**) SDL_malloc(
 		result->boundBufferCapacity * sizeof(FNA3D_BufferHandle*)
+	);
+
+	result->boundEffectCapacity = 4;
+	result->boundEffectCount = 0;
+	result->boundEffects = (FNA3D_Effect**) SDL_malloc(
+		result->boundEffectCapacity * sizeof(FNA3D_Effect*)
 	);
 
 	/* Destroyed resources tracking */
@@ -140,14 +146,6 @@ static FNA3D_CommandBufferContainer* FNA3D_INTERNAL_CreateCommandBufferContainer
 	result->buffersToDestroy = (FNA3D_BufferHandle**) SDL_malloc(
 		sizeof(FNA3D_BufferHandle*) *
 		result->buffersToDestroyCapacity
-	);
-
-	result->effectsToDestroyCapacity = 16;
-	result->effectsToDestroyCount = 0;
-
-	result->effectsToDestroy = (FNA3D_Effect**) SDL_malloc(
-		sizeof(FNA3D_Effect*) *
-		result->effectsToDestroyCapacity
 	);
 
 	result->texturesToDestroyCapacity = 16;
@@ -181,6 +179,19 @@ static void FNA3D_CommandBuffer_CleanContainer(
 	}
 	container->boundBufferCount = 0;
 
+	/* Reset bound effects */
+	for (i = 0; i < container->boundEffectCount; i += 1)
+	{
+		if (container->boundEffects[i] != NULL)
+		{
+			manager->driver.DecEffectRef(
+				manager->driver.driverData,
+				container->boundEffects[i]
+			);
+		}
+	}
+	container->boundEffectCount = 0;
+
 	/* Destroy resources marked for destruction */
 
 	for (i = 0; i < container->renderbuffersToDestroyCount; i += 1)
@@ -200,15 +211,6 @@ static void FNA3D_CommandBuffer_CleanContainer(
 		);
 	}
 	container->buffersToDestroyCount = 0;
-
-	for (i = 0; i < container->effectsToDestroyCount; i += 1)
-	{
-		manager->driver.DestroyEffect(
-			manager->driver.driverData,
-			container->effectsToDestroy[i]
-		);
-	}
-	container->effectsToDestroyCount = 0;
 
 	for (i = 0; i < container->texturesToDestroyCount; i += 1)
 	{
@@ -373,10 +375,10 @@ void FNA3D_DestroyCommandBufferManager(
 
 		SDL_free(commandBufferContainer->transferBuffers);
 		SDL_free(commandBufferContainer->boundBuffers);
+		SDL_free(commandBufferContainer->boundEffects);
 
 		SDL_free(commandBufferContainer->renderbuffersToDestroy);
 		SDL_free(commandBufferContainer->buffersToDestroy);
-		SDL_free(commandBufferContainer->effectsToDestroy);
 		SDL_free(commandBufferContainer->texturesToDestroy);
 
 		SDL_free(commandBufferContainer);
@@ -577,31 +579,6 @@ void FNA3D_CommandBuffer_AddDisposeRenderbuffer(
 	SDL_UnlockMutex(manager->commandLock);
 }
 
-void FNA3D_CommandBuffer_AddDisposeEffect(
-	FNA3D_CommandBufferManager *manager,
-	FNA3D_Effect *effect
-) {
-	FNA3D_CommandBufferContainer *container;
-
-	SDL_LockMutex(manager->commandLock);
-
-	container = manager->currentCommandBufferContainer;
-
-	if (container->effectsToDestroyCount + 1 >= container->effectsToDestroyCapacity)
-	{
-		container->effectsToDestroyCapacity *= 2;
-
-		container->effectsToDestroy = SDL_realloc(
-			container->effectsToDestroy,
-			sizeof(FNA3D_Effect*) * container->effectsToDestroyCapacity
-		);
-	}
-	container->effectsToDestroy[container->effectsToDestroyCount] = effect;
-	container->effectsToDestroyCount += 1;
-
-	SDL_UnlockMutex(manager->commandLock);
-}
-
 void FNA3D_CommandBuffer_AddDisposeBuffers(
 	FNA3D_CommandBufferManager *manager,
 	FNA3D_BufferHandle **handles,
@@ -715,6 +692,39 @@ void FNA3D_CommandBuffer_MarkBufferAsBound(
 
 	manager->currentCommandBufferContainer->boundBuffers[manager->currentCommandBufferContainer->boundBufferCount] = buffer;
 	manager->currentCommandBufferContainer->boundBufferCount += 1;
+}
+
+void FNA3D_CommandBuffer_MarkEffectAsBound(
+	FNA3D_CommandBufferManager *manager,
+	FNA3D_Effect *effect
+) {
+	uint32_t i;
+
+	for (i = 0; i < manager->currentCommandBufferContainer->boundEffectCount; i += 1)
+	{
+		if (effect == manager->currentCommandBufferContainer->boundEffects[i])
+		{
+			/* Effect is already referenced, nothing to do */
+			return;
+		}
+	}
+
+	manager->driver.IncEffectRef(
+		manager->driver.driverData,
+		effect
+	);
+
+	if (manager->currentCommandBufferContainer->boundEffectCount >= manager->currentCommandBufferContainer->boundEffectCapacity)
+	{
+		manager->currentCommandBufferContainer->boundEffectCapacity *= 2;
+		manager->currentCommandBufferContainer->boundEffects = SDL_realloc(
+			manager->currentCommandBufferContainer->boundEffects,
+			manager->currentCommandBufferContainer->boundEffectCapacity * sizeof(FNA3D_BufferHandle*)
+		);
+	}
+
+	manager->currentCommandBufferContainer->boundEffects[manager->currentCommandBufferContainer->boundEffectCount] = effect;
+	manager->currentCommandBufferContainer->boundEffectCount += 1;
 }
 
 FNA3D_TransferBuffer* FNA3D_CommandBuffer_AcquireTransferBuffer(

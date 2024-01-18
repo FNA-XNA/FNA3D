@@ -1062,6 +1062,7 @@ typedef struct VulkanRenderbuffer /* Cast from FNA3D_Renderbuffer* */
 typedef struct VulkanEffect /* Cast from FNA3D_Effect* */
 {
 	MOJOSHADER_effect *effect;
+	SDL_atomic_t refcount;
 } VulkanEffect;
 
 typedef struct VulkanQuery /* Cast from FNA3D_Query* */
@@ -1241,6 +1242,7 @@ typedef struct VulkanRenderer
 	/* MojoShader Interop */
 	MOJOSHADER_vkContext *mojoshaderContext;
 	MOJOSHADER_effect *currentEffect;
+	FNA3D_Effect *currentFNAEffect;
 	const MOJOSHADER_effectTechnique *currentTechnique;
 	uint32_t currentPass;
 
@@ -6208,6 +6210,11 @@ static void VULKAN_INTERNAL_BindPipeline(VulkanRenderer *renderer)
 	VkShaderModule vertShader, fragShader;
 	MOJOSHADER_vkGetShaderModules(renderer->mojoshaderContext, &vertShader, &fragShader);
 
+	FNA3D_CommandBuffer_MarkEffectAsBound(
+		renderer->commandBuffers,
+		renderer->currentFNAEffect
+	);
+
 	if (	renderer->needNewPipeline ||
 		renderer->currentVertShader != vertShader ||
 		renderer->currentFragShader != fragShader	)
@@ -9693,6 +9700,7 @@ static void VULKAN_CreateEffect(
 
 	result = (VulkanEffect*) SDL_malloc(sizeof(VulkanEffect));
 	result->effect = *effectData;
+	SDL_AtomicSet(&result->refcount, 1);
 	*effect = (FNA3D_Effect*) result;
 }
 
@@ -9714,6 +9722,7 @@ static void VULKAN_CloneEffect(
 
 	result = (VulkanEffect*) SDL_malloc(sizeof(VulkanEffect));
 	result->effect = *effectData;
+	SDL_AtomicSet(&result->refcount, 1);
 	*effect = (FNA3D_Effect*) result;
 }
 
@@ -9722,8 +9731,26 @@ static void VULKAN_AddDisposeEffect(
 	FNA3D_Effect *effect
 ) {
 	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
+	VulkanEffect *vulkanEffect = (VulkanEffect*) effect;
+	MOJOSHADER_effect *effectData;
 
-	FNA3D_CommandBuffer_AddDisposeEffect(renderer->commandBuffers, effect);
+	if (SDL_AtomicDecRef(&vulkanEffect->refcount))
+	{
+		effectData = vulkanEffect->effect;
+
+		if (effectData == renderer->currentEffect)
+		{
+			MOJOSHADER_effectEndPass(renderer->currentEffect);
+			MOJOSHADER_effectEnd(renderer->currentEffect);
+			renderer->currentFNAEffect = NULL;
+			renderer->currentEffect = NULL;
+			renderer->currentTechnique = NULL;
+			renderer->currentPass = 0;
+		}
+
+		MOJOSHADER_deleteEffect(effectData);
+		SDL_free(vulkanEffect);
+	}
 }
 
 static void VULKAN_SetEffectTechnique(
@@ -9791,6 +9818,7 @@ static void VULKAN_ApplyEffect(
 	);
 
 	MOJOSHADER_effectBeginPass(effectData, pass);
+	renderer->currentFNAEffect = effect;
 	renderer->currentEffect = effectData;
 	renderer->currentTechnique = technique;
 	renderer->currentPass = pass;
@@ -10923,6 +10951,21 @@ static size_t VULKAN_CommandBuffer_GetBufferSize(
 	return vulkanBuffer->size;
 }
 
+static void VULKAN_CommandBuffer_IncEffectRef(
+	FNA3D_Renderer *driverData,
+	FNA3D_Effect *handle
+) {
+	VulkanEffect *vulkanEffect = (VulkanEffect*) handle;
+	SDL_AtomicIncRef(&vulkanEffect->refcount);
+}
+
+static void VULKAN_CommandBuffer_DecEffectRef(
+	FNA3D_Renderer *driverData,
+	FNA3D_Effect *handle
+) {
+	VULKAN_AddDisposeEffect(driverData, handle);
+}
+
 static void VULKAN_CommandBuffer_DestroyTexture(
 	FNA3D_Renderer *driverData,
 	FNA3D_Texture *texture
@@ -10976,26 +11019,6 @@ static void VULKAN_CommandBuffer_DestroyRenderbuffer(
 	}
 
 	SDL_free(vkRenderbuffer);
-}
-
-static void VULKAN_CommandBuffer_DestroyEffect(
-	FNA3D_Renderer *driverData,
-	FNA3D_Effect *effect
-) {
-	VulkanRenderer *renderer = (VulkanRenderer*) driverData;
-	VulkanEffect *vulkanEffect = (VulkanEffect*) effect;
-	MOJOSHADER_effect *effectData = vulkanEffect->effect;
-
-	if (effectData == renderer->currentEffect)
-	{
-		MOJOSHADER_effectEndPass(renderer->currentEffect);
-		MOJOSHADER_effectEnd(renderer->currentEffect);
-		renderer->currentEffect = NULL;
-		renderer->currentTechnique = NULL;
-		renderer->currentPass = 0;
-	}
-	MOJOSHADER_deleteEffect(effectData);
-	SDL_free(vulkanEffect);
 }
 
 /* Driver */
