@@ -2537,6 +2537,7 @@ static void D3D11_INTERNAL_CreateSwapChain(
 	HWND dxgiHandle;
 	void* factory4;
 	IDXGISwapChain3 *swapchain3;
+	IDXGIDevice1 *dxgiDevice;
 	DXGI_COLOR_SPACE_TYPE colorSpace;
 	HRESULT res;
 
@@ -2665,6 +2666,30 @@ static void D3D11_INTERNAL_CreateSwapChain(
 				colorSpace = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
 			}
 			IDXGISwapChain3_SetColorSpace1(swapchain3, colorSpace);
+		}
+	}
+
+	if (SDL_GetHintBoolean("FNA3D_REDUCED_FRAME_LATENCY", SDL_FALSE))
+	{
+		/* 
+		  If possible, limit queued frames to 1. (The default is 3.)
+		  This significantly reduces rendering latency, especially in windowed mode. 
+		  Note that this will reduce maximum framerate somewhat.
+		*/
+		if (SUCCEEDED(IDXGIDevice1_QueryInterface(
+			renderer->device,
+			&D3D_IID_IDXGIDevice1,
+			(void**)&dxgiDevice
+		)))
+		{
+			if (!SUCCEEDED(IDXGIDevice1_SetMaximumFrameLatency(dxgiDevice, 1)))
+			{
+				FNA3D_LogWarn("IDXGIDevice1_SetMaximumFrameLatency failed");
+			}
+		}
+		else
+		{
+			FNA3D_LogWarn("IDXGIDevice1_QueryInterface failed");
 		}
 	}
 
