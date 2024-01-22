@@ -2789,16 +2789,21 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 			{
 				/* Surface format changed, recreate entirely */
 				IDXGISwapChain_Release(swapchainData->swapchain);
-				/* 
-				  DXGI will crash in some cases if we don't flush deferred swapchain destruction:
-				  DXGI ERROR: IDXGIFactory::CreateSwapChain: Only one flip model swap chain can be associate with an HWND, 
-				   IWindow, or composition surface at a time. ClearState() and Flush() may need to be called on the D3D11 
-				   device context to trigger deferred destruction of old swapchains. [ MISCELLANEOUS ERROR #297: ]
-				*/
 
+				/* 
+				 * DXGI will crash in some cases if we don't flush deferred swapchain destruction:
+				 *
+				 * DXGI ERROR: IDXGIFactory::CreateSwapChain: Only one flip model swap chain can be
+				 * associate with an HWND, IWindow, or composition surface at a time. ClearState()
+				 * and Flush() may need to be called on the D3D11 device context to trigger deferred
+				 * destruction of old swapchains. [ MISCELLANEOUS ERROR #297: ]
+				 *
+				 * -kg
+				 */
 				ID3D11DeviceContext_ClearState(renderer->context);
 				ID3D11DeviceContext_Flush(renderer->context);
-				/* Purge shadow state. This sucks */
+
+				/* Purge shadow state. This sucks. -kg */
 				renderer->topology = -1;
 				renderer->indexBuffer = NULL;
 				memset(&renderer->viewport, 0, sizeof(FNA3D_Viewport));
