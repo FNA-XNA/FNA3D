@@ -2540,6 +2540,7 @@ static void D3D11_INTERNAL_CreateSwapChain(
 	IDXGIDevice1 *dxgiDevice;
 	DXGI_COLOR_SPACE_TYPE colorSpace;
 	HRESULT res;
+	int reducedLatency = SDL_GetHintBoolean("FNA3D_REDUCED_FRAME_LATENCY", SDL_FALSE);
 
 	uint8_t growSwapchains = (swapchainData == NULL);
 
@@ -2565,7 +2566,7 @@ static void D3D11_INTERNAL_CreateSwapChain(
 	swapchainDesc.SampleDesc.Count = 1;
 	swapchainDesc.SampleDesc.Quality = 0;
 	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	swapchainDesc.BufferCount = 3;
+	swapchainDesc.BufferCount = reducedLatency ? 2 : 3;
 	swapchainDesc.OutputWindow = dxgiHandle;
 	swapchainDesc.Windowed = 1;
 	if (renderer->supportsTearing)
@@ -2669,7 +2670,7 @@ static void D3D11_INTERNAL_CreateSwapChain(
 		}
 	}
 
-	if (SDL_GetHintBoolean("FNA3D_REDUCED_FRAME_LATENCY", SDL_FALSE))
+	if (reducedLatency)
 	{
 		/* 
 		  If possible, limit queued frames to 1. (The default is 3.)
