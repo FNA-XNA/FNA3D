@@ -87,6 +87,7 @@ extern void FNA3D_LogWarn(const char *fmt, ...);
 /* These are per the Texture2D.SaveAs* spec */
 #define STBIW_ONLY_PNG
 #define STBIW_ONLY_JPEG
+#define STBIW_ONLY_TGA
 
 #define STBI_NO_STDIO
 #define STB_IMAGE_STATIC
