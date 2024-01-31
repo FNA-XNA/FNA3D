@@ -2811,7 +2811,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 	{
 		memoryTypeIndex = 0;
 		requiredMemoryPropertyFlags = 0;
-		ignoredMemoryPropertyFlags = VK_MEMORY_HEAP_DEVICE_LOCAL_BIT;
+		ignoredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
 		if (isRenderTarget)
 		{
