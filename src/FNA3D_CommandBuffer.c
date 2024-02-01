@@ -29,16 +29,12 @@
 #include <SDL.h>
 
 #define STARTING_TRANSFER_BUFFER_SIZE 8000000 /* 8MB */
-#define FAST_TRANSFER_SIZE 64000000 /* 64MB */
 
 typedef struct FNA3D_TransferBufferPool
 {
-	FNA3D_TransferBuffer *fastTransferBuffer;
-	uint8_t fastTransferBufferAvailable;
-
-	FNA3D_TransferBuffer **availableSlowTransferBuffers;
-	uint32_t availableSlowTransferBufferCount;
-	uint32_t availableSlowTransferBufferCapacity;
+	FNA3D_TransferBuffer **availableTransferBuffers;
+	uint32_t availableTransferBufferCount;
+	uint32_t availableTransferBufferCapacity;
 } FNA3D_TransferBufferPool;
 
 /* Command buffers have various resources associated with them
@@ -225,24 +221,17 @@ static void FNA3D_CommandBuffer_CleanContainer(
 		transferBuffer = container->transferBuffers[i];
 		transferBuffer->offset = 0;
 
-		if (transferBuffer == manager->transferBufferPool.fastTransferBuffer)
+		if (manager->transferBufferPool.availableTransferBufferCount == manager->transferBufferPool.availableTransferBufferCapacity)
 		{
-			manager->transferBufferPool.fastTransferBufferAvailable = 1;
+			manager->transferBufferPool.availableTransferBufferCapacity += 1;
+			manager->transferBufferPool.availableTransferBuffers = SDL_realloc(
+				manager->transferBufferPool.availableTransferBuffers,
+				manager->transferBufferPool.availableTransferBufferCapacity * sizeof(FNA3D_TransferBuffer*)
+			);
 		}
-		else
-		{
-			if (manager->transferBufferPool.availableSlowTransferBufferCount == manager->transferBufferPool.availableSlowTransferBufferCapacity)
-			{
-				manager->transferBufferPool.availableSlowTransferBufferCapacity += 1;
-				manager->transferBufferPool.availableSlowTransferBuffers = SDL_realloc(
-					manager->transferBufferPool.availableSlowTransferBuffers,
-					manager->transferBufferPool.availableSlowTransferBufferCapacity * sizeof(FNA3D_TransferBuffer*)
-				);
-			}
 
-			manager->transferBufferPool.availableSlowTransferBuffers[manager->transferBufferPool.availableSlowTransferBufferCount] = transferBuffer;
-			manager->transferBufferPool.availableSlowTransferBufferCount += 1;
-		}
+		manager->transferBufferPool.availableTransferBuffers[manager->transferBufferPool.availableTransferBufferCount] = transferBuffer;
+		manager->transferBufferPool.availableTransferBufferCount += 1;
 	}
 	container->transferBufferCount = 0;
 
@@ -315,21 +304,10 @@ FNA3D_CommandBufferManager* FNA3D_CreateCommandBufferManager(
 	 * Initialize buffer space
 	 */
 
-	manager->transferBufferPool.fastTransferBuffer = (FNA3D_TransferBuffer*) SDL_malloc(
-		sizeof(FNA3D_TransferBuffer)
-	);
-	manager->transferBufferPool.fastTransferBuffer->offset = 0;
-	manager->transferBufferPool.fastTransferBuffer->buffer = manager->driver.CreateTransferBuffer(
-		manager->driver.driverData,
-		FAST_TRANSFER_SIZE,
-		1
-	);
-	manager->transferBufferPool.fastTransferBufferAvailable = 1;
-
-	manager->transferBufferPool.availableSlowTransferBufferCapacity = 4;
-	manager->transferBufferPool.availableSlowTransferBufferCount = 0;
-	manager->transferBufferPool.availableSlowTransferBuffers = (FNA3D_TransferBuffer**) SDL_malloc(
-		manager->transferBufferPool.availableSlowTransferBufferCapacity * sizeof(FNA3D_TransferBuffer*)
+	manager->transferBufferPool.availableTransferBufferCapacity = 4;
+	manager->transferBufferPool.availableTransferBufferCount = 0;
+	manager->transferBufferPool.availableTransferBuffers = (FNA3D_TransferBuffer**) SDL_malloc(
+		manager->transferBufferPool.availableTransferBufferCapacity * sizeof(FNA3D_TransferBuffer*)
 	);
 
 	return manager;
@@ -382,22 +360,16 @@ void FNA3D_DestroyCommandBufferManager(
 		SDL_free(commandBufferContainer);
 	}
 
-	manager->driver.DestroyBuffer(
-		manager->driver.driverData,
-		manager->transferBufferPool.fastTransferBuffer->buffer
-	);
-	SDL_free(manager->transferBufferPool.fastTransferBuffer);
-
-	for (i = 0; i < manager->transferBufferPool.availableSlowTransferBufferCount; i += 1)
+	for (i = 0; i < manager->transferBufferPool.availableTransferBufferCount; i += 1)
 	{
 		manager->driver.DestroyBuffer(
 			manager->driver.driverData,
-			manager->transferBufferPool.availableSlowTransferBuffers[i]->buffer
+			manager->transferBufferPool.availableTransferBuffers[i]->buffer
 		);
 
-		SDL_free(manager->transferBufferPool.availableSlowTransferBuffers[i]);
+		SDL_free(manager->transferBufferPool.availableTransferBuffers[i]);
 	}
-	SDL_free(manager->transferBufferPool.availableSlowTransferBuffers);
+	SDL_free(manager->transferBufferPool.availableTransferBuffers);
 
 	SDL_DestroyMutex(manager->commandLock);
 	SDL_DestroyMutex(manager->transferLock);
@@ -759,24 +731,9 @@ FNA3D_TransferBuffer* FNA3D_CommandBuffer_AcquireTransferBuffer(
 		);
 	}
 
-	/* Is the fast transfer buffer available? */
-	if (	manager->transferBufferPool.fastTransferBufferAvailable &&
-		requiredSize < FAST_TRANSFER_SIZE	)
+	for (i = 0; i < manager->transferBufferPool.availableTransferBufferCount; i += 1)
 	{
-		transferBuffer = manager->transferBufferPool.fastTransferBuffer;
-		manager->transferBufferPool.fastTransferBufferAvailable = 0;
-
-		commandBufferContainer->transferBuffers[commandBufferContainer->transferBufferCount] = transferBuffer;
-		commandBufferContainer->transferBufferCount += 1;
-
-		/* If the fast transfer buffer is available, the offset is always zero */
-		return transferBuffer;
-	}
-
-	/* Nope, let's get a slow buffer */
-	for (i = 0; i < manager->transferBufferPool.availableSlowTransferBufferCount; i += 1)
-	{
-		transferBuffer = manager->transferBufferPool.availableSlowTransferBuffers[i];
+		transferBuffer = manager->transferBufferPool.availableTransferBuffers[i];
 		parentBufferSize = manager->driver.GetBufferSize(
 			manager->driver.driverData,
 			transferBuffer->buffer
@@ -788,8 +745,8 @@ FNA3D_TransferBuffer* FNA3D_CommandBuffer_AcquireTransferBuffer(
 			commandBufferContainer->transferBuffers[commandBufferContainer->transferBufferCount] = transferBuffer;
 			commandBufferContainer->transferBufferCount += 1;
 
-			manager->transferBufferPool.availableSlowTransferBuffers[i] = manager->transferBufferPool.availableSlowTransferBuffers[manager->transferBufferPool.availableSlowTransferBufferCount - 1];
-			manager->transferBufferPool.availableSlowTransferBufferCount -= 1;
+			manager->transferBufferPool.availableTransferBuffers[i] = manager->transferBufferPool.availableTransferBuffers[manager->transferBufferPool.availableTransferBufferCount - 1];
+			manager->transferBufferPool.availableTransferBufferCount -= 1;
 
 			transferBuffer->offset = offset;
 			return transferBuffer;
@@ -809,8 +766,7 @@ FNA3D_TransferBuffer* FNA3D_CommandBuffer_AcquireTransferBuffer(
 	transferBuffer->offset = 0;
 	transferBuffer->buffer = manager->driver.CreateTransferBuffer(
 		manager->driver.driverData,
-		size,
-		0
+		size
 	);
 
 	if (transferBuffer->buffer == NULL)
