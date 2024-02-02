@@ -2059,7 +2059,6 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 	VulkanRenderer *renderer,
 	uint32_t typeFilter,
 	VkMemoryPropertyFlags requiredProperties,
-	VkMemoryPropertyFlags ignoredProperties,
 	uint32_t *memoryTypeIndex
 ) {
 	uint32_t i;
@@ -2067,8 +2066,7 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 	for (i = *memoryTypeIndex; i < renderer->memoryProperties.memoryTypeCount; i += 1)
 	{
 		if (	(typeFilter & (1 << i)) &&
-			(renderer->memoryProperties.memoryTypes[i].propertyFlags & requiredProperties) == requiredProperties &&
-			(renderer->memoryProperties.memoryTypes[i].propertyFlags & ignoredProperties) == 0	)
+			(renderer->memoryProperties.memoryTypes[i].propertyFlags & requiredProperties) == requiredProperties)
 		{
 			*memoryTypeIndex = i;
 			return 1;
@@ -2076,10 +2074,9 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 	}
 
 	FNA3D_LogWarn(
-		"Failed to find memory type %X, required %X, ignored %X",
+		"Failed to find memory type %X, required %X",
 		typeFilter,
-		requiredProperties,
-		ignoredProperties
+		requiredProperties
 	);
 	return 0;
 }
@@ -2711,7 +2708,6 @@ static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
 	VulkanRenderer *renderer,
 	VkBuffer buffer,
 	VkMemoryPropertyFlags requiredMemoryProperties,
-	VkMemoryPropertyFlags ignoredMemoryProperties,
 	VkMemoryRequirements *pMemoryRequirements,
 	uint32_t *pMemoryTypeIndex
 ) {
@@ -2725,7 +2721,6 @@ static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
 		renderer,
 		pMemoryRequirements->memoryTypeBits,
 		requiredMemoryProperties,
-		ignoredMemoryProperties,
 		pMemoryTypeIndex
 	);
 }
@@ -2734,7 +2729,6 @@ static uint8_t VULKAN_INTERNAL_FindImageMemoryRequirements(
 	VulkanRenderer *renderer,
 	VkImage image,
 	VkMemoryPropertyFlags requiredMemoryPropertyFlags,
-	VkMemoryPropertyFlags ignoredMemoryPropertyFlags,
 	VkMemoryRequirements *pMemoryRequirements,
 	uint32_t *pMemoryTypeIndex
 ) {
@@ -2748,7 +2742,6 @@ static uint8_t VULKAN_INTERNAL_FindImageMemoryRequirements(
 		renderer,
 		pMemoryRequirements->memoryTypeBits,
 		requiredMemoryPropertyFlags,
-		ignoredMemoryPropertyFlags,
 		pMemoryTypeIndex
 	);
 }
@@ -2763,18 +2756,15 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 	uint8_t bindResult = 0;
 	uint32_t memoryTypeIndex = 0;
 	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
-	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
 	VkMemoryRequirements memoryRequirements;
 
 	/* Prefer GPU allocation */
 	requiredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-	ignoredMemoryPropertyFlags = 0;
 
 	while (VULKAN_INTERNAL_FindImageMemoryRequirements(
 		renderer,
 		image,
 		requiredMemoryPropertyFlags,
-		ignoredMemoryPropertyFlags,
 		&memoryRequirements,
 		&memoryTypeIndex
 	)) {
@@ -2810,7 +2800,6 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 	{
 		memoryTypeIndex = 0;
 		requiredMemoryPropertyFlags = 0;
-		ignoredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
 		if (isRenderTarget)
 		{
@@ -2823,7 +2812,6 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 			renderer,
 			image,
 			requiredMemoryPropertyFlags,
-			ignoredMemoryPropertyFlags,
 			&memoryRequirements,
 			&memoryTypeIndex
 		)) {
@@ -2869,21 +2857,16 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 	uint8_t bindResult = 0;
 	uint32_t memoryTypeIndex = 0;
 	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
-	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
 	VkMemoryRequirements memoryRequirements;
 
 	requiredMemoryPropertyFlags =
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-	/* since buffers are able to be memcpy'd directly, we never want them to be device-local */
-	ignoredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-
 	while (VULKAN_INTERNAL_FindBufferMemoryRequirements(
 		renderer,
 		buffer,
 		requiredMemoryPropertyFlags,
-		ignoredMemoryPropertyFlags,
 		&memoryRequirements,
 		&memoryTypeIndex
 	)) {
