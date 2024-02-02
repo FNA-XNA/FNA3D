@@ -2861,7 +2861,8 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 
 	requiredMemoryPropertyFlags =
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+		VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
 
 	while (VULKAN_INTERNAL_FindBufferMemoryRequirements(
 		renderer,
@@ -2894,6 +2895,49 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 		else /* Bind failed, try the next heap */
 		{
 			memoryTypeIndex += 1;
+		}
+	}
+
+	/* Bind failed, try again without CACHED */
+	if (bindResult != 1)
+	{
+		memoryTypeIndex = 0;
+		requiredMemoryPropertyFlags =
+			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
+			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+
+		while (VULKAN_INTERNAL_FindBufferMemoryRequirements(
+			renderer,
+			buffer,
+			requiredMemoryPropertyFlags,
+			&memoryRequirements,
+			&memoryTypeIndex
+		)) {
+			bindResult = FNA3D_Memory_BindResource(
+				renderer->allocator,
+				memoryTypeIndex,
+				memoryRequirements.size,
+				memoryRequirements.alignment,
+				(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
+					VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT) != 0,
+				(renderer->memoryProperties.memoryTypes[memoryTypeIndex].propertyFlags &
+					VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT) != 0,
+				isTransferBuffer,
+				size,
+				0,
+				(FNA3D_MemoryPlatformHandle) (size_t) buffer,
+				bufferHandle,
+				usedRegion
+			);
+
+			if (bindResult == 1)
+			{
+				break;
+			}
+			else /* Bind failed, try the next heap */
+			{
+				memoryTypeIndex += 1;
+			}
 		}
 	}
 
