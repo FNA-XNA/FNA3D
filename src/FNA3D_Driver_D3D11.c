@@ -2749,17 +2749,23 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 		D3D11_INTERNAL_DisposeBackbuffer(renderer);
 	}
 
-	/* Check for valid rendering support */
-	ID3D11Device_CheckFormatSupport(
-		renderer->device,
-		dxgiFormat,
-		&support
-	);
-
-	if (!((support & D3D11_FORMAT_SUPPORT_DISPLAY)))
+	/* FIXME: WineD3D does not expose D3D11_FORMAT_SUPPORT_DISPLAY,
+	 * Remove this when it has been added (and backported to 9.0?).
+	 */
+	if (parameters->backBufferFormat != FNA3D_SURFACEFORMAT_COLOR)
 	{
-		FNA3D_LogError("Unsupported backbuffer DXGI format");
-		return;
+		/* Check for valid rendering support */
+		ID3D11Device_CheckFormatSupport(
+			renderer->device,
+			dxgiFormat,
+			&support
+		);
+
+		if (!((support & D3D11_FORMAT_SUPPORT_DISPLAY)))
+		{
+			FNA3D_LogError("Unsupported backbuffer DXGI format");
+			return;
+		}
 	}
 
 	/* Create or update the swapchain */
