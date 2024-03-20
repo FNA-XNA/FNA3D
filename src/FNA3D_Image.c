@@ -26,7 +26,36 @@
 
 #include "FNA3D_Image.h"
 
+#ifdef USE_SDL3
+#include <SDL3/SDL.h>
+#else
 #include <SDL.h>
+#define SDL_CreateSurface(a, b, c) \
+	SDL_CreateRGBSurface( \
+		0, \
+		a, \
+		b, \
+		8 * ((c == SDL_PIXELFORMAT_RGBA32) ? 4 : 3), \
+		0x000000FF, \
+		0x0000FF00, \
+		0x00FF0000, \
+		(c == SDL_PIXELFORMAT_RGBA32) ? 0xFF000000 : 0 \
+	)
+#define SDL_CreateSurfaceFrom(a, b, c, d, e) \
+	SDL_CreateRGBSurfaceFrom( \
+		a, \
+		b, \
+		c, \
+		8 * ((e == SDL_PIXELFORMAT_RGBA32) ? 4 : 3), \
+		d, \
+		0x000000FF, \
+		0x0000FF00, \
+		0x00FF0000, \
+		(e == SDL_PIXELFORMAT_RGBA32) ? 0xFF000000 : 0 \
+	)
+#define SDL_BlitSurfaceScaled(a, b, c, d, e) SDL_BlitScaled(a, b, c, d)
+#define SDL_DestroySurface SDL_FreeSurface
+#endif
 
 extern void FNA3D_LogWarn(const char *fmt, ...);
 
@@ -92,9 +121,15 @@ extern void FNA3D_LogWarn(const char *fmt, ...);
 #define STBI_NO_STDIO
 #define STB_IMAGE_STATIC
 #define STBI_ASSERT SDL_assert
+#ifdef USE_SDL3
+#define STBI_MALLOC SDL_malloc
+#define STBI_REALLOC SDL_realloc
+#define STBI_FREE SDL_free
+#else
 #define STBI_MALLOC SDL_SIMDAlloc
 #define STBI_REALLOC SDL_SIMDRealloc
 #define STBI_FREE SDL_SIMDFree
+#endif
 #define STB_IMAGE_IMPLEMENTATION
 #ifdef __MINGW32__
 #define STBI_NO_THREAD_LOCALS /* FIXME: Port to SDL_TLS -flibit */
@@ -182,18 +217,16 @@ uint8_t* FNA3D_Image_Load(
 
 	if (forceW != -1 && forceH != -1)
 	{
-		surface = SDL_CreateRGBSurfaceFrom(
+		surface = SDL_CreateSurfaceFrom(
 			result,
 			*w,
 			*h,
-			8 * 4,
 			(*w) * 4,
-			0x000000FF,
-			0x0000FF00,
-			0x00FF0000,
-			0xFF000000
+			SDL_PIXELFORMAT_RGBA32
 		);
+#if SDL_MAJOR_VERSION < 3
 		surface->flags |= SDL_SIMD_ALIGNED;
+#endif
 
 		if (zoom)
 		{
@@ -239,42 +272,39 @@ uint8_t* FNA3D_Image_Load(
 		}
 
 		/* Alloc surface, blit! */
-		newSurface = SDL_CreateRGBSurface(
-			0,
+		newSurface = SDL_CreateSurface(
 			*w,
 			*h,
-			32,
-			0x000000FF,
-			0x0000FF00,
-			0x00FF0000,
-			0xFF000000
+			SDL_PIXELFORMAT_RGBA32
 		);
 		SDL_SetSurfaceBlendMode(surface, SDL_BLENDMODE_NONE);
 		if (zoom)
 		{
-			SDL_BlitScaled(
+			SDL_BlitSurfaceScaled(
 				surface,
 				&crop,
 				newSurface,
-				NULL
+				NULL,
+				SDL_SCALEMODE_LINEAR /* FIXME: is this correct */
 			);
 		}
 		else
 		{
-			SDL_BlitScaled(
+			SDL_BlitSurfaceScaled(
 				surface,
 				NULL,
 				newSurface,
-				NULL
+				NULL,
+				SDL_SCALEMODE_LINEAR /* FIXME: is this correct */
 			);
 		}
-		SDL_FreeSurface(surface);
+		SDL_DestroySurface(surface);
 		SDL_free(result);
 
 		/* We're going to cheat and let the client take the memory! */
 		result = (uint8_t*) newSurface->pixels;
 		newSurface->flags |= SDL_PREALLOC;
-		SDL_FreeSurface(newSurface);
+		SDL_DestroySurface(newSurface);
 	}
 
 	/* Ensure that the alpha pixels are... well, actual alpha.
@@ -299,7 +329,7 @@ uint8_t* FNA3D_Image_Load(
 
 void FNA3D_Image_Free(uint8_t *mem)
 {
-	SDL_SIMDFree(mem);
+	STBI_FREE(mem);
 }
 
 /* Image Write API */
@@ -320,30 +350,21 @@ void FNA3D_Image_SavePNG(
 	/* Only blit to scale, the format is already correct */
 	if (scale)
 	{
-		surface = SDL_CreateRGBSurfaceFrom(
+		surface = SDL_CreateSurfaceFrom(
 			data,
 			srcW,
 			srcH,
-			8 * 4,
 			srcW * 4,
-			0x000000FF,
-			0x0000FF00,
-			0x00FF0000,
-			0xFF000000
+			SDL_PIXELFORMAT_RGBA32
 		);
-		scaledSurface = SDL_CreateRGBSurface(
-			0,
+		scaledSurface = SDL_CreateSurface(
 			dstW,
 			dstH,
-			32,
-			0x000000FF,
-			0x0000FF00,
-			0x00FF0000,
-			0xFF000000
+			SDL_PIXELFORMAT_RGBA32
 		);
 		SDL_SetSurfaceBlendMode(surface, SDL_BLENDMODE_NONE);
-		SDL_BlitScaled(surface, NULL, scaledSurface, NULL);
-		SDL_FreeSurface(surface);
+		SDL_BlitSurfaceScaled(surface, NULL, scaledSurface, NULL, SDL_SCALEMODE_LINEAR);
+		SDL_DestroySurface(surface);
 		pixels = (uint8_t*) scaledSurface->pixels;
 	}
 	else
@@ -365,7 +386,7 @@ void FNA3D_Image_SavePNG(
 	/* Clean up. We out. */
 	if (scale)
 	{
-		SDL_FreeSurface(scaledSurface);
+		SDL_DestroySurface(scaledSurface);
 	}
 }
 
@@ -380,30 +401,21 @@ void FNA3D_Image_SaveJPG(
 	int32_t quality
 ) {
 	/* Get an RGB24 surface at the specified width/height */
-	SDL_Surface *surface = SDL_CreateRGBSurfaceFrom(
+	SDL_Surface *surface = SDL_CreateSurfaceFrom(
 		data,
 		srcW,
 		srcH,
-		8 * 4,
 		srcW * 4,
-		0x000000FF,
-		0x0000FF00,
-		0x00FF0000,
-		0xFF000000
+		SDL_PIXELFORMAT_RGBA32
 	);
-	SDL_Surface *convertSurface = SDL_CreateRGBSurface(
-		0,
+	SDL_Surface *convertSurface = SDL_CreateSurface(
 		dstW,
 		dstH,
-		24,
-		0x000000FF,
-		0x0000FF00,
-		0x00FF0000,
-		0x00000000
+		SDL_PIXELFORMAT_RGB24
 	);
 	SDL_SetSurfaceBlendMode(surface, SDL_BLENDMODE_NONE);
-	SDL_BlitScaled(surface, NULL, convertSurface, NULL);
-	SDL_FreeSurface(surface);
+	SDL_BlitSurfaceScaled(surface, NULL, convertSurface, NULL, SDL_SCALEMODE_LINEAR);
+	SDL_DestroySurface(surface);
 	surface = convertSurface;
 
 	/* Write the image, finally. */
@@ -418,7 +430,7 @@ void FNA3D_Image_SaveJPG(
 	);
 
 	/* Clean up. We out. */
-	SDL_FreeSurface(surface);
+	SDL_DestroySurface(surface);
 }
 
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */

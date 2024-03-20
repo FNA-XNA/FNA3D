@@ -26,7 +26,12 @@
 
 #include "FNA3D_CommandBuffer.h"
 
+#ifdef USE_SDL3
+#include <SDL3/SDL.h>
+#else
 #include <SDL.h>
+#define SDL_Mutex SDL_mutex
+#endif
 
 #define STARTING_TRANSFER_BUFFER_SIZE 8000000 /* 8MB */
 #define FAST_TRANSFER_SIZE 64000000 /* 64MB */
@@ -93,8 +98,8 @@ struct FNA3D_CommandBufferManager
 
 	FNA3D_TransferBufferPool transferBufferPool;
 
-	SDL_mutex *commandLock;
-	SDL_mutex *transferLock;
+	SDL_Mutex *commandLock;
+	SDL_Mutex *transferLock;
 };
 
 static FNA3D_CommandBufferContainer* FNA3D_INTERNAL_CreateCommandBufferContainer(
