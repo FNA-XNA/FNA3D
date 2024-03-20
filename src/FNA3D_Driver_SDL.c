@@ -24,7 +24,6 @@
  *
  */
 
-#ifdef USE_SDL3
 #if FNA3D_DRIVER_SDL
 
 #include "FNA3D_Driver.h"
@@ -568,4 +567,3 @@ FNA3D_Driver SDLGPUDriver = {
 extern int this_tu_is_empty;
 
 #endif /* FNA3D_DRIVER_SDL */
-#endif /* USE_SDL3 */
