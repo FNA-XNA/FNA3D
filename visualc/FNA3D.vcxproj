@@ -92,6 +92,9 @@
     <ClCompile Include="..\MojoShader\mojoshader_vulkan.c">
       <CompileAs>CompileAsCpp</CompileAs>
     </ClCompile>
+    <ClCompile Include="..\MojoShader\mojoshader_sdlgpu.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+    </ClCompile>
     <ClCompile Include="..\MojoShader\profiles\mojoshader_profile_common.c">
       <CompileAs>CompileAsCpp</CompileAs>
     </ClCompile>
@@ -112,6 +115,7 @@
     <ClCompile Include="..\src\FNA3D_Driver_D3D11.c" />
     <ClCompile Include="..\src\FNA3D_Driver_OpenGL.c" />
     <ClCompile Include="..\src\FNA3D_Driver_Vulkan.c" />
+    <ClCompile Include="..\src\FNA3D_Driver_SDL.c" />
     <ClCompile Include="..\src\FNA3D_Image.c" />
     <ClCompile Include="..\src\FNA3D_Memory.c" />
     <ClCompile Include="..\src\FNA3D_PipelineCache.c" />
