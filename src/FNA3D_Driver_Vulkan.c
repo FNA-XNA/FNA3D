@@ -37,8 +37,27 @@
 #include "FNA3D_CommandBuffer.h"
 #include "FNA3D_PipelineCache.h"
 
+#ifdef USE_SDL3
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_vulkan.h>
+#else
 #include <SDL.h>
 #include <SDL_vulkan.h>
+#define SDL_AtomicInt SDL_atomic_t
+#define SDL_Mutex SDL_mutex
+#define SDL_IOStream SDL_RWops
+#define SDL_IOFromFile SDL_RWFromFile
+#define SDL_WriteIO(file, data, size) \
+	file->write( \
+		file, \
+		data, \
+		sizeof(uint8_t), \
+		size \
+	)
+#define SDL_CloseIO(file) file->close(file)
+#define SDL_CreateWindow(title, w, h, flags) SDL_CreateWindow(title, 0, 0, w, h, flags)
+#define SDL_Vulkan_CreateSurface(windowHandle, instance, callbacks, surface) SDL_Vulkan_CreateSurface(windowHandle, instance, surface)
+#endif
 
 #define VULKAN_INTERNAL_clamp(val, min, max) SDL_max(min, SDL_min(val, max))
 
@@ -1038,7 +1057,7 @@ struct VulkanBuffer
 	VkBufferUsageFlags usage;
 	uint8_t preferDeviceLocal;
 	uint8_t isTransferBuffer;
-	SDL_atomic_t refcount;
+	SDL_AtomicInt refcount;
 };
 
 typedef struct VulkanColorBuffer
@@ -1280,8 +1299,8 @@ typedef struct VulkanRenderer
 	uint8_t submitCounter; /* used so we don't clobber data being used by GPU */
 
 	/* Threading */
-	SDL_mutex *passLock;
-	SDL_mutex *disposeLock;
+	SDL_Mutex *passLock;
+	SDL_Mutex *disposeLock;
 
 	#define VULKAN_INSTANCE_FUNCTION(name) \
 		PFN_##name name;
@@ -2276,6 +2295,9 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 ) {
 	VkResult vulkanResult;
 	VkApplicationInfo appInfo;
+#if SDL_MAJOR_VERSION >= 3
+	char const* const* inferredExtensionNames;
+#endif
 	const char **instanceExtensionNames;
 	uint32_t instanceExtensionCount;
 	VkInstanceCreateInfo createInfo;
@@ -2290,6 +2312,32 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 	appInfo.engineVersion = FNA3D_COMPILED_VERSION;
 	appInfo.apiVersion = VK_MAKE_VERSION(1, 0, 0);
 
+#if SDL_MAJOR_VERSION >= 3
+	inferredExtensionNames = SDL_Vulkan_GetInstanceExtensions(&instanceExtensionCount);
+
+	if (inferredExtensionNames == NULL)
+	{
+		FNA3D_LogWarn(
+			"SDL_Vulkan_GetInstanceExtensions(): %s",
+			SDL_GetError()
+		);
+		goto create_instance_fail;
+	}
+
+	/* Extra space for the following extensions:
+	 * VK_KHR_get_physical_device_properties2
+	 * VK_EXT_debug_utils
+	 */
+	instanceExtensionNames = SDL_stack_alloc(
+		const char*,
+		instanceExtensionCount + 2
+	);
+
+	for (uint32_t i = 0; i < instanceExtensionCount; i += 1)
+	{
+		instanceExtensionNames[i] = inferredExtensionNames[i];
+	}
+#else
 	if (!SDL_Vulkan_GetInstanceExtensions(
 		(SDL_Window*) presentationParameters->deviceWindowHandle,
 		&instanceExtensionCount,
@@ -2323,6 +2371,7 @@ static uint8_t VULKAN_INTERNAL_CreateInstance(
 		);
 		goto create_instance_fail;
 	}
+#endif
 
 	if (!VULKAN_INTERNAL_CheckInstanceExtensions(
 		renderer->debugMode,
@@ -4285,6 +4334,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	VulkanCommandBuffer *commandBufferToSubmit;
 
 	SDL_DisplayMode mode;
+
 	VkPipelineStageFlags waitStages = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
 	VkPresentInfoKHR presentInfo;
 	struct
@@ -4299,19 +4349,42 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 	if (present)
 	{
+#if SDL_MAJOR_VERSION >= 3
+		const SDL_DisplayMode *curMode = SDL_GetCurrentDisplayMode(
+			SDL_GetDisplayForWindow(
+				(SDL_Window*) windowHandle
+			)
+		);
+		SDL_memcpy(&mode, curMode, sizeof(SDL_DisplayMode));
+
+#else
 		SDL_GetCurrentDisplayMode(
 			SDL_GetWindowDisplayIndex(
 				(SDL_Window*) windowHandle
 			),
 			&mode
 		);
+#endif
+
 		if (mode.refresh_rate == 0)
 		{
 			/* Needs to be _something_ */
 			mode.refresh_rate = 60;
 		}
 
-		swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+#if SDL_MAJOR_VERSION >= 3
+		swapchainData = (VulkanSwapchainData*) SDL_GetProperty(
+			SDL_GetWindowProperties(windowHandle),
+			WINDOW_SWAPCHAIN_DATA,
+			NULL
+		);
+#else
+		swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(
+			windowHandle,
+			WINDOW_SWAPCHAIN_DATA
+		);
+#endif
+
 
 		if (swapchainData == NULL)
 		{
@@ -4327,7 +4400,11 @@ static void VULKAN_INTERNAL_SubmitCommands(
 			}
 			else
 			{
+#if SDL_MAJOR_VERSION >= 3
+				swapchainData = (VulkanSwapchainData *)SDL_GetProperty(SDL_GetWindowProperties(windowHandle), WINDOW_SWAPCHAIN_DATA, NULL);
+#else
 				swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+#endif
 				validSwapchainExists = 1;
 			}
 		}
@@ -4498,10 +4575,18 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	{
 		if (renderer->supports.GGP_frame_token)
 		{
-			const void* token = SDL_GetWindowData(
+#if SDL_MAJOR_VERSION >= 3
+			const void *token = SDL_GetProperty(
+				SDL_GetWindowProperties(windowHandle),
+				"GgpFrameToken",
+				NULL
+			);
+#else
+			const void *token = SDL_GetWindowData(
 				(SDL_Window*) windowHandle,
 				"GgpFrameToken"
 			);
+#endif
 			presentInfoGGP.sType = VK_STRUCTURE_TYPE_PRESENT_FRAME_TOKEN_GGP;
 			presentInfoGGP.pNext = NULL;
 			presentInfoGGP.frameToken = (uint64_t) (size_t) token;
@@ -4634,6 +4719,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	if (!SDL_Vulkan_CreateSurface(
 		(SDL_Window*) windowHandle,
 		renderer->instance,
+		NULL, /* FIXME: VAllocationCallbacks */
 		&swapchainData->surface
 	)) {
 		SDL_free(swapchainData);
@@ -5020,7 +5106,11 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 
 	swapchainData->fence = VK_NULL_HANDLE;
 
+#if SDL_MAJOR_VERSION >= 3
+	SDL_SetProperty(SDL_GetWindowProperties(windowHandle), WINDOW_SWAPCHAIN_DATA, swapchainData);
+#else
 	SDL_SetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA, swapchainData);
+#endif
 
 	if (renderer->swapchainDataCount >= renderer->swapchainDataCapacity)
 	{
@@ -5052,7 +5142,11 @@ static void VULKAN_INTERNAL_DestroySwapchain(
 	uint32_t i;
 	VulkanSwapchainData *swapchainData;
 
+#if SDL_MAJOR_VERSION >= 3
+	swapchainData = (VulkanSwapchainData*) SDL_GetProperty(SDL_GetWindowProperties(windowHandle), WINDOW_SWAPCHAIN_DATA, NULL);
+#else
 	swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
+#endif
 
 	if (swapchainData == NULL)
 	{
@@ -5119,7 +5213,12 @@ static void VULKAN_INTERNAL_DestroySwapchain(
 		}
 	}
 
+#if SDL_MAJOR_VERSION >= 3
+	SDL_ClearProperty(SDL_GetWindowProperties(windowHandle), WINDOW_SWAPCHAIN_DATA);
+#else
 	SDL_SetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA, NULL);
+#endif
+
 	SDL_free(swapchainData);
 }
 
@@ -7291,7 +7390,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 	VkResult pipelineCacheResult;
 	size_t pipelineCacheSize;
 	uint8_t *pipelineCacheData;
-	SDL_RWops *pipelineCacheFile;
+	SDL_IOStream *pipelineCacheFile;
 	const char *pipelineCacheFileName;
 
 	VULKAN_INTERNAL_FlushCommands(renderer, 1);
@@ -7321,7 +7420,7 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 		}
 		else
 		{
-			pipelineCacheFile = SDL_RWFromFile(pipelineCacheFileName, "wb");
+			pipelineCacheFile = SDL_IOFromFile(pipelineCacheFileName, "wb");
 		}
 
 		if (pipelineCacheFile != NULL)
@@ -7335,13 +7434,12 @@ static void VULKAN_DestroyDevice(FNA3D_Device *device)
 				pipelineCacheData
 			);
 
-			pipelineCacheFile->write(
+			SDL_WriteIO(
 				pipelineCacheFile,
 				pipelineCacheData,
-				sizeof(uint8_t),
 				pipelineCacheSize
 			);
-			pipelineCacheFile->close(pipelineCacheFile);
+			SDL_CloseIO(pipelineCacheFile);
 
 			SDL_free(pipelineCacheData);
 		}
@@ -11052,7 +11150,6 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 	/* Create a dummy window, otherwise we cannot query swapchain support */
 	dummyWindowHandle = SDL_CreateWindow(
 		"FNA3D Vulkan",
-		0, 0,
 		128, 128,
 		SDL_WINDOW_VULKAN | SDL_WINDOW_HIDDEN
 	);
@@ -11080,6 +11177,7 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 	if (!SDL_Vulkan_CreateSurface(
 		(SDL_Window*) presentationParameters.deviceWindowHandle,
 		renderer->instance,
+		NULL, /* FIXME: VAllocationCallbacks */
 		&surface
 	)) {
 		SDL_DestroyWindow(dummyWindowHandle);
@@ -11216,6 +11314,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	if (!SDL_Vulkan_CreateSurface(
 		(SDL_Window*) presentationParameters->deviceWindowHandle,
 		renderer->instance,
+		NULL, /* FIXME: VAllocationCallbacks */
 		&surface
 	)) {
 		FNA3D_LogError(

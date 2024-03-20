@@ -31,10 +31,15 @@
 #include "FNA3D_Driver_D3D11.h"
 #include "FNA3D_Driver_D3D11_shaders.h"
 
+#ifdef USE_SDL3
+#include <SDL3/SDL.h>
+#else
 #include <SDL.h>
 #ifndef FNA3D_DXVK_NATIVE
 #include <SDL_syswm.h>
 #endif /* !FNA3D_DXVK_NATIVE */
+#define SDL_Mutex SDL_mutex
+#endif
 
 /* D3D11 Libraries */
 
@@ -213,7 +218,7 @@ typedef struct D3D11Renderer /* Cast FNA3D_Renderer* to this! */
 	IDXGIAdapter1 *adapter;
 	ID3DUserDefinedAnnotation *annotation;
 	BOOL supportsTearing;
-	SDL_mutex *ctxLock;
+	SDL_Mutex *ctxLock;
 	SDL_iconv_t iconv;
 
 	/* Window surfaces */
@@ -1067,11 +1072,18 @@ static void D3D11_DestroyDevice(FNA3D_Device *device)
 		swapchainData = renderer->swapchainDatas[i];
 		ID3D11RenderTargetView_Release(swapchainData->swapchainRTView);
 		IDXGISwapChain_Release(swapchainData->swapchain);
+#if SDL_MAJOR_VERSION >= 3
+		SDL_ClearProperty(
+			SDL_GetWindowProperties(swapchainData->windowHandle),
+			WINDOW_SWAPCHAIN_DATA
+		);
+#else
 		SDL_SetWindowData(
 			(SDL_Window*) swapchainData->windowHandle,
 			WINDOW_SWAPCHAIN_DATA,
 			NULL
 		);
+#endif
 		SDL_free(renderer->swapchainDatas[i]);
 	}
 	SDL_free(renderer->swapchainDatas);
@@ -1532,10 +1544,18 @@ static void D3D11_SwapBuffers(
 		}
 	}
 
+#if SDL_MAJOR_VERSION >= 3
+	swapchainData = (D3D11SwapchainData*) SDL_GetProperty(
+		SDL_GetWindowProperties(overrideWindowHandle),
+		WINDOW_SWAPCHAIN_DATA,
+		NULL
+	);
+#else
 	swapchainData = (D3D11SwapchainData*) SDL_GetWindowData(
 		(SDL_Window*) overrideWindowHandle,
 		WINDOW_SWAPCHAIN_DATA
 	);
+#endif
 	if (swapchainData == NULL)
 	{
 		D3D11_INTERNAL_CreateSwapChain(
@@ -1544,10 +1564,18 @@ static void D3D11_SwapBuffers(
 			(SDL_Window*) overrideWindowHandle,
 			NULL
 		);
+#if SDL_MAJOR_VERSION >= 3
+		swapchainData = (D3D11SwapchainData*) SDL_GetProperty(
+			SDL_GetWindowProperties(overrideWindowHandle),
+			WINDOW_SWAPCHAIN_DATA,
+			NULL
+		);
+#else
 		swapchainData = (D3D11SwapchainData*) SDL_GetWindowData(
 			(SDL_Window*) overrideWindowHandle,
 			WINDOW_SWAPCHAIN_DATA
 		);
+#endif
 		D3D11_INTERNAL_UpdateSwapchainRT(
 			renderer,
 			swapchainData,
@@ -2545,10 +2573,18 @@ static void D3D11_INTERNAL_CreateSwapChain(
 #ifdef FNA3D_DXVK_NATIVE
 	dxgiHandle = (HWND) windowHandle;
 #else
+#if SDL_MAJOR_VERSION >= 3
+	dxgiHandle = (HWND) SDL_GetProperty(
+		SDL_GetWindowProperties(windowHandle),
+		SDL_PROP_WINDOW_WIN32_HWND_POINTER,
+		NULL
+	);
+#else
 	SDL_SysWMinfo info;
 	SDL_VERSION(&info.version);
 	SDL_GetWindowWMInfo((SDL_Window*) windowHandle, &info);
 	dxgiHandle = info.info.win.window;
+#endif
 #endif /* FNA3D_DXVK_NATIVE */
 
 	/* Initialize swapchain buffer descriptor */
@@ -2676,7 +2712,11 @@ static void D3D11_INTERNAL_CreateSwapChain(
 	swapchainData->windowHandle = windowHandle;
 	swapchainData->swapchainRTView = NULL;
 	swapchainData->format = backBufferFormat;
+#if SDL_MAJOR_VERSION >= 3
+	SDL_SetProperty(SDL_GetWindowProperties(windowHandle), WINDOW_SWAPCHAIN_DATA, swapchainData);
+#else
 	SDL_SetWindowData((SDL_Window*) windowHandle, WINDOW_SWAPCHAIN_DATA, swapchainData);
+#endif
 	if (growSwapchains)
 	{
 		if (renderer->swapchainDataCount >= renderer->swapchainDataCapacity)
@@ -2771,10 +2811,18 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 	/* Create or update the swapchain */
 	if (parameters->deviceWindowHandle != NULL)
 	{
+#if SDL_MAJOR_VERSION >= 3
+		swapchainData = (D3D11SwapchainData*) SDL_GetProperty(
+			SDL_GetWindowProperties(parameters->deviceWindowHandle),
+			WINDOW_SWAPCHAIN_DATA,
+			NULL
+		);
+#else
 		swapchainData = (D3D11SwapchainData*) SDL_GetWindowData(
 			(SDL_Window*) parameters->deviceWindowHandle,
 			WINDOW_SWAPCHAIN_DATA
 		);
+#endif
 		if (swapchainData == NULL)
 		{
 			D3D11_INTERNAL_CreateSwapChain(
@@ -2783,10 +2831,18 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 				parameters->deviceWindowHandle,
 				NULL
 			);
+#if SDL_MAJOR_VERSION >= 3
+			swapchainData = (D3D11SwapchainData*) SDL_GetProperty(
+				SDL_GetWindowProperties(parameters->deviceWindowHandle),
+				WINDOW_SWAPCHAIN_DATA,
+				NULL
+			);
+#else
 			swapchainData = (D3D11SwapchainData*) SDL_GetWindowData(
 				(SDL_Window*) parameters->deviceWindowHandle,
 				WINDOW_SWAPCHAIN_DATA
 			);
+#endif
 		}
 		else
 		{
@@ -2796,7 +2852,7 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 				/* Surface format changed, recreate entirely */
 				IDXGISwapChain_Release(swapchainData->swapchain);
 
-				/* 
+				/*
 				 * DXGI will crash in some cases if we don't flush deferred swapchain destruction:
 				 *
 				 * DXGI ERROR: IDXGIFactory::CreateSwapChain: Only one flip model swap chain can be
@@ -5212,7 +5268,9 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 	}
 
 	/* No window flags required */
+#if SDL_MAJOR_VERSION < 3
 	SDL_SetHint(SDL_HINT_VIDEO_EXTERNAL_CONTEXT, "1");
+#endif
 #ifdef FNA3D_DXVK_NATIVE
 	/* ... unless this is DXVK */
 	*flags = SDL_WINDOW_VULKAN;
@@ -5544,7 +5602,7 @@ try_create_device:
 	{
 		res = D3D11CreateDeviceFunc(
 			(driverType == D3D_DRIVER_TYPE_WARP) ? NULL : (IDXGIAdapter*) renderer->adapter,
-			driverType, 
+			driverType,
 			NULL,
 			flags,
 			&levels[i],

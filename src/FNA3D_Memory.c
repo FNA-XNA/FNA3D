@@ -26,7 +26,12 @@
 
 #include "FNA3D_Memory.h"
 
+#ifdef USE_SDL3
+#include <SDL3/SDL.h>
+#else
 #include <SDL.h>
+#define SDL_Mutex SDL_mutex
+#endif
 
 /*
  * Memory Allocator
@@ -85,7 +90,7 @@ struct FNA3D_MemoryAllocation
 	uint8_t available;
 
 	uint8_t *mapPointer;
-	SDL_mutex *mapLock;
+	SDL_Mutex *mapLock;
 };
 
 struct FNA3D_SubAllocator
@@ -112,7 +117,7 @@ struct FNA3D_MemoryAllocator
 	size_t usedRegionsToDestroyCount;
 	size_t usedRegionsToDestroyCapacity;
 
-	SDL_mutex *lock;
+	SDL_Mutex *lock;
 };
 
 static void FNA3D_INTERNAL_RemoveMemoryFreeRegion(

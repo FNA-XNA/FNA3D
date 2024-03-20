@@ -29,7 +29,20 @@
 #include "FNA3D_Driver.h"
 #include "FNA3D_Driver_OpenGL.h"
 
+#ifdef USE_SDL3
+#include <SDL3/SDL.h>
+#else
 #include <SDL.h>
+static inline SDL_threadID SDL_GetCurrentThreadID()
+{
+	return SDL_ThreadID();
+}
+#define SDL_ThreadID SDL_threadID
+#define SDL_Mutex SDL_mutex
+#define SDL_Semaphore SDL_sem
+#define SDL_PostSemaphore SDL_SemPost
+#define SDL_WaitSemaphore SDL_SemWait
+#endif
 
 /* We only use this to detect UIKit, for backbuffer creation */
 #ifdef SDL_VIDEO_DRIVER_UIKIT
@@ -287,21 +300,21 @@ typedef struct OpenGLRenderer /* Cast from FNA3D_Renderer* */
 	uint8_t togglePointSprite;
 
 	/* Threading */
-	SDL_threadID threadID;
+	SDL_ThreadID threadID;
 	FNA3D_Command *commands;
-	SDL_mutex *commandsLock;
+	SDL_Mutex *commandsLock;
 	OpenGLTexture *disposeTextures;
-	SDL_mutex *disposeTexturesLock;
+	SDL_Mutex *disposeTexturesLock;
 	OpenGLRenderbuffer *disposeRenderbuffers;
-	SDL_mutex *disposeRenderbuffersLock;
+	SDL_Mutex *disposeRenderbuffersLock;
 	OpenGLBuffer *disposeVertexBuffers;
-	SDL_mutex *disposeVertexBuffersLock;
+	SDL_Mutex *disposeVertexBuffersLock;
 	OpenGLBuffer *disposeIndexBuffers;
-	SDL_mutex *disposeIndexBuffersLock;
+	SDL_Mutex *disposeIndexBuffersLock;
 	OpenGLEffect *disposeEffects;
-	SDL_mutex *disposeEffectsLock;
+	SDL_Mutex *disposeEffectsLock;
 	OpenGLQuery *disposeQueries;
-	SDL_mutex *disposeQueriesLock;
+	SDL_Mutex *disposeQueriesLock;
 
 	/* GL entry points */
 	glfntype_glGetString glGetString; /* Loaded early! */
@@ -814,7 +827,7 @@ struct FNA3D_Command
 			FNA3D_Renderbuffer *retval;
 		} genDepthStencilRenderbuffer;
 	};
-	SDL_sem *semaphore;
+	SDL_Semaphore *semaphore;
 	FNA3D_Command *next;
 };
 
@@ -1149,7 +1162,7 @@ static inline void ForceToMainThread(
 	LinkedList_Add(renderer->commands, command, curr);
 	SDL_UnlockMutex(renderer->commandsLock);
 
-	SDL_SemWait(command->semaphore);
+	SDL_WaitSemaphore(command->semaphore);
 	SDL_DestroySemaphore(command->semaphore);
 }
 
@@ -1250,7 +1263,7 @@ static inline void ExecuteCommands(OpenGLRenderer *renderer)
 			cmd
 		);
 		next = cmd->next;
-		SDL_SemPost(cmd->semaphore);
+		SDL_PostSemaphore(cmd->semaphore);
 		cmd = next;
 	}
 	renderer->commands = NULL; /* No heap memory to free! -caleb */
@@ -3580,7 +3593,7 @@ static FNA3D_Texture* OPENGL_CreateTexture2D(
 	uint32_t requiredBytes;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_CREATETEXTURE2D;
 		cmd.createTexture2D.format = format;
@@ -3666,7 +3679,7 @@ static FNA3D_Texture* OPENGL_CreateTexture3D(
 
 	SDL_assert(renderer->supports_3DTexture);
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_CREATETEXTURE3D;
 		cmd.createTexture3D.format = format;
@@ -3720,7 +3733,7 @@ static FNA3D_Texture* OPENGL_CreateTextureCube(
 	uint32_t requiredBytes;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_CREATETEXTURECUBE;
 		cmd.createTextureCube.format = format;
@@ -3830,7 +3843,7 @@ static void OPENGL_AddDisposeTexture(
 	OpenGLTexture *glTexture = (OpenGLTexture*) texture;
 	OpenGLTexture *curr;
 
-	if (renderer->threadID == SDL_ThreadID())
+	if (renderer->threadID == SDL_GetCurrentThreadID())
 	{
 		OPENGL_INTERNAL_DestroyTexture(renderer, glTexture);
 	}
@@ -3859,7 +3872,7 @@ static void OPENGL_SetTextureData2D(
 	int32_t packSize;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_SETTEXTUREDATA2D;
 		cmd.setTextureData2D.texture = texture;
@@ -3951,7 +3964,7 @@ static void OPENGL_SetTextureData3D(
 
 	SDL_assert(renderer->supports_3DTexture);
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_SETTEXTUREDATA3D;
 		cmd.setTextureData3D.texture = texture;
@@ -4002,7 +4015,7 @@ static void OPENGL_SetTextureDataCube(
 	GLenum glFormat;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_SETTEXTUREDATACUBE;
 		cmd.setTextureDataCube.texture = texture;
@@ -4137,7 +4150,7 @@ static void OPENGL_GetTextureData2D(
 
 	SDL_assert(renderer->supports_NonES3);
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_GETTEXTUREDATA2D;
 		cmd.getTextureData2D.texture = texture;
@@ -4269,7 +4282,7 @@ static void OPENGL_GetTextureDataCube(
 
 	SDL_assert(renderer->supports_NonES3);
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_GETTEXTUREDATACUBE;
 		cmd.getTextureDataCube.texture = texture;
@@ -4357,7 +4370,7 @@ static FNA3D_Renderbuffer* OPENGL_GenColorRenderbuffer(
 	OpenGLRenderbuffer *renderbuffer;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_GENCOLORRENDERBUFFER;
 		cmd.genColorRenderbuffer.width = width;
@@ -4412,7 +4425,7 @@ static FNA3D_Renderbuffer* OPENGL_GenDepthStencilRenderbuffer(
 	OpenGLRenderbuffer *renderbuffer;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_GENDEPTHRENDERBUFFER;
 		cmd.genDepthStencilRenderbuffer.width = width;
@@ -4489,7 +4502,7 @@ static void OPENGL_AddDisposeRenderbuffer(
 	OpenGLRenderbuffer *buffer = (OpenGLRenderbuffer*) renderbuffer;
 	OpenGLRenderbuffer *curr;
 
-	if (renderer->threadID == SDL_ThreadID())
+	if (renderer->threadID == SDL_GetCurrentThreadID())
 	{
 		OPENGL_INTERNAL_DestroyRenderbuffer(renderer, buffer);
 	}
@@ -4514,7 +4527,7 @@ static FNA3D_Buffer* OPENGL_GenVertexBuffer(
 	GLuint handle;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_GENVERTEXBUFFER;
 		cmd.genVertexBuffer.dynamic = dynamic;
@@ -4575,7 +4588,7 @@ static void OPENGL_AddDisposeVertexBuffer(
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
 	OpenGLBuffer *curr;
 
-	if (renderer->threadID == SDL_ThreadID())
+	if (renderer->threadID == SDL_GetCurrentThreadID())
 	{
 		OPENGL_INTERNAL_DestroyVertexBuffer(renderer, glBuffer);
 	}
@@ -4601,7 +4614,7 @@ static void OPENGL_SetVertexBufferData(
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_SETVERTEXBUFFERDATA;
 		cmd.setVertexBufferData.buffer = buffer;
@@ -4655,7 +4668,7 @@ static void OPENGL_GetVertexBufferData(
 
 	SDL_assert(renderer->supports_NonES3);
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_GETVERTEXBUFFERDATA;
 		cmd.getVertexBufferData.buffer = buffer;
@@ -4715,7 +4728,7 @@ static FNA3D_Buffer* OPENGL_GenIndexBuffer(
 	GLuint handle;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_GENINDEXBUFFER;
 		cmd.genIndexBuffer.dynamic = dynamic;
@@ -4765,7 +4778,7 @@ static void OPENGL_AddDisposeIndexBuffer(
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
 	OpenGLBuffer *curr;
 
-	if (renderer->threadID == SDL_ThreadID())
+	if (renderer->threadID == SDL_GetCurrentThreadID())
 	{
 		OPENGL_INTERNAL_DestroyIndexBuffer(renderer, glBuffer);
 	}
@@ -4789,7 +4802,7 @@ static void OPENGL_SetIndexBufferData(
 	OpenGLBuffer *glBuffer = (OpenGLBuffer*) buffer;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_SETINDEXBUFFERDATA;
 		cmd.setIndexBufferData.buffer = buffer;
@@ -4834,7 +4847,7 @@ static void OPENGL_GetIndexBufferData(
 
 	SDL_assert(renderer->supports_NonES3);
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_GETINDEXBUFFERDATA;
 		cmd.getIndexBufferData.buffer = buffer;
@@ -4938,7 +4951,7 @@ static void OPENGL_CreateEffect(
 	FNA3D_Command cmd;
 	MOJOSHADER_effectShaderContext shaderBackend;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_CREATEEFFECT;
 		cmd.createEffect.effectCode = effectCode;
@@ -4998,7 +5011,7 @@ static void OPENGL_CloneEffect(
 	OpenGLEffect *result;
 	FNA3D_Command cmd;
 
-	if (renderer->threadID != SDL_ThreadID())
+	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
 		cmd.type = FNA3D_COMMAND_CLONEEFFECT;
 		cmd.cloneEffect.cloneSource = cloneSource;
@@ -5048,7 +5061,7 @@ static void OPENGL_AddDisposeEffect(
 	OpenGLEffect *fnaEffect = (OpenGLEffect*) effect;
 	OpenGLEffect *curr;
 
-	if (renderer->threadID == SDL_ThreadID())
+	if (renderer->threadID == SDL_GetCurrentThreadID())
 	{
 		OPENGL_INTERNAL_DestroyEffect(renderer, fnaEffect);
 	}
@@ -5183,7 +5196,7 @@ static void OPENGL_AddDisposeQuery(
 
 	SDL_assert(renderer->supports_ARB_occlusion_query);
 
-	if (renderer->threadID == SDL_ThreadID())
+	if (renderer->threadID == SDL_GetCurrentThreadID())
 	{
 		OPENGL_INTERNAL_DestroyQuery(renderer, glQuery);
 	}
@@ -5669,7 +5682,10 @@ static inline void LoadEntryPoints(
 
 static void* MOJOSHADERCALL GLGetProcAddress(const char *ep, void* d)
 {
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
 	return SDL_GL_GetProcAddress(ep);
+#pragma GCC diagnostic pop
 }
 
 static inline void CheckExtensions(
@@ -6172,7 +6188,7 @@ FNA3D_Device* OPENGL_CreateDevice(
 	renderer->currentClearDepth = 1.0f;
 
 	/* The creation thread will be the "main" thread */
-	renderer->threadID = SDL_ThreadID();
+	renderer->threadID = SDL_GetCurrentThreadID();
 	renderer->commandsLock = SDL_CreateMutex();
 	renderer->disposeTexturesLock = SDL_CreateMutex();
 	renderer->disposeRenderbuffersLock = SDL_CreateMutex();
