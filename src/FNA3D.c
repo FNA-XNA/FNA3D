@@ -40,6 +40,9 @@
 /* Drivers */
 
 static const FNA3D_Driver *drivers[] = {
+#if FNA3D_DRIVER_SDL
+	&SDLGPUDriver,
+#endif
 #if FNA3D_DRIVER_D3D11
 	&D3D11Driver,
 #endif
