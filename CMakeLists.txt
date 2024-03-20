@@ -44,6 +44,9 @@ add_definitions(
 	-DFNA3D_DRIVER_VULKAN
 	-DFNA3D_DRIVER_OPENGL
 )
+if(BUILD_SDL3)
+	add_definitions(-DFNA3D_DRIVER_SDL)
+endif()
 add_definitions(
 	-DMOJOSHADER_NO_VERSION_INCLUDE
 	-DMOJOSHADER_USE_SDL_STDLIB
@@ -101,6 +104,7 @@ add_library(FNA3D
 	src/FNA3D.c
 	src/FNA3D_Driver_D3D11.c
 	src/FNA3D_Driver_OpenGL.c
+	src/FNA3D_Driver_SDL.c
 	src/FNA3D_Driver_Vulkan.c
 	src/FNA3D_Image.c
 	src/FNA3D_CommandBuffer.c
