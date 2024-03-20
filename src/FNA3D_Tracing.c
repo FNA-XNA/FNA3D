@@ -33,6 +33,11 @@
 #include <SDL3/SDL.h>
 #else
 #include <SDL.h>
+#define SDL_Mutex SDL_mutex
+#define SDL_IOStream SDL_RWops
+#define SDL_IOFromFile SDL_RWFromFile
+#define SDL_WriteIO(a, b, c) SDL_RWwrite(a, b, c, 1)
+#define SDL_CloseIO SDL_RWclose
 #endif
 
 static const uint8_t MARK_CREATEDEVICE			= 0;
@@ -195,7 +200,7 @@ void FNA3D_Trace_RegisterEffect(FNA3D_Effect *effect, MOJOSHADER_effect *effectD
 
 static SDL_bool traceEnabled = SDL_FALSE;
 static void* windowHandle = NULL;
-static SDL_mutex *traceLock = NULL;
+static SDL_Mutex *traceLock = NULL;
 
 static void* traceBuffer = NULL;
 static uint32_t traceBufferCurrentSize = 0;
@@ -203,9 +208,9 @@ static uint32_t traceBufferSize = 64000000; /* 64MB */
 
 static void FNA3D_Trace_FlushMemory()
 {
-	SDL_RWops* traceFile = SDL_RWFromFile("FNA3D_Trace.bin", "ab");
-	traceFile->write(traceFile, traceBuffer, traceBufferCurrentSize, 1);
-	traceFile->close(traceFile);
+	SDL_IOStream* traceFile = SDL_IOFromFile("FNA3D_Trace.bin", "ab");
+	SDL_WriteIO(traceFile, traceBuffer, traceBufferCurrentSize);
+	SDL_CloseIO(traceFile);
 	traceBufferCurrentSize = 0;
 }
 
@@ -213,7 +218,7 @@ void FNA3D_Trace_CreateDevice(
 	FNA3D_PresentationParameters *presentationParameters,
 	uint8_t debugMode
 ) {
-	SDL_RWops* traceFile;
+	SDL_IOStream* traceFile;
 	traceEnabled = !SDL_GetHintBoolean("FNA3D_DISABLE_TRACING", SDL_FALSE);
 	if (!traceEnabled)
 	{
@@ -221,8 +226,8 @@ void FNA3D_Trace_CreateDevice(
 		return;
 	}
 	SDL_Log("FNA3D tracing started!");
-	traceFile = SDL_RWFromFile("FNA3D_Trace.bin", "wb");
-	traceFile->close(traceFile);
+	traceFile = SDL_IOFromFile("FNA3D_Trace.bin", "wb");
+	SDL_CloseIO(traceFile);
 	traceBuffer = SDL_malloc(traceBufferSize);
 	traceLock = SDL_CreateMutex();
 	WRITE(MARK_CREATEDEVICE);

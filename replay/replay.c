@@ -24,7 +24,20 @@
  *
  */
 
+#ifdef USE_SDL3
+#include <SDL3/SDL.h>
+#define SDL_WINDOW_FULLSCREEN_DESKTOP SDL_WINDOW_FULLSCREEN
+#else
 #include <SDL.h>
+#define SDL_Mutex SDL_mutex
+#define SDL_IOStream SDL_RWops
+#define SDL_IOFromFile SDL_RWFromFile
+#define SDL_ReadIO(a, b, c) SDL_RWread(a, b, c, 1)
+#define SDL_CloseIO SDL_RWclose
+#define SDL_CreateWindow(a, b, c, d) \
+	SDL_CreateWindow(a, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, b, c, d)
+#define SDL_EVENT_QUIT SDL_QUIT
+#endif
 #include <mojoshader.h>
 #include <FNA3D.h>
 
@@ -89,10 +102,10 @@
 
 static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 {
-	#define READ(val) ops->read(ops, &val, sizeof(val), 1)
+	#define READ(val) SDL_ReadIO(ops, &val, sizeof(val))
 
 	SDL_WindowFlags flags;
-	SDL_RWops *ops;
+	SDL_IOStream *ops;
 	SDL_Event evt;
 	uint8_t mark, run;
 
@@ -240,7 +253,7 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 		}
 
 	/* Check for the trace file */
-	ops = SDL_RWFromFile(filename, "rb");
+	ops = SDL_IOFromFile(filename, "rb");
 	if (ops == NULL)
 	{
 		SDL_Log("%s not found!", filename);
@@ -252,7 +265,7 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 	if (mark != MARK_CREATEDEVICE)
 	{
 		SDL_Log("%s is a bad trace!", filename);
-		ops->close(ops);
+		SDL_CloseIO(ops);
 		return 0;
 	}
 	READ(presentationParameters.backBufferWidth);
@@ -267,15 +280,13 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 	READ(debugMode);
 
 	/* Create a window alongside the device */
-	flags = SDL_WINDOW_SHOWN | FNA3D_PrepareWindowAttributes();
+	flags = FNA3D_PrepareWindowAttributes();
 	if (presentationParameters.isFullScreen)
 	{
 		flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 	}
 	presentationParameters.deviceWindowHandle = SDL_CreateWindow(
 		"FNA3D Replay",
-		SDL_WINDOWPOS_CENTERED,
-		SDL_WINDOWPOS_CENTERED,
 		presentationParameters.backBufferWidth,
 		presentationParameters.backBufferHeight,
 		flags
@@ -314,7 +325,7 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 			);
 			while (SDL_PollEvent(&evt) > 0)
 			{
-				if (evt.type == SDL_QUIT)
+				if (evt.type == SDL_EVENT_QUIT)
 				{
 					run = 0;
 				}
@@ -762,7 +773,7 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 			READ(level);
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
-			ops->read(ops, miscBuffer, dataLength, 1);
+			SDL_ReadIO(ops, miscBuffer, dataLength);
 			FNA3D_SetTextureData2D(
 				device,
 				traceTexture[i],
@@ -787,7 +798,7 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 			READ(level);
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
-			ops->read(ops, miscBuffer, dataLength, 1);
+			SDL_ReadIO(ops, miscBuffer, dataLength);
 			FNA3D_SetTextureData3D(
 				device,
 				traceTexture[i],
@@ -813,7 +824,7 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 			READ(level);
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
-			ops->read(ops, miscBuffer, dataLength, 1);
+			SDL_ReadIO(ops, miscBuffer, dataLength);
 			FNA3D_SetTextureDataCube(
 				device,
 				traceTexture[i],
@@ -838,7 +849,7 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 			READ(h);
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
-			ops->read(ops, miscBuffer, dataLength, 1);
+			SDL_ReadIO(ops, miscBuffer, dataLength);
 			FNA3D_SetTextureDataYUV(
 				device,
 				traceTexture[i],
@@ -1000,7 +1011,7 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 			READ(vertexStride);
 			READ(dataOptions);
 			miscBuffer = SDL_malloc(vertexStride * elementCount);
-			ops->read(ops, miscBuffer, vertexStride * elementCount, 1);
+			SDL_ReadIO(ops, miscBuffer, vertexStride * elementCount);
 			FNA3D_SetVertexBufferData(
 				device,
 				traceVertexBuffer[i],
@@ -1057,7 +1068,7 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 			READ(dataLength);
 			READ(dataOptions);
 			miscBuffer = SDL_malloc(dataLength);
-			ops->read(ops, miscBuffer, dataLength, 1);
+			SDL_ReadIO(ops, miscBuffer, dataLength);
 			FNA3D_SetIndexBufferData(
 				device,
 				traceIndexBuffer[i],
@@ -1085,7 +1096,7 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 		case MARK_CREATEEFFECT:
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
-			ops->read(ops, miscBuffer, dataLength, 1);
+			SDL_ReadIO(ops, miscBuffer, dataLength);
 			FNA3D_CreateEffect(
 				device,
 				(uint8_t*) miscBuffer,
@@ -1171,11 +1182,10 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 			effectData = traceEffectData[i];
 			for (vi = 0; vi < effectData->param_count; vi += 1)
 			{
-				ops->read(
+				SDL_ReadIO(
 					ops,
 					effectData->params[vi].value.values,
-					effectData->params[vi].value.value_count * 4,
-					1
+					effectData->params[vi].value.value_count * 4
 				);
 			}
 			FNA3D_ApplyEffect(
@@ -1225,7 +1235,7 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 		case MARK_SETSTRINGMARKER:
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
-			ops->read(ops, miscBuffer, dataLength, 1);
+			SDL_ReadIO(ops, miscBuffer, dataLength);
 			FNA3D_SetStringMarker(device, (char*) miscBuffer);
 			SDL_free(miscBuffer);
 			break;
@@ -1244,7 +1254,7 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 	}
 
 	/* Clean up. We out. */
-	ops->close(ops);
+	SDL_CloseIO(ops);
 	#define FREE_TRACES(type) \
 		if (trace##type##Count > 0) \
 		{ \
