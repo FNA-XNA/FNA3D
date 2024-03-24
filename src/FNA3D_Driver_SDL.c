@@ -30,6 +30,7 @@
 #include "FNA3D_PipelineCache.h"
 
 #include <SDL3/SDL_gpu.h>
+#include <SDL3_shader/SDL_shader.h>
 
 static inline SDL_GpuSampleCount XNAToSDL_SampleCount(int32_t sampleCount)
 {
@@ -109,8 +110,7 @@ typedef struct SDLGPU_Renderer
 	uint32_t numVertexBindings;
 	FNA3D_VertexBufferBinding vertexBindings[MAX_BOUND_VERTEX_BUFFERS];
 	FNA3D_VertexElement vertexElements[MAX_BOUND_VERTEX_BUFFERS][MAX_VERTEX_ATTRIBUTES];
-	VkBuffer boundVertexBuffers[MAX_BOUND_VERTEX_BUFFERS];
-	uint32_t boundVertexBufferOffsets[MAX_BOUND_VERTEX_BUFFERS];
+    SDL_GpuBufferBinding vertexBufferBindings[MAX_BOUND_VERTEX_BUFFERS];
 
     MOJOSHADER_sdlContext *mojoshaderContext;
 } SDLGPU_Renderer;
@@ -510,18 +510,21 @@ static void SDLGPU_ApplyVertexBufferBindings(
 	int32_t baseVertex
 ) {
     SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
-    SDL_GpuBufferBinding *bufferBindings = SDL_stack_alloc(
-        SDL_GpuBufferBinding,
-        numBindings
-    );
     MOJOSHADER_sdlShader *vertexShader, *blah;
     void* bindingsResult;
     FNA3D_VertexBufferBinding *src, *dst;
     int32_t i, bindingsIndex;
     uint32_t hash;
 
+    /* link/compile shader program if it hasn't been yet */
+    if (!MOJOSHADER_sdlCheckProgramStatus(renderer->mojoshaderContext))
+    {
+        MOJOSHADER_sdlLinkProgram(renderer->mojoshaderContext);
+    }
+
 	/* Check VertexBufferBindings */
 	MOJOSHADER_sdlGetBoundShaders(renderer->mojoshaderContext, &vertexShader, &blah);
+
 	bindingsResult = PackedVertexBufferBindingsArray_Fetch(
 		renderer->vertexBufferBindingsCache,
 		bindings,
@@ -530,16 +533,17 @@ static void SDLGPU_ApplyVertexBufferBindings(
 		&bindingsIndex,
 		&hash
 	);
-	if (bindingsResult == NULL)
-	{
-		PackedVertexBufferBindingsArray_Insert(
+
+    if (bindingsResult == NULL)
+    {
+        PackedVertexBufferBindingsArray_Insert(
 			&renderer->vertexBufferBindingsCache,
 			bindings,
 			numBindings,
 			vertexShader,
 			(void*) 69420
 		);
-	}
+    }
 
     /* TODO: set elements for mojoshader */
     /* should we copy the d3d11 FetchBindingsInputLayout structure? */
@@ -569,21 +573,12 @@ static void SDLGPU_ApplyVertexBufferBindings(
         renderer->needNewGraphicsPipeline = 1;
     }
 
+    /* Don't actually bind buffers yet because pipelines are lazily bound */
     for (i = 0; i < numBindings; i += 1)
     {
-        bufferBindings[i].gpuBuffer = (SDL_GpuBuffer*) bindings[i].vertexBuffer;
-        bufferBindings[i].offset = (bindings[i].vertexOffset + baseVertex) * bindings[i].vertexDeclaration.vertexStride;
+        renderer->vertexBufferBindings[i].gpuBuffer = (SDL_GpuBuffer*) bindings[i].vertexBuffer;
+        renderer->vertexBufferBindings[i].offset = (bindings[i].vertexOffset + baseVertex) * bindings[i].vertexDeclaration.vertexStride;
     }
-
-    SDL_GpuBindVertexBuffers(
-        renderer->device,
-        renderer->commandBuffer,
-        0,
-        numBindings,
-        bufferBindings
-    );
-
-    SDL_stack_free(bufferBindings);
 }
 
 static void SDLGPU_DrawInstancedPrimitives(
@@ -763,8 +758,11 @@ struct MOJOSHADER_sdlContext
      * Note that these may not necessarily align with bound_program!
      * We need to store these so effects can have overlapping shaders.
      */
-    MOJOSHADER_sdlShader *bound_vshader;
-    MOJOSHADER_sdlShader *bound_pshader;
+    MOJOSHADER_sdlShader *vertex_shader;
+    MOJOSHADER_sdlShader *pixel_shader;
+
+    uint8_t vertex_shader_needs_bind;
+    uint8_t pixel_shader_needs_bind;
 };
 
 struct MOJOSHADER_sdlShader
@@ -952,108 +950,6 @@ static void update_uniform_buffer(
     ctx->free_fn(contents, ctx->malloc_data);
 }
 
-#if FNA3D_DRIVER_D3D11
-#include "d3d11.h"
-
-/* NOTE: returned source might be equal to parseData->output! */
-static const char* d3d11_vertex_shader_fixup(
-    MOJOSHADER_sdlContext *ctx,
-    void* elements,
-    int elementCount
-) {
-    MOJOSHADER_sdlShader *vshader = ctx->bound_vshader;
-
-    D3D11_INPUT_ELEMENT_DESC *d3dElements = (D3D11_INPUT_ELEMENT_DESC*) elements;
-    const char *origSource = vshader->parseData->output;
-    int srcLength = vshader->parseData->output_len;
-    char *newSource = (char*) origSource;
-    for (int i = 0; i < elementCount; i += 1)
-    {
-        D3D11_INPUT_ELEMENT_DESC e = d3dElements[i];
-
-        const char *replace;
-        if (element_is_uint(e.Format))
-            replace = " uint4";
-        else if (element_is_int(e.Format))
-            replace = "  int4";
-        else
-            replace = NULL;
-
-        if (replace != NULL)
-        {
-            char sem[16];
-            memset(sem, '\0', sizeof(sem));
-            snprintf(sem, sizeof(sem), "%s%d", e.SemanticName, e.SemanticIndex);
-            // !!! FIXME: POSITIONT has no index. What to do? -caleb
-
-            if (newSource == origSource)
-            {
-                newSource = (char *) ctx->malloc_fn(srcLength + 1,
-                                                    ctx->malloc_data);
-                strcpy(newSource, origSource);
-            } // if
-
-            char *ptr = strstr(newSource, sem);
-            assert(ptr != NULL && "Could not find semantic in shader source!");
-
-            int spaces = 0;
-            while (spaces < 3)
-                if (*(--ptr) == ' ') spaces++;
-            memcpy(ptr - strlen("float4"), replace, strlen(replace));
-        } // if
-    } // for
-
-    return newSource;
-}
-#endif
-
-void construct_shader_binary(
-    MOJOSHADER_sdlContext *ctx,
-    const char *shader_source,
-    uint32_t shader_len,
-    uint8_t is_vertex_shader,
-    uint8_t **ptr_module_bytes,
-    uint32_t *ptr_module_len
-) {
-    uint32_t module_len;
-    uint8_t *module_bytes;
-
-    module_len = shader_len + 4 + 4 + 1; /* extra bytes for module metadata */
-    module_bytes = ctx->malloc_fn(module_len, ctx->malloc_data);
-    module_bytes[0] = 'R';
-    module_bytes[1] = 'F';
-    module_bytes[2] = 'S';
-    module_bytes[3] = 'H';
-
-    if (is_vertex_shader)
-    {
-        module_bytes[4] = 0;
-    }
-    else
-    {
-        module_bytes[4] = 1;
-    }
-
-    module_bytes[4] = 0;
-    module_bytes[5] = 0;
-    module_bytes[6] = 0;
-    module_bytes[7] = 0;
-
-    if (ctx->backend == SDL_GPU_BACKEND_VULKAN)
-    {
-        module_bytes[8] = 0;
-    }
-    else if (ctx->backend == SDL_GPU_BACKEND_D3D11)
-    {
-        module_bytes[8] = 1;
-    }
-
-    memcpy(module_bytes + 9, shader_source, shader_len);
-
-    *ptr_module_bytes = module_bytes;
-    *ptr_module_len = module_len;
-}
-
 static uint16_t shaderTagCounter = 1;
 
 MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(
@@ -1078,24 +974,11 @@ MOJOSHADER_sdlContext *MOJOSHADER_sdlCreateContext(
     SDL_memset(resultCtx, '\0', sizeof(MOJOSHADER_sdlContext));
     resultCtx->device = device;
     resultCtx->backend = backend;
+    resultCtx->profile = "spirv"; /* always use spirv and interop with SDL3_shader */
 
     resultCtx->malloc_fn = m;
     resultCtx->free_fn = f;
     resultCtx->malloc_data = malloc_d;
-
-    if (backend == SDL_GPU_BACKEND_VULKAN)
-    {
-        resultCtx->profile = "spirv";
-    }
-    else if (backend == SDL_GPU_BACKEND_D3D11)
-    {
-        resultCtx->profile = "hlsl";
-    }
-    else
-    {
-        set_error("Invalid backend!");
-        goto init_fail;
-    }
 
     return resultCtx;
 
@@ -1153,22 +1036,20 @@ parse_shader_fail:
 }
 
 MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
-    MOJOSHADER_sdlContext *ctx,
-    MOJOSHADER_sdlShader *vshader,
-    MOJOSHADER_sdlShader *pshader,
-    void *elements, /* FNA3D_VertexElement */
-    int32_t elementCount
+    MOJOSHADER_sdlContext *ctx
 ) {
     MOJOSHADER_sdlProgram *result;
+    MOJOSHADER_sdlShader *vshader = ctx->vertex_shader;
+    MOJOSHADER_sdlShader *pshader = ctx->pixel_shader;
     const char *v_shader_source;
     const char *p_shader_source;
     uint32_t v_shader_len;
     uint32_t p_shader_len;
-    uint8_t *v_module_bytes;
-    uint8_t *p_module_bytes;
-    uint32_t v_module_len;
-    uint32_t p_module_len;
-    SDL_GpuShaderModuleCreateInfo createInfo;
+    const char *v_transpiled_source;
+    const char *p_transpiled_source;
+    size_t v_transpiled_len;
+    size_t p_transpiled_len;
+    SDL_GpuShaderModuleCreateRawInfo createInfo;
 
     if ((vshader == NULL) || (pshader == NULL)) /* Both shaders MUST exist! */
     {
@@ -1183,55 +1064,49 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
         return NULL;
     }
 
-    if (ctx->backend == SDL_GPU_BACKEND_VULKAN)
-    {
-        MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData);
-        v_shader_source = vshader->parseData->output;
-        p_shader_source = pshader->parseData->output;
-        v_shader_len = vshader->parseData->output - sizeof(SpirvPatchTable);
-        p_shader_len = pshader->parseData->output - sizeof(SpirvPatchTable);
-    }
-    else if (ctx->backend == SDL_GPU_BACKEND_D3D11)
-    {
-#if FNA3D_DRIVER_D3D11
-        v_shader_source = d3d11_vertex_shader_fixup(
-            ctx,
-            elements,
-            elementCount
-        );
-        p_shader_source = pshader->parseData->output;
-        v_shader_len = vshader->parseData->output_len;
-        p_shader_len = pshader->parseData->output_len;
+    MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData);
+    v_shader_source = vshader->parseData->output;
+    p_shader_source = pshader->parseData->output;
+    v_shader_len = vshader->parseData->output - sizeof(SpirvPatchTable);
+    p_shader_len = pshader->parseData->output - sizeof(SpirvPatchTable);
 
-#else
-        set_error("D3D11 not compiled!");
-        return NULL;
-#endif
-    }
-    else
-    {
-        set_error("Invalid backend!");
-        return NULL;
-    }
-
-    construct_shader_binary(
-        ctx,
+    v_transpiled_source = SHD_TranslateFromSPIRV(
+        ctx->backend,
         v_shader_source,
         v_shader_len,
-        1,
-        &v_module_bytes,
-        &v_module_len
+        &v_transpiled_len
     );
 
-    createInfo.byteCode = (uint32_t*) v_module_bytes;
-    createInfo.codeSize = v_module_len;
+    if (v_transpiled_source == NULL)
+    {
+        set_error("Failed to transpile vertex shader from SPIR-V!");
+        return NULL;
+    }
 
-    result->vertexModule = SDL_GpuCreateShaderModule(
+    p_transpiled_source = SHD_TranslateFromSPIRV(
+        ctx->backend,
+        p_shader_source,
+        p_shader_len,
+        &p_transpiled_len
+    );
+
+    if (p_transpiled_source == NULL)
+    {
+        set_error("Failed to transpile pixel shader from SPIR-V!");
+        ctx->free_fn(v_transpiled_source, ctx->malloc_data);
+        return NULL;
+    }
+
+    createInfo.code     = v_transpiled_source;
+    createInfo.codeSize = v_transpiled_len;
+    createInfo.type     = SDL_GPU_SHADERTYPE_VERTEX;
+
+    result->vertexModule = SDL_GpuCreateShaderModuleRaw(
         ctx->device,
         &createInfo
     );
 
-    ctx->free_fn(v_module_bytes, ctx->malloc_data);
+    ctx->free_fn(v_transpiled_source, ctx->malloc_data);
 
     if (result->vertexModule == NULL)
     {
@@ -1239,36 +1114,28 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
         return NULL;
     }
 
-    construct_shader_binary(
-        ctx,
-        p_shader_source,
-        p_shader_len,
-        0,
-        &p_module_bytes,
-        &p_module_len
-    );
+    createInfo.code     = p_transpiled_source;
+    createInfo.codeSize = p_transpiled_len;
+    createInfo.codeSize = SDL_GPU_SHADERTYPE_FRAGMENT;
 
-    createInfo.byteCode = (uint32_t*) p_module_bytes;
-    createInfo.codeSize = p_module_len;
-
-    result->pixelModule = SDL_GpuCreateShaderModule(
+    result->pixelModule = SDL_GpuCreateShaderModuleRaw(
         ctx->device,
         &createInfo
     );
 
-    ctx->free_fn(p_module_bytes, ctx->malloc_data);
+    ctx->free_fn(p_transpiled_source, ctx->malloc_data);
 
     if (result->pixelModule == NULL)
     {
+        SDL_GpuQueueDestroyShaderModule(ctx->device, result->vertexModule);
         ctx->free_fn(result, ctx->malloc_data);
         return NULL;
     }
 
-    /* free vertex shader source if it was copied and modified */
-    if (v_shader_source != vshader->parseData->output)
-    {
-        ctx->free_fn(v_shader_source, ctx->malloc_data);
-    }
+    result->vertexShader = vshader;
+    result->pixelShader = pshader;
+
+    ctx->bound_program = result;
 
     return result;
 }
@@ -1278,63 +1145,16 @@ void MOJOSHADER_sdlBindShaders(
     MOJOSHADER_sdlShader *vshader,
     MOJOSHADER_sdlShader *pshader
 ) {
-    if (ctx->linker_cache == NULL)
-    {
-        ctx->linker_cache = hash_create(NULL, hash_shaders, match_shaders,
-                                        nuke_shaders, 0, ctx->malloc_fn,
-                                        ctx->free_fn, ctx->malloc_data);
 
-        if (ctx->linker_cache == NULL)
-        {
-            out_of_memory();
-            return;
-        }
+    if (vshader != NULL)
+    {
+        ctx->vertex_shader = vshader;
     }
 
-    MOJOSHADER_sdlProgram *program = NULL;
-    BoundShaders shaders;
-    shaders.vertex = vshader;
-    shaders.fragment = pshader;
-
-    ctx->bound_vshader = vshader;
-    ctx->bound_pshader = pshader;
-
-    const void *val = NULL;
-    if (hash_find(ctx->linker_cache, &shaders, &val))
-        program = (MOJOSHADER_sdlProgram *) val;
-    else
+    if (pshader != NULL)
     {
-        program = MOJOSHADER_sdlLinkProgram(
-            ctx,
-            vshader,
-            pshader,
-            elements,
-            elementCount
-        );
-
-        if (program == NULL)
-            return;
-
-        BoundShaders *item = (BoundShaders *) ctx->malloc_fn(sizeof (BoundShaders),
-                                                             ctx->malloc_data);
-        if (item == NULL)
-        {
-            MOJOSHADER_sdlDeleteProgram(ctx, program);
-            return;
-        }
-
-        memcpy(item, &shaders, sizeof (BoundShaders));
-        if (hash_insert(ctx->linker_cache, item, program) != 1)
-        {
-            ctx->free_fn(item, ctx->malloc_data);
-            MOJOSHADER_sdlDeleteProgram(ctx, program);
-            out_of_memory();
-            return;
-        }
+        ctx->pixel_shader = pshader;
     }
-
-    assert(program != NULL);
-    ctx->bound_program = program;
 }
 
 void MOJOSHADER_sdlGetBoundShaders(
@@ -1350,7 +1170,7 @@ void MOJOSHADER_sdlGetBoundShaders(
         }
         else
         {
-            *vshader = ctx->bound_vshader; /* In case a pshader isn't set yet */
+            *vshader = ctx->vertex_shader; /* In case a pshader isn't set yet */
         }
     }
     if (pshader != NULL)
@@ -1361,7 +1181,7 @@ void MOJOSHADER_sdlGetBoundShaders(
         }
         else
         {
-            *pshader = ctx->bound_pshader; /* In case a vshader isn't set yet */
+            *pshader = ctx->pixel_shader; /* In case a vshader isn't set yet */
         }
     }
 }
@@ -1423,6 +1243,34 @@ void MOJOSHADER_sdlDeleteShader(
             ctx->free_fn(shader, ctx->malloc_data);
         }
     }
+}
+
+/* Returns 0 if program not already linked. */
+uint8_t MOJOSHADER_sdlCheckProgramStatus(
+    MOJOSHADER_sdlContext *ctx
+) {
+    MOJOSHADER_sdlShader *vshader = ctx->vertex_shader;
+    MOJOSHADER_sdlShader *pshader = ctx->pixel_shader;
+
+    if (ctx->linker_cache == NULL)
+    {
+        ctx->linker_cache = hash_create(NULL, hash_shaders, match_shaders,
+                                        nuke_shaders, 0, ctx->malloc_fn,
+                                        ctx->free_fn, ctx->malloc_data);
+
+        if (ctx->linker_cache == NULL)
+        {
+            out_of_memory();
+            return 0;
+        }
+    }
+
+    BoundShaders shaders;
+    shaders.vertex = vshader;
+    shaders.fragment = pshader;
+
+    const void *val = NULL;
+    return hash_find(ctx->linker_cache, &shaders, &val);
 }
 
 void MOJOSHADER_sdlShaderAddRef(MOJOSHADER_sdlShader *shader)
