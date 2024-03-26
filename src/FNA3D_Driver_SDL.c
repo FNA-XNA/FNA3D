@@ -272,6 +272,9 @@ typedef struct SDLGPU_Renderer
     /* MOJOSHADER */
 
     MOJOSHADER_sdlContext *mojoshaderContext;
+    MOJOSHADER_effect *currentEffect;
+    MOJOSHADER_effectTechnique *currentTechnique;
+    uint32_t currentPass;
 } SDLGPU_Renderer;
 
 /* Statics */
@@ -288,57 +291,6 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
     SDL_GpuDestroyDevice(renderer->device);
     SDL_free(renderer);
     SDL_free(device);
-}
-
-/* Create */
-
-static void SDLGPU_CreateEffect(
-    FNA3D_Renderer *driverData,
-	uint8_t *effectCode,
-	uint32_t effectCodeLength,
-	FNA3D_Effect **effect,
-	MOJOSHADER_effect **effectData
-) {
-    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
-    MOJOSHADER_effectShaderContext shaderBackend;
-    SDLGPU_Effect *result;
-    int32_t i;
-
-	shaderBackend.shaderContext = renderer->mojoshaderContext;
-	shaderBackend.compileShader = (MOJOSHADER_compileShaderFunc) MOJOSHADER_sdlCompileShader;
-	shaderBackend.shaderAddRef = (MOJOSHADER_shaderAddRefFunc) MOJOSHADER_sdlShaderAddRef;
-	shaderBackend.deleteShader = (MOJOSHADER_deleteShaderFunc) MOJOSHADER_sdlDeleteShader;
-	shaderBackend.getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_sdlGetShaderParseData;
-	shaderBackend.bindShaders = (MOJOSHADER_bindShadersFunc) MOJOSHADER_sdlBindShaders;
-	shaderBackend.getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_sdlGetBoundShaders;
-	shaderBackend.mapUniformBufferMemory = (MOJOSHADER_mapUniformBufferMemoryFunc) MOJOSHADER_sdlMapUniformBufferMemory;
-	shaderBackend.unmapUniformBufferMemory = (MOJOSHADER_unmapUniformBufferMemoryFunc) MOJOSHADER_sdlUnmapUniformBufferMemory;
-	shaderBackend.getError = (MOJOSHADER_getErrorFunc) MOJOSHADER_sdlGetError;
-	shaderBackend.m = NULL;
-	shaderBackend.f = NULL;
-	shaderBackend.malloc_data = NULL;
-
-    *effectData = MOJOSHADER_compileEffect(
-        effectCode,
-        effectCodeLength,
-        NULL,
-        0,
-        NULL,
-        0,
-        &shaderBackend
-    );
-
-    for (i = 0; i < (*effectData)->error_count; i += 1)
-	{
-		FNA3D_LogError(
-			"MOJOSHADER_compileEffect Error: %s",
-			(*effectData)->errors[i].error
-		);
-	}
-
-    result = (SDLGPU_Effect*) SDL_malloc(sizeof(SDLGPU_Effect));
-    result->effect = *effectData;
-    *effect = (FNA3D_Effect*) result;
 }
 
 /* Submission / Presentation */
@@ -2302,6 +2254,189 @@ static void SDLGPU_GetIndexBufferData(
     );
 }
 
+/* Effects */
+
+static void SDLGPU_CreateEffect(
+    FNA3D_Renderer *driverData,
+	uint8_t *effectCode,
+	uint32_t effectCodeLength,
+	FNA3D_Effect **effect,
+	MOJOSHADER_effect **effectData
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+    MOJOSHADER_effectShaderContext shaderBackend;
+    SDLGPU_Effect *result;
+    int32_t i;
+
+	shaderBackend.shaderContext = renderer->mojoshaderContext;
+	shaderBackend.compileShader = (MOJOSHADER_compileShaderFunc) MOJOSHADER_sdlCompileShader;
+	shaderBackend.shaderAddRef = (MOJOSHADER_shaderAddRefFunc) MOJOSHADER_sdlShaderAddRef;
+	shaderBackend.deleteShader = (MOJOSHADER_deleteShaderFunc) MOJOSHADER_sdlDeleteShader;
+	shaderBackend.getParseData = (MOJOSHADER_getParseDataFunc) MOJOSHADER_sdlGetShaderParseData;
+	shaderBackend.bindShaders = (MOJOSHADER_bindShadersFunc) MOJOSHADER_sdlBindShaders;
+	shaderBackend.getBoundShaders = (MOJOSHADER_getBoundShadersFunc) MOJOSHADER_sdlGetBoundShaders;
+	shaderBackend.mapUniformBufferMemory = (MOJOSHADER_mapUniformBufferMemoryFunc) MOJOSHADER_sdlMapUniformBufferMemory;
+	shaderBackend.unmapUniformBufferMemory = (MOJOSHADER_unmapUniformBufferMemoryFunc) MOJOSHADER_sdlUnmapUniformBufferMemory;
+	shaderBackend.getError = (MOJOSHADER_getErrorFunc) MOJOSHADER_sdlGetError;
+	shaderBackend.m = NULL;
+	shaderBackend.f = NULL;
+	shaderBackend.malloc_data = NULL;
+
+    *effectData = MOJOSHADER_compileEffect(
+        effectCode,
+        effectCodeLength,
+        NULL,
+        0,
+        NULL,
+        0,
+        &shaderBackend
+    );
+
+    for (i = 0; i < (*effectData)->error_count; i += 1)
+	{
+		FNA3D_LogError(
+			"MOJOSHADER_compileEffect Error: %s",
+			(*effectData)->errors[i].error
+		);
+	}
+
+    result = (SDLGPU_Effect*) SDL_malloc(sizeof(SDLGPU_Effect));
+    result->effect = *effectData;
+    *effect = (FNA3D_Effect*) result;
+}
+
+static void SDLGPU_CloneEffect(
+    FNA3D_Renderer *driverData,
+	FNA3D_Effect *cloneSource,
+	FNA3D_Effect **effect,
+	MOJOSHADER_effect **effectData
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+    SDLGPU_Effect *sdlCloneSource = (SDLGPU_Effect*) cloneSource;
+    SDLGPU_Effect *result;
+
+    *effectData = MOJOSHADER_cloneEffect(sdlCloneSource->effect);
+	if (*effectData == NULL)
+	{
+		FNA3D_LogError(MOJOSHADER_vkGetError(renderer->mojoshaderContext));
+	}
+
+    result = (SDLGPU_Effect*) SDL_malloc(sizeof(SDLGPU_Effect));
+    result->effect = *effectData;
+    *effect = (FNA3D_Effect*) result;
+}
+
+/* TODO: check if we need to defer this */
+static void SDLGPU_AddDisposeEffect(
+    FNA3D_Renderer *driverData,
+	FNA3D_Effect *effect
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+    SDLGPU_Effect *gpuEffect = (SDLGPU_Effect*) effect;
+    MOJOSHADER_effect *effectData = gpuEffect->effect;
+
+    if (effectData == renderer->currentEffect)
+    {
+        MOJOSHADER_effectEndPass(renderer->currentEffect);
+        MOJOSHADER_effectEnd(renderer->currentEffect);
+        renderer->currentEffect = NULL;
+        renderer->currentTechnique = NULL;
+        renderer->currentPass = 0;
+    }
+    MOJOSHADER_deleteEffect(effectData);
+    SDL_free(gpuEffect);
+}
+
+static void SDLGPU_SetEffectTechnique(
+    FNA3D_Renderer *driverData,
+	FNA3D_Effect *effect,
+	MOJOSHADER_effectTechnique *technique
+) {
+    SDLGPU_Effect *gpuEffect = (SDLGPU_Effect*) effect;
+    MOJOSHADER_effectSetTechnique(gpuEffect->effect, technique);
+}
+
+static void SDLGPU_ApplyEffect(
+    FNA3D_Renderer *driverData,
+	FNA3D_Effect *effect,
+	uint32_t pass,
+	MOJOSHADER_effectStateChanges *stateChanges
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+    SDLGPU_Effect *gpuEffect = (SDLGPU_Effect*) effect;
+    MOJOSHADER_effect *effectData = gpuEffect->effect;
+    const MOJOSHADER_effectTechnique *technique = gpuEffect->effect->current_technique;
+    uint32_t numPasses;
+
+    renderer->needFragmentSamplerBind = 1;
+    renderer->needVertexSamplerBind = 1;
+    renderer->needNewGraphicsPipeline = 1;
+
+    if (effectData == renderer->currentEffect)
+    {
+        if (
+            technique == renderer->currentTechnique &&
+            pass == renderer->currentPass
+        ) {
+            MOJOSHADER_effectCommitChanges(
+                renderer->currentEffect
+            );
+
+            return;
+        }
+
+        MOJOSHADER_effectEndPass(renderer->currentEffect);
+        MOJOSHADER_effectBeginPass(renderer->currentEffect, pass);
+        renderer->currentTechnique = technique;
+        renderer->currentPass = pass;
+
+        return;
+    }
+    else if (renderer->currentEffect != NULL)
+    {
+        MOJOSHADER_effectEndPass(renderer->currentEffect);
+        MOJOSHADER_effectEnd(renderer->currentEffect);
+    }
+
+    MOJOSHADER_effectBegin(
+        effectData,
+        &numPasses,
+        0,
+        stateChanges
+    );
+
+    MOJOSHADER_effectBeginPass(effectData, pass);
+    renderer->currentEffect = effectData;
+    renderer->currentTechnique = technique;
+    renderer->currentPass = pass;
+}
+
+static void SDLGPU_BeginPassRestore(
+    FNA3D_Renderer *driverData,
+	FNA3D_Effect *effect,
+	MOJOSHADER_effectStateChanges *stateChanges
+) {
+    MOJOSHADER_effect *effectData = ((SDLGPU_Effect*) effect)->effect;
+	uint32_t whatever;
+
+	MOJOSHADER_effectBegin(
+			effectData,
+			&whatever,
+			1,
+			stateChanges
+	);
+	MOJOSHADER_effectBeginPass(effectData, 0);
+}
+
+static void SDLGPU_EndPassRestore(
+	FNA3D_Renderer *driverData,
+	FNA3D_Effect *effect
+) {
+	MOJOSHADER_effect *effectData = ((SDLGPU_Effect*) effect)->effect;
+	MOJOSHADER_effectEndPass(effectData);
+	MOJOSHADER_effectEnd(effectData);
+}
+
 /* Initialization */
 
 static uint8_t SDLGPU_PrepareWindowAttributes(uint32_t *flags)
@@ -2975,6 +3110,13 @@ void MOJOSHADER_sdlShaderAddRef(MOJOSHADER_sdlShader *shader)
 {
     if (shader != NULL)
         shader->refcount++;
+}
+
+unsigned int MOJOSHADER_sdlGetShaderRefCount(MOJOSHADER_sdlShader *shader)
+{
+    if (shader != NULL)
+        return shader->refcount;
+    return 0;
 }
 
 const MOJOSHADER_parseData *MOJOSHADER_sdlGetShaderParseData(
