@@ -345,6 +345,10 @@ static FNA3D_Renderbuffer* SDLGPU_GenColorRenderbuffer(
     SDL_GpuQueueDestroyTexture(renderer->device, textureHandle->texture);
 
     textureHandle->createInfo.sampleCount = XNAToSDL_SampleCount(multiSampleCount);
+    textureHandle->createInfo.usageFlags =
+        SDL_GPU_TEXTUREUSAGE_COLOR_TARGET_BIT |
+        SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT;
+
     textureHandle->texture = SDL_GpuCreateTexture(
         renderer->device,
         &textureHandle->createInfo
@@ -371,6 +375,7 @@ static void SDLGPU_INTERNAL_FlushCommands(
     renderer->commandBuffer = SDL_GpuAcquireCommandBuffer(renderer->device);
 }
 
+/* FIXME: this will break with multi-window, need a claim/unclaim structure */
 static void SDLGPU_SwapBuffers(
     FNA3D_Renderer *driverData,
 	FNA3D_Rect *sourceRectangle,
@@ -1447,6 +1452,135 @@ static int32_t SDLGPU_GetBackbufferMultiSampleCount(
 ) {
     SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
     return renderer->fauxBackbufferSampleCount;
+}
+
+/* Textures */
+
+static SDLGPU_TextureHandle* SDLGPU_Internal_CreateTexture(
+    SDLGPU_Renderer *renderer,
+    uint32_t width,
+    uint32_t height,
+    uint32_t depth,
+    SDL_GpuTextureFormat format,
+    uint32_t layerCount,
+    uint32_t levelCount,
+    SDL_GpuTextureUsageFlags usageFlags,
+    SDL_GpuSampleCount sampleCount
+) {
+    SDL_GpuTextureCreateInfo textureCreateInfo;
+    SDL_GpuTexture *texture;
+    SDLGPU_TextureHandle *textureHandle;
+
+    textureCreateInfo.width = width;
+    textureCreateInfo.height = height;
+    textureCreateInfo.depth = depth;
+    textureCreateInfo.format = format;
+    textureCreateInfo.layerCount = layerCount;
+    textureCreateInfo.levelCount = levelCount;
+    textureCreateInfo.isCube = layerCount == 6;
+    textureCreateInfo.usageFlags = usageFlags;
+    textureCreateInfo.sampleCount = sampleCount;
+
+    texture = SDL_GpuCreateTexture(
+        renderer->device,
+        &textureCreateInfo
+    );
+
+    if (texture == NULL)
+    {
+        FNA3D_LogError("Failed to create texture!");
+        return NULL;
+    }
+
+    textureHandle = SDL_malloc(sizeof(SDLGPU_TextureHandle));
+    textureHandle->texture = texture;
+    textureHandle->createInfo = textureCreateInfo;
+
+    return textureHandle;
+}
+
+static FNA3D_Texture* SDLGPU_CreateTexture2D(
+    FNA3D_Renderer *driverData,
+	FNA3D_SurfaceFormat format,
+	int32_t width,
+	int32_t height,
+	int32_t levelCount,
+	uint8_t isRenderTarget
+) {
+    return (FNA3D_Texture*) SDLGPU_Internal_CreateTexture(
+        (SDLGPU_Renderer*) driverData,
+        (uint32_t) width,
+        (uint32_t) height,
+        1,
+        XNAToSDL_SurfaceFormat[format],
+        1,
+        levelCount,
+        SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT,
+        SDL_GPU_SAMPLECOUNT_1
+    );
+}
+
+static FNA3D_Texture* SDLGPU_CreateTexture3D(
+   	FNA3D_Renderer *driverData,
+	FNA3D_SurfaceFormat format,
+	int32_t width,
+	int32_t height,
+	int32_t depth,
+	int32_t levelCount
+) {
+    return (FNA3D_Texture*) SDLGPU_Internal_CreateTexture(
+        (SDLGPU_Renderer*) driverData,
+        (uint32_t) width,
+        (uint32_t) height,
+        (uint32_t) depth,
+        XNAToSDL_SurfaceFormat[format],
+        1,
+        levelCount,
+        SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT,
+        SDL_GPU_SAMPLECOUNT_1
+    );
+}
+
+static FNA3D_Texture* SDLGPU_CreateTextureCube(
+    FNA3D_Renderer *driverData,
+	FNA3D_SurfaceFormat format,
+	int32_t size,
+	int32_t levelCount,
+	uint8_t isRenderTarget
+) {
+    SDL_GpuTextureUsageFlags usageFlags = SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT;
+
+    if (isRenderTarget)
+    {
+        usageFlags |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET_BIT;
+    }
+
+    return (FNA3D_Texture*) SDLGPU_Internal_CreateTexture(
+        (SDLGPU_Renderer*) driverData,
+        (uint32_t) size,
+        (uint32_t) size,
+        1,
+        XNAToSDL_SurfaceFormat[format],
+        6,
+        levelCount,
+        usageFlags,
+        SDL_GPU_SAMPLECOUNT_1
+    );
+}
+
+static void SDLGPU_AddDisposeTexture(
+    FNA3D_Renderer *driverData,
+	FNA3D_Texture *texture
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+    SDLGPU_TextureHandle *textureHandle = (SDLGPU_TextureHandle*) texture;
+
+    SDL_GpuQueueDestroyTexture(
+        renderer->device,
+        textureHandle->texture
+    );
+
+    SDL_free(textureHandle);
 }
 
 /* Initialization */
