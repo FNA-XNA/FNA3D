@@ -2437,6 +2437,50 @@ static void SDLGPU_EndPassRestore(
 	MOJOSHADER_effectEnd(effectData);
 }
 
+/* Queries */
+
+static FNA3D_Query* SDLGPU_CreateQuery(FNA3D_Renderer *driverData)
+{
+    /* TODO */
+    return NULL;
+}
+
+static void SDLGPU_AddDisposeQuery(
+	FNA3D_Renderer *driverData,
+	FNA3D_Query *query
+) {
+    /* TODO */
+}
+
+static void SDLGPU_QueryBegin(
+    FNA3D_Renderer *driverData,
+    FNA3D_Query *query
+) {
+    /* TODO */
+}
+
+static void SDLGPU_QueryEnd(
+    FNA3D_Renderer *driverData,
+    FNA3D_Query *query
+) {
+    /* TODO */
+}
+
+static uint8_t SDLGPU_QueryComplete(
+	FNA3D_Renderer *driverData,
+	FNA3D_Query *query
+) {
+    /* TODO */
+}
+
+static int32_t SDLGPU_QueryPixelCount(
+	FNA3D_Renderer *driverData,
+	FNA3D_Query *query
+) {
+    /* TODO */
+    return 0;
+}
+
 /* Initialization */
 
 static uint8_t SDLGPU_PrepareWindowAttributes(uint32_t *flags)
