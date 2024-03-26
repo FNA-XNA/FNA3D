@@ -176,10 +176,11 @@ typedef struct SDLGPU_TextureHandle
     SDL_GpuTextureCreateInfo createInfo;
 } SDLGPU_TextureHandle;
 
-typedef struct SDLGPU_RenderBuffer
+typedef struct SDLGPU_Renderbuffer
 {
-    SDL_GpuTexture *texture; /* NOTE: does not own the texture reference! */
-} SDLGPU_RenderBuffer;
+    SDL_GpuTexture *texture;
+    uint8_t isDepth; /* if true, owns the texture reference */
+} SDLGPU_Renderbuffer;
 
 typedef struct SDLGPU_Effect
 {
@@ -254,12 +255,19 @@ typedef struct SDLGPU_Renderer
 
     /* Transfer structure */
 
-    SDL_GpuTransferBuffer *fauxBackbufferTransferBuffer;
-    uint32_t fauxBackbufferTransferBufferSize;
+    SDL_GpuTransferBuffer *textureDownloadBuffer;
+    uint32_t textureDownloadBufferSize;
 
-    SDL_GpuTransferBuffer *textureTransferBuffer;
-    uint32_t textureTransferBufferSize;
-    uint32_t textureTransferBufferOffset;
+    SDL_GpuTransferBuffer *bufferDownloadBuffer;
+    uint32_t bufferDownloadBufferSize;
+
+    SDL_GpuTransferBuffer *textureUploadBuffer;
+    uint32_t textureUploadBufferSize;
+    uint32_t textureUploadBufferOffset;
+
+    SDL_GpuTransferBuffer *bufferUploadBuffer;
+    uint32_t bufferUploadBufferSize;
+    uint32_t bufferUploadBufferOffset;
 
     /* MOJOSHADER */
 
@@ -333,51 +341,11 @@ static void SDLGPU_CreateEffect(
     *effect = (FNA3D_Effect*) result;
 }
 
-static FNA3D_Renderbuffer* SDLGPU_GenColorRenderbuffer(
-	FNA3D_Renderer *driverData,
-	int32_t width,
-	int32_t height,
-	FNA3D_SurfaceFormat format,
-	int32_t multiSampleCount,
-	FNA3D_Texture *texture
-) {
-    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
-    SDLGPU_TextureHandle *textureHandle = (SDLGPU_TextureHandle*) texture;
-    SDLGPU_RenderBuffer *colorBufferHandle;
-
-    /* Recreate texture with appropriate settings */
-    SDL_GpuQueueDestroyTexture(renderer->device, textureHandle->texture);
-
-    textureHandle->createInfo.sampleCount = XNAToSDL_SampleCount(multiSampleCount);
-    textureHandle->createInfo.usageFlags =
-        SDL_GPU_TEXTUREUSAGE_COLOR_TARGET_BIT |
-        SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT;
-
-    textureHandle->texture = SDL_GpuCreateTexture(
-        renderer->device,
-        &textureHandle->createInfo
-    );
-
-    if (textureHandle->texture == NULL)
-    {
-        FNA3D_LogError("Failed to recreate color buffer texture!");
-        return NULL;
-    }
-
-    colorBufferHandle = SDL_malloc(sizeof(SDLGPU_RenderBuffer));
-    colorBufferHandle->texture = textureHandle->texture;
-
-    return (FNA3D_Renderbuffer*) colorBufferHandle;
-}
-
 /* Submission / Presentation */
 
-static void SDLGPU_INTERNAL_FlushCommands(
+static void SDLGPU_ResetCommandBufferState(
     SDLGPU_Renderer *renderer
 ) {
-    SDL_GpuSubmit(renderer->device, renderer->commandBuffer);
-    renderer->commandBuffer = SDL_GpuAcquireCommandBuffer(renderer->device);
-
     /* Reset state */
     renderer->needNewRenderPass = 1;
     renderer->needNewGraphicsPipeline = 1;
@@ -385,7 +353,42 @@ static void SDLGPU_INTERNAL_FlushCommands(
     renderer->needVertexSamplerBind = 1;
     renderer->needFragmentSamplerBind = 1;
 
-    renderer->textureTransferBufferOffset = 0;
+    renderer->textureUploadBufferOffset = 0;
+
+    MOJOSHADER_sdlSetCommandBuffer(
+        renderer->mojoshaderContext,
+        renderer->commandBuffer
+    );
+}
+
+static void SDLGPU_INTERNAL_FlushCommandsAndStall(
+    SDLGPU_Renderer *renderer
+) {
+    SDL_GpuFence *fence = SDL_GpuSubmitAndAcquireFence(
+        renderer->device,
+        renderer->commandBuffer
+    );
+
+    SDL_GpuWaitForFences(
+        renderer->device,
+        1,
+        1,
+        &fence
+    );
+
+    SDL_GpuReleaseFence(
+        renderer->device,
+        fence
+    );
+
+    SDLGPU_ResetCommandBufferState(renderer);
+}
+
+static void SDLGPU_INTERNAL_FlushCommands(
+    SDLGPU_Renderer *renderer
+) {
+    SDL_GpuSubmit(renderer->device, renderer->commandBuffer);
+    SDLGPU_ResetCommandBufferState(renderer);
 }
 
 /* FIXME: this will break with multi-window, need a claim/unclaim structure */
@@ -439,6 +442,95 @@ static void SDLGPU_SwapBuffers(
 
     SDLGPU_INTERNAL_FlushCommands(renderer);
 }
+
+/* Transfer */
+
+static void SDLGPU_INTERNAL_GetTextureData(
+    SDLGPU_Renderer *renderer,
+    SDL_GpuTexture *texture,
+    uint32_t x,
+    uint32_t y,
+    uint32_t z,
+    uint32_t w,
+    uint32_t h,
+    uint32_t d,
+    uint32_t layer,
+    uint32_t level,
+    void* data,
+    uint32_t dataLength
+) {
+    SDL_GpuTextureRegion region;
+    SDL_GpuBufferImageCopy textureCopyParams;
+    SDL_GpuBufferCopy bufferCopyParams;
+
+    /* Flush and stall so the data is up to date */
+    SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
+
+    /* Create transfer buffer if necessary */
+    if (renderer->textureDownloadBuffer == NULL)
+    {
+        renderer->textureDownloadBuffer = SDL_GpuCreateTransferBuffer(
+            renderer->device,
+            SDL_GPU_TRANSFERUSAGE_TEXTURE,
+            dataLength
+        );
+
+        renderer->textureDownloadBufferSize = dataLength;
+    }
+    else if (renderer->textureDownloadBufferSize < dataLength)
+    {
+        SDL_GpuQueueDestroyTransferBuffer(
+            renderer->device,
+            renderer->textureDownloadBuffer
+        );
+
+        renderer->textureDownloadBuffer = SDL_GpuCreateTransferBuffer(
+            renderer->device,
+            SDL_GPU_TRANSFERUSAGE_TEXTURE,
+            dataLength
+        );
+
+        renderer->textureDownloadBufferSize = dataLength;
+    }
+
+    /* Set up texture download */
+    region.textureSlice.texture = renderer->fauxBackbufferColor;
+    region.textureSlice.mipLevel = level;
+    region.textureSlice.layer = layer;
+    region.x = x;
+    region.y = y;
+    region.z = z;
+    region.w = w;
+    region.h = h;
+    region.d = d;
+
+    /* All zeroes, assume tight packing */
+    textureCopyParams.bufferImageHeight = 0;
+    textureCopyParams.bufferOffset = 0;
+    textureCopyParams.bufferStride = 0;
+
+    SDL_GpuDownloadFromTexture(
+        renderer->device,
+        &region,
+        renderer->textureDownloadBuffer,
+        &textureCopyParams,
+        SDL_GPU_TRANSFEROPTIONS_CYCLE
+    );
+
+    /* Copy into data pointer */
+    bufferCopyParams.srcOffset = 0;
+    bufferCopyParams.dstOffset = 0;
+    bufferCopyParams.size = dataLength;
+
+    SDL_GpuGetTransferData(
+        renderer->device,
+        renderer->textureDownloadBuffer,
+        data,
+        &bufferCopyParams
+    );
+}
+
+/* Drawing */
 
 static void SDLGPU_INTERNAL_PrepareRenderPassClear(
 	SDLGPU_Renderer *renderer,
@@ -510,8 +602,6 @@ static void SDLGPU_Clear(
         clearStencil
     );
 }
-
-/* Drawing */
 
 static void SDLGPU_INTERNAL_EndPass(
     SDLGPU_Renderer *renderer
@@ -680,7 +770,7 @@ static void SDLGPU_SetRenderTargets(
 
             if (renderTargets[i].colorBuffer != NULL)
             {
-                renderer->nextRenderPassColorAttachments[i] = ((SDLGPU_RenderBuffer*) renderTargets[i].colorBuffer)->texture;
+                renderer->nextRenderPassColorAttachments[i] = ((SDLGPU_Renderbuffer*) renderTargets[i].colorBuffer)->texture;
             }
         }
 
@@ -689,7 +779,7 @@ static void SDLGPU_SetRenderTargets(
 
     if (depthStencilBuffer != NULL)
     {
-        renderer->nextRenderPassDepthStencilAttachment = ((SDLGPU_RenderBuffer*) depthStencilBuffer)->texture;
+        renderer->nextRenderPassDepthStencilAttachment = ((SDLGPU_Renderbuffer*) depthStencilBuffer)->texture;
         renderer->currentDepthFormat = XNAToSDL_DepthFormat(depthFormat);
     }
 
@@ -1358,75 +1448,20 @@ static void SDLGPU_ReadBackbuffer(
 	int32_t dataLength
 ) {
     SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
-    SDL_GpuTextureRegion region;
-    SDL_GpuBufferImageCopy textureCopyParams;
-    SDL_GpuBufferCopy bufferCopyParams;
 
-    SDLGPU_INTERNAL_FlushCommands(renderer);
-
-    /* Create transfer buffer if necessary */
-
-    if (renderer->fauxBackbufferTransferBuffer == NULL)
-    {
-        renderer->fauxBackbufferTransferBuffer = SDL_GpuCreateTransferBuffer(
-            renderer->device,
-            SDL_GPU_TRANSFERUSAGE_TEXTURE,
-            dataLength
-        );
-
-        renderer->fauxBackbufferTransferBufferSize = dataLength;
-    }
-    else if (renderer->fauxBackbufferTransferBufferSize < dataLength)
-    {
-        SDL_GpuQueueDestroyTransferBuffer(
-            renderer->device,
-            renderer->fauxBackbufferTransferBuffer
-        );
-
-        renderer->fauxBackbufferTransferBuffer = SDL_GpuCreateTransferBuffer(
-            renderer->device,
-            SDL_GPU_TRANSFERUSAGE_TEXTURE,
-            dataLength
-        );
-
-        renderer->fauxBackbufferTransferBufferSize = dataLength;
-    }
-
-    /* Set up texture download */
-    region.textureSlice.texture = renderer->fauxBackbufferColor;
-    region.textureSlice.mipLevel = 0;
-    region.textureSlice.layer = 0;
-    region.x = x;
-    region.y = y;
-    region.z = 0;
-    region.w = w;
-    region.h = h;
-    region.d = 1;
-
-    /* All zeroes, assume tight packing */
-    textureCopyParams.bufferImageHeight = 0;
-    textureCopyParams.bufferOffset = 0;
-    textureCopyParams.bufferStride = 0;
-
-    SDL_GpuDownloadFromTexture(
-        renderer->device,
-        &region,
-        renderer->fauxBackbufferTransferBuffer,
-        &textureCopyParams,
-        SDL_GPU_TRANSFEROPTIONS_CYCLE
-    );
-
-    /* Copy into data pointer */
-
-    bufferCopyParams.srcOffset = 0;
-    bufferCopyParams.dstOffset = 0;
-    bufferCopyParams.size = dataLength;
-
-    SDL_GpuGetTransferData(
-        renderer->device,
-        renderer->fauxBackbufferTransferBuffer,
+    SDLGPU_INTERNAL_GetTextureData(
+        renderer,
+        renderer->fauxBackbufferColor,
+        (uint32_t) x,
+        (uint32_t) y,
+        0,
+        (uint32_t) w,
+        (uint32_t) h,
+        1,
+        0,
+        0,
         data,
-        &bufferCopyParams
+        (uint32_t) dataLength
     );
 }
 
@@ -1463,7 +1498,7 @@ static int32_t SDLGPU_GetBackbufferMultiSampleCount(
 
 /* Textures */
 
-static SDLGPU_TextureHandle* SDLGPU_INTERNAL_CreateTexture(
+static SDLGPU_TextureHandle* SDLGPU_INTERNAL_CreateTextureWithHandle(
     SDLGPU_Renderer *renderer,
     uint32_t width,
     uint32_t height,
@@ -1514,7 +1549,7 @@ static FNA3D_Texture* SDLGPU_CreateTexture2D(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
-    return (FNA3D_Texture*) SDLGPU_INTERNAL_CreateTexture(
+    return (FNA3D_Texture*) SDLGPU_INTERNAL_CreateTextureWithHandle(
         (SDLGPU_Renderer*) driverData,
         (uint32_t) width,
         (uint32_t) height,
@@ -1535,7 +1570,7 @@ static FNA3D_Texture* SDLGPU_CreateTexture3D(
 	int32_t depth,
 	int32_t levelCount
 ) {
-    return (FNA3D_Texture*) SDLGPU_INTERNAL_CreateTexture(
+    return (FNA3D_Texture*) SDLGPU_INTERNAL_CreateTextureWithHandle(
         (SDLGPU_Renderer*) driverData,
         (uint32_t) width,
         (uint32_t) height,
@@ -1562,7 +1597,7 @@ static FNA3D_Texture* SDLGPU_CreateTextureCube(
         usageFlags |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET_BIT;
     }
 
-    return (FNA3D_Texture*) SDLGPU_INTERNAL_CreateTexture(
+    return (FNA3D_Texture*) SDLGPU_INTERNAL_CreateTextureWithHandle(
         (SDLGPU_Renderer*) driverData,
         (uint32_t) size,
         (uint32_t) size,
@@ -1573,6 +1608,84 @@ static FNA3D_Texture* SDLGPU_CreateTextureCube(
         usageFlags,
         SDL_GPU_SAMPLECOUNT_1
     );
+}
+
+static FNA3D_Renderbuffer* SDLGPU_GenColorRenderbuffer(
+	FNA3D_Renderer *driverData,
+	int32_t width,
+	int32_t height,
+	FNA3D_SurfaceFormat format,
+	int32_t multiSampleCount,
+	FNA3D_Texture *texture
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+    SDLGPU_TextureHandle *textureHandle = (SDLGPU_TextureHandle*) texture;
+    SDLGPU_Renderbuffer *colorBufferHandle;
+
+    /* Recreate texture with appropriate settings */
+    SDL_GpuQueueDestroyTexture(renderer->device, textureHandle->texture);
+
+    textureHandle->createInfo.sampleCount = XNAToSDL_SampleCount(multiSampleCount);
+    textureHandle->createInfo.usageFlags =
+        SDL_GPU_TEXTUREUSAGE_COLOR_TARGET_BIT |
+        SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT;
+
+    textureHandle->texture = SDL_GpuCreateTexture(
+        renderer->device,
+        &textureHandle->createInfo
+    );
+
+    if (textureHandle->texture == NULL)
+    {
+        FNA3D_LogError("Failed to recreate color buffer texture!");
+        return NULL;
+    }
+
+    colorBufferHandle = SDL_malloc(sizeof(SDLGPU_Renderbuffer));
+    colorBufferHandle->texture = textureHandle->texture;
+    colorBufferHandle->isDepth = 0;
+
+    return (FNA3D_Renderbuffer*) colorBufferHandle;
+}
+
+static FNA3D_Renderbuffer* SDLGPU_GenDepthStencilRenderbuffer(
+    FNA3D_Renderer *driverData,
+	int32_t width,
+	int32_t height,
+	FNA3D_DepthFormat format,
+	int32_t multiSampleCount
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+    SDL_GpuTextureCreateInfo textureCreateInfo;
+    SDL_GpuTexture *texture;
+    SDLGPU_Renderbuffer *renderbuffer;
+
+    textureCreateInfo.width = (uint32_t) width;
+    textureCreateInfo.height = (uint32_t) height;
+    textureCreateInfo.depth = 0;
+    textureCreateInfo.format = XNAToSDL_DepthFormat(format);
+    textureCreateInfo.layerCount = 0;
+    textureCreateInfo.levelCount = 0;
+    textureCreateInfo.isCube = 0;
+    textureCreateInfo.usageFlags = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET_BIT;
+    textureCreateInfo.sampleCount = XNAToSDL_SampleCount(multiSampleCount);
+
+    texture = SDL_GpuCreateTexture(
+        renderer->device,
+        &textureCreateInfo
+    );
+
+    if (texture == NULL)
+    {
+        FNA3D_LogError("Failed to create depth stencil buffer!");
+        return NULL;
+    }
+
+    renderbuffer = SDL_malloc(sizeof(SDLGPU_Renderbuffer));
+    renderbuffer->texture = texture;
+    renderbuffer->isDepth = 1;
+
+    return (FNA3D_Renderbuffer*) renderbuffer;
 }
 
 static void SDLGPU_AddDisposeTexture(
@@ -1588,6 +1701,24 @@ static void SDLGPU_AddDisposeTexture(
     );
 
     SDL_free(textureHandle);
+}
+
+static void SDLGPU_AddDisposeRenderbuffer(
+    FNA3D_Renderer *driverData,
+	FNA3D_Renderbuffer *renderbuffer
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+    SDLGPU_Renderbuffer *renderbufferHandle = (SDLGPU_Renderbuffer*) renderbuffer;
+
+    if (renderbufferHandle->isDepth)
+    {
+        SDL_GpuQueueDestroyTexture(
+            renderer->device,
+            renderbufferHandle->texture
+        );
+    }
+
+    SDL_free(renderbufferHandle);
 }
 
 static void SDLGPU_INTERNAL_SetTextureData(
@@ -1608,34 +1739,35 @@ static void SDLGPU_INTERNAL_SetTextureData(
     SDL_GpuBufferCopy copyParams;
     SDL_GpuTextureRegion textureRegion;
     SDL_GpuBufferImageCopy textureCopyParams;
+    uint32_t copyOffset;
 
      /* Recreate transfer buffer if necessary */
-    if (renderer->textureTransferBufferOffset + dataLength >= dataLength)
+    if (renderer->textureUploadBufferOffset + dataLength >= renderer->textureUploadBufferSize)
     {
         SDL_GpuQueueDestroyTransferBuffer(
             renderer->device,
-            renderer->textureTransferBuffer
+            renderer->textureUploadBuffer
         );
 
-        renderer->textureTransferBufferSize = dataLength;
-        renderer->textureTransferBufferOffset = 0;
-        renderer->textureTransferBuffer = SDL_GpuCreateTransferBuffer(
+        renderer->textureUploadBufferSize = dataLength;
+        renderer->textureUploadBufferOffset = 0;
+        renderer->textureUploadBuffer = SDL_GpuCreateTransferBuffer(
             renderer->device,
             SDL_GPU_TRANSFERUSAGE_TEXTURE,
-            renderer->textureTransferBufferSize
+            renderer->textureUploadBufferSize
         );
     }
 
     copyParams.srcOffset = 0;
-    copyParams.dstOffset = renderer->textureTransferBufferOffset;
+    copyParams.dstOffset = renderer->textureUploadBufferOffset;
     copyParams.size = dataLength;
 
     SDL_GpuSetTransferData(
         renderer->device,
         data,
-        renderer->textureTransferBuffer,
+        renderer->textureUploadBuffer,
         &copyParams,
-        renderer->textureTransferBufferOffset == 0 ? SDL_GPU_TRANSFEROPTIONS_CYCLE : SDL_GPU_TRANSFEROPTIONS_UNSAFE
+        renderer->textureUploadBufferOffset == 0 ? SDL_GPU_TRANSFEROPTIONS_CYCLE : SDL_GPU_TRANSFEROPTIONS_UNSAFE
     );
 
     textureRegion.textureSlice.texture = textureHandle->texture;
@@ -1648,18 +1780,20 @@ static void SDLGPU_INTERNAL_SetTextureData(
     textureRegion.h = h;
     textureRegion.d = d;
 
-    textureCopyParams.bufferImageHeight = 0;
-    textureCopyParams.bufferOffset = 0;
-    textureCopyParams.bufferStride = 0;
+    textureCopyParams.bufferOffset = renderer->textureUploadBufferOffset;
+    textureCopyParams.bufferStride = 0;      /* default, assume tightly packed */
+    textureCopyParams.bufferImageHeight = 0; /* default, assume tightly packed */
 
     SDL_GpuUploadToTexture(
         renderer->device,
         renderer->commandBuffer,
-        renderer->textureTransferBuffer,
+        renderer->textureUploadBuffer,
         &textureRegion,
         &textureCopyParams,
         SDL_GPU_TEXTUREWRITEOPTIONS_SAFE /* FIXME: should we cycle here? */
     );
+
+    renderer->textureUploadBufferOffset += dataLength;
 }
 
 static void SDLGPU_SetTextureData2D(
@@ -1817,6 +1951,357 @@ static void SDLGPU_SetTextureDataYUV(
     );
 }
 
+static void SDLGPU_GetTextureData2D(
+    FNA3D_Renderer *driverData,
+	FNA3D_Texture *texture,
+	int32_t x,
+	int32_t y,
+	int32_t w,
+	int32_t h,
+	int32_t level,
+	void* data,
+	int32_t dataLength
+) {
+    SDLGPU_TextureHandle *textureHandle = (SDLGPU_TextureHandle*) texture;
+
+    SDLGPU_INTERNAL_GetTextureData(
+        (SDLGPU_Renderer*) driverData,
+        textureHandle->texture,
+        (uint32_t) x,
+        (uint32_t) y,
+        0,
+        (uint32_t) w,
+        (uint32_t) h,
+        1,
+        0,
+        level,
+        data,
+        (uint32_t) dataLength
+    );
+}
+
+static void SDLGPU_GetTextureData3D(
+    FNA3D_Renderer *driverData,
+	FNA3D_Texture *texture,
+	int32_t x,
+	int32_t y,
+	int32_t z,
+	int32_t w,
+	int32_t h,
+	int32_t d,
+	int32_t level,
+	void* data,
+	int32_t dataLength
+) {
+    FNA3D_LogError(
+		"GetTextureData3D is unsupported!"
+	);
+}
+
+static void SDLGPU_GetTextureDataCube(
+    FNA3D_Renderer *driverData,
+	FNA3D_Texture *texture,
+	int32_t x,
+	int32_t y,
+	int32_t w,
+	int32_t h,
+	FNA3D_CubeMapFace cubeMapFace,
+	int32_t level,
+	void* data,
+	int32_t dataLength
+) {
+    SDLGPU_TextureHandle *textureHandle = (SDLGPU_TextureHandle*) texture;
+
+    SDLGPU_INTERNAL_GetTextureData(
+        (SDLGPU_Renderer*) driverData,
+        textureHandle->texture,
+        (uint32_t) x,
+        (uint32_t) y,
+        0,
+        (uint32_t) w,
+        (uint32_t) h,
+        1,
+        (uint32_t) cubeMapFace,
+        level,
+        data,
+        dataLength
+    );
+}
+
+/* Buffers */
+
+static FNA3D_Buffer* SDLGPU_GenVertexBuffer(
+    FNA3D_Renderer *driverData,
+	uint8_t dynamic,
+	FNA3D_BufferUsage usage,
+	int32_t sizeInBytes
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+
+    return (FNA3D_Buffer*) SDL_GpuCreateGpuBuffer(
+        renderer->device,
+        SDL_GPU_BUFFERUSAGE_VERTEX_BIT,
+        sizeInBytes
+    );
+}
+
+static FNA3D_Buffer* SDLGPU_GenIndexBuffer(
+    FNA3D_Renderer *driverData,
+	uint8_t dynamic,
+	FNA3D_BufferUsage usage,
+	int32_t sizeInBytes
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+
+    return (FNA3D_Buffer*) SDL_GpuCreateGpuBuffer(
+        renderer->device,
+        SDL_GPU_BUFFERUSAGE_INDEX_BIT,
+        sizeInBytes
+    );
+}
+
+static void SDLGPU_AddDisposeVertexBuffer(
+    FNA3D_Renderer *driverData,
+	FNA3D_Buffer *buffer
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+
+    SDL_GpuQueueDestroyGpuBuffer(
+        renderer->device,
+        (SDL_GpuBuffer*) buffer
+    );
+}
+
+static void SDLGPU_AddDisposeIndexBuffer(
+    FNA3D_Renderer *driverData,
+	FNA3D_Buffer *buffer
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+
+    SDL_GpuQueueDestroyGpuBuffer(
+        renderer->device,
+        (SDL_GpuBuffer*) buffer
+    );
+}
+
+static void SDLGPU_INTERNAL_SetBufferData(
+    SDLGPU_Renderer *renderer,
+    SDL_GpuBuffer *buffer,
+    uint32_t dstOffset,
+    void *data,
+    uint32_t dataLength,
+    SDL_GpuBufferWriteOptions option
+) {
+    SDL_GpuBufferCopy transferCopyParams;
+    SDL_GpuBufferCopy uploadParams;
+
+    /* Recreate transfer buffer if necessary */
+    if (renderer->bufferUploadBufferOffset + dataLength >= renderer->bufferUploadBufferSize)
+    {
+        SDL_GpuQueueDestroyTransferBuffer(
+            renderer->device,
+            renderer->bufferUploadBuffer
+        );
+
+        renderer->bufferUploadBufferSize = dataLength;
+        renderer->bufferUploadBufferOffset = 0;
+        renderer->bufferUploadBuffer = SDL_GpuCreateTransferBuffer(
+            renderer->device,
+            SDL_GPU_TRANSFERUSAGE_BUFFER,
+            renderer->bufferUploadBufferSize
+        );
+    }
+
+    transferCopyParams.srcOffset = 0;
+    transferCopyParams.dstOffset = renderer->bufferUploadBufferOffset;
+    transferCopyParams.size = dataLength;
+
+    SDL_GpuSetTransferData(
+        renderer->device,
+        data,
+        renderer->bufferUploadBuffer,
+        &transferCopyParams,
+        renderer->bufferUploadBufferOffset == 0 ? SDL_GPU_TRANSFEROPTIONS_CYCLE : SDL_GPU_TRANSFEROPTIONS_UNSAFE
+    );
+
+    uploadParams.srcOffset = renderer->bufferUploadBufferOffset;
+    uploadParams.dstOffset = dstOffset;
+    uploadParams.size = dataLength;
+
+    SDL_GpuUploadToBuffer(
+        renderer->device,
+        renderer->commandBuffer,
+        renderer->bufferUploadBuffer,
+        buffer,
+        &uploadParams,
+        option
+    );
+
+    renderer->bufferUploadBufferOffset += dataLength;
+}
+
+static void SDLGPU_SetVertexBufferData(
+	FNA3D_Renderer *driverData,
+	FNA3D_Buffer *buffer,
+	int32_t offsetInBytes,
+	void* data,
+	int32_t elementCount,
+	int32_t elementSizeInBytes,
+	int32_t vertexStride,
+	FNA3D_SetDataOptions options
+) {
+    SDL_GpuBufferWriteOptions option;
+
+    /* FIXME: what about NONE? */
+    if (options == FNA3D_SETDATAOPTIONS_DISCARD)
+    {
+        option = SDL_GPU_BUFFERWRITEOPTIONS_CYCLE;
+    }
+    else
+    {
+        option = SDL_GPU_BUFFERWRITEOPTIONS_UNSAFE;
+    }
+
+    SDLGPU_INTERNAL_SetBufferData(
+        (SDLGPU_Renderer*) driverData,
+        (SDL_GpuBuffer*) buffer,
+        (uint32_t) offsetInBytes,
+        data,
+        elementCount * vertexStride,
+        option
+    );
+}
+
+static SDLGPU_SetIndexBufferData(
+    FNA3D_Renderer *driverData,
+	FNA3D_Buffer *buffer,
+	int32_t offsetInBytes,
+	void* data,
+	int32_t dataLength,
+	FNA3D_SetDataOptions options
+) {
+    SDL_GpuBufferWriteOptions option;
+
+    /* FIXME: what about NONE? */
+    if (options == FNA3D_SETDATAOPTIONS_DISCARD)
+    {
+        option = SDL_GPU_BUFFERWRITEOPTIONS_CYCLE;
+    }
+    else
+    {
+        option = SDL_GPU_BUFFERWRITEOPTIONS_UNSAFE;
+    }
+
+    SDLGPU_INTERNAL_SetBufferData(
+        (SDLGPU_Renderer*) driverData,
+        (SDL_GpuBuffer*) buffer,
+        (uint32_t) offsetInBytes,
+        data,
+        dataLength,
+        options
+    );
+}
+
+static void SDLGPU_INTERNAL_GetBufferData(
+    SDLGPU_Renderer *renderer,
+    SDL_GpuBuffer *buffer,
+    uint32_t offset,
+    void *data,
+    uint32_t dataLength
+) {
+    SDL_GpuBufferCopy downloadParams;
+    SDL_GpuBufferCopy copyParams;
+
+    /* Flush and stall so the data is up to date */
+    SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
+
+    /* Create transfer buffer if necessary */
+    if (renderer->bufferDownloadBuffer == NULL)
+    {
+        renderer->bufferDownloadBuffer = SDL_GpuCreateTransferBuffer(
+            renderer->device,
+            SDL_GPU_TRANSFERUSAGE_BUFFER,
+            dataLength
+        );
+
+        renderer->bufferDownloadBufferSize = dataLength;
+    }
+    else if (renderer->bufferDownloadBufferSize < dataLength)
+    {
+        SDL_GpuQueueDestroyTransferBuffer(
+            renderer->device,
+            renderer->bufferDownloadBuffer
+        );
+
+        renderer->bufferDownloadBuffer = SDL_GpuCreateTransferBuffer(
+            renderer->device,
+            SDL_GPU_TRANSFERUSAGE_TEXTURE,
+            dataLength
+        );
+
+        renderer->bufferDownloadBufferSize = dataLength;
+    }
+
+    /* Set up buffer download */
+    downloadParams.srcOffset = offset;
+    downloadParams.dstOffset = 0;
+    downloadParams.size = dataLength;
+
+    SDL_GpuDownloadFromBuffer(
+        renderer->device,
+        buffer,
+        renderer->bufferDownloadBuffer,
+        &copyParams,
+        SDL_GPU_TRANSFEROPTIONS_CYCLE
+    );
+
+    /* Copy into data pointer */
+    copyParams.srcOffset = 0;
+    copyParams.dstOffset = 0;
+    copyParams.size = dataLength;
+
+    SDL_GpuGetTransferData(
+        renderer->device,
+        renderer->bufferDownloadBuffer,
+        data,
+        &copyParams
+    );
+}
+
+static void SDLGPU_GetVertexBufferData(
+    FNA3D_Renderer *driverData,
+	FNA3D_Buffer *buffer,
+	int32_t offsetInBytes,
+	void* data,
+	int32_t elementCount,
+	int32_t elementSizeInBytes,
+	int32_t vertexStride
+) {
+    SDLGPU_INTERNAL_GetBufferData(
+        (SDLGPU_Renderer*) driverData,
+        (SDL_GpuBuffer*) buffer,
+        offsetInBytes,
+        data,
+        elementCount * vertexStride
+    );
+}
+
+static void SDLGPU_GetIndexBufferData(
+    FNA3D_Renderer *driverData,
+	FNA3D_Buffer *buffer,
+	int32_t offsetInBytes,
+	void* data,
+	int32_t dataLength
+) {
+    SDLGPU_INTERNAL_GetBufferData(
+        (SDLGPU_Renderer*) driverData,
+        (SDL_GpuBuffer*) buffer,
+        offsetInBytes,
+        data,
+        dataLength
+    );
+}
+
 /* Initialization */
 
 static uint8_t SDLGPU_PrepareWindowAttributes(uint32_t *flags)
@@ -1885,19 +2370,27 @@ static FNA3D_Device* SDLGPU_CreateDevice(
         return NULL;
     }
 
-    renderer->textureTransferBufferSize = 8388608; /* 8 MiB */
-    renderer->textureTransferBufferOffset = 0;
-    renderer->textureTransferBuffer = SDL_GpuCreateTransferBuffer(
+    renderer->textureUploadBufferSize = 8388608; /* 8 MiB */
+    renderer->textureUploadBufferOffset = 0;
+    renderer->textureUploadBuffer = SDL_GpuCreateTransferBuffer(
         renderer->device,
         SDL_GPU_TRANSFERUSAGE_TEXTURE,
-        renderer->textureTransferBufferSize
+        renderer->textureUploadBufferSize
     );
 
-    if (renderer->textureTransferBuffer == NULL)
+    if (renderer->textureUploadBuffer == NULL)
     {
         FNA3D_LogError("Failed to create texture transfer buffer!");
         return NULL;
     }
+
+    renderer->bufferUploadBufferSize = 8388608; /* 8 MiB */
+    renderer->bufferUploadBufferOffset = 0;
+    renderer->bufferUploadBuffer = SDL_GpuCreateTransferBuffer(
+        renderer->device,
+        SDL_GPU_TRANSFERUSAGE_BUFFER,
+        renderer->bufferUploadBufferSize
+    );
 
     renderer->mojoshaderContext = MOJOSHADER_sdlCreateContext(
         device,
@@ -1906,6 +2399,10 @@ static FNA3D_Device* SDLGPU_CreateDevice(
         NULL,
         NULL
     );
+
+    /* Acquire command buffer, we are ready for takeoff */
+
+    SDLGPU_ResetCommandBufferState(renderer);
 
     return result;
 }
