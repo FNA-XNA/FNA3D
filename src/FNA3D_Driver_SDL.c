@@ -2481,6 +2481,103 @@ static int32_t SDLGPU_QueryPixelCount(
     return 0;
 }
 
+static uint8_t SDLGPU_SupportsDXT1(FNA3D_Renderer *driverData)
+{
+    /* TODO */
+    return 1;
+}
+
+static uint8_t SDLGPU_SupportsS3TC(FNA3D_Renderer *driverData)
+{
+    /* TODO */
+    return 1;
+}
+
+static uint8_t SDLGPU_SupportsBC7(FNA3D_Renderer *driverData)
+{
+    /* TODO */
+    return 1;
+}
+
+static uint8_t SDLGPU_SupportsHardwareInstancing(FNA3D_Renderer *driverData)
+{
+    /* TODO */
+    return 1;
+}
+
+static uint8_t SDLGPU_SupportsNoOverwrite(FNA3D_Renderer *driverData)
+{
+    /* TODO */
+	return 1;
+}
+
+static uint8_t SDLGPU_SupportsSRGBRenderTargets(FNA3D_Renderer *driverData)
+{
+    /* TODO */
+    return 1;
+}
+
+static void SDLGPU_GetMaxTextureSlots(
+    FNA3D_Renderer *driverData,
+	int32_t *textures,
+	int32_t *vertexTextures
+) {
+    /* TODO */
+    *textures = MAX_TEXTURE_SAMPLERS;
+    *vertexTextures = MAX_VERTEXTEXTURE_SAMPLERS;
+}
+
+static int32_t SDLGPU_GetMaxMultiSampleCount(
+	FNA3D_Renderer *driverData,
+	FNA3D_SurfaceFormat format,
+	int32_t multiSampleCount
+) {
+    /* TODO */
+    return 8;
+}
+
+/* Debugging */
+
+static void SDLGPU_SetStringMarker(
+    FNA3D_Renderer *driverData,
+    const char *text
+) {
+    /* TODO */
+}
+
+static void SDLGPU_SetTextureName(
+    FNA3D_Renderer *driverData,
+    FNA3D_Texture *texture,
+    const char *text
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+    SDLGPU_TextureHandle *textureHandle = (SDLGPU_TextureHandle*) texture;
+
+    SDL_GpuSetTextureName(
+        renderer->device,
+        textureHandle->texture,
+        text
+    );
+}
+
+/* External Interop */
+
+static void SDLGPU_GetSysRenderer(
+	FNA3D_Renderer *driverData,
+	FNA3D_SysRendererEXT *sysrenderer
+) {
+    /* TODO */
+    SDL_memset(sysrenderer, '\0', sizeof(FNA3D_SysRendererEXT));
+}
+
+static FNA3D_Texture* SDLGPU_CreateSysTexture(
+	FNA3D_Renderer *driverData,
+	FNA3D_SysTextureEXT *systexture
+) {
+    /* TODO */
+    return NULL;
+}
+
 /* Initialization */
 
 static uint8_t SDLGPU_PrepareWindowAttributes(uint32_t *flags)
