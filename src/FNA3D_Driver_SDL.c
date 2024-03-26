@@ -90,6 +90,36 @@ static inline SDL_GpuTextureFormat XNAToSDL_DepthFormat(
 	}
 }
 
+/* TODO: add the relevant SRGB formats to SDL_gpu */
+static SDL_GpuTextureFormat XNAToSDL_SurfaceFormat[] =
+{
+	SDL_GPU_TEXTUREFORMAT_R8G8B8A8,             /* SurfaceFormat.Color */
+	SDL_GPU_TEXTUREFORMAT_R5G6B5,               /* SurfaceFormat.Bgr565 */
+	SDL_GPU_TEXTUREFORMAT_A1R5G5B5,             /* SurfaceFormat.Bgra5551 */
+	SDL_GPU_TEXTUREFORMAT_B4G4R4A4,             /* SurfaceFormat.Bgra4444 */
+	SDL_GPU_TEXTUREFORMAT_BC1,                  /* SurfaceFormat.Dxt1 */
+	SDL_GPU_TEXTUREFORMAT_BC2,                  /* SurfaceFormat.Dxt3 */
+	SDL_GPU_TEXTUREFORMAT_BC3,                  /* SurfaceFormat.Dxt5 */
+	SDL_GPU_TEXTUREFORMAT_R8G8_SNORM,           /* SurfaceFormat.NormalizedByte2 */
+	SDL_GPU_TEXTUREFORMAT_R8G8B8A8_SNORM,       /* SurfaceFormat.NormalizedByte4 */
+	SDL_GPU_TEXTUREFORMAT_A2R10G10B10,          /* SurfaceFormat.Rgba1010102 */
+	SDL_GPU_TEXTUREFORMAT_R16G16,               /* SurfaceFormat.Rg32 */
+	SDL_GPU_TEXTUREFORMAT_R16G16B16A16,         /* SurfaceFormat.Rgba64 */
+	SDL_GPU_TEXTUREFORMAT_R8,                   /* SurfaceFormat.Alpha8 */
+	SDL_GPU_TEXTUREFORMAT_R32_SFLOAT,           /* SurfaceFormat.Single */
+	SDL_GPU_TEXTUREFORMAT_R32G32_SFLOAT,        /* SurfaceFormat.Vector2 */
+	SDL_GPU_TEXTUREFORMAT_R32G32B32A32_SFLOAT,  /* SurfaceFormat.Vector4 */
+	SDL_GPU_TEXTUREFORMAT_R16_SFLOAT,           /* SurfaceFormat.HalfSingle */
+	SDL_GPU_TEXTUREFORMAT_R16G16_SFLOAT,        /* SurfaceFormat.HalfVector2 */
+	SDL_GPU_TEXTUREFORMAT_R16G16B16A16_SFLOAT,  /* SurfaceFormat.HalfVector4 */
+	SDL_GPU_TEXTUREFORMAT_R16G16B16A16_SFLOAT,  /* SurfaceFormat.HdrBlendable */
+	SDL_GPU_TEXTUREFORMAT_B8G8R8A8,             /* SurfaceFormat.ColorBgraEXT */
+	SDL_GPU_TEXTUREFORMAT_R8G8B8A8,             /* FIXME SRGB */ /* SurfaceFormat.ColorSrgbEXT */
+	SDL_GPU_TEXTUREFORMAT_BC3,                  /* FIXME SRGB */ /* SurfaceFormat.Dxt5SrgbEXT */
+	SDL_GPU_TEXTUREFORMAT_BC7,                  /* SurfaceFormat.Bc7EXT */
+	SDL_GPU_TEXTUREFORMAT_BC7                   /* FIXME SRGB */ /* SurfaceFormat.Bc7SrgbEXT */
+};
+
 static SDL_GpuPrimitiveType XNAToSDL_PrimitiveType[] =
 {
 	SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,	/* FNA3D_PRIMITIVETYPE_TRIANGLELIST */
@@ -131,6 +161,14 @@ static SDL_GpuBlendOp XNAToSDL_BlendOp[] =
 	SDL_GPU_BLENDOP_MIN               /* FNA3D_BLENDFUNCTION_MIN */
 };
 
+static SDL_GpuPresentMode XNAToSDL_PresentMode[] =
+{
+    SDL_GPU_PRESENTMODE_MAILBOX, /* Falls back to FIFO if not supported */
+    SDL_GPU_PRESENTMODE_MAILBOX, /* Falls back to FIFO if not supported */
+    SDL_GPU_PRESENTMODE_FIFO,
+    SDL_GPU_PRESENTMODE_IMMEDIATE
+};
+
 /* Indirection to cleanly handle Renderbuffers */
 typedef struct SDLGPU_TextureHandle
 {
@@ -152,10 +190,6 @@ typedef struct SDLGPU_Renderer
 {
     SDL_GpuDevice *device;
     SDL_GpuCommandBuffer *commandBuffer;
-
-    SDL_GpuTexture *swapchainTexture;
-    uint32_t swapchainTextureWidth;
-    uint32_t swapchainTextureHeight;
 
     uint8_t renderPassInProgress;
     uint8_t needNewRenderPass;
@@ -206,6 +240,24 @@ typedef struct SDLGPU_Renderer
     FNA3D_DepthStencilState depthStencilState;
 	FNA3D_RasterizerState rasterizerState;
     SDL_GpuRect scissorRect;
+
+    /* Presentation structure */
+
+    void *mainWindowHandle;
+    SDL_GpuTexture *fauxBackbufferColor;
+    SDL_GpuTexture *fauxBackbufferDepthStencil; /* may be NULL */
+    uint32_t fauxBackbufferWidth;
+    uint32_t fauxBackbufferHeight;
+    FNA3D_SurfaceFormat fauxBackbufferColorFormat; /* for reading back */
+    FNA3D_DepthFormat fauxBackbufferDepthStencilFormat; /* for reading back */
+    int32_t fauxBackbufferSampleCount; /* for reading back */
+
+    /* Transfer structure */
+
+    SDL_GpuTransferBuffer *fauxBackbufferTransferBuffer;
+    uint32_t fauxBackbufferTransferBufferSize;
+
+    /* MOJOSHADER */
 
     MOJOSHADER_sdlContext *mojoshaderContext;
 } SDLGPU_Renderer;
@@ -310,7 +362,14 @@ static FNA3D_Renderbuffer* SDLGPU_GenColorRenderbuffer(
     return (FNA3D_Renderbuffer*) colorBufferHandle;
 }
 
-/* Presentation */
+/* Submission / Presentation */
+
+static void SDLGPU_INTERNAL_FlushCommands(
+    SDLGPU_Renderer *renderer
+) {
+    SDL_GpuSubmit(renderer->device, renderer->commandBuffer);
+    renderer->commandBuffer = SDL_GpuAcquireCommandBuffer(renderer->device);
+}
 
 static void SDLGPU_SwapBuffers(
     FNA3D_Renderer *driverData,
@@ -319,19 +378,51 @@ static void SDLGPU_SwapBuffers(
 	void* overrideWindowHandle
 ) {
     SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+    SDL_GpuTexture *swapchainTexture;
+    SDL_GpuTextureRegion srcRegion;
+    SDL_GpuTextureRegion dstRegion;
+    uint32_t width, height;
 
-    SDL_GpuSubmit(renderer->device, renderer->commandBuffer);
-
-    renderer->commandBuffer = SDL_GpuAcquireCommandBuffer(renderer->device);
-    renderer->swapchainTexture = SDL_GpuAcquireSwapchainTexture(
+    swapchainTexture = SDL_GpuAcquireSwapchainTexture(
         renderer->device,
         renderer->commandBuffer,
         overrideWindowHandle,
-        &renderer->swapchainTextureWidth,
-        &renderer->swapchainTextureHeight
+        &width,
+        &height
     );
 
+    srcRegion.textureSlice.texture = renderer->fauxBackbufferColor;
+    srcRegion.textureSlice.layer = 0;
+    srcRegion.textureSlice.mipLevel = 0;
+    srcRegion.x = 0;
+    srcRegion.y = 0;
+    srcRegion.z = 0;
+    srcRegion.w = width;
+    srcRegion.h = height;
+    srcRegion.d = 1;
+
+    dstRegion.textureSlice.texture = swapchainTexture;
+    dstRegion.textureSlice.layer = 0;
+    dstRegion.textureSlice.mipLevel = 0;
+    dstRegion.x = 0;
+    dstRegion.y = 0;
+    dstRegion.z = 0;
+    srcRegion.w = width;
+    srcRegion.h = height;
+    srcRegion.d = 1;
+
+    SDL_GpuCopyTextureToTexture(
+        renderer->device,
+        renderer->commandBuffer,
+        &srcRegion,
+        &dstRegion,
+        SDL_GPU_TEXTUREWRITEOPTIONS_SAFE
+    );
+
+    SDL_GpuSubmit(renderer->device, renderer->commandBuffer);
+
     /* Reset state */
+    renderer->commandBuffer = SDL_GpuAcquireCommandBuffer(renderer->device);
     renderer->needNewRenderPass = 1;
     renderer->needNewGraphicsPipeline = 1;
     renderer->needVertexBufferBind = 1;
@@ -559,15 +650,11 @@ static void SDLGPU_SetRenderTargets(
 
     if (numRenderTargets <= 0)
     {
-        if (renderer->swapchainTexture == NULL)
-        {
-            /* swapchain is invalid, this is a no-op */
-            return;
-        }
-
-        renderer->nextRenderPassColorAttachments[0] = renderer->swapchainTexture;
+        renderer->nextRenderPassColorAttachments[0] = renderer->fauxBackbufferColor;
         renderer->nextRenderPassColorAttachmentCubeFace[0] = 0;
         renderer->nextRenderPassColorAttachmentCount = 1;
+
+        renderer->nextRenderPassDepthStencilAttachment = renderer->fauxBackbufferDepthStencil;
     }
     else
     {
@@ -595,6 +682,13 @@ static void SDLGPU_SetRenderTargets(
     }
 
     renderer->needNewRenderPass = 1;
+}
+
+static void SDLGPU_ResolveTarget(
+    FNA3D_Renderer *driverData,
+    FNA3D_RenderTargetBinding *target
+) {
+    /* no-op? SDL_gpu auto-resolves MSAA targets */
 }
 
 static void SDLGPU_INTERNAL_BindGraphicsPipeline(
@@ -1148,6 +1242,213 @@ static void SDLGPU_DrawPrimitives(
     );
 }
 
+/* Backbuffer Functions */
+
+static void SDLGPU_INTERNAL_DestroyFauxBackbuffer(
+    SDLGPU_Renderer *renderer
+) {
+    SDL_GpuQueueDestroyTexture(
+        renderer->device,
+        renderer->fauxBackbufferColor
+    );
+
+    if (renderer->fauxBackbufferDepthStencil != NULL)
+    {
+        SDL_GpuQueueDestroyTexture(
+            renderer->device,
+            renderer->fauxBackbufferDepthStencil
+        );
+    }
+
+    renderer->fauxBackbufferColor = NULL;
+    renderer->fauxBackbufferDepthStencil = NULL;
+}
+
+static void SDLGPU_INTERNAL_CreateFauxBackbuffer(
+    SDLGPU_Renderer *renderer,
+	FNA3D_PresentationParameters *presentationParameters
+) {
+    SDL_GpuTextureCreateInfo backbufferCreateInfo;
+
+    backbufferCreateInfo.width = presentationParameters->backBufferWidth;
+    backbufferCreateInfo.height = presentationParameters->backBufferHeight;
+    backbufferCreateInfo.depth = 1;
+    backbufferCreateInfo.format = XNAToSDL_SurfaceFormat[presentationParameters->backBufferFormat];
+    backbufferCreateInfo.isCube = 0;
+    backbufferCreateInfo.layerCount = 1;
+    backbufferCreateInfo.levelCount = 1;
+    backbufferCreateInfo.usageFlags = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET_BIT | SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT;
+    backbufferCreateInfo.sampleCount = XNAToSDL_SampleCount(presentationParameters->multiSampleCount);
+
+    renderer->fauxBackbufferColor = SDL_GpuCreateTexture(
+        renderer->device,
+        &backbufferCreateInfo
+    );
+
+    if (presentationParameters->depthStencilFormat != FNA3D_DEPTHFORMAT_NONE)
+    {
+        backbufferCreateInfo.format = XNAToSDL_DepthFormat(presentationParameters->depthStencilFormat);
+        backbufferCreateInfo.usageFlags = SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET_BIT;
+
+        renderer->fauxBackbufferDepthStencil = SDL_GpuCreateTexture(
+            renderer->device,
+            &backbufferCreateInfo
+        );
+    }
+
+    renderer->fauxBackbufferWidth = presentationParameters->backBufferWidth;
+    renderer->fauxBackbufferHeight = presentationParameters->backBufferHeight;
+
+    renderer->fauxBackbufferColorFormat = presentationParameters->backBufferFormat;
+    renderer->fauxBackbufferDepthStencilFormat = presentationParameters->depthStencilFormat;
+
+    renderer->fauxBackbufferSampleCount = presentationParameters->multiSampleCount;
+}
+
+static void SDLGPU_ResetBackbuffer(
+    FNA3D_Renderer *driverData,
+	FNA3D_PresentationParameters *presentationParameters
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+
+    SDLGPU_INTERNAL_FlushCommands(renderer);
+
+    SDLGPU_INTERNAL_DestroyFauxBackbuffer(renderer);
+    SDLGPU_INTERNAL_CreateFauxBackbuffer(
+        renderer,
+        presentationParameters
+    );
+
+    SDL_GpuUnclaimWindow(
+        renderer->device,
+        renderer->mainWindowHandle
+    );
+
+    if (!SDL_GpuClaimWindow(
+        renderer->device,
+        presentationParameters->deviceWindowHandle,
+        XNAToSDL_PresentMode[presentationParameters->presentationInterval]
+    )) {
+        FNA3D_LogError("Failed to claim window!");
+        return;
+    }
+
+    renderer->mainWindowHandle = presentationParameters->deviceWindowHandle;
+}
+
+static void SDLGPU_ReadBackbuffer(
+    FNA3D_Renderer *driverData,
+	int32_t x,
+	int32_t y,
+	int32_t w,
+	int32_t h,
+	void* data,
+	int32_t dataLength
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+    SDL_GpuTextureRegion region;
+    SDL_GpuBufferImageCopy textureCopyParams;
+    SDL_GpuBufferCopy bufferCopyParams;
+
+    SDLGPU_INTERNAL_FlushCommands(renderer);
+
+    /* Create transfer buffer if necessary */
+
+    if (renderer->fauxBackbufferTransferBuffer == NULL)
+    {
+        renderer->fauxBackbufferTransferBuffer = SDL_GpuCreateTransferBuffer(
+            renderer->device,
+            SDL_GPU_TRANSFERUSAGE_TEXTURE,
+            dataLength
+        );
+
+        renderer->fauxBackbufferTransferBufferSize = dataLength;
+    }
+    else if (renderer->fauxBackbufferTransferBufferSize < dataLength)
+    {
+        SDL_GpuQueueDestroyTransferBuffer(
+            renderer->device,
+            renderer->fauxBackbufferTransferBuffer
+        );
+
+        renderer->fauxBackbufferTransferBuffer = SDL_GpuCreateTransferBuffer(
+            renderer->device,
+            SDL_GPU_TRANSFERUSAGE_TEXTURE,
+            dataLength
+        );
+
+        renderer->fauxBackbufferTransferBufferSize = dataLength;
+    }
+
+    /* Set up texture download */
+    region.textureSlice.texture = renderer->fauxBackbufferColor;
+    region.textureSlice.mipLevel = 0;
+    region.textureSlice.layer = 0;
+    region.x = x;
+    region.y = y;
+    region.z = 0;
+    region.w = w;
+    region.h = h;
+    region.d = 1;
+
+    /* All zeroes, assume tight packing */
+    textureCopyParams.bufferImageHeight = 0;
+    textureCopyParams.bufferOffset = 0;
+    textureCopyParams.bufferStride = 0;
+
+    SDL_GpuDownloadFromTexture(
+        renderer->device,
+        &region,
+        renderer->fauxBackbufferTransferBuffer,
+        &textureCopyParams,
+        SDL_GPU_TRANSFEROPTIONS_CYCLE
+    );
+
+    /* Copy into data pointer */
+
+    bufferCopyParams.srcOffset = 0;
+    bufferCopyParams.dstOffset = 0;
+    bufferCopyParams.size = dataLength;
+
+    SDL_GpuGetTransferData(
+        renderer->device,
+        renderer->fauxBackbufferTransferBuffer,
+        data,
+        &bufferCopyParams
+    );
+}
+
+static void SDLGPU_GetBackbufferSize(
+    FNA3D_Renderer *driverData,
+	int32_t *w,
+	int32_t *h
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+    *w = (int32_t) renderer->fauxBackbufferWidth;
+    *h = (int32_t) renderer->fauxBackbufferHeight;
+}
+
+static FNA3D_SurfaceFormat SDLGPU_GetBackbufferSurfaceFormat(
+	FNA3D_Renderer *driverData
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+    return renderer->fauxBackbufferColorFormat;
+}
+
+static FNA3D_DepthFormat SDLGPU_GetBackbufferDepthFormat(
+    FNA3D_Renderer *driverData
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+    return renderer->fauxBackbufferDepthStencilFormat;
+}
+
+static int32_t SDLGPU_GetBackbufferMultiSampleCount(
+    FNA3D_Renderer *driverData
+) {
+    SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+    return renderer->fauxBackbufferSampleCount;
+}
+
 /* Initialization */
 
 static uint8_t SDLGPU_PrepareWindowAttributes(uint32_t *flags)
@@ -1193,6 +1494,28 @@ static FNA3D_Device* SDLGPU_CreateDevice(
     renderer->device = device;
 
     result->driverData = (FNA3D_Renderer*) renderer;
+
+    if (!SDL_GpuClaimWindow(
+        renderer->device,
+        presentationParameters->deviceWindowHandle,
+        XNAToSDL_PresentMode[presentationParameters->presentationInterval]
+    )) {
+        FNA3D_LogError("Failed to claim window!");
+        return NULL;
+    }
+
+    renderer->mainWindowHandle = presentationParameters->deviceWindowHandle;
+
+    SDLGPU_INTERNAL_CreateFauxBackbuffer(
+        renderer,
+        presentationParameters
+    );
+
+    if (renderer->fauxBackbufferColor == NULL)
+    {
+        FNA3D_LogError("Failed to create faux backbuffer!");
+        return NULL;
+    }
 
     renderer->mojoshaderContext = MOJOSHADER_sdlCreateContext(
         device,
