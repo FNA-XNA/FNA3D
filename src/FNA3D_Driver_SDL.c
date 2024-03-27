@@ -1104,6 +1104,8 @@ typedef struct SDLGPU_Renderer
 	SDL_GpuTexture *nextRenderPassDepthStencilAttachment; /* may be NULL */
     SDL_GpuTextureFormat nextRenderPassDepthStencilFormat;
 
+    uint8_t renderTargetInUse;
+
     uint8_t needNewGraphicsPipeline;
 	int32_t currentVertexBufferBindingsIndex;
 
@@ -1522,6 +1524,8 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
             colorAttachmentInfos[i].clearColor.z = 0;
             colorAttachmentInfos[i].clearColor.w = 0;
         }
+
+        renderer->colorAttachmentFormats[i] = renderer->nextRenderPassColorAttachmentFormats[i];
     }
 
     if (renderer->nextRenderPassDepthStencilAttachment != NULL)
@@ -1558,6 +1562,7 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
         /* We always have to store just in case changing render state breaks the render pass. */
         /* FIXME: perhaps there is a way around this? */
         depthStencilAttachmentInfo.storeOp = SDL_GPU_STOREOP_STORE;
+        depthStencilAttachmentInfo.stencilStoreOp = SDL_GPU_STOREOP_STORE;
 
         depthStencilAttachmentInfo.writeOption =
             depthStencilAttachmentInfo.loadOp == SDL_GPU_LOADOP_LOAD || depthStencilAttachmentInfo.loadOp == SDL_GPU_LOADOP_LOAD ?
@@ -1622,12 +1627,14 @@ static void SDLGPU_SetRenderTargets(
     {
         renderer->nextRenderPassColorAttachments[0] = renderer->fauxBackbufferColor;
         renderer->nextRenderPassColorAttachmentCubeFace[0] = 0;
-        renderer->nextRenderPassColorAttachmentFormats[0] = renderer->fauxBackbufferColorFormat;
+        renderer->nextRenderPassColorAttachmentFormats[0] = XNAToSDL_SurfaceFormat[renderer->fauxBackbufferColorFormat];
+        renderer->nextRenderPassMultisampleCount = XNAToSDL_SampleCount(renderer->fauxBackbufferSampleCount);
         renderer->nextRenderPassColorAttachmentCount = 1;
 
-        renderer->nextRenderPassMultisampleCount = XNAToSDL_SampleCount(renderer->fauxBackbufferSampleCount);
-
         renderer->nextRenderPassDepthStencilAttachment = renderer->fauxBackbufferDepthStencil;
+        renderer->nextRenderPassDepthStencilFormat = XNAToSDL_DepthFormat(renderer->fauxBackbufferDepthStencilFormat);
+
+        renderer->renderTargetInUse = 0;
     }
     else
     {
@@ -1654,6 +1661,7 @@ static void SDLGPU_SetRenderTargets(
         }
 
         renderer->nextRenderPassColorAttachmentCount = numRenderTargets;
+        renderer->renderTargetInUse = 1;
     }
 
     if (depthStencilBuffer != NULL)
@@ -2687,6 +2695,22 @@ static void SDLGPU_INTERNAL_CreateFauxBackbuffer(
     renderer->fauxBackbufferDepthStencilFormat = presentationParameters->depthStencilFormat;
 
     renderer->fauxBackbufferSampleCount = presentationParameters->multiSampleCount;
+
+    /* Set default render pass state if necessary */
+    if (!renderer->renderTargetInUse)
+    {
+        renderer->nextRenderPassColorAttachments[0] = renderer->fauxBackbufferColor;
+        renderer->nextRenderPassColorAttachmentCubeFace[0] = 0;
+        renderer->nextRenderPassColorAttachmentFormats[0] = XNAToSDL_SurfaceFormat[renderer->fauxBackbufferColorFormat];
+        renderer->nextRenderPassColorAttachmentCount = 1;
+        renderer->nextRenderPassMultisampleCount = renderer->fauxBackbufferSampleCount;
+
+        if (presentationParameters->depthStencilFormat != FNA3D_DEPTHFORMAT_NONE)
+        {
+            renderer->nextRenderPassDepthStencilAttachment = renderer->fauxBackbufferDepthStencil;
+            renderer->nextRenderPassDepthStencilFormat = XNAToSDL_DepthFormat(renderer->fauxBackbufferDepthStencilFormat);
+        }
+    }
 }
 
 static void SDLGPU_ResetBackbuffer(
