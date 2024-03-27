@@ -1194,6 +1194,9 @@ typedef struct SDLGPU_Renderer
     MOJOSHADER_effect *currentEffect;
     const MOJOSHADER_effectTechnique *currentTechnique;
     uint32_t currentPass;
+
+    /* Capabilities */
+    uint8_t supportsBaseVertex;
 } SDLGPU_Renderer;
 
 /* Statics */
@@ -2246,6 +2249,11 @@ static void SDLGPU_ApplyVertexBufferBindings(
     FNA3D_VertexBufferBinding *src, *dst;
     int32_t i, bindingsIndex;
     uint32_t hash;
+
+    if (renderer->supportsBaseVertex)
+    {
+        baseVertex = 0;
+    }
 
     /* link/compile shader program if it hasn't been yet */
     if (!MOJOSHADER_sdlCheckProgramStatus(renderer->mojoshaderContext))
@@ -4101,6 +4109,9 @@ static FNA3D_Device* SDLGPU_CreateDevice(
         NULL,
         NULL
     );
+
+    /* FIXME: moltenVK fix */
+    renderer->supportsBaseVertex = 1;
 
     /* Acquire command buffer, we are ready for takeoff */
 
