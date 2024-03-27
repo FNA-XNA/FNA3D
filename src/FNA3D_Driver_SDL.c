@@ -559,7 +559,7 @@ void MOJOSHADER_sdlUnmapUniformBufferMemory(MOJOSHADER_sdlContext *ctx)
     update_uniform_buffer(ctx, ctx->bound_program->pixelShader);
 }
 
-MOJOSHADER_sdlGetUniformBufferSize(MOJOSHADER_sdlShader *shader)
+int32_t MOJOSHADER_sdlGetUniformBufferSize(MOJOSHADER_sdlShader *shader)
 {
     int32_t i;
     int32_t buflen = 0;
@@ -1982,11 +1982,11 @@ static SDL_GpuGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
         &createInfo.fragmentShaderInfo.shaderModule
     );
 
-    createInfo.vertexShaderInfo.entryPointName = "main";
+    createInfo.vertexShaderInfo.entryPointName = MOJOSHADER_sdlGetShaderParseData(vertShader)->mainfn;
     createInfo.vertexShaderInfo.samplerBindingCount = (uint32_t) MOJOSHADER_sdlGetShaderParseData(vertShader)->sampler_count;
     createInfo.vertexShaderInfo.uniformBufferSize = MOJOSHADER_sdlGetUniformBufferSize(vertShader);
 
-    createInfo.fragmentShaderInfo.entryPointName = "main";
+    createInfo.fragmentShaderInfo.entryPointName = MOJOSHADER_sdlGetShaderParseData(fragShader)->mainfn;
     createInfo.fragmentShaderInfo.samplerBindingCount = (uint32_t) MOJOSHADER_sdlGetShaderParseData(fragShader)->sampler_count;
     createInfo.fragmentShaderInfo.uniformBufferSize = MOJOSHADER_sdlGetUniformBufferSize(fragShader);
 
@@ -3480,7 +3480,7 @@ static void SDLGPU_SetVertexBufferData(
     );
 }
 
-static SDLGPU_SetIndexBufferData(
+static void SDLGPU_SetIndexBufferData(
     FNA3D_Renderer *driverData,
 	FNA3D_Buffer *buffer,
 	int32_t offsetInBytes,
@@ -3506,7 +3506,7 @@ static SDLGPU_SetIndexBufferData(
         (uint32_t) offsetInBytes,
         data,
         dataLength,
-        options
+        option
     );
 }
 
@@ -3559,7 +3559,7 @@ static void SDLGPU_INTERNAL_GetBufferData(
         renderer->device,
         buffer,
         renderer->bufferDownloadBuffer,
-        &copyParams,
+        &downloadParams,
         SDL_GPU_TRANSFEROPTIONS_CYCLE
     );
 
