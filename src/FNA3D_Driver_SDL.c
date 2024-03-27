@@ -428,7 +428,7 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
         return NULL;
     }
 
-    createInfo.code     = v_transpiled_source;
+    createInfo.code     = (uint8_t*) v_transpiled_source;
     createInfo.codeSize = v_transpiled_len;
     createInfo.type     = SDL_GPU_SHADERTYPE_VERTEX;
 
@@ -437,7 +437,10 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
         &createInfo
     );
 
-    ctx->free_fn((char*) v_transpiled_source, ctx->malloc_data);
+    if (v_transpiled_source != v_shader_source)
+    {
+        ctx->free_fn((char*) v_transpiled_source, ctx->malloc_data);
+    }
 
     if (result->vertexModule == NULL)
     {
@@ -445,16 +448,19 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
         return NULL;
     }
 
-    createInfo.code     = p_transpiled_source;
+    createInfo.code     = (uint8_t*) p_transpiled_source;
     createInfo.codeSize = p_transpiled_len;
-    createInfo.codeSize = SDL_GPU_SHADERTYPE_FRAGMENT;
+    createInfo.type = SDL_GPU_SHADERTYPE_FRAGMENT;
 
     result->pixelModule = SDL_GpuCreateShaderModule(
         ctx->device,
         &createInfo
     );
 
-    ctx->free_fn((char*) p_transpiled_source, ctx->malloc_data);
+    if (p_transpiled_source != p_shader_source)
+    {
+        ctx->free_fn((char*) p_transpiled_source, ctx->malloc_data);
+    }
 
     if (result->pixelModule == NULL)
     {
