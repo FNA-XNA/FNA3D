@@ -1227,6 +1227,7 @@ static void SDLGPU_ResetCommandBufferState(
     renderer->needFragmentSamplerBind = 1;
 
     renderer->textureUploadBufferOffset = 0;
+    renderer->bufferUploadBufferOffset = 0;
 
     MOJOSHADER_sdlSetCommandBuffer(
         renderer->mojoshaderContext,
