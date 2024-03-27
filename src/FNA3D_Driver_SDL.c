@@ -550,13 +550,7 @@ void MOJOSHADER_sdlMapUniformBufferMemory(
 
 void MOJOSHADER_sdlUnmapUniformBufferMemory(MOJOSHADER_sdlContext *ctx)
 {
-    if (ctx->bound_program == NULL)
-    {
-        return; /* Ignore buffer updates until we have a real program linked */
-    }
-
-    update_uniform_buffer(ctx, ctx->bound_program->vertexShader);
-    update_uniform_buffer(ctx, ctx->bound_program->pixelShader);
+    /* no-op! real work done in sdlUpdateUniformBuffers */
 }
 
 int32_t MOJOSHADER_sdlGetUniformBufferSize(MOJOSHADER_sdlShader *shader)
@@ -571,6 +565,19 @@ int32_t MOJOSHADER_sdlGetUniformBufferSize(MOJOSHADER_sdlShader *shader)
     } // for
 
     return buflen;
+}
+
+void MOJOSHADER_sdlUpdateUniformBuffers(MOJOSHADER_sdlContext *ctx)
+{
+    if (MOJOSHADER_sdlGetUniformBufferSize(ctx->bound_program->vertexShader) > 0)
+    {
+        update_uniform_buffer(ctx, ctx->bound_program->vertexShader);
+    }
+
+    if (MOJOSHADER_sdlGetUniformBufferSize(ctx->bound_program->pixelShader) > 0)
+    {
+        update_uniform_buffer(ctx, ctx->bound_program->pixelShader);
+    }
 }
 
 int MOJOSHADER_sdlGetVertexAttribLocation(
@@ -1276,33 +1283,36 @@ static void SDLGPU_SwapBuffers(
         &height
     );
 
-    srcRegion.textureSlice.texture = renderer->fauxBackbufferColor;
-    srcRegion.textureSlice.layer = 0;
-    srcRegion.textureSlice.mipLevel = 0;
-    srcRegion.x = 0;
-    srcRegion.y = 0;
-    srcRegion.z = 0;
-    srcRegion.w = width;
-    srcRegion.h = height;
-    srcRegion.d = 1;
+    if (swapchainTexture != NULL)
+    {
+        srcRegion.textureSlice.texture = renderer->fauxBackbufferColor;
+        srcRegion.textureSlice.layer = 0;
+        srcRegion.textureSlice.mipLevel = 0;
+        srcRegion.x = 0;
+        srcRegion.y = 0;
+        srcRegion.z = 0;
+        srcRegion.w = width;
+        srcRegion.h = height;
+        srcRegion.d = 1;
 
-    dstRegion.textureSlice.texture = swapchainTexture;
-    dstRegion.textureSlice.layer = 0;
-    dstRegion.textureSlice.mipLevel = 0;
-    dstRegion.x = 0;
-    dstRegion.y = 0;
-    dstRegion.z = 0;
-    srcRegion.w = width;
-    srcRegion.h = height;
-    srcRegion.d = 1;
+        dstRegion.textureSlice.texture = swapchainTexture;
+        dstRegion.textureSlice.layer = 0;
+        dstRegion.textureSlice.mipLevel = 0;
+        dstRegion.x = 0;
+        dstRegion.y = 0;
+        dstRegion.z = 0;
+        srcRegion.w = width;
+        srcRegion.h = height;
+        srcRegion.d = 1;
 
-    SDL_GpuCopyTextureToTexture(
-        renderer->device,
-        renderer->commandBuffer,
-        &srcRegion,
-        &dstRegion,
-        SDL_GPU_TEXTUREWRITEOPTIONS_SAFE
-    );
+        SDL_GpuCopyTextureToTexture(
+            renderer->device,
+            renderer->commandBuffer,
+            &srcRegion,
+            &dstRegion,
+            SDL_GPU_TEXTUREWRITEOPTIONS_SAFE
+        );
+    }
 
     SDLGPU_INTERNAL_FlushCommands(renderer);
 }
@@ -1476,6 +1486,10 @@ static void SDLGPU_INTERNAL_EndPass(
             renderer->device,
             renderer->commandBuffer
         );
+
+        renderer->currentGraphicsPipeline = NULL;
+        renderer->needNewGraphicsPipeline = 1;
+        renderer->renderPassInProgress = 0;
     }
 }
 
@@ -1596,6 +1610,8 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
     renderer->shouldClearStencilOnBeginPass = 0;
 
     renderer->needNewGraphicsPipeline = 1;
+
+    renderer->renderPassInProgress = 1;
 }
 
 static void SDLGPU_SetRenderTargets(
@@ -2046,6 +2062,8 @@ static void SDLGPU_INTERNAL_BindGraphicsPipeline(
 
         renderer->currentGraphicsPipeline = pipeline;
     }
+
+    MOJOSHADER_sdlUpdateUniformBuffers(renderer->mojoshaderContext);
 
     renderer->currentVertexShader = vertShader;
     renderer->currentFragmentShader = fragShader;
