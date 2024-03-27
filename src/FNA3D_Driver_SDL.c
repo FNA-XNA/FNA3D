@@ -1094,6 +1094,8 @@ typedef struct SDLGPU_Renderer
     uint8_t renderPassInProgress;
     uint8_t needNewRenderPass;
 
+    uint8_t copyPassInProgress;
+
     uint8_t shouldClearColorOnBeginPass;
 	uint8_t shouldClearDepthOnBeginPass;
 	uint8_t shouldClearStencilOnBeginPass;
@@ -1232,9 +1234,37 @@ static void SDLGPU_ResetCommandBufferState(
     );
 }
 
+static void SDLGPU_INTERNAL_EndPass(
+    SDLGPU_Renderer *renderer
+) {
+    if (renderer->renderPassInProgress)
+    {
+        SDL_GpuEndRenderPass(
+            renderer->device,
+            renderer->commandBuffer
+        );
+    }
+
+    if (renderer->copyPassInProgress)
+    {
+        SDL_GpuEndCopyPass(
+            renderer->device,
+            renderer->commandBuffer
+        );
+    }
+
+    renderer->renderPassInProgress = 0;
+    renderer->copyPassInProgress = 0;
+    renderer->needNewRenderPass = 1;
+    renderer->currentGraphicsPipeline = NULL;
+    renderer->needNewGraphicsPipeline = 1;
+}
+
 static void SDLGPU_INTERNAL_FlushCommandsAndStall(
     SDLGPU_Renderer *renderer
 ) {
+    SDLGPU_INTERNAL_EndPass(renderer);
+
     SDL_GpuFence *fence = SDL_GpuSubmitAndAcquireFence(
         renderer->device,
         renderer->commandBuffer
@@ -1258,6 +1288,7 @@ static void SDLGPU_INTERNAL_FlushCommandsAndStall(
 static void SDLGPU_INTERNAL_FlushCommands(
     SDLGPU_Renderer *renderer
 ) {
+    SDLGPU_INTERNAL_EndPass(renderer);
     SDL_GpuSubmit(renderer->device, renderer->commandBuffer);
     SDLGPU_ResetCommandBufferState(renderer);
 }
@@ -1274,6 +1305,8 @@ static void SDLGPU_SwapBuffers(
     SDL_GpuTextureRegion srcRegion;
     SDL_GpuTextureRegion dstRegion;
     uint32_t width, height;
+
+    SDLGPU_INTERNAL_EndPass(renderer);
 
     swapchainTexture = SDL_GpuAcquireSwapchainTexture(
         renderer->device,
@@ -1475,22 +1508,6 @@ static void SDLGPU_Clear(
         clearDepth,
         clearStencil
     );
-}
-
-static void SDLGPU_INTERNAL_EndPass(
-    SDLGPU_Renderer *renderer
-) {
-    if (renderer->renderPassInProgress)
-    {
-        SDL_GpuEndRenderPass(
-            renderer->device,
-            renderer->commandBuffer
-        );
-
-        renderer->currentGraphicsPipeline = NULL;
-        renderer->needNewGraphicsPipeline = 1;
-        renderer->renderPassInProgress = 0;
-    }
 }
 
 static void SDLGPU_INTERNAL_BeginRenderPass(
@@ -3049,6 +3066,22 @@ static void SDLGPU_AddDisposeRenderbuffer(
     SDL_free(renderbufferHandle);
 }
 
+static void SDLGPU_INTERNAL_BeginCopyPass(
+    SDLGPU_Renderer *renderer
+) {
+    if (!renderer->copyPassInProgress)
+    {
+        SDLGPU_INTERNAL_EndPass(renderer);
+
+        SDL_GpuBeginCopyPass(
+            renderer->device,
+            renderer->commandBuffer
+        );
+
+        renderer->copyPassInProgress = 1;
+    }
+}
+
 static void SDLGPU_INTERNAL_SetTextureData(
     SDLGPU_Renderer *renderer,
     SDL_GpuTexture *texture,
@@ -3066,6 +3099,8 @@ static void SDLGPU_INTERNAL_SetTextureData(
     SDL_GpuBufferCopy copyParams;
     SDL_GpuTextureRegion textureRegion;
     SDL_GpuBufferImageCopy textureCopyParams;
+
+    SDLGPU_INTERNAL_BeginCopyPass(renderer);
 
      /* Recreate transfer buffer if necessary */
     if (renderer->textureUploadBufferOffset + dataLength >= renderer->textureUploadBufferSize)
@@ -3420,6 +3455,8 @@ static void SDLGPU_INTERNAL_SetBufferData(
 ) {
     SDL_GpuBufferCopy transferCopyParams;
     SDL_GpuBufferCopy uploadParams;
+
+    SDLGPU_INTERNAL_BeginCopyPass(renderer);
 
     /* Recreate transfer buffer if necessary */
     if (renderer->bufferUploadBufferOffset + dataLength >= renderer->bufferUploadBufferSize)
