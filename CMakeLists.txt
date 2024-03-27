@@ -44,6 +44,9 @@ add_definitions(
 	-DFNA3D_DRIVER_VULKAN
 	-DFNA3D_DRIVER_OPENGL
 )
+if(BUILD_SDL3)
+	add_definitions(-DFNA3D_DRIVER_SDL)
+endif()
 add_definitions(
 	-DMOJOSHADER_NO_VERSION_INCLUDE
 	-DMOJOSHADER_USE_SDL_STDLIB
@@ -101,6 +104,7 @@ add_library(FNA3D
 	src/FNA3D.c
 	src/FNA3D_Driver_D3D11.c
 	src/FNA3D_Driver_OpenGL.c
+	src/FNA3D_Driver_SDL.c
 	src/FNA3D_Driver_Vulkan.c
 	src/FNA3D_Image.c
 	src/FNA3D_CommandBuffer.c
@@ -197,6 +201,19 @@ if (BUILD_SDL3)
 			target_include_directories(FNA3D PUBLIC "$<BUILD_INTERFACE:${SDL3_INCLUDE_DIRS}>")
 			target_include_directories(mojoshader PUBLIC "$<BUILD_INTERFACE:${SDL3_INCLUDE_DIRS}>")
 			target_link_libraries(FNA3D PUBLIC ${SDL3_LIBRARIES})
+		endif()
+	endif()
+
+	if (DEFINED SDL3_SHADER_INCLUDE_DIRS AND DEFINED SDL3_SHADER_LIBRARIES)
+		target_include_directories(FNA3D PUBLIC "$<BUILD_INTERFACE:${SDL3_SHADER_INCLUDE_DIRS}>")
+		target_link_libraries(FNA3D PUBLIC ${SDL3_SHADER_LIBRARIES})
+	else()
+		find_package(SDL3_shader CONFIG)
+		if (TARGET SDL3_shader::SDL3_shader)
+			message(STATUS "using TARGET SDL3_shader::SDL3_shader")
+			target_link_libraries(FNA3D PUBLIC SDL3_shader::SDL3_shader)
+		else()
+			message(FATAL_ERROR "variables not set and no TARGET SDL3_shader::SDL3_shader")
 		endif()
 	endif()
 else()
