@@ -410,7 +410,7 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
 
     if (v_transpiled_source == NULL)
     {
-        set_error("Failed to transpile vertex shader from SPIR-V!");
+        set_error(SHD_GetError());
         return NULL;
     }
 
@@ -423,7 +423,7 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
 
     if (p_transpiled_source == NULL)
     {
-        set_error("Failed to transpile pixel shader from SPIR-V!");
+        set_error(SHD_GetError());
         ctx->free_fn((char*) v_transpiled_source, ctx->malloc_data);
         return NULL;
     }
@@ -627,28 +627,7 @@ void MOJOSHADER_sdlDeleteShader(
 uint8_t MOJOSHADER_sdlCheckProgramStatus(
     MOJOSHADER_sdlContext *ctx
 ) {
-    MOJOSHADER_sdlShader *vshader = ctx->vertex_shader;
-    MOJOSHADER_sdlShader *pshader = ctx->pixel_shader;
-
-    if (ctx->linker_cache == NULL)
-    {
-        ctx->linker_cache = hash_create(NULL, hash_shaders, match_shaders,
-                                        nuke_shaders, 0, ctx->malloc_fn,
-                                        ctx->free_fn, ctx->malloc_data);
-
-        if (ctx->linker_cache == NULL)
-        {
-            out_of_memory();
-            return 0;
-        }
-    }
-
-    BoundShaders shaders;
-    shaders.vertex = vshader;
-    shaders.fragment = pshader;
-
-    const void *val = NULL;
-    return hash_find(ctx->linker_cache, &shaders, &val);
+    return ctx->bound_program != NULL;
 }
 
 void MOJOSHADER_sdlShaderAddRef(MOJOSHADER_sdlShader *shader)
@@ -1123,8 +1102,8 @@ typedef struct SDLGPU_Renderer
 	int32_t currentVertexBufferBindingsIndex;
 
     SDL_GpuGraphicsPipeline *currentGraphicsPipeline;
-    SDL_GpuShaderModule *currentVertexShader;
-    SDL_GpuShaderModule *currentFragmentShader;
+    MOJOSHADER_sdlShader *currentVertexShader;
+    MOJOSHADER_sdlShader *currentFragmentShader;
 
     PackedVertexBufferBindingsArray vertexBufferBindingsCache;
 
@@ -1221,6 +1200,8 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 static void SDLGPU_ResetCommandBufferState(
     SDLGPU_Renderer *renderer
 ) {
+    renderer->commandBuffer = SDL_GpuAcquireCommandBuffer(renderer->device);
+
     /* Reset state */
     renderer->needNewRenderPass = 1;
     renderer->needNewGraphicsPipeline = 1;
@@ -2023,18 +2004,18 @@ static void SDLGPU_INTERNAL_BindGraphicsPipeline(
     SDLGPU_Renderer *renderer
 ) {
     SDL_GpuGraphicsPipeline *pipeline;
-    SDL_GpuShaderModule *vertShaderModule, *fragShaderModule;
+    MOJOSHADER_sdlShader *vertShader, *fragShader;
 
-    MOJOSHADER_sdlGetShaderModules(
+    MOJOSHADER_sdlGetBoundShaders(
         renderer->mojoshaderContext,
-        &vertShaderModule,
-        &fragShaderModule
+        &vertShader,
+        &fragShader
     );
 
     if (
         !renderer->needNewGraphicsPipeline &&
-        renderer->currentVertexShader == vertShaderModule &&
-        renderer->currentFragmentShader == fragShaderModule
+        renderer->currentVertexShader == vertShader &&
+        renderer->currentFragmentShader == fragShader
     ) {
         return;
     }
@@ -2052,8 +2033,8 @@ static void SDLGPU_INTERNAL_BindGraphicsPipeline(
         renderer->currentGraphicsPipeline = pipeline;
     }
 
-    renderer->currentVertexShader = vertShaderModule;
-    renderer->currentFragmentShader = fragShaderModule;
+    renderer->currentVertexShader = vertShader;
+    renderer->currentFragmentShader = fragShader;
 
     /* Reset deferred binding state */
     renderer->needNewGraphicsPipeline = 0;
@@ -2219,7 +2200,11 @@ static void SDLGPU_ApplyVertexBufferBindings(
     /* link/compile shader program if it hasn't been yet */
     if (!MOJOSHADER_sdlCheckProgramStatus(renderer->mojoshaderContext))
     {
-        MOJOSHADER_sdlLinkProgram(renderer->mojoshaderContext);
+        if (!MOJOSHADER_sdlLinkProgram(renderer->mojoshaderContext))
+        {
+		    FNA3D_LogError(MOJOSHADER_sdlGetError(renderer->mojoshaderContext));
+            return;
+        }
     }
 
 	/* Check VertexBufferBindings */
@@ -3030,7 +3015,6 @@ static void SDLGPU_INTERNAL_SetTextureData(
     void* data,
     uint32_t dataLength
 ) {
-    SDLGPU_TextureHandle *textureHandle = (SDLGPU_TextureHandle*) texture;
     SDL_GpuBufferCopy copyParams;
     SDL_GpuTextureRegion textureRegion;
     SDL_GpuBufferImageCopy textureCopyParams;
@@ -3064,7 +3048,7 @@ static void SDLGPU_INTERNAL_SetTextureData(
         renderer->textureUploadBufferOffset == 0 ? SDL_GPU_TRANSFEROPTIONS_CYCLE : SDL_GPU_TRANSFEROPTIONS_UNSAFE
     );
 
-    textureRegion.textureSlice.texture = textureHandle->texture;
+    textureRegion.textureSlice.texture = texture;
     textureRegion.textureSlice.layer = layer;
     textureRegion.textureSlice.mipLevel = mipLevel;
     textureRegion.x = x;
@@ -3925,7 +3909,7 @@ static FNA3D_Texture* SDLGPU_CreateSysTexture(
 
 static uint8_t SDLGPU_PrepareWindowAttributes(uint32_t *flags)
 {
-    SDL_GpuBackend selectedBackend =
+    selectedBackend =
         SDL_GpuSelectBackend(
             preferredBackends,
             2,
@@ -3948,6 +3932,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
     SDLGPU_Renderer *renderer;
     SDL_GpuDevice *device;
     FNA3D_Device *result;
+    int32_t i;
 
     requestedPresentationParameters = *presentationParameters;
     device = SDL_GpuCreateDevice(debugMode);
@@ -4010,6 +3995,18 @@ static FNA3D_Device* SDLGPU_CreateDevice(
         SDL_GPU_TRANSFERUSAGE_BUFFER,
         renderer->bufferUploadBufferSize
     );
+
+	/*
+	 * Initialize renderer members not covered by SDL_memset('\0')
+	 */
+
+    renderer->multisampleMask = 0xFFFFFFFF;
+
+	for (i = 0; i < MAX_BOUND_VERTEX_BUFFERS; i += 1)
+	{
+		renderer->vertexBindings[i].vertexDeclaration.elements =
+			renderer->vertexElements[i];
+	}
 
     renderer->mojoshaderContext = MOJOSHADER_sdlCreateContext(
         device,
