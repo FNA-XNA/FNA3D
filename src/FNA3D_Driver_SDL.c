@@ -647,6 +647,7 @@ typedef struct SDLGPU_Renderer
 
 	ComputePipelineHashArray computePipelineHashArray;
 
+	uint8_t computePassInProgress;
 	SDL_GpuComputeShaderInfo extensionComputeShaderInfo;
 	SDL_GpuComputePipeline *currentComputePipeline;
 
@@ -709,6 +710,21 @@ static void SDLGPU_INTERNAL_EndRenderPass(
 	renderer->needNewGraphicsPipeline = 1;
 }
 
+static void SDLGPU_INTERNAL_EndComputePass(
+	SDLGPU_Renderer *renderer
+) {
+	if (renderer->computePassInProgress)
+	{
+		SDL_GpuEndComputePass(
+			renderer->device,
+			renderer->renderCommandBuffer
+		);
+	}
+
+	renderer->computePassInProgress = 0;
+	renderer->currentComputePipeline = NULL;
+}
+
 static SDL_GpuFence* SDLGPU_INTERNAL_FlushCommandsAndAcquireFence(
 	SDLGPU_Renderer *renderer
 ) {
@@ -716,6 +732,7 @@ static SDL_GpuFence* SDLGPU_INTERNAL_FlushCommandsAndAcquireFence(
 
 	SDLGPU_INTERNAL_EndCopyPass(renderer);
 	SDLGPU_INTERNAL_EndRenderPass(renderer);
+	SDLGPU_INTERNAL_EndComputePass(renderer);
 
 	SDL_GpuSubmit(renderer->device, renderer->uploadCommandBuffer);
 
@@ -734,8 +751,11 @@ static void SDLGPU_INTERNAL_FlushCommands(
 ) {
 	SDLGPU_INTERNAL_EndCopyPass(renderer);
 	SDLGPU_INTERNAL_EndRenderPass(renderer);
+	SDLGPU_INTERNAL_EndComputePass(renderer);
+
 	SDL_GpuSubmit(renderer->device, renderer->uploadCommandBuffer);
 	SDL_GpuSubmit(renderer->device, renderer->renderCommandBuffer);
+
 	SDLGPU_ResetCommandBufferState(renderer);
 }
 
@@ -1014,6 +1034,7 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 		return;
 	}
 
+	SDLGPU_INTERNAL_EndComputePass(renderer);
 	SDLGPU_INTERNAL_EndRenderPass(renderer);
 
 	/* Reset attachment formats to a reasonable default */
@@ -3790,6 +3811,8 @@ static void SDLGPU_BindComputeShaderEXT(
 		renderer->device,
 		renderer->renderCommandBuffer
 	);
+
+	renderer->computePassInProgress = 1;
 }
 
 static void SDLGPU_BindComputeBuffersEXT(
