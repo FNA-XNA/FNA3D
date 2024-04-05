@@ -1230,16 +1230,17 @@ static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
 		bindings[i].binding = i;
 		bindings[i].stride = vertexDeclaration.vertexStride;
 
-		/* TODO: divisors? */
 		if (renderer->vertexBindings[i].instanceFrequency > 0)
 		{
 			bindings[i].inputRate =
 				SDL_GPU_VERTEXINPUTRATE_INSTANCE;
+			bindings[i].stepRate = renderer->vertexBindings[i].instanceFrequency;
 		}
 		else
 		{
 			bindings[i].inputRate =
 				SDL_GPU_VERTEXINPUTRATE_VERTEX;
+			bindings[i].stepRate = 0; /* should be ignored */
 		}
 	}
 
