@@ -166,7 +166,8 @@ typedef enum FNA3D_CubeMapFace
 typedef enum FNA3D_BufferUsage
 {
 	FNA3D_BUFFERUSAGE_NONE,
-	FNA3D_BUFFERUSAGE_WRITEONLY
+	FNA3D_BUFFERUSAGE_WRITEONLY,
+	FNA3D_BUFFERUSAGE_COMPUTE_EXT /* SDL shader extension only */
 } FNA3D_BufferUsage;
 
 typedef enum FNA3D_SetDataOptions
@@ -301,6 +302,14 @@ typedef enum FNA3D_VertexElementUsage
 	FNA3D_VERTEXELEMENTUSAGE_SAMPLE,
 	FNA3D_VERTEXELEMENTUSAGE_TESSELATEFACTOR
 } FNA3D_VertexElementUsage;
+
+typedef enum FNA3D_TextureUsageFlagBits
+{
+	FNA3D_TEXTUREUSAGE_RENDERTARGET_BIT           = 0x00000001,
+	FNA3D_TEXTUREUSAGE_COMPUTE_BIT                = 0x00000002,
+} FNA3D_TextureUsageFlagBits;
+
+typedef uint8_t FNA3D_TextureUsageFlags;
 
 /* Structures, should match XNA 4.0 */
 
@@ -888,7 +897,8 @@ FNA3DAPI int32_t FNA3D_GetBackbufferMultiSampleCount(FNA3D_Device *device);
  * width:		The width of the texture image.
  * height:		The height of the texture image.
  * levelCount:		The number of mipmap levels to allocate.
- * isRenderTarget:	Set this to 1 when using this with SetRenderTargets.
+ * usageFlags:	Must have RENDERTARGET_BIT when using with SetRenderTargets.
+ * 				Must have COMPUTE_BIT when using with BindComputeTexturesEXT.
  *
  * Returns an allocated FNA3D_Texture* object. Note that the contents of the
  * texture are undefined, so you must call SetData at least once before drawing!
@@ -899,7 +909,7 @@ FNA3DAPI FNA3D_Texture* FNA3D_CreateTexture2D(
 	int32_t width,
 	int32_t height,
 	int32_t levelCount,
-	uint8_t isRenderTarget
+	FNA3D_TextureUsageFlags usageFlags
 );
 
 /* Creates a 3D texture to be applied to VerifySampler.
@@ -927,7 +937,8 @@ FNA3DAPI FNA3D_Texture* FNA3D_CreateTexture3D(
  * format:		The pixel format of the texture data.
  * size:		The length of a single edge of the texture cube.
  * levelCount:		The number of mipmap levels to allocate.
- * isRenderTarget:	Set this to 1 when using this with SetRenderTargets.
+ * usageFlags:	Must have RENDERTARGET_BIT when using with SetRenderTargets.
+ * 				Must have COMPUTE_BIT when using with BindComputeTexturesEXT.
  *
  * Returns an allocated FNA3D_Texture* object. Note that the contents of the
  * texture are undefined, so you must call SetData at least once before drawing!
@@ -937,7 +948,7 @@ FNA3DAPI FNA3D_Texture* FNA3D_CreateTextureCube(
 	FNA3D_SurfaceFormat format,
 	int32_t size,
 	int32_t levelCount,
-	uint8_t isRenderTarget
+	FNA3D_TextureUsageFlags usageFlags
 );
 
 /* Sends a texture to be destroyed by the renderer. Note that we call it
@@ -1537,6 +1548,112 @@ FNA3DAPI void FNA3D_SetStringMarker(FNA3D_Device *device, const char *text);
  * text: The string constant to mark as the name of the texture.
  */
 FNA3DAPI void FNA3D_SetTextureName(FNA3D_Device *device, FNA3D_Texture *texture, const char *text);
+
+/* Shader Extension
+ *
+ * These functions are ONLY valid with the SDL backend.
+ */
+
+typedef struct SDL_GpuGraphicsShaderInfo SDL_GpuGraphicsShaderInfo;
+typedef struct SDL_GpuComputeShaderInfo SDL_GpuComputeShaderInfo;
+typedef struct SDL_GpuComputeBufferBinding SDL_GpuComputeBufferBinding;
+typedef struct SDL_GpuComputeTextureBinding SDL_GpuComputeTextureBinding;
+
+/* Binds a vertex-fragment shader pair to be used with draw calls.
+ * If you call ApplyEffect, the shaders will be treated as unbound
+ * and it will become invalid to call any of the graphics shader EXT functions.
+ *
+ * vertShaderInfo: A struct containing the vertex shader module to bind and relevant metadata.
+ * fragShaderInfo: A struct containing the fragment shader module to bind and relevant metadata.
+ */
+FNA3DAPI void FNA3D_BindGraphicsShadersEXT(
+	FNA3D_Device *device,
+	SDL_GpuGraphicsShaderInfo *vertShaderInfo,
+	SDL_GpuGraphicsShaderInfo *fragShaderInfo
+);
+
+/* Pushes vertex uniform data to be used with subsequent draw calls.
+ * You may only call this after FNA3D_BindGraphicsShadersEXT has been called.
+ *
+ * data: client data to write into the uniform buffer
+ * dataLengthInBytes: the length of the client data to write
+ */
+FNA3DAPI void FNA3D_PushVertexShaderUniformsEXT(
+	FNA3D_Device *device,
+	void *data,
+	uint32_t dataLengthInBytes
+);
+
+/* Pushes fragment uniform data to be used with subsequent draw calls.
+ * You may only call this after FNA3D_BindGraphicsShadersEXT has been called.
+ *
+ * data: client data to write into the uniform buffer
+ * dataLengthInBytes: the length of the client data to write
+ */
+FNA3DAPI void FNA3D_PushFragmentShaderUniformsEXT(
+	FNA3D_Device *device,
+	void *data,
+	uint32_t dataLengthInBytes
+);
+
+/* Binds a compute shader to be used with compute dispatch calls.
+ * Note that this will break the render pass and unbind the graphics shaders,
+ * so interleaving this with draw calls will have bad performance.
+ *
+ * computeShaderInfo: A struct containing the compute shader module to bind and relevant metadata.
+ */
+FNA3DAPI void FNA3D_BindComputeShaderEXT(
+	FNA3D_Device *device,
+	SDL_GpuComputeShaderInfo *computeShaderInfo
+);
+
+/* Binds buffers for use with the bound compute pipeline.
+ * You may only call this function after FNA3D_BindComputeShaderEXT has been called.
+ *
+ * pBindings: An array of structs containing buffer and cycle option pairs.
+ *            Must be at least as long as the buffer bindings specified in the compute shader.
+ */
+FNA3DAPI void FNA3D_BindComputeBuffersEXT(
+	FNA3D_Device *device,
+	SDL_GpuComputeBufferBinding *pBindings
+);
+
+/* Binds textures for use with the bound compute pipeline.
+ * You may only call this function after FNA3D_BindComputeShaderEXT has been called.
+ *
+ * pBindings: An array of structs containing texture and cycle option pairs.
+ *            Must be at least as long as the texture bindings specified in the compute shader.
+ */
+FNA3DAPI void FNA3D_BindComputeTexturesEXT(
+	FNA3D_Device *device,
+	SDL_GpuComputeTextureBinding *pBindings
+);
+
+/* Pushes compute uniform data to be used with subsequent compute dispatches.
+ * You may only call this after FNA3D_BindComputeShaderEXT has been called.
+ *
+ * data: client data to write into the uniform buffer
+ * dataLengthInBytes: the length of the client data to write
+ */
+FNA3DAPI void FNA3D_PushComputeShaderUniformsEXT(
+	FNA3D_Device *device,
+	void *data,
+	uint32_t dataLengthInBytes
+);
+
+/* Dispatches compute work.
+ * You may only call this after FNA3D_BindComputeShaderEXT has been called.
+ *
+ * groupCountX: number of local workgroups to dispatch in the X dimension
+ * groupCountY: number of local workgroups to dispatch in the Y dimension
+ * groupCountZ: number of local workgroups to dispatch in the Z dimension
+ */
+FNA3DAPI void FNA3D_DispatchComputeEXT(
+	FNA3D_Device *device,
+	uint32_t groupCountX,
+	uint32_t groupCountY,
+	uint32_t groupCountZ
+);
 
 #ifdef __cplusplus
 }

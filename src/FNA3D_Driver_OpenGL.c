@@ -3584,7 +3584,7 @@ static FNA3D_Texture* OPENGL_CreateTexture2D(
 	int32_t width,
 	int32_t height,
 	int32_t levelCount,
-	uint8_t isRenderTarget
+	FNA3D_TextureUsageFlags usageFlags
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLTexture *result;
@@ -3592,6 +3592,7 @@ static FNA3D_Texture* OPENGL_CreateTexture2D(
 	int32_t blockSize, levelWidth, levelHeight, i;
 	uint32_t requiredBytes;
 	FNA3D_Command cmd;
+	uint8_t isRenderTarget = usageFlags & FNA3D_TEXTUREUSAGE_RENDERTARGET_BIT;
 
 	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
@@ -3724,7 +3725,7 @@ static FNA3D_Texture* OPENGL_CreateTextureCube(
 	FNA3D_SurfaceFormat format,
 	int32_t size,
 	int32_t levelCount,
-	uint8_t isRenderTarget
+	FNA3D_TextureUsageFlags usageFlags
 ) {
 	OpenGLRenderer *renderer = (OpenGLRenderer*) driverData;
 	OpenGLTexture *result;
@@ -3732,6 +3733,7 @@ static FNA3D_Texture* OPENGL_CreateTextureCube(
 	int32_t blockSize, levelSize, i, l;
 	uint32_t requiredBytes;
 	FNA3D_Command cmd;
+	uint8_t isRenderTarget = usageFlags & FNA3D_TEXTUREUSAGE_RENDERTARGET_BIT;
 
 	if (renderer->threadID != SDL_GetCurrentThreadID())
 	{
@@ -5457,6 +5459,72 @@ static FNA3D_Texture* OPENGL_CreateSysTexture(
 	result->external = 1;
 
 	return (FNA3D_Texture*) result;
+}
+
+/* Shader Extension Stub */
+
+#define NOT_SUPPORTED SDL_assert(0 && "Not supported!");
+
+static void OPENGL_BindGraphicsShadersEXT(
+	FNA3D_Renderer *driverData,
+	SDL_GpuGraphicsShaderInfo *vertShaderInfo,
+	SDL_GpuGraphicsShaderInfo *fragShaderInfo
+) {
+	NOT_SUPPORTED
+}
+
+static void OPENGL_PushVertexShaderUniformsEXT(
+	FNA3D_Renderer *driverData,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	NOT_SUPPORTED
+}
+
+static void OPENGL_PushFragmentShaderUniformsEXT(
+	FNA3D_Renderer *driverData,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	NOT_SUPPORTED
+}
+
+static void OPENGL_BindComputeShaderEXT(
+	FNA3D_Renderer *driverData,
+	SDL_GpuComputeShaderInfo *computeShaderInfo
+) {
+	NOT_SUPPORTED
+}
+
+static void OPENGL_BindComputeBuffersEXT(
+	FNA3D_Renderer *driverData,
+	SDL_GpuComputeBufferBinding *pBindings
+) {
+	NOT_SUPPORTED
+}
+
+static void OPENGL_BindComputeTexturesEXT(
+	FNA3D_Renderer *driverData,
+	SDL_GpuComputeTextureBinding *pBindings
+) {
+	NOT_SUPPORTED
+}
+
+static void OPENGL_PushComputeShaderUniformsEXT(
+	FNA3D_Renderer *driverData,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	NOT_SUPPORTED
+}
+
+static void OPENGL_DispatchComputeEXT(
+	FNA3D_Renderer *driverData,
+	uint32_t groupCountX,
+	uint32_t groupCountY,
+	uint32_t groupCountZ
+) {
+	NOT_SUPPORTED
 }
 
 /* Load GL Entry Points */

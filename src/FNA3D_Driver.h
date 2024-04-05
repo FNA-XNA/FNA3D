@@ -455,7 +455,7 @@ struct FNA3D_Device
 		int32_t width,
 		int32_t height,
 		int32_t levelCount,
-		uint8_t isRenderTarget
+		FNA3D_TextureUsageFlags usageFlags
 	);
 	FNA3D_Texture* (*CreateTexture3D)(
 		FNA3D_Renderer *driverData,
@@ -470,7 +470,7 @@ struct FNA3D_Device
 		FNA3D_SurfaceFormat format,
 		int32_t size,
 		int32_t levelCount,
-		uint8_t isRenderTarget
+		FNA3D_TextureUsageFlags usageFlags
 	);
 	void (*AddDisposeTexture)(
 		FNA3D_Renderer *driverData,
@@ -732,6 +732,54 @@ struct FNA3D_Device
 		FNA3D_SysTextureEXT *externalTextureInfo
 	);
 
+	/* Shader Extension */
+
+	void (*BindGraphicsShadersEXT)(
+		FNA3D_Renderer *driverData,
+		SDL_GpuGraphicsShaderInfo *vertShaderInfo,
+		SDL_GpuGraphicsShaderInfo *fragShaderInfo
+	);
+
+	void (*PushVertexShaderUniformsEXT)(
+		FNA3D_Renderer *driverData,
+		void *data,
+		uint32_t dataLengthInBytes
+	);
+
+	void (*PushFragmentShaderUniformsEXT)(
+		FNA3D_Renderer *driverData,
+		void *data,
+		uint32_t dataLengthInBytes
+	);
+
+	void (*BindComputeShaderEXT)(
+		FNA3D_Renderer *driverData,
+		SDL_GpuComputeShaderInfo *computeShaderInfo
+	);
+
+	void (*BindComputeBuffersEXT)(
+		FNA3D_Renderer *driverData,
+		SDL_GpuComputeBufferBinding *pBindings
+	);
+
+	void (*BindComputeTexturesEXT)(
+		FNA3D_Renderer *driverData,
+		SDL_GpuComputeTextureBinding *pBindings
+	);
+
+	void (*PushComputeShaderUniformsEXT)(
+		FNA3D_Renderer *driverData,
+		void *data,
+		uint32_t dataLengthInBytes
+	);
+
+	void (*DispatchComputeEXT)(
+		FNA3D_Renderer *driverData,
+		uint32_t groupCountX,
+		uint32_t groupCountY,
+		uint32_t groupCountZ
+	);
+
 	/* Opaque pointer for the Driver */
 	FNA3D_Renderer *driverData;
 };
@@ -813,7 +861,15 @@ struct FNA3D_Device
 	ASSIGN_DRIVER_FUNC(SetStringMarker, name) \
 	ASSIGN_DRIVER_FUNC(SetTextureName, name) \
 	ASSIGN_DRIVER_FUNC(GetSysRenderer, name) \
-	ASSIGN_DRIVER_FUNC(CreateSysTexture, name)
+	ASSIGN_DRIVER_FUNC(CreateSysTexture, name) \
+	ASSIGN_DRIVER_FUNC(BindGraphicsShadersEXT, name) \
+	ASSIGN_DRIVER_FUNC(PushVertexShaderUniformsEXT, name) \
+	ASSIGN_DRIVER_FUNC(PushFragmentShaderUniformsEXT, name) \
+	ASSIGN_DRIVER_FUNC(BindComputeShaderEXT, name) \
+	ASSIGN_DRIVER_FUNC(BindComputeTexturesEXT, name) \
+	ASSIGN_DRIVER_FUNC(BindComputeBuffersEXT, name) \
+	ASSIGN_DRIVER_FUNC(PushComputeShaderUniformsEXT, name) \
+	ASSIGN_DRIVER_FUNC(DispatchComputeEXT, name)
 
 typedef struct FNA3D_Driver
 {

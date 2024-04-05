@@ -3325,7 +3325,7 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 	int32_t width,
 	int32_t height,
 	int32_t levelCount,
-	uint8_t isRenderTarget
+	FNA3D_TextureUsageFlags usageFlags
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *result;
@@ -3333,6 +3333,7 @@ static FNA3D_Texture* D3D11_CreateTexture2D(
 	D3D11_TEXTURE2D_DESC desc;
 	D3D11_RENDER_TARGET_VIEW_DESC rtViewDesc;
 	HRESULT res;
+	uint8_t isRenderTarget = usageFlags & FNA3D_TEXTUREUSAGE_RENDERTARGET_BIT;
 
 	/* Initialize descriptor */
 	desc.Width = width;
@@ -3462,7 +3463,7 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 	FNA3D_SurfaceFormat format,
 	int32_t size,
 	int32_t levelCount,
-	uint8_t isRenderTarget
+	FNA3D_TextureUsageFlags usageFlags
 ) {
 	D3D11Renderer *renderer = (D3D11Renderer*) driverData;
 	D3D11Texture *result;
@@ -3472,6 +3473,7 @@ static FNA3D_Texture* D3D11_CreateTextureCube(
 	D3D11_RENDER_TARGET_VIEW_DESC rtViewDesc;
 	int32_t i;
 	HRESULT res;
+	uint8_t isRenderTarget = usageFlags & FNA3D_TEXTUREUSAGE_RENDERTARGET_BIT;
 
 	/* Initialize descriptor */
 	desc.Width = size;
@@ -5166,6 +5168,72 @@ static FNA3D_Texture* D3D11_CreateSysTexture(
 	IUnknown_AddRef(result->handle);
 	ID3D11ShaderResourceView_AddRef(result->shaderView);
 	return (FNA3D_Texture*) result;
+}
+
+/* Shader Extension Stub */
+
+#define NOT_SUPPORTED SDL_assert(0 && "Not supported!");
+
+static void D3D11_BindGraphicsShadersEXT(
+	FNA3D_Renderer *driverData,
+	SDL_GpuGraphicsShaderInfo *vertShaderInfo,
+	SDL_GpuGraphicsShaderInfo *fragShaderInfo
+) {
+	NOT_SUPPORTED
+}
+
+static void D3D11_PushVertexShaderUniformsEXT(
+	FNA3D_Renderer *driverData,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	NOT_SUPPORTED
+}
+
+static void D3D11_PushFragmentShaderUniformsEXT(
+	FNA3D_Renderer *driverData,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	NOT_SUPPORTED
+}
+
+static void D3D11_BindComputeShaderEXT(
+	FNA3D_Renderer *driverData,
+	SDL_GpuComputeShaderInfo *computeShaderInfo
+) {
+	NOT_SUPPORTED
+}
+
+static void D3D11_BindComputeBuffersEXT(
+	FNA3D_Renderer *driverData,
+	SDL_GpuComputeBufferBinding *pBindings
+) {
+	NOT_SUPPORTED
+}
+
+static void D3D11_BindComputeTexturesEXT(
+	FNA3D_Renderer *driverData,
+	SDL_GpuComputeTextureBinding *pBindings
+) {
+	NOT_SUPPORTED
+}
+
+static void D3D11_PushComputeShaderUniformsEXT(
+	FNA3D_Renderer *driverData,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	NOT_SUPPORTED
+}
+
+static void D3D11_DispatchComputeEXT(
+	FNA3D_Renderer *driverData,
+	uint32_t groupCountX,
+	uint32_t groupCountY,
+	uint32_t groupCountZ
+) {
+	NOT_SUPPORTED
 }
 
 /* Driver */

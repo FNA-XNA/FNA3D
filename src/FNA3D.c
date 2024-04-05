@@ -630,7 +630,7 @@ FNA3D_Texture* FNA3D_CreateTexture2D(
 	int32_t width,
 	int32_t height,
 	int32_t levelCount,
-	uint8_t isRenderTarget
+	FNA3D_TextureUsageFlags usageFlags
 ) {
 	/* We're stuck tracing _after_ the call instead of _before_, because
 	 * of threading issues. This can cause timing issues!
@@ -646,7 +646,7 @@ FNA3D_Texture* FNA3D_CreateTexture2D(
 		width,
 		height,
 		levelCount,
-		isRenderTarget
+		usageFlags
 	);
 	TRACE_CREATETEXTURE2D
 	return result;
@@ -685,7 +685,7 @@ FNA3D_Texture* FNA3D_CreateTextureCube(
 	FNA3D_SurfaceFormat format,
 	int32_t size,
 	int32_t levelCount,
-	uint8_t isRenderTarget
+	FNA3D_TextureUsageFlags usageFlags
 ) {
 	/* We're stuck tracing _after_ the call instead of _before_, because
 	 * of threading issues. This can cause timing issues!
@@ -700,7 +700,7 @@ FNA3D_Texture* FNA3D_CreateTextureCube(
 		format,
 		size,
 		levelCount,
-		isRenderTarget
+		usageFlags
 	);
 	TRACE_CREATETEXTURECUBE
 	return result;
@@ -1530,6 +1530,22 @@ FNA3D_Texture* FNA3D_CreateSysTextureEXT(
 	return device->CreateSysTexture(
 		device->driverData,
 		systexture
+	);
+}
+
+void FNA3D_BindGraphicsShadersEXT(
+	FNA3D_Device *device,
+	SDL_GpuGraphicsShaderInfo *vertShaderInfo,
+	SDL_GpuGraphicsShaderInfo *fragShaderInfo
+) {
+	if (device == NULL)
+	{
+		return;
+	}
+	device->BindGraphicsShadersEXT(
+		device->driverData,
+		vertShaderInfo,
+		fragShaderInfo
 	);
 }
 

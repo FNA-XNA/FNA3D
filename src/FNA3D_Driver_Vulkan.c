@@ -11103,6 +11103,72 @@ static void VULKAN_CommandBuffer_DestroyEffect(
 	SDL_free(vulkanEffect);
 }
 
+/* Shader Extension Stub */
+
+#define NOT_SUPPORTED SDL_assert(0 && "Not supported!");
+
+static void VULKAN_BindGraphicsShadersEXT(
+	FNA3D_Renderer *driverData,
+	SDL_GpuGraphicsShaderInfo *vertShaderInfo,
+	SDL_GpuGraphicsShaderInfo *fragShaderInfo
+) {
+	NOT_SUPPORTED
+}
+
+static void VULKAN_PushVertexShaderUniformsEXT(
+	FNA3D_Renderer *driverData,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	NOT_SUPPORTED
+}
+
+static void VULKAN_PushFragmentShaderUniformsEXT(
+	FNA3D_Renderer *driverData,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	NOT_SUPPORTED
+}
+
+static void VULKAN_BindComputeShaderEXT(
+	FNA3D_Renderer *driverData,
+	SDL_GpuComputeShaderInfo *computeShaderInfo
+) {
+	NOT_SUPPORTED
+}
+
+static void VULKAN_BindComputeBuffersEXT(
+	FNA3D_Renderer *driverData,
+	SDL_GpuComputeBufferBinding *pBindings
+) {
+	NOT_SUPPORTED
+}
+
+static void VULKAN_BindComputeTexturesEXT(
+	FNA3D_Renderer *driverData,
+	SDL_GpuComputeTextureBinding *pBindings
+) {
+	NOT_SUPPORTED
+}
+
+static void VULKAN_PushComputeShaderUniformsEXT(
+	FNA3D_Renderer *driverData,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	NOT_SUPPORTED
+}
+
+static void VULKAN_DispatchComputeEXT(
+	FNA3D_Renderer *driverData,
+	uint32_t groupCountX,
+	uint32_t groupCountY,
+	uint32_t groupCountZ
+) {
+	NOT_SUPPORTED
+}
+
 /* Driver */
 
 static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
