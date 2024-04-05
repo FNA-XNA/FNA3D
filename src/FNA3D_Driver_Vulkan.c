@@ -11140,14 +11140,14 @@ static void VULKAN_BindComputeShaderEXT(
 
 static void VULKAN_BindComputeBuffersEXT(
 	FNA3D_Renderer *driverData,
-	SDL_GpuComputeBufferBinding *pBindings
+	FNA3D_ComputeBufferBindingEXT *pBindings
 ) {
 	NOT_SUPPORTED
 }
 
 static void VULKAN_BindComputeTexturesEXT(
 	FNA3D_Renderer *driverData,
-	SDL_GpuComputeTextureBinding *pBindings
+	FNA3D_ComputeTextureBindingEXT *pBindings
 ) {
 	NOT_SUPPORTED
 }

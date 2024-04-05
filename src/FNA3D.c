@@ -1597,7 +1597,7 @@ void FNA3D_BindComputeShaderEXT(
 
 void FNA3D_BindComputeBuffersEXT(
 	FNA3D_Device *device,
-	SDL_GpuComputeBufferBinding *pBindings
+	FNA3D_ComputeBufferBindingEXT *pBindings
 ) {
 	if (device == NULL)
 	{
@@ -1611,7 +1611,7 @@ void FNA3D_BindComputeBuffersEXT(
 
 void FNA3D_BindComputeTexturesEXT(
 	FNA3D_Device *device,
-	SDL_GpuComputeTextureBinding *pBindings
+	FNA3D_ComputeTextureBindingEXT *pBindings
 ) {
 	if (device == NULL)
 	{

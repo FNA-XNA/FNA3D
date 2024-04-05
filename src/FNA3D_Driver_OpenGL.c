@@ -5498,14 +5498,14 @@ static void OPENGL_BindComputeShaderEXT(
 
 static void OPENGL_BindComputeBuffersEXT(
 	FNA3D_Renderer *driverData,
-	SDL_GpuComputeBufferBinding *pBindings
+	FNA3D_ComputeBufferBindingEXT *pBindings
 ) {
 	NOT_SUPPORTED
 }
 
 static void OPENGL_BindComputeTexturesEXT(
 	FNA3D_Renderer *driverData,
-	SDL_GpuComputeTextureBinding *pBindings
+	FNA3D_ComputeTextureBindingEXT *pBindings
 ) {
 	NOT_SUPPORTED
 }

@@ -474,6 +474,20 @@ typedef struct FNA3D_RenderTargetBinding
 	FNA3D_Renderbuffer *colorBuffer;
 } FNA3D_RenderTargetBinding;
 
+typedef struct FNA3D_ComputeBufferBindingEXT
+{
+	FNA3D_Buffer *buffer;
+	int32_t cycle;
+} FNA3D_ComputeBufferBindingEXT;
+
+typedef struct FNA3D_ComputeTextureBindingEXT
+{
+	FNA3D_Texture *texture;
+	uint32_t mipLevel;
+	uint32_t layer;
+	int32_t cycle;
+} FNA3D_ComputeTextureBindingEXT;
+
 /* Version API */
 
 #define FNA3D_ABI_VERSION	 0
@@ -1615,7 +1629,7 @@ FNA3DAPI void FNA3D_BindComputeShaderEXT(
  */
 FNA3DAPI void FNA3D_BindComputeBuffersEXT(
 	FNA3D_Device *device,
-	SDL_GpuComputeBufferBinding *pBindings
+	FNA3D_ComputeBufferBindingEXT *pBindings
 );
 
 /* Binds textures for use with the bound compute pipeline.
@@ -1626,7 +1640,7 @@ FNA3DAPI void FNA3D_BindComputeBuffersEXT(
  */
 FNA3DAPI void FNA3D_BindComputeTexturesEXT(
 	FNA3D_Device *device,
-	SDL_GpuComputeTextureBinding *pBindings
+	FNA3D_ComputeTextureBindingEXT *pBindings
 );
 
 /* Pushes compute uniform data to be used with subsequent compute dispatches.

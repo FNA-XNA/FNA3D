@@ -3794,27 +3794,53 @@ static void SDLGPU_BindComputeShaderEXT(
 
 static void SDLGPU_BindComputeBuffersEXT(
 	FNA3D_Renderer *driverData,
-	SDL_GpuComputeBufferBinding *pBindings
+	FNA3D_ComputeBufferBindingEXT *pBindings
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+	SDL_GpuComputeBufferBinding *sdlBindings = SDL_stack_alloc(
+		SDL_GpuComputeBufferBinding,
+		renderer->extensionComputeShaderInfo.bufferBindingCount
+	);
+	uint32_t i;
+
+	for (i = 0; i < renderer->extensionComputeShaderInfo.bufferBindingCount; i += 1)
+	{
+		sdlBindings[i].gpuBuffer = ((SDLGPU_BufferHandle*) pBindings[i].buffer)->buffer;
+		sdlBindings[i].cycle = pBindings[i].cycle;
+	}
 
 	SDL_GpuBindComputeBuffers(
 		renderer->device,
 		renderer->renderCommandBuffer,
-		pBindings
+		sdlBindings
 	);
+
+	SDL_stack_free(sdlBindings);
 }
 
 static void SDLGPU_BindComputeTexturesEXT(
 	FNA3D_Renderer *driverData,
-	SDL_GpuComputeTextureBinding *pBindings
+	FNA3D_ComputeTextureBindingEXT *pBindings
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+	SDL_GpuComputeTextureBinding *sdlBindings = SDL_stack_alloc(
+		SDL_GpuComputeTextureBinding,
+		renderer->extensionComputeShaderInfo.imageBindingCount
+	);
+	uint32_t i;
+
+	for (i = 0; i < renderer->extensionComputeShaderInfo.imageBindingCount; i += 1)
+	{
+		sdlBindings[i].textureSlice.texture = ((SDLGPU_TextureHandle*) pBindings[i].texture)->texture;
+		sdlBindings[i].textureSlice.mipLevel = pBindings[i].mipLevel;
+		sdlBindings[i].textureSlice.layer = pBindings[i].layer;
+		sdlBindings[i].cycle = pBindings[i].cycle;
+	}
 
 	SDL_GpuBindComputeTextures(
 		renderer->device,
 		renderer->renderCommandBuffer,
-		pBindings
+		sdlBindings
 	);
 }
 

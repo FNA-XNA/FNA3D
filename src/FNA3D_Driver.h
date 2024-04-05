@@ -759,12 +759,12 @@ struct FNA3D_Device
 
 	void (*BindComputeBuffersEXT)(
 		FNA3D_Renderer *driverData,
-		SDL_GpuComputeBufferBinding *pBindings
+		FNA3D_ComputeBufferBindingEXT *pBindings
 	);
 
 	void (*BindComputeTexturesEXT)(
 		FNA3D_Renderer *driverData,
-		SDL_GpuComputeTextureBinding *pBindings
+		FNA3D_ComputeTextureBindingEXT *pBindings
 	);
 
 	void (*PushComputeShaderUniformsEXT)(

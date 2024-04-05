@@ -5207,14 +5207,14 @@ static void D3D11_BindComputeShaderEXT(
 
 static void D3D11_BindComputeBuffersEXT(
 	FNA3D_Renderer *driverData,
-	SDL_GpuComputeBufferBinding *pBindings
+	FNA3D_ComputeBufferBindingEXT *pBindings
 ) {
 	NOT_SUPPORTED
 }
 
 static void D3D11_BindComputeTexturesEXT(
 	FNA3D_Renderer *driverData,
-	SDL_GpuComputeTextureBinding *pBindings
+	FNA3D_ComputeTextureBindingEXT *pBindings
 ) {
 	NOT_SUPPORTED
 }
