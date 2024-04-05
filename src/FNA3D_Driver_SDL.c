@@ -3380,45 +3380,79 @@ static void SDLGPU_EndPassRestore(
 
 static FNA3D_Query* SDLGPU_CreateQuery(FNA3D_Renderer *driverData)
 {
-	/* TODO */
-	return NULL;
+	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+	return (FNA3D_Query*) SDL_GpuCreateOcclusionQuery(renderer->device);
 }
 
 static void SDLGPU_AddDisposeQuery(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
 ) {
-	/* TODO */
+	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+	SDL_GpuQueueDestroyOcclusionQuery(
+		renderer->device,
+		(SDL_GpuOcclusionQuery*) query
+	);
 }
 
 static void SDLGPU_QueryBegin(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
 ) {
-	/* TODO */
+	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+	SDL_GpuOcclusionQueryBegin(
+		renderer->device,
+		renderer->renderCommandBuffer,
+		(SDL_GpuOcclusionQuery*) query
+	);
 }
 
 static void SDLGPU_QueryEnd(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
 ) {
-	/* TODO */
+	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+	SDL_GpuOcclusionQueryEnd(
+		renderer->device,
+		renderer->renderCommandBuffer,
+		(SDL_GpuOcclusionQuery*) query
+	);
 }
 
 static uint8_t SDLGPU_QueryComplete(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
 ) {
-	/* TODO */
-	return 1;
+	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+	uint32_t blah;
+
+	return (uint8_t) SDL_GpuOcclusionQueryPixelCount(
+		renderer->device,
+		(SDL_GpuOcclusionQuery*) query,
+		&blah
+	);
 }
 
 static int32_t SDLGPU_QueryPixelCount(
 	FNA3D_Renderer *driverData,
 	FNA3D_Query *query
 ) {
-	/* TODO */
-	return 0;
+	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+	uint32_t pixelCount;
+	SDL_bool result;
+
+	result = SDL_GpuOcclusionQueryPixelCount(
+		renderer->device,
+		(SDL_GpuOcclusionQuery*) query,
+		&pixelCount
+	);
+
+	if (!result)
+	{
+		return 0;
+	}
+
+	return (int32_t) pixelCount;
 }
 
 static uint8_t SDLGPU_SupportsDXT1(FNA3D_Renderer *driverData)
