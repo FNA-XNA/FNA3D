@@ -1549,4 +1549,112 @@ void FNA3D_BindGraphicsShadersEXT(
 	);
 }
 
+void FNA3D_PushVertexShaderUniformsEXT(
+	FNA3D_Device *device,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	if (device == NULL)
+	{
+		return;
+	}
+	device->PushVertexShaderUniformsEXT(
+		device->driverData,
+		data,
+		dataLengthInBytes
+	);
+}
+
+void FNA3D_PushFragmentShaderUniformsEXT(
+	FNA3D_Device *device,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	if (device == NULL)
+	{
+		return;
+	}
+	device->PushFragmentShaderUniformsEXT(
+		device->driverData,
+		data,
+		dataLengthInBytes
+	);
+}
+
+void FNA3D_BindComputeShaderEXT(
+	FNA3D_Device *device,
+	SDL_GpuComputeShaderInfo *computeShaderInfo
+) {
+	if (device == NULL)
+	{
+		return;
+	}
+	device->BindComputeShaderEXT(
+		device->driverData,
+		computeShaderInfo
+	);
+}
+
+void FNA3D_BindComputeBuffersEXT(
+	FNA3D_Device *device,
+	SDL_GpuComputeBufferBinding *pBindings
+) {
+	if (device == NULL)
+	{
+		return;
+	}
+	device->BindComputeBuffersEXT(
+		device->driverData,
+		pBindings
+	);
+}
+
+void FNA3D_BindComputeTexturesEXT(
+	FNA3D_Device *device,
+	SDL_GpuComputeTextureBinding *pBindings
+) {
+	if (device == NULL)
+	{
+		return;
+	}
+	device->BindComputeTexturesEXT(
+		device->driverData,
+		pBindings
+	);
+}
+
+void FNA3D_PushComputeShaderUniformsEXT(
+	FNA3D_Device *device,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	if (device == NULL)
+	{
+		return;
+	}
+	device->PushComputeShaderUniformsEXT(
+		device->driverData,
+		data,
+		dataLengthInBytes
+	);
+}
+
+void FNA3D_DispatchComputeEXT(
+	FNA3D_Device *device,
+	uint32_t groupCountX,
+	uint32_t groupCountY,
+	uint32_t groupCountZ
+) {
+	if (device == NULL)
+	{
+		return;
+	}
+	device->DispatchComputeEXT(
+		device->driverData,
+		groupCountX,
+		groupCountY,
+		groupCountZ
+	);
+}
+
 /* vim: set noexpandtab shiftwidth=8 tabstop=8: */
