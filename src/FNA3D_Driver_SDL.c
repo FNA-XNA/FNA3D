@@ -598,7 +598,7 @@ typedef struct SDLGPU_Renderer
 
 /* Statics */
 
-static SDL_GpuBackend preferredBackends[2] = { SDL_GPU_BACKEND_D3D11, SDL_GPU_BACKEND_VULKAN };
+static SDL_GpuBackend preferredBackends[2] = { SDL_GPU_BACKEND_VULKAN, SDL_GPU_BACKEND_D3D11 };
 static FNA3D_PresentationParameters requestedPresentationParameters;
 
 /* Submission / Presentation */
