@@ -3727,6 +3727,11 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 		NULL,
 		NULL
 	);
+	if (renderer->mojoshaderContext == NULL)
+	{
+		FNA3D_LogError("Could not create MojoShader context: %s", MOJOSHADER_sdlGetError(NULL));
+		return NULL;
+	}
 
 	/* FIXME: moltenVK fix */
 	renderer->supportsBaseVertex = 1;
