@@ -753,8 +753,8 @@ static void SDLGPU_SwapBuffers(
 		srcRegion.x = 0;
 		srcRegion.y = 0;
 		srcRegion.z = 0;
-		srcRegion.w = width;
-		srcRegion.h = height;
+		srcRegion.w = renderer->fauxBackbufferWidth;
+		srcRegion.h = renderer->fauxBackbufferHeight;
 		srcRegion.d = 1;
 
 		dstRegion.textureSlice.texture = swapchainTexture;
