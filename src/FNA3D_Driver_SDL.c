@@ -699,8 +699,6 @@ static void SDLGPU_INTERNAL_FlushCommandsAndStall(
 		renderer->device,
 		fence
 	);
-
-	SDLGPU_ResetCommandBufferState(renderer);
 }
 
 /* FIXME: this will break with multi-window, need a claim/unclaim structure */
@@ -3558,6 +3556,9 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) device->driverData;
 	int32_t i, j;
+
+	SDL_GpuSubmit(renderer->device, renderer->renderCommandBuffer);
+	SDL_GpuSubmit(renderer->device, renderer->uploadCommandBuffer);
 
 	if (renderer->textureDownloadBuffer != NULL)
 	{
