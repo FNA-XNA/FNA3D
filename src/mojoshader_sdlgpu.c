@@ -257,7 +257,8 @@ DECLSPEC void MOJOSHADER_sdlGetShaderModules(MOJOSHADER_sdlContext *ctx,
 #endif
 #endif /* SDL3_SHADER_LIBRARY */
 
-typedef const char* (*SDLCALL SHD_TranslateFromSPIRV_func)(SDL_GpuBackend backend,
+typedef const void* (*SDLCALL SHD_TranslateFromSPIRV_func)(SDL_GpuBackend backend,
+                                                           SDL_GpuShaderType shaderType,
                                                            const char* spirv,
                                                            size_t spirv_size,
                                                            size_t* output_size);
@@ -619,8 +620,8 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     const char *p_shader_source;
     uint32_t v_shader_len;
     uint32_t p_shader_len;
-    const char *v_transpiled_source;
-    const char *p_transpiled_source;
+    const void *v_transpiled_source;
+    const void *p_transpiled_source;
     size_t v_transpiled_len;
     size_t p_transpiled_len;
     SDL_GpuShaderModuleCreateInfo createInfo;
@@ -636,7 +637,7 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
         return NULL;
     } // if
 
-    MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData);
+    MOJOSHADER_spirv_link_attributes(vshader->parseData, pshader->parseData, 0);
     v_shader_source = vshader->parseData->output;
     p_shader_source = pshader->parseData->output;
     v_shader_len = vshader->parseData->output_len - sizeof(SpirvPatchTable);
@@ -652,6 +653,7 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     {
         v_transpiled_source = ctx->SHD_TranslateFromSPIRV(
             ctx->backend,
+            SDL_GPU_SHADERTYPE_VERTEX,
             v_shader_source,
             v_shader_len,
             &v_transpiled_len
@@ -674,6 +676,7 @@ MOJOSHADER_sdlProgram *MOJOSHADER_sdlLinkProgram(
     {
         p_transpiled_source = ctx->SHD_TranslateFromSPIRV(
             ctx->backend,
+            SDL_GPU_SHADERTYPE_FRAGMENT,
             p_shader_source,
             p_shader_len,
             &p_transpiled_len
