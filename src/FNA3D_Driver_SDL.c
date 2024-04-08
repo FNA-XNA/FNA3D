@@ -94,7 +94,7 @@ static inline SDL_GpuTextureFormat XNAToSDL_DepthFormat(
 	}
 }
 
-static inline uint32_t D3D11_INTERNAL_RoundToAlignment(
+static inline uint32_t SDLGPU_INTERNAL_RoundToAlignment(
 	uint32_t value,
 	uint32_t alignment
 ) {
@@ -2566,7 +2566,7 @@ static void SDLGPU_INTERNAL_SetTextureData(
 
 	SDLGPU_INTERNAL_BeginCopyPass(renderer);
 
-	renderer->textureUploadBufferOffset = D3D11_INTERNAL_RoundToAlignment(
+	renderer->textureUploadBufferOffset = SDLGPU_INTERNAL_RoundToAlignment(
 		renderer->textureUploadBufferOffset,
 		SDL_GpuTextureFormatTexelBlockSize(format)
 	);
