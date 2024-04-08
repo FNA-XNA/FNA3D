@@ -362,8 +362,8 @@ typedef struct GraphicsPipelineHash
 	FNA3D_PrimitiveType primitiveType;
 	SDL_GpuSampleCount sampleCount;
 	uint32_t sampleMask;
-	MOJOSHADER_sdlShader *vertShader;
-	MOJOSHADER_sdlShader *fragShader;
+	SDL_GpuShaderModule *vertShader;
+	SDL_GpuShaderModule *fragShader;
 	SDL_GpuTextureFormat colorFormats[MAX_RENDERTARGET_BINDINGS];
 	uint32_t colorFormatCount;
 	SDL_bool hasDepthStencilAttachment;
@@ -470,6 +470,51 @@ static inline void GraphicsPipelineHashTable_Insert(
 	map.value = value;
 
 	EXPAND_ARRAY_IF_NEEDED(arr, 2, GraphicsPipelineHashMap)
+
+	arr->elements[arr->count] = map;
+	arr->count += 1;
+}
+
+typedef struct ComputePipelineHashMap
+{
+	SDL_GpuShaderModule *key;
+	SDL_GpuComputePipeline *value;
+} ComputePipelineHashMap;
+
+typedef struct ComputePipelineHashArray
+{
+	ComputePipelineHashMap *elements;
+	int32_t count;
+	int32_t capacity;
+} ComputePipelineHashArray;
+
+static inline SDL_GpuComputePipeline* ComputePipelineHashArray_Fetch(
+	ComputePipelineHashArray *arr,
+	SDL_GpuShaderModule *key
+) {
+	int32_t i;
+
+	for (i = 0; i < arr->count; i += 1)
+	{
+		if (key == arr->elements[i].key)
+		{
+			return arr->elements[i].value;
+		}
+	}
+
+	return NULL;
+}
+
+static inline void ComputePipelineHashArray_Insert(
+	ComputePipelineHashArray *arr,
+	SDL_GpuShaderModule *key,
+	SDL_GpuComputePipeline *value
+) {
+	ComputePipelineHashMap map;
+	map.key = key;
+	map.value = value;
+
+	EXPAND_ARRAY_IF_NEEDED(arr, 4, ComputePipelineHashMap)
 
 	arr->elements[arr->count] = map;
 	arr->count += 1;
@@ -592,6 +637,20 @@ typedef struct SDLGPU_Renderer
 	const MOJOSHADER_effectTechnique *currentTechnique;
 	uint32_t currentPass;
 
+	/* Shader extension */
+
+	uint8_t graphicsShaderExtensionInUse;
+	SDL_GpuShaderModule *extensionVertexShaderModule;
+	SDL_GpuShaderModule *extensionFragmentShaderModule;
+	SDL_GpuGraphicsShaderInfo extensionVertexShaderInfo;
+	SDL_GpuGraphicsShaderInfo extensionFragmentShaderInfo;
+
+	ComputePipelineHashArray computePipelineHashArray;
+
+	uint8_t computePassInProgress;
+	SDL_GpuComputeShaderInfo extensionComputeShaderInfo;
+	SDL_GpuComputePipeline *currentComputePipeline;
+
 	/* Capabilities */
 	uint8_t supportsBaseVertex;
 } SDLGPU_Renderer;
@@ -651,6 +710,21 @@ static void SDLGPU_INTERNAL_EndRenderPass(
 	renderer->needNewGraphicsPipeline = 1;
 }
 
+static void SDLGPU_INTERNAL_EndComputePass(
+	SDLGPU_Renderer *renderer
+) {
+	if (renderer->computePassInProgress)
+	{
+		SDL_GpuEndComputePass(
+			renderer->device,
+			renderer->renderCommandBuffer
+		);
+	}
+
+	renderer->computePassInProgress = 0;
+	renderer->currentComputePipeline = NULL;
+}
+
 static SDL_GpuFence* SDLGPU_INTERNAL_FlushCommandsAndAcquireFence(
 	SDLGPU_Renderer *renderer
 ) {
@@ -658,6 +732,7 @@ static SDL_GpuFence* SDLGPU_INTERNAL_FlushCommandsAndAcquireFence(
 
 	SDLGPU_INTERNAL_EndCopyPass(renderer);
 	SDLGPU_INTERNAL_EndRenderPass(renderer);
+	SDLGPU_INTERNAL_EndComputePass(renderer);
 
 	SDL_GpuSubmit(renderer->device, renderer->uploadCommandBuffer);
 
@@ -676,8 +751,11 @@ static void SDLGPU_INTERNAL_FlushCommands(
 ) {
 	SDLGPU_INTERNAL_EndCopyPass(renderer);
 	SDLGPU_INTERNAL_EndRenderPass(renderer);
+	SDLGPU_INTERNAL_EndComputePass(renderer);
+
 	SDL_GpuSubmit(renderer->device, renderer->uploadCommandBuffer);
 	SDL_GpuSubmit(renderer->device, renderer->renderCommandBuffer);
+
 	SDLGPU_ResetCommandBufferState(renderer);
 }
 
@@ -954,6 +1032,7 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 		return;
 	}
 
+	SDLGPU_INTERNAL_EndComputePass(renderer);
 	SDLGPU_INTERNAL_EndRenderPass(renderer);
 
 	/* Reset attachment formats to a reasonable default */
@@ -1248,7 +1327,8 @@ static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
 static SDL_GpuGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 	SDLGPU_Renderer *renderer
 ) {
-	MOJOSHADER_sdlShader *vertShader, *fragShader;
+	MOJOSHADER_sdlShader *mojoshaderVertShader, *mojoshaderFragShader;
+	SDL_GpuShaderModule *vertShaderModule, *fragShaderModule;
 	GraphicsPipelineHash hash;
 	SDL_GpuGraphicsPipeline *pipeline;
 	SDL_GpuGraphicsPipelineCreateInfo createInfo;
@@ -1270,9 +1350,22 @@ static SDL_GpuGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 	hash.primitiveType = renderer->fnaPrimitiveType;
 	hash.sampleCount = renderer->multisampleCount;
 	hash.sampleMask = renderer->multisampleMask;
-	MOJOSHADER_sdlGetBoundShaders(renderer->mojoshaderContext, &vertShader, &fragShader);
-	hash.vertShader = vertShader;
-	hash.fragShader = fragShader;
+
+	if (renderer->graphicsShaderExtensionInUse)
+	{
+		hash.fragShader = renderer->extensionVertexShaderInfo.shaderModule;
+		hash.vertShader = renderer->extensionFragmentShaderInfo.shaderModule;
+	}
+	else
+	{
+		MOJOSHADER_sdlGetShaderModules(
+			renderer->mojoshaderContext,
+			&vertShaderModule,
+			&fragShaderModule
+		);
+		hash.vertShader = vertShaderModule;
+		hash.fragShader = fragShaderModule;
+	}
 
 	hash.colorFormatCount = renderer->colorAttachmentCount;
 	hash.colorFormats[0] = renderer->colorAttachmentFormats[0];
@@ -1459,19 +1552,33 @@ static SDL_GpuGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 
 	/* Shaders */
 
-	MOJOSHADER_sdlGetShaderModules(
-		renderer->mojoshaderContext,
-		&createInfo.vertexShaderInfo.shaderModule,
-		&createInfo.fragmentShaderInfo.shaderModule
-	);
+	if (renderer->graphicsShaderExtensionInUse)
+	{
+		createInfo.vertexShaderInfo = renderer->extensionVertexShaderInfo;
+		createInfo.fragmentShaderInfo = renderer->extensionFragmentShaderInfo;
+	}
+	else
+	{
+		MOJOSHADER_sdlGetBoundShaders(
+			renderer->mojoshaderContext,
+			&mojoshaderVertShader,
+			&mojoshaderFragShader
+		);
 
-	createInfo.vertexShaderInfo.entryPointName = MOJOSHADER_sdlGetShaderParseData(vertShader)->mainfn;
-	createInfo.vertexShaderInfo.samplerBindingCount = (uint32_t) MOJOSHADER_sdlGetShaderParseData(vertShader)->sampler_count;
-	createInfo.vertexShaderInfo.uniformBufferSize = MOJOSHADER_sdlGetUniformBufferSize(vertShader);
+		MOJOSHADER_sdlGetShaderModules(
+			renderer->mojoshaderContext,
+			&createInfo.vertexShaderInfo.shaderModule,
+			&createInfo.fragmentShaderInfo.shaderModule
+		);
 
-	createInfo.fragmentShaderInfo.entryPointName = MOJOSHADER_sdlGetShaderParseData(fragShader)->mainfn;
-	createInfo.fragmentShaderInfo.samplerBindingCount = (uint32_t) MOJOSHADER_sdlGetShaderParseData(fragShader)->sampler_count;
-	createInfo.fragmentShaderInfo.uniformBufferSize = MOJOSHADER_sdlGetUniformBufferSize(fragShader);
+		createInfo.vertexShaderInfo.entryPointName = MOJOSHADER_sdlGetShaderParseData(mojoshaderVertShader)->mainfn;
+		createInfo.vertexShaderInfo.samplerBindingCount = (uint32_t) MOJOSHADER_sdlGetShaderParseData(mojoshaderVertShader)->sampler_count;
+		createInfo.vertexShaderInfo.uniformBufferSize = MOJOSHADER_sdlGetUniformBufferSize(mojoshaderVertShader);
+
+		createInfo.fragmentShaderInfo.entryPointName = MOJOSHADER_sdlGetShaderParseData(mojoshaderFragShader)->mainfn;
+		createInfo.fragmentShaderInfo.samplerBindingCount = (uint32_t) MOJOSHADER_sdlGetShaderParseData(mojoshaderFragShader)->sampler_count;
+		createInfo.fragmentShaderInfo.uniformBufferSize = MOJOSHADER_sdlGetUniformBufferSize(mojoshaderFragShader);
+	}
 
 	/* Finally, after 1000 years, create the pipeline! */
 
@@ -1503,18 +1610,31 @@ static void SDLGPU_INTERNAL_BindGraphicsPipeline(
 	SDL_GpuGraphicsPipeline *pipeline;
 	MOJOSHADER_sdlShader *vertShader, *fragShader;
 
-	MOJOSHADER_sdlGetBoundShaders(
-		renderer->mojoshaderContext,
-		&vertShader,
-		&fragShader
-	);
+	if (renderer->graphicsShaderExtensionInUse)
+	{
+		if (
+			!renderer->needNewGraphicsPipeline &&
+			renderer->extensionVertexShaderModule == renderer->extensionVertexShaderInfo.shaderModule &&
+			renderer->extensionFragmentShaderModule == renderer->extensionFragmentShaderInfo.shaderModule
+		) {
+			return;
+		}
+	}
+	else
+	{
+		MOJOSHADER_sdlGetBoundShaders(
+			renderer->mojoshaderContext,
+			&vertShader,
+			&fragShader
+		);
 
-	if (
-		!renderer->needNewGraphicsPipeline &&
-		renderer->currentVertexShader == vertShader &&
-		renderer->currentFragmentShader == fragShader
-	) {
-		return;
+		if (
+			!renderer->needNewGraphicsPipeline &&
+			renderer->currentVertexShader == vertShader &&
+			renderer->currentFragmentShader == fragShader
+		) {
+			return;
+		}
 	}
 
 	pipeline = SDLGPU_INTERNAL_FetchGraphicsPipeline(renderer);
@@ -2346,13 +2466,18 @@ static FNA3D_Texture* SDLGPU_CreateTexture2D(
 	int32_t width,
 	int32_t height,
 	int32_t levelCount,
-	uint8_t isRenderTarget
+	FNA3D_TextureUsageFlags usageFlags
 ) {
-	SDL_GpuTextureUsageFlags usageFlags = SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT;
+	SDL_GpuTextureUsageFlags sdlUsageFlags = SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT;
 
-	if (isRenderTarget)
+	if (usageFlags & FNA3D_TEXTUREUSAGE_RENDERTARGET_BIT)
 	{
-		usageFlags |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET_BIT;
+		sdlUsageFlags |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET_BIT;
+	}
+
+	if (usageFlags & FNA3D_TEXTUREUSAGE_COMPUTE_BIT)
+	{
+		sdlUsageFlags |= SDL_GPU_TEXTUREUSAGE_COMPUTE_BIT;
 	}
 
 	return (FNA3D_Texture*) SDLGPU_INTERNAL_CreateTextureWithHandle(
@@ -2363,7 +2488,7 @@ static FNA3D_Texture* SDLGPU_CreateTexture2D(
 		XNAToSDL_SurfaceFormat[format],
 		1,
 		levelCount,
-		usageFlags,
+		sdlUsageFlags,
 		SDL_GPU_SAMPLECOUNT_1
 	);
 }
@@ -2394,13 +2519,18 @@ static FNA3D_Texture* SDLGPU_CreateTextureCube(
 	FNA3D_SurfaceFormat format,
 	int32_t size,
 	int32_t levelCount,
-	uint8_t isRenderTarget
+	FNA3D_TextureUsageFlags usageFlags
 ) {
-	SDL_GpuTextureUsageFlags usageFlags = SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT;
+	SDL_GpuTextureUsageFlags sdlUsageFlags = SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT;
 
-	if (isRenderTarget)
+	if (usageFlags & FNA3D_TEXTUREUSAGE_RENDERTARGET_BIT)
 	{
-		usageFlags |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET_BIT;
+		sdlUsageFlags |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET_BIT;
+	}
+
+	if (usageFlags & FNA3D_TEXTUREUSAGE_COMPUTE_BIT)
+	{
+		sdlUsageFlags |= SDL_GPU_TEXTUREUSAGE_COMPUTE_BIT;
 	}
 
 	return (FNA3D_Texture*) SDLGPU_INTERNAL_CreateTextureWithHandle(
@@ -2411,7 +2541,7 @@ static FNA3D_Texture* SDLGPU_CreateTextureCube(
 		XNAToSDL_SurfaceFormat[format],
 		6,
 		levelCount,
-		usageFlags,
+		sdlUsageFlags,
 		SDL_GPU_SAMPLECOUNT_1
 	);
 }
@@ -2873,13 +3003,19 @@ static FNA3D_Buffer* SDLGPU_GenVertexBuffer(
 	int32_t sizeInBytes
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
-
 	SDLGPU_BufferHandle *bufferHandle =
 		SDL_malloc(sizeof(SDLGPU_BufferHandle));
 
+	SDL_GpuBufferUsageFlags usageFlags = SDL_GPU_BUFFERUSAGE_VERTEX_BIT;
+
+	if (usage == FNA3D_BUFFERUSAGE_COMPUTE_EXT)
+	{
+		usageFlags |= SDL_GPU_BUFFERUSAGE_COMPUTE_BIT;
+	}
+
 	bufferHandle->buffer = SDL_GpuCreateGpuBuffer(
 		renderer->device,
-		SDL_GPU_BUFFERUSAGE_VERTEX_BIT,
+		usageFlags,
 		sizeInBytes
 	);
 	bufferHandle->size = sizeInBytes;
@@ -2897,9 +3033,16 @@ static FNA3D_Buffer* SDLGPU_GenIndexBuffer(
 	SDLGPU_BufferHandle *bufferHandle =
 		SDL_malloc(sizeof(SDLGPU_BufferHandle));
 
+	SDL_GpuBufferUsageFlags usageFlags = SDL_GPU_BUFFERUSAGE_INDEX_BIT;
+
+	if (usage == FNA3D_BUFFERUSAGE_COMPUTE_EXT)
+	{
+		usageFlags |= SDL_GPU_BUFFERUSAGE_COMPUTE_BIT;
+	}
+
 	bufferHandle->buffer = SDL_GpuCreateGpuBuffer(
 		renderer->device,
-		SDL_GPU_BUFFERUSAGE_INDEX_BIT,
+		usageFlags,
 		sizeInBytes
 	);
 	bufferHandle->size = (uint32_t) sizeInBytes;
@@ -3308,6 +3451,7 @@ static void SDLGPU_ApplyEffect(
 	renderer->needFragmentSamplerBind = 1;
 	renderer->needVertexSamplerBind = 1;
 	renderer->needNewGraphicsPipeline = 1;
+	renderer->graphicsShaderExtensionInUse = 0;
 
 	if (effectData == renderer->currentEffect)
 	{
@@ -3548,6 +3692,209 @@ static FNA3D_Texture* SDLGPU_CreateSysTexture(
 ) {
 	/* TODO */
 	return NULL;
+}
+
+/* Shader Extension */
+
+static void SDLGPU_BindGraphicsShadersEXT(
+	FNA3D_Renderer *driverData,
+	SDL_GpuGraphicsShaderInfo *vertShaderInfo,
+	SDL_GpuGraphicsShaderInfo *fragShaderInfo
+) {
+	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+
+	renderer->needVertexSamplerBind = 1;
+	renderer->needFragmentSamplerBind = 1;
+	renderer->needNewGraphicsPipeline = 1;
+
+	renderer->graphicsShaderExtensionInUse = 1;
+
+	SDL_memcpy(&renderer->extensionVertexShaderInfo, vertShaderInfo, sizeof(SDL_GpuGraphicsShaderInfo));
+	SDL_memcpy(&renderer->extensionFragmentShaderInfo, fragShaderInfo, sizeof(SDL_GpuGraphicsShaderInfo));
+
+	/* Immediately bind deferred pipeline state so uniforms can be pushed */
+	SDLGPU_INTERNAL_BeginRenderPass(renderer);
+	SDLGPU_INTERNAL_BindGraphicsPipeline(renderer);
+}
+
+static void SDLGPU_PushVertexShaderUniformsEXT(
+	FNA3D_Renderer *driverData,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+
+	SDL_GpuPushVertexShaderUniforms(
+		renderer->device,
+		renderer->renderCommandBuffer,
+		data,
+		dataLengthInBytes
+	);
+}
+
+static void SDLGPU_PushFragmentShaderUniformsEXT(
+	FNA3D_Renderer *driverData,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+
+	SDL_GpuPushFragmentShaderUniforms(
+		renderer->device,
+		renderer->renderCommandBuffer,
+		data,
+		dataLengthInBytes
+	);
+}
+
+static SDL_GpuComputePipeline* SDLGPU_INTERNAL_FetchComputePipeline(
+	SDLGPU_Renderer *renderer
+) {
+	SDL_GpuComputePipeline *pipeline;
+
+	pipeline = ComputePipelineHashArray_Fetch(
+		&renderer->computePipelineHashArray,
+		renderer->extensionComputeShaderInfo.shaderModule
+	);
+
+	if (pipeline != NULL)
+	{
+		return pipeline;
+	}
+
+	pipeline = SDL_GpuCreateComputePipeline(
+		renderer->device,
+		&renderer->extensionComputeShaderInfo
+	);
+
+	ComputePipelineHashArray_Insert(
+		&renderer->computePipelineHashArray,
+		renderer->extensionComputeShaderInfo.shaderModule,
+		pipeline
+	);
+
+	return pipeline;
+}
+
+void SDLGPU_INTERNAL_BindComputePipeline(
+	SDLGPU_Renderer *renderer
+) {
+	SDL_GpuComputePipeline *pipeline;
+
+	pipeline = SDLGPU_INTERNAL_FetchComputePipeline(renderer);
+
+	SDL_GpuBindComputePipeline(
+		renderer->device,
+		renderer->renderCommandBuffer,
+		pipeline
+	);
+
+	renderer->currentComputePipeline = pipeline;
+}
+
+static void SDLGPU_BindComputeShaderEXT(
+	FNA3D_Renderer *driverData,
+	SDL_GpuComputeShaderInfo *computeShaderInfo
+) {
+	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+
+	SDLGPU_INTERNAL_EndRenderPass(renderer);
+
+	SDL_memcpy(&renderer->extensionComputeShaderInfo, computeShaderInfo, sizeof(SDL_GpuComputeShaderInfo));
+
+	/* Fetch compute pipeline */
+	SDLGPU_INTERNAL_BindComputePipeline(renderer);
+
+	SDL_GpuBeginComputePass(
+		renderer->device,
+		renderer->renderCommandBuffer
+	);
+
+	renderer->computePassInProgress = 1;
+}
+
+static void SDLGPU_BindComputeBuffersEXT(
+	FNA3D_Renderer *driverData,
+	FNA3D_ComputeBufferBindingEXT *pBindings
+) {
+	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+	SDL_GpuComputeBufferBinding *sdlBindings = SDL_stack_alloc(
+		SDL_GpuComputeBufferBinding,
+		renderer->extensionComputeShaderInfo.bufferBindingCount
+	);
+	uint32_t i;
+
+	for (i = 0; i < renderer->extensionComputeShaderInfo.bufferBindingCount; i += 1)
+	{
+		sdlBindings[i].gpuBuffer = ((SDLGPU_BufferHandle*) pBindings[i].buffer)->buffer;
+		sdlBindings[i].cycle = pBindings[i].cycle;
+	}
+
+	SDL_GpuBindComputeBuffers(
+		renderer->device,
+		renderer->renderCommandBuffer,
+		sdlBindings
+	);
+
+	SDL_stack_free(sdlBindings);
+}
+
+static void SDLGPU_BindComputeTexturesEXT(
+	FNA3D_Renderer *driverData,
+	FNA3D_ComputeTextureBindingEXT *pBindings
+) {
+	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+	SDL_GpuComputeTextureBinding *sdlBindings = SDL_stack_alloc(
+		SDL_GpuComputeTextureBinding,
+		renderer->extensionComputeShaderInfo.imageBindingCount
+	);
+	uint32_t i;
+
+	for (i = 0; i < renderer->extensionComputeShaderInfo.imageBindingCount; i += 1)
+	{
+		sdlBindings[i].textureSlice.texture = ((SDLGPU_TextureHandle*) pBindings[i].texture)->texture;
+		sdlBindings[i].textureSlice.mipLevel = pBindings[i].mipLevel;
+		sdlBindings[i].textureSlice.layer = pBindings[i].layer;
+		sdlBindings[i].cycle = pBindings[i].cycle;
+	}
+
+	SDL_GpuBindComputeTextures(
+		renderer->device,
+		renderer->renderCommandBuffer,
+		sdlBindings
+	);
+}
+
+static void SDLGPU_PushComputeShaderUniformsEXT(
+	FNA3D_Renderer *driverData,
+	void *data,
+	uint32_t dataLengthInBytes
+) {
+	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+
+	SDL_GpuPushComputeShaderUniforms(
+		renderer->device,
+		renderer->renderCommandBuffer,
+		data,
+		dataLengthInBytes
+	);
+}
+
+static void SDLGPU_DispatchComputeEXT(
+	FNA3D_Renderer *driverData,
+	uint32_t groupCountX,
+	uint32_t groupCountY,
+	uint32_t groupCountZ
+) {
+	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+
+	SDL_GpuDispatchCompute(
+		renderer->device,
+		renderer->renderCommandBuffer,
+		groupCountX,
+		groupCountY,
+		groupCountZ
+	);
 }
 
 /* Destroy */
