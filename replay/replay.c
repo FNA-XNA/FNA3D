@@ -104,6 +104,9 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 {
 	#define READ(val) SDL_ReadIO(ops, &val, sizeof(val))
 
+#ifdef USE_SDL3
+	const SDL_DisplayMode *mode;
+#endif
 	SDL_WindowFlags flags;
 	SDL_IOStream *ops;
 	SDL_Event evt;
@@ -285,10 +288,20 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 	{
 		flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
 	}
+#ifdef USE_SDL3
+	flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
+	mode = SDL_GetDesktopDisplayMode(SDL_GetPrimaryDisplay());
+	SDL_Log("Pixel density is %f", mode->pixel_density);
+#endif
 	presentationParameters.deviceWindowHandle = SDL_CreateWindow(
 		"FNA3D Replay",
+#ifdef USE_SDL3
+		(int) (presentationParameters.backBufferWidth / mode->pixel_density),
+		(int) (presentationParameters.backBufferHeight / mode->pixel_density),
+#else
 		presentationParameters.backBufferWidth,
 		presentationParameters.backBufferHeight,
+#endif
 		flags
 	);
 	device = FNA3D_CreateDevice(&presentationParameters, debugMode || forceDebugMode);
@@ -690,8 +703,13 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 			);
 			SDL_SetWindowSize(
 				presentationParameters.deviceWindowHandle,
+#ifdef USE_SDL3
+				(int) (presentationParameters.backBufferWidth / mode->pixel_density),
+				(int) (presentationParameters.backBufferHeight / mode->pixel_density)
+#else
 				presentationParameters.backBufferWidth,
 				presentationParameters.backBufferHeight
+#endif
 			);
 			FNA3D_ResetBackbuffer(device, &presentationParameters);
 			break;
