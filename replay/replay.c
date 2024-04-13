@@ -100,8 +100,19 @@
 #define MARK_SETSTRINGMARKER			56
 #define MARK_SETTEXTURENAME			57
 
-static uint8_t replay(const char *filename, uint8_t forceDebugMode)
+typedef enum
 {
+	VSYNC_DEFAULT,
+	VSYNC_FORCE_ON,
+	VSYNC_FORCE_OFF
+} VSyncMode;
+
+static uint8_t replay(
+	const char *filename,
+	uint8_t forceDebugMode,
+	VSyncMode vsync,
+	uint32_t delayMS
+) {
 	#define READ(val) SDL_ReadIO(ops, &val, sizeof(val))
 
 #ifdef USE_SDL3
@@ -282,6 +293,15 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 	READ(presentationParameters.renderTargetUsage);
 	READ(debugMode);
 
+	if (vsync == VSYNC_FORCE_ON)
+	{
+		presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_ONE;
+	}
+	else if (vsync == VSYNC_FORCE_OFF)
+	{
+		presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_IMMEDIATE;
+	}
+
 	/* Create a window alongside the device */
 	flags = FNA3D_PrepareWindowAttributes();
 	if (presentationParameters.isFullScreen)
@@ -342,6 +362,10 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 				{
 					run = 0;
 				}
+			}
+			if (delayMS > 0)
+			{
+				SDL_Delay(delayMS);
 			}
 			break;
 		case MARK_CLEAR:
@@ -695,6 +719,14 @@ static uint8_t replay(const char *filename, uint8_t forceDebugMode)
 			READ(presentationParameters.presentationInterval);
 			READ(presentationParameters.displayOrientation);
 			READ(presentationParameters.renderTargetUsage);
+			if (vsync == VSYNC_FORCE_ON)
+			{
+				presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_ONE;
+			}
+			else if (vsync == VSYNC_FORCE_OFF)
+			{
+				presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_IMMEDIATE;
+			}
 			SDL_SetWindowFullscreen(
 				presentationParameters.deviceWindowHandle,
 				presentationParameters.isFullScreen ?
@@ -1315,22 +1347,40 @@ int main(int argc, char **argv)
 	int i;
 	int replayArgIndex = 1;
 	uint8_t forceDebugMode = 0;
+	VSyncMode vsync = VSYNC_DEFAULT;
+	uint32_t delayMS = 0;
 
 	SDL_Init(SDL_INIT_VIDEO);
 
 	/* Make sure we don't recursively trace... */
 	SDL_SetHint("FNA3D_DISABLE_TRACING", "1");
 
-	if (argc > 1)
+	for (i = 1; i < argc; i += 1)
 	{
-		if (SDL_strcmp(argv[1], "-debug") == 0)
+		if (SDL_strcmp(argv[i], "-debug") == 0)
 		{
 			forceDebugMode = 1;
-			replayArgIndex += 1;
+		}
+		else if (SDL_strcmp(argv[i], "-vsync") == 0)
+		{
+			vsync = VSYNC_FORCE_ON;
+		}
+		else if (SDL_strcmp(argv[i], "-novsync") == 0)
+		{
+			vsync = VSYNC_FORCE_OFF;
+		}
+		else if (SDL_strstr(argv[i], "-delayms=") == argv[i])
+		{
+			delayMS = SDL_atoi(argv[i] + SDL_strlen("-delayms="));
+		}
+		else
+		{
+			/* Unrecognized, assume we're looking at traces now */
+			break;
 		}
 	}
 
-	if (replayArgIndex == argc)
+	if (i == argc)
 	{
 		const char *defaultName = "FNA3D_Trace.bin";
 		char *rootPath = SDL_GetBasePath();
@@ -1338,14 +1388,14 @@ int main(int argc, char **argv)
 		char *path = (char*) SDL_malloc(pathLen);
 		SDL_snprintf(path, pathLen, "%s%s", rootPath, defaultName);
 		SDL_free(rootPath);
-		replay(path, forceDebugMode);
+		replay(path, forceDebugMode, vsync, delayMS);
 		SDL_free(path);
 	}
 	else
 	{
-		for (i = replayArgIndex; i < argc; i += 1)
+		for (; i < argc; i += 1)
 		{
-			if (replay(argv[i], forceDebugMode))
+			if (replay(argv[i], forceDebugMode, vsync, delayMS))
 			{
 				break;
 			}
