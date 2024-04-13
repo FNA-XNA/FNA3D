@@ -2925,7 +2925,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 
 	requiredMemoryPropertyFlags =
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+		VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
 
 	if (preferDeviceLocal)
 	{
@@ -2975,7 +2975,7 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 		memoryTypeIndex = 0;
 		requiredMemoryPropertyFlags =
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
+			VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
 
 		/* Follow-up for the warning logged by FindMemoryType */
 		if (!renderer->unifiedMemoryWarning)
@@ -3439,7 +3439,8 @@ static void VULKAN_INTERNAL_CopyToTransferBuffer(
 	transferBuffer = FNA3D_CommandBuffer_AcquireTransferBuffer(
 		renderer->commandBuffers,
 		uploadLength,
-		fmtAlignment
+		fmtAlignment,
+		1
 	);
 	parentBuffer = (VulkanBuffer*) transferBuffer->buffer;
 
@@ -3475,7 +3476,8 @@ static void VULKAN_INTERNAL_PrepareCopyFromTransferBuffer(
 	FNA3D_TransferBuffer *transferBuffer = FNA3D_CommandBuffer_AcquireTransferBuffer(
 		renderer->commandBuffers,
 		dataLength,
-		fmtAlignment
+		fmtAlignment,
+		0
 	);
 	VulkanBuffer *parentBuffer = (VulkanBuffer*) transferBuffer->buffer;
 
@@ -4457,7 +4459,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	fences[fenceCount] = ((VulkanCommandBuffer*) FNA3D_CommandBuffer_GetDefragBuffer(renderer->commandBuffers))->inFlightFence;
 	fenceCount += 1;
 
-	if (validSwapchainExists && swapchainData->fence != VK_NULL_HANDLE)
+	if (present && validSwapchainExists && swapchainData->fence != VK_NULL_HANDLE)
 	{
 		fences[fenceCount] = swapchainData->fence;
 		fenceCount += 1;
@@ -4560,7 +4562,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	);
 	VULKAN_ERROR_CHECK(result, vkQueueSubmit,)
 
-	if (validSwapchainExists)
+	if (present && validSwapchainExists)
 	{
 		swapchainData->fence = commandBufferToSubmit->inFlightFence;
 	}
@@ -4637,6 +4639,15 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		{
 			FNA3D_LogInfo("Failed to acquire swapchain image, not presenting");
 		}
+	}
+	else
+	{
+		renderer->vkWaitForFences(
+			renderer->logicalDevice,
+			1,
+			&commandBufferToSubmit->inFlightFence,
+			VK_TRUE, UINT64_MAX
+		);
 	}
 
 	if (performDefrag)
@@ -5644,7 +5655,7 @@ static void VULKAN_INTERNAL_GetTextureData(
 		&vulkanTexture->resourceAccessType
 	);
 
-	VULKAN_INTERNAL_FlushCommands(renderer, 1);
+	VULKAN_INTERNAL_FlushCommands(renderer, 0);
 
 	/* Read from transfer buffer */
 

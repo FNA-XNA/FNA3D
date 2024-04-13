@@ -198,7 +198,8 @@ FNA3D_SHAREDINTERNAL void FNA3D_CommandBuffer_MarkBufferAsBound(
 FNA3D_SHAREDINTERNAL FNA3D_TransferBuffer* FNA3D_CommandBuffer_AcquireTransferBuffer(
 	FNA3D_CommandBufferManager *manager,
 	size_t requiredSize,
-	size_t alignment
+	size_t alignment,
+	uint8_t allowFastTransferBuffer
 );
 
 FNA3D_SHAREDINTERNAL void FNA3D_CommandBuffer_ClearDestroyedBuffer(
