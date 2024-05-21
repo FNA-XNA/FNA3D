@@ -47,11 +47,11 @@
 #define D3D11_DLL	"d3d11.dll"
 #define DXGI_DLL	"dxgi.dll"
 #elif defined(__APPLE__)
-#define D3D11_DLL	"libdxvk_d3d11.dylib"
-#define DXGI_DLL	"libdxvk_dxgi.dylib"
+#define D3D11_DLL	"libdxvk_d3d11.0.dylib"
+#define DXGI_DLL	"libdxvk_dxgi.0.dylib"
 #else
-#define D3D11_DLL	"libdxvk_d3d11.so"
-#define DXGI_DLL	"libdxvk_dxgi.so"
+#define D3D11_DLL	"libdxvk_d3d11.so.0"
+#define DXGI_DLL	"libdxvk_dxgi.so.0"
 #endif
 
 #include <dxgi.h>
@@ -5195,6 +5195,11 @@ static uint8_t D3D11_PrepareWindowAttributes(uint32_t *flags)
 		/* We only use DXVK when explicitly ordered to do so -flibit */
 		return 0;
 	}
+#ifdef USE_SDL3
+	SDL_setenv("DXVK_WSI_DRIVER", "SDL3", 1);
+#else
+	SDL_setenv("DXVK_WSI_DRIVER", "SDL2", 1);
+#endif
 #endif /* FNA3D_DXVK_NATIVE */
 
 	/* Check to see if we can compile HLSL */
