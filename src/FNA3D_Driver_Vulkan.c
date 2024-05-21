@@ -4118,8 +4118,8 @@ static void VULKAN_INTERNAL_FetchDescriptorSetDataAndOffsets(
 	renderer->fragSamplerDescriptorSetDataNeedsUpdate = 0;
 
 	descriptorSets[0] = renderer->currentVertexSamplerDescriptorSet;
-	descriptorSets[1] = renderer->currentFragSamplerDescriptorSet;
-	descriptorSets[2] = vertShaderResources->uniformDescriptorSet;
+	descriptorSets[1] = vertShaderResources->uniformDescriptorSet;
+	descriptorSets[2] = renderer->currentFragSamplerDescriptorSet;
 	descriptorSets[3] = fragShaderResources->uniformDescriptorSet;
 
 	MOJOSHADER_vkGetUniformBuffers(
