@@ -74,8 +74,7 @@ typedef struct FNA3D_CommandBufferDriver
 
 	FNA3D_BufferHandle* (*CreateTransferBuffer)(
 		FNA3D_Renderer *driverData,
-		size_t size,
-		uint8_t preferDeviceLocal
+		size_t size
 	);
 
 	void (*IncBufferRef)(

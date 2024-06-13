@@ -1055,7 +1055,6 @@ struct VulkanBuffer
 	VulkanResourceAccessType resourceAccessType;
 	VkBufferCreateInfo bufferCreateInfo; /* used for resource copy */
 	VkBufferUsageFlags usage;
-	uint8_t preferDeviceLocal;
 	uint8_t isTransferBuffer;
 	SDL_AtomicInt refcount;
 };
@@ -2079,7 +2078,6 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 	VulkanRenderer *renderer,
 	uint32_t typeFilter,
 	VkMemoryPropertyFlags requiredProperties,
-	VkMemoryPropertyFlags ignoredProperties,
 	uint32_t *memoryTypeIndex
 ) {
 	uint32_t i;
@@ -2087,8 +2085,7 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 	for (i = *memoryTypeIndex; i < renderer->memoryProperties.memoryTypeCount; i += 1)
 	{
 		if (	(typeFilter & (1 << i)) &&
-			(renderer->memoryProperties.memoryTypes[i].propertyFlags & requiredProperties) == requiredProperties &&
-			(renderer->memoryProperties.memoryTypes[i].propertyFlags & ignoredProperties) == 0	)
+			(renderer->memoryProperties.memoryTypes[i].propertyFlags & requiredProperties) == requiredProperties)
 		{
 			*memoryTypeIndex = i;
 			return 1;
@@ -2096,10 +2093,9 @@ static uint8_t VULKAN_INTERNAL_FindMemoryType(
 	}
 
 	FNA3D_LogWarn(
-		"Failed to find memory type %X, required %X, ignored %X",
+		"Failed to find memory type %X, required %X",
 		typeFilter,
-		requiredProperties,
-		ignoredProperties
+		requiredProperties
 	);
 	return 0;
 }
@@ -2761,7 +2757,6 @@ static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
 	VulkanRenderer *renderer,
 	VkBuffer buffer,
 	VkMemoryPropertyFlags requiredMemoryProperties,
-	VkMemoryPropertyFlags ignoredMemoryProperties,
 	VkMemoryRequirements *pMemoryRequirements,
 	uint32_t *pMemoryTypeIndex
 ) {
@@ -2775,7 +2770,6 @@ static uint8_t VULKAN_INTERNAL_FindBufferMemoryRequirements(
 		renderer,
 		pMemoryRequirements->memoryTypeBits,
 		requiredMemoryProperties,
-		ignoredMemoryProperties,
 		pMemoryTypeIndex
 	);
 }
@@ -2784,7 +2778,6 @@ static uint8_t VULKAN_INTERNAL_FindImageMemoryRequirements(
 	VulkanRenderer *renderer,
 	VkImage image,
 	VkMemoryPropertyFlags requiredMemoryPropertyFlags,
-	VkMemoryPropertyFlags ignoredMemoryPropertyFlags,
 	VkMemoryRequirements *pMemoryRequirements,
 	uint32_t *pMemoryTypeIndex
 ) {
@@ -2798,7 +2791,6 @@ static uint8_t VULKAN_INTERNAL_FindImageMemoryRequirements(
 		renderer,
 		pMemoryRequirements->memoryTypeBits,
 		requiredMemoryPropertyFlags,
-		ignoredMemoryPropertyFlags,
 		pMemoryTypeIndex
 	);
 }
@@ -2813,18 +2805,15 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 	uint8_t bindResult = 0;
 	uint32_t memoryTypeIndex = 0;
 	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
-	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
 	VkMemoryRequirements memoryRequirements;
 
 	/* Prefer GPU allocation */
 	requiredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-	ignoredMemoryPropertyFlags = 0;
 
 	while (VULKAN_INTERNAL_FindImageMemoryRequirements(
 		renderer,
 		image,
 		requiredMemoryPropertyFlags,
-		ignoredMemoryPropertyFlags,
 		&memoryRequirements,
 		&memoryTypeIndex
 	)) {
@@ -2860,7 +2849,6 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 	{
 		memoryTypeIndex = 0;
 		requiredMemoryPropertyFlags = 0;
-		ignoredMemoryPropertyFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
 		if (isRenderTarget)
 		{
@@ -2873,7 +2861,6 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForImage(
 			renderer,
 			image,
 			requiredMemoryPropertyFlags,
-			ignoredMemoryPropertyFlags,
 			&memoryRequirements,
 			&memoryTypeIndex
 		)) {
@@ -2913,32 +2900,23 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 	VkBuffer buffer,
 	VulkanBuffer *bufferHandle,
 	VkDeviceSize size,
-	uint8_t preferDeviceLocal,
 	uint8_t isTransferBuffer,
 	FNA3D_MemoryUsedRegion** usedRegion
 ) {
 	uint8_t bindResult = 0;
 	uint32_t memoryTypeIndex = 0;
 	VkMemoryPropertyFlags requiredMemoryPropertyFlags;
-	VkMemoryPropertyFlags ignoredMemoryPropertyFlags;
 	VkMemoryRequirements memoryRequirements;
 
 	requiredMemoryPropertyFlags =
 		VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
-		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
-
-	if (preferDeviceLocal)
-	{
-		requiredMemoryPropertyFlags |=
-			VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-	}
-	ignoredMemoryPropertyFlags = 0;
+		VK_MEMORY_PROPERTY_HOST_COHERENT_BIT |
+		VK_MEMORY_PROPERTY_HOST_CACHED_BIT;
 
 	while (VULKAN_INTERNAL_FindBufferMemoryRequirements(
 		renderer,
 		buffer,
 		requiredMemoryPropertyFlags,
-		ignoredMemoryPropertyFlags,
 		&memoryRequirements,
 		&memoryTypeIndex
 	)) {
@@ -2963,32 +2941,24 @@ static uint8_t VULKAN_INTERNAL_BindMemoryForBuffer(
 		{
 			break;
 		}
-		else /* Bind failed, try the next device-local heap */
+		else /* Bind failed, try the next heap */
 		{
 			memoryTypeIndex += 1;
 		}
 	}
 
-	/* Bind failed, try again if originally preferred device local */
-	if (bindResult != 1 && preferDeviceLocal)
+	/* Bind failed, try again without CACHED */
+	if (bindResult != 1)
 	{
 		memoryTypeIndex = 0;
 		requiredMemoryPropertyFlags =
 			VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT |
 			VK_MEMORY_PROPERTY_HOST_COHERENT_BIT;
 
-		/* Follow-up for the warning logged by FindMemoryType */
-		if (!renderer->unifiedMemoryWarning)
-		{
-			FNA3D_LogWarn("No unified memory found, falling back to host memory");
-			renderer->unifiedMemoryWarning = 1;
-		}
-
 		while (VULKAN_INTERNAL_FindBufferMemoryRequirements(
 			renderer,
 			buffer,
 			requiredMemoryPropertyFlags,
-			ignoredMemoryPropertyFlags,
 			&memoryRequirements,
 			&memoryTypeIndex
 		)) {
@@ -3352,7 +3322,6 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	VkDeviceSize size,
 	VulkanResourceAccessType resourceAccessType,
 	VkBufferUsageFlags usage,
-	uint8_t preferDeviceLocal,
 	uint8_t isTransferBuffer
 ) {
 	VkBufferCreateInfo bufferCreateInfo;
@@ -3363,7 +3332,6 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 	buffer->size = size;
 	buffer->resourceAccessType = resourceAccessType;
 	buffer->usage = usage | VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-	buffer->preferDeviceLocal = preferDeviceLocal;
 	buffer->isTransferBuffer = isTransferBuffer;
 	SDL_AtomicSet(&buffer->refcount, 0);
 
@@ -3391,7 +3359,6 @@ static VulkanBuffer* VULKAN_INTERNAL_CreateBuffer(
 		buffer->buffer,
 		buffer,
 		buffer->size,
-		buffer->preferDeviceLocal,
 		buffer->isTransferBuffer,
 		&buffer->usedRegion
 	);
@@ -10480,7 +10447,6 @@ static uint8_t VULKAN_Memory_DefragBuffer(
 			copyBuffer,
 			vulkanBuffer,
 			resourceSize,
-			vulkanBuffer->preferDeviceLocal,
 			0,
 			&newRegion
 		) != 1)
@@ -10763,7 +10729,6 @@ static FNA3D_BufferHandle* VULKAN_Memory_CreateBufferHandle(
 		isVertexData ?
 			VK_BUFFER_USAGE_VERTEX_BUFFER_BIT :
 			VK_BUFFER_USAGE_INDEX_BUFFER_BIT,
-		0,
 		0
 	);
 }
@@ -10779,7 +10744,6 @@ static FNA3D_BufferHandle* VULKAN_Memory_CloneBufferHandle(
 		vulkanBuffer->size,
 		vulkanBuffer->resourceAccessType,
 		vulkanBuffer->usage,
-		vulkanBuffer->preferDeviceLocal,
 		vulkanBuffer->isTransferBuffer
 	);
 	if (result != NULL)
@@ -10991,15 +10955,13 @@ static void VULKAN_CommandBuffer_WaitForFences(
 
 static FNA3D_BufferHandle* VULKAN_CommandBuffer_CreateTransferBuffer(
 	FNA3D_Renderer *driverData,
-	size_t size,
-	uint8_t preferDeviceLocal
+	size_t size
 ) {
 	return (FNA3D_BufferHandle*) VULKAN_INTERNAL_CreateBuffer(
 		(VulkanRenderer*) driverData,
 		size,
 		RESOURCE_ACCESS_MEMORY_TRANSFER_READ_WRITE,
 		VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
-		preferDeviceLocal,
 		1
 	);
 }
@@ -11876,7 +11838,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		1,
 		RESOURCE_ACCESS_VERTEX_SHADER_READ_UNIFORM_BUFFER,
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-		0,
 		0
 	);
 	SDL_memset(
@@ -11893,7 +11854,6 @@ static FNA3D_Device* VULKAN_CreateDevice(
 		1,
 		RESOURCE_ACCESS_FRAGMENT_SHADER_READ_UNIFORM_BUFFER,
 		VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT,
-		0,
 		0
 	);
 	SDL_memset(
