@@ -310,6 +310,7 @@ typedef struct SDLGPU_TextureHandle /* Cast from FNA3D_Texture* */
 	SDL_GpuTexture *texture;
 	SDL_GpuTextureCreateInfo createInfo;
 	uint8_t boundAsRenderTarget;
+	uint8_t hasData;
 } SDLGPU_TextureHandle;
 
 typedef struct SDLGPU_Renderbuffer /* Cast from FNA3D_Renderbuffer* */
@@ -616,9 +617,9 @@ typedef struct SDLGPU_Renderer
 
 	/* Dummy Samplers */
 
-	SDL_GpuTexture *dummyTexture2D;
-	SDL_GpuTexture *dummyTexture3D;
-	SDL_GpuTexture *dummyTextureCube;
+	SDLGPU_TextureHandle *dummyTexture2D;
+	SDLGPU_TextureHandle *dummyTexture3D;
+	SDLGPU_TextureHandle *dummyTextureCube;
 	SDL_GpuSampler *dummySampler;
 
 	/* Backbuffer parameter cache */
@@ -1673,15 +1674,15 @@ static void SDLGPU_VerifyVertexSampler(
 
 		if (samplerType == MOJOSHADER_SAMPLER_2D)
 		{
-			renderer->vertexTextureSamplerBindings[index].texture = renderer->dummyTexture2D;
+			renderer->vertexTextureSamplerBindings[index].texture = renderer->dummyTexture2D->texture;
 		}
 		else if (samplerType == MOJOSHADER_SAMPLER_VOLUME)
 		{
-			renderer->vertexTextureSamplerBindings[index].texture = renderer->dummyTexture3D;
+			renderer->vertexTextureSamplerBindings[index].texture = renderer->dummyTexture3D->texture;
 		}
 		else
 		{
-			renderer->vertexTextureSamplerBindings[index].texture = renderer->dummyTextureCube;
+			renderer->vertexTextureSamplerBindings[index].texture = renderer->dummyTextureCube->texture;
 		}
 
 		if (renderer->vertexTextureSamplerBindings[index].texture != NULL)
@@ -1733,15 +1734,15 @@ static void SDLGPU_VerifySampler(
 		samplerType = MOJOSHADER_sdlGetShaderParseData(fragShader)->samplers[index].type;
 		if (samplerType == MOJOSHADER_SAMPLER_2D)
 		{
-			renderer->fragmentTextureSamplerBindings[index].texture = renderer->dummyTexture2D;
+			renderer->fragmentTextureSamplerBindings[index].texture = renderer->dummyTexture2D->texture;
 		}
 		else if (samplerType == MOJOSHADER_SAMPLER_VOLUME)
 		{
-			renderer->fragmentTextureSamplerBindings[index].texture = renderer->dummyTexture3D;
+			renderer->fragmentTextureSamplerBindings[index].texture = renderer->dummyTexture3D->texture;
 		}
 		else
 		{
-			renderer->fragmentTextureSamplerBindings[index].texture = renderer->dummyTextureCube;
+			renderer->fragmentTextureSamplerBindings[index].texture = renderer->dummyTextureCube->texture;
 		}
 
 		return;
@@ -2311,6 +2312,7 @@ static SDLGPU_TextureHandle* SDLGPU_INTERNAL_CreateTextureWithHandle(
 	textureHandle->texture = texture;
 	textureHandle->createInfo = textureCreateInfo;
 	textureHandle->boundAsRenderTarget = 0;
+	textureHandle->hasData = 0;
 
 	return textureHandle;
 }
@@ -2657,8 +2659,7 @@ static void SDLGPU_INTERNAL_BeginCopyPass(
 
 static void SDLGPU_INTERNAL_SetTextureData(
 	SDLGPU_Renderer *renderer,
-	SDL_GpuTexture *texture,
-	SDL_GpuTextureFormat format,
+	SDLGPU_TextureHandle *textureHandle,
 	uint32_t x,
 	uint32_t y,
 	uint32_t z,
@@ -2677,12 +2678,18 @@ static void SDLGPU_INTERNAL_SetTextureData(
 	uint32_t transferOffset;
 	SDL_bool cycle = renderer->textureUploadBufferOffset == 0;
 	SDL_bool usingTemporaryTransferBuffer = SDL_FALSE;
+	SDL_bool discard =
+		w == textureHandle->createInfo.width &&
+		h == textureHandle->createInfo.height &&
+		d == textureHandle->createInfo.depth &&
+		textureHandle->createInfo.layerCount == 1 &&
+		textureHandle->createInfo.levelCount == 1;
 
 	SDLGPU_INTERNAL_BeginCopyPass(renderer);
 
 	renderer->textureUploadBufferOffset = SDLGPU_INTERNAL_RoundToAlignment(
 		renderer->textureUploadBufferOffset,
-		SDL_GpuTextureFormatTexelBlockSize(format)
+		SDL_GpuTextureFormatTexelBlockSize(textureHandle->createInfo.format)
 	);
 	transferOffset = renderer->textureUploadBufferOffset;
 
@@ -2731,7 +2738,7 @@ static void SDLGPU_INTERNAL_SetTextureData(
 		cycle
 	);
 
-	textureRegion.textureSlice.texture = texture;
+	textureRegion.textureSlice.texture = textureHandle->texture;
 	textureRegion.textureSlice.layer = layer;
 	textureRegion.textureSlice.mipLevel = mipLevel;
 	textureRegion.x = x;
@@ -2745,13 +2752,21 @@ static void SDLGPU_INTERNAL_SetTextureData(
 	textureCopyParams.bufferStride = 0;		/* default, assume tightly packed */
 	textureCopyParams.bufferImageHeight = 0;	/* default, assume tightly packed */
 
-	SDL_GpuUploadToTexture(
-		renderer->copyPass,
-		transferBuffer,
-		&textureRegion,
-		&textureCopyParams,
-		SDL_FALSE /* FIXME: we could check if it's a complete overwrite and set it to cycle here */
-	);
+	if (!textureHandle->hasData || discard)
+	{
+		SDL_GpuUploadToTexture(
+			renderer->copyPass,
+			transferBuffer,
+			&textureRegion,
+			&textureCopyParams,
+			SDL_TRUE
+		);
+	}
+	else
+	{
+		/* partial update, so we have to stall... */
+		SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
+	}
 
 	if (usingTemporaryTransferBuffer)
 	{
@@ -2761,6 +2776,8 @@ static void SDLGPU_INTERNAL_SetTextureData(
 	{
 		renderer->textureUploadBufferOffset += dataLength;
 	}
+
+	textureHandle->hasData = 1;
 }
 
 static void SDLGPU_SetTextureData2D(
@@ -2778,8 +2795,7 @@ static void SDLGPU_SetTextureData2D(
 
 	SDLGPU_INTERNAL_SetTextureData(
 		(SDLGPU_Renderer*) driverData,
-		textureHandle->texture,
-		textureHandle->createInfo.format,
+		textureHandle,
 		(uint32_t) x,
 		(uint32_t) y,
 		0,
@@ -2810,8 +2826,7 @@ static void SDLGPU_SetTextureData3D(
 
 	SDLGPU_INTERNAL_SetTextureData(
 		(SDLGPU_Renderer*) driverData,
-		textureHandle->texture,
-		textureHandle->createInfo.format,
+		textureHandle,
 		(uint32_t) x,
 		(uint32_t) y,
 		(uint32_t) z,
@@ -2841,8 +2856,7 @@ static void SDLGPU_SetTextureDataCube(
 
 	SDLGPU_INTERNAL_SetTextureData(
 		(SDLGPU_Renderer*) driverData,
-		textureHandle->texture,
-		textureHandle->createInfo.format,
+		textureHandle,
 		(uint32_t) x,
 		(uint32_t) y,
 		0,
@@ -2877,8 +2891,7 @@ static void SDLGPU_SetTextureDataYUV(
 
 	SDLGPU_INTERNAL_SetTextureData(
 		(SDLGPU_Renderer*) driverData,
-		yHandle->texture,
-		yHandle->createInfo.format,
+		yHandle,
 		0,
 		0,
 		0,
@@ -2893,8 +2906,7 @@ static void SDLGPU_SetTextureDataYUV(
 
 	SDLGPU_INTERNAL_SetTextureData(
 		(SDLGPU_Renderer*) driverData,
-		uHandle->texture,
-		uHandle->createInfo.format,
+		uHandle,
 		0,
 		0,
 		0,
@@ -2909,8 +2921,7 @@ static void SDLGPU_SetTextureDataYUV(
 
 	SDLGPU_INTERNAL_SetTextureData(
 		(SDLGPU_Renderer*) driverData,
-		vHandle->texture,
-		vHandle->createInfo.format,
+		vHandle,
 		0,
 		0,
 		0,
@@ -3904,18 +3915,22 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 
 	SDL_GpuReleaseTexture(
 		renderer->device,
-		renderer->dummyTexture2D
+		renderer->dummyTexture2D->texture
 	);
 
 	SDL_GpuReleaseTexture(
 		renderer->device,
-		renderer->dummyTexture3D
+		renderer->dummyTexture3D->texture
 	);
 
 	SDL_GpuReleaseTexture(
 		renderer->device,
-		renderer->dummyTextureCube
+		renderer->dummyTextureCube->texture
 	);
+
+	SDL_free(renderer->dummyTexture2D);
+	SDL_free(renderer->dummyTexture3D);
+	SDL_free(renderer->dummyTextureCube);
 
 	SDL_GpuReleaseSampler(
 		renderer->device,
@@ -3944,7 +3959,6 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	SDLGPU_Renderer *renderer;
 	SDL_GpuDevice *device;
 	SDL_GpuSwapchainComposition swapchainComposition;
-	SDL_GpuTextureCreateInfo textureCreateInfo;
 	SDL_GpuSamplerCreateInfo samplerCreateInfo;
 	SDL_GpuPresentMode desiredPresentMode;
 	uint64_t dummyInt = 0;
@@ -3953,7 +3967,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 
 	requestedPresentationParameters = *presentationParameters;
 	device = SDL_GpuCreateDevice(
-		SDL_GPU_BACKEND_D3D11, /* FIXME: SDL_shader should determine this */
+		SDL_GPU_BACKEND_ALL, /* FIXME: SDL_shader should determine this */
 		debugMode
 	);
 
@@ -4122,35 +4136,40 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 
 	/* Set up dummy resources */
 
-	textureCreateInfo.width = 1;
-	textureCreateInfo.height = 1;
-	textureCreateInfo.depth = 1;
-	textureCreateInfo.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8;
-	textureCreateInfo.isCube = 0;
-	textureCreateInfo.levelCount = 1;
-	textureCreateInfo.layerCount = 1;
-	textureCreateInfo.usageFlags = SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT;
-	textureCreateInfo.sampleCount = SDL_GPU_SAMPLECOUNT_1;
-
-	renderer->dummyTexture2D = SDL_GpuCreateTexture(
-		renderer->device,
-		&textureCreateInfo
+	renderer->dummyTexture2D = SDLGPU_INTERNAL_CreateTextureWithHandle(
+		renderer,
+		1,
+		1,
+		1,
+		SDL_GPU_TEXTUREFORMAT_R8G8B8A8,
+		1,
+		1,
+		SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT,
+		SDL_GPU_SAMPLECOUNT_1
 	);
 
-	textureCreateInfo.depth = 2;
-
-	renderer->dummyTexture3D = SDL_GpuCreateTexture(
-		renderer->device,
-		&textureCreateInfo
+	renderer->dummyTexture3D = SDLGPU_INTERNAL_CreateTextureWithHandle(
+		renderer,
+		1,
+		1,
+		2,
+		SDL_GPU_TEXTUREFORMAT_R8G8B8A8,
+		1,
+		1,
+		SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT,
+		SDL_GPU_SAMPLECOUNT_1
 	);
 
-	textureCreateInfo.depth = 1;
-	textureCreateInfo.layerCount = 6;
-	textureCreateInfo.isCube = 1;
-
-	renderer->dummyTextureCube = SDL_GpuCreateTexture(
-		renderer->device,
-		&textureCreateInfo
+	renderer->dummyTextureCube = SDLGPU_INTERNAL_CreateTextureWithHandle(
+		renderer,
+		1,
+		1,
+		1,
+		SDL_GPU_TEXTUREFORMAT_R8G8B8A8,
+		6,
+		1,
+		SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT,
+		SDL_GPU_SAMPLECOUNT_1
 	);
 
 	samplerCreateInfo.addressModeU = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
@@ -4175,13 +4194,13 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 
 	for (i = 0; i < MAX_VERTEXTEXTURE_SAMPLERS; i += 1)
 	{
-		renderer->vertexTextureSamplerBindings[i].texture = renderer->dummyTexture2D;
+		renderer->vertexTextureSamplerBindings[i].texture = renderer->dummyTexture2D->texture;
 		renderer->vertexTextureSamplerBindings[i].sampler = renderer->dummySampler;
 	}
 
 	for (i = 0; i < MAX_TEXTURE_SAMPLERS; i += 1)
 	{
-		renderer->fragmentTextureSamplerBindings[i].texture = renderer->dummyTexture2D;
+		renderer->fragmentTextureSamplerBindings[i].texture = renderer->dummyTexture2D->texture;
 		renderer->fragmentTextureSamplerBindings[i].sampler = renderer->dummySampler;
 	}
 
@@ -4199,7 +4218,6 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	SDLGPU_INTERNAL_SetTextureData(
 		renderer,
 		renderer->dummyTexture2D,
-		SDL_GPU_TEXTUREFORMAT_R8G8B8A8,
 		0,
 		0,
 		0,
@@ -4215,7 +4233,6 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	SDLGPU_INTERNAL_SetTextureData(
 		renderer,
 		renderer->dummyTexture3D,
-		SDL_GPU_TEXTUREFORMAT_R8G8B8A8,
 		0,
 		0,
 		0,
@@ -4233,7 +4250,6 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 		SDLGPU_INTERNAL_SetTextureData(
 			renderer,
 			renderer->dummyTextureCube,
-			SDL_GPU_TEXTUREFORMAT_R8G8B8A8,
 			0, 0, 0,
 			1, 1, 1,
 			i,
