@@ -1572,7 +1572,7 @@ static void SDLGPU_INTERNAL_BindGraphicsPipeline(
 
 	MOJOSHADER_sdlUpdateUniformBuffers(
 		renderer->mojoshaderContext,
-		renderer->renderPass
+		renderer->renderCommandBuffer
 	);
 
 	renderer->currentVertexShader = vertShaderData;
