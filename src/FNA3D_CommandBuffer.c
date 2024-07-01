@@ -725,7 +725,8 @@ void FNA3D_CommandBuffer_MarkBufferAsBound(
 FNA3D_TransferBuffer* FNA3D_CommandBuffer_AcquireTransferBuffer(
 	FNA3D_CommandBufferManager *manager,
 	size_t requiredSize,
-	size_t alignment
+	size_t alignment,
+	uint8_t allowFastTransferBuffer
 ) {
 	FNA3D_TransferBuffer *transferBuffer;
 	size_t parentBufferSize;
@@ -765,7 +766,8 @@ FNA3D_TransferBuffer* FNA3D_CommandBuffer_AcquireTransferBuffer(
 	}
 
 	/* Is the fast transfer buffer available? */
-	if (	manager->transferBufferPool.fastTransferBufferAvailable &&
+	if (	allowFastTransferBuffer &&
+		manager->transferBufferPool.fastTransferBufferAvailable &&
 		requiredSize < FAST_TRANSFER_SIZE	)
 	{
 		transferBuffer = manager->transferBufferPool.fastTransferBuffer;
