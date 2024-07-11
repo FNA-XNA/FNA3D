@@ -43,18 +43,19 @@
 	)
 #define SDL_CreateSurfaceFrom(a, b, c, d, e) \
 	SDL_CreateRGBSurfaceFrom( \
+		d, \
 		a, \
 		b, \
-		c, \
-		8 * ((e == SDL_PIXELFORMAT_RGBA32) ? 4 : 3), \
-		d, \
+		8 * ((c == SDL_PIXELFORMAT_RGBA32) ? 4 : 3), \
+		e, \
 		0x000000FF, \
 		0x0000FF00, \
 		0x00FF0000, \
-		(e == SDL_PIXELFORMAT_RGBA32) ? 0xFF000000 : 0 \
+		(c == SDL_PIXELFORMAT_RGBA32) ? 0xFF000000 : 0 \
 	)
 #define SDL_BlitSurfaceScaled(a, b, c, d, e) SDL_BlitScaled(a, b, c, d)
 #define SDL_DestroySurface SDL_FreeSurface
+#define SDL_SURFACE_PREALLOCATED SDL_PREALLOC
 #endif
 
 extern void FNA3D_LogWarn(const char *fmt, ...);
@@ -218,11 +219,11 @@ uint8_t* FNA3D_Image_Load(
 	if (forceW != -1 && forceH != -1)
 	{
 		surface = SDL_CreateSurfaceFrom(
-			result,
 			*w,
 			*h,
-			(*w) * 4,
-			SDL_PIXELFORMAT_RGBA32
+			SDL_PIXELFORMAT_RGBA32,
+			result,
+			(*w) * 4
 		);
 #if SDL_MAJOR_VERSION < 3
 		surface->flags |= SDL_SIMD_ALIGNED;
@@ -303,7 +304,7 @@ uint8_t* FNA3D_Image_Load(
 
 		/* We're going to cheat and let the client take the memory! */
 		result = (uint8_t*) newSurface->pixels;
-		newSurface->flags |= SDL_PREALLOC;
+		newSurface->flags |= SDL_SURFACE_PREALLOCATED;
 		SDL_DestroySurface(newSurface);
 	}
 
@@ -351,11 +352,11 @@ void FNA3D_Image_SavePNG(
 	if (scale)
 	{
 		surface = SDL_CreateSurfaceFrom(
-			data,
 			srcW,
 			srcH,
-			srcW * 4,
-			SDL_PIXELFORMAT_RGBA32
+			SDL_PIXELFORMAT_RGBA32,
+			data,
+			srcW * 4
 		);
 		scaledSurface = SDL_CreateSurface(
 			dstW,
@@ -402,11 +403,11 @@ void FNA3D_Image_SaveJPG(
 ) {
 	/* Get an RGB24 surface at the specified width/height */
 	SDL_Surface *surface = SDL_CreateSurfaceFrom(
-		data,
 		srcW,
 		srcH,
-		srcW * 4,
-		SDL_PIXELFORMAT_RGBA32
+		SDL_PIXELFORMAT_RGBA32,
+		data,
+		srcW * 4
 	);
 	SDL_Surface *convertSurface = SDL_CreateSurface(
 		dstW,
