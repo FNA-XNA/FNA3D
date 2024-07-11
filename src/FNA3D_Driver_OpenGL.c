@@ -1242,7 +1242,11 @@ static void OPENGL_DestroyDevice(FNA3D_Device *device)
 	SDL_DestroyMutex(renderer->disposeEffectsLock);
 	SDL_DestroyMutex(renderer->disposeQueriesLock);
 
+#ifdef USE_SDL3
+	SDL_GL_DestroyContext(renderer->context);
+#else
 	SDL_GL_DeleteContext(renderer->context);
+#endif
 
 	SDL_free(renderer);
 	SDL_free(device);
