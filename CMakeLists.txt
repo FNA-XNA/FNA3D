@@ -6,7 +6,6 @@ project(FNA3D C)
 # Options
 option(BUILD_SHARED_LIBS "Build shared library" ON)
 option(TRACING_SUPPORT "Build with tracing enabled" OFF)
-option(BUILD_DXVK_NATIVE "Enable support for dxvk-native" OFF)
 option(BUILD_SDL3 "Build against SDL 3.0" OFF)
 
 # Version
@@ -37,6 +36,14 @@ if(APPLE)
 elseif(WIN32)
 	# "FNA3D.dll", not "libFNA3D.dll"
 	set(CMAKE_SHARED_LIBRARY_PREFIX "")
+else()
+	find_package(PkgConfig)
+	if(PKG_CONFIG_FOUND)
+		pkg_search_module(DXVK_NATIVE dxvk-dxgi)
+		if(DXVK_NATIVE_FOUND)
+			set(BUILD_DXVK_NATIVE ON)
+		endif()
+	endif()
 endif()
 
 # Defines
@@ -144,16 +151,8 @@ target_include_directories(FNA3D PUBLIC
 )
 if(BUILD_DXVK_NATIVE)
 	add_definitions(-DFNA3D_DXVK_NATIVE)
-	target_include_directories(FNA3D PUBLIC
-		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk/include/native/directx>
-		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk/include/native/windows>
-		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk/include/native/wsi>
-	)
-	target_include_directories(mojoshader PUBLIC
-		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk/include/native/directx>
-		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk/include/native/windows>
-		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/../dxvk/include/native/wsi>
-	)
+	target_include_directories(FNA3D PUBLIC ${DXVK_NATIVE_INCLUDE_DIRS})
+	target_include_directories(mojoshader PUBLIC ${DXVK_NATIVE_INCLUDE_DIRS})
 endif()
 target_include_directories(mojoshader PUBLIC
 	$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/MojoShader>
