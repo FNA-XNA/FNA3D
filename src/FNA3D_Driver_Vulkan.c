@@ -4373,7 +4373,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		}
 
 #if SDL_MAJOR_VERSION >= 3
-		swapchainData = (VulkanSwapchainData*) SDL_GetProperty(
+		swapchainData = (VulkanSwapchainData*) SDL_GetPointerProperty(
 			SDL_GetWindowProperties(windowHandle),
 			WINDOW_SWAPCHAIN_DATA,
 			NULL
@@ -4401,7 +4401,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 			else
 			{
 #if SDL_MAJOR_VERSION >= 3
-				swapchainData = (VulkanSwapchainData *)SDL_GetProperty(SDL_GetWindowProperties(windowHandle), WINDOW_SWAPCHAIN_DATA, NULL);
+				swapchainData = (VulkanSwapchainData *)SDL_GetPointerProperty(SDL_GetWindowProperties(windowHandle), WINDOW_SWAPCHAIN_DATA, NULL);
 #else
 				swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
 #endif
@@ -4576,7 +4576,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		if (renderer->supports.GGP_frame_token)
 		{
 #if SDL_MAJOR_VERSION >= 3
-			const void *token = SDL_GetProperty(
+			const void *token = SDL_GetPointerProperty(
 				SDL_GetWindowProperties(windowHandle),
 				"GgpFrameToken",
 				NULL
@@ -5107,7 +5107,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	swapchainData->fence = VK_NULL_HANDLE;
 
 #if SDL_MAJOR_VERSION >= 3
-	SDL_SetProperty(SDL_GetWindowProperties(windowHandle), WINDOW_SWAPCHAIN_DATA, swapchainData);
+	SDL_SetPointerProperty(SDL_GetWindowProperties(windowHandle), WINDOW_SWAPCHAIN_DATA, swapchainData);
 #else
 	SDL_SetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA, swapchainData);
 #endif
@@ -5143,7 +5143,7 @@ static void VULKAN_INTERNAL_DestroySwapchain(
 	VulkanSwapchainData *swapchainData;
 
 #if SDL_MAJOR_VERSION >= 3
-	swapchainData = (VulkanSwapchainData*) SDL_GetProperty(SDL_GetWindowProperties(windowHandle), WINDOW_SWAPCHAIN_DATA, NULL);
+	swapchainData = (VulkanSwapchainData*) SDL_GetPointerProperty(SDL_GetWindowProperties(windowHandle), WINDOW_SWAPCHAIN_DATA, NULL);
 #else
 	swapchainData = (VulkanSwapchainData*) SDL_GetWindowData(windowHandle, WINDOW_SWAPCHAIN_DATA);
 #endif

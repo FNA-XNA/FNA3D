@@ -1545,7 +1545,7 @@ static void D3D11_SwapBuffers(
 	}
 
 #if SDL_MAJOR_VERSION >= 3
-	swapchainData = (D3D11SwapchainData*) SDL_GetProperty(
+	swapchainData = (D3D11SwapchainData*) SDL_GetPointerProperty(
 		SDL_GetWindowProperties(overrideWindowHandle),
 		WINDOW_SWAPCHAIN_DATA,
 		NULL
@@ -1565,7 +1565,7 @@ static void D3D11_SwapBuffers(
 			NULL
 		);
 #if SDL_MAJOR_VERSION >= 3
-		swapchainData = (D3D11SwapchainData*) SDL_GetProperty(
+		swapchainData = (D3D11SwapchainData*) SDL_GetPointerProperty(
 			SDL_GetWindowProperties(overrideWindowHandle),
 			WINDOW_SWAPCHAIN_DATA,
 			NULL
@@ -2574,7 +2574,7 @@ static void D3D11_INTERNAL_CreateSwapChain(
 	dxgiHandle = (HWND) windowHandle;
 #else
 #if SDL_MAJOR_VERSION >= 3
-	dxgiHandle = (HWND) SDL_GetProperty(
+	dxgiHandle = (HWND) SDL_GetPointerProperty(
 		SDL_GetWindowProperties(windowHandle),
 		SDL_PROP_WINDOW_WIN32_HWND_POINTER,
 		NULL
@@ -2713,7 +2713,7 @@ static void D3D11_INTERNAL_CreateSwapChain(
 	swapchainData->swapchainRTView = NULL;
 	swapchainData->format = backBufferFormat;
 #if SDL_MAJOR_VERSION >= 3
-	SDL_SetProperty(SDL_GetWindowProperties(windowHandle), WINDOW_SWAPCHAIN_DATA, swapchainData);
+	SDL_SetPointerProperty(SDL_GetWindowProperties(windowHandle), WINDOW_SWAPCHAIN_DATA, swapchainData);
 #else
 	SDL_SetWindowData((SDL_Window*) windowHandle, WINDOW_SWAPCHAIN_DATA, swapchainData);
 #endif
@@ -2812,7 +2812,7 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 	if (parameters->deviceWindowHandle != NULL)
 	{
 #if SDL_MAJOR_VERSION >= 3
-		swapchainData = (D3D11SwapchainData*) SDL_GetProperty(
+		swapchainData = (D3D11SwapchainData*) SDL_GetPointerProperty(
 			SDL_GetWindowProperties(parameters->deviceWindowHandle),
 			WINDOW_SWAPCHAIN_DATA,
 			NULL
@@ -2832,7 +2832,7 @@ static void D3D11_INTERNAL_CreateBackbuffer(
 				NULL
 			);
 #if SDL_MAJOR_VERSION >= 3
-			swapchainData = (D3D11SwapchainData*) SDL_GetProperty(
+			swapchainData = (D3D11SwapchainData*) SDL_GetPointerProperty(
 				SDL_GetWindowProperties(parameters->deviceWindowHandle),
 				WINDOW_SWAPCHAIN_DATA,
 				NULL
