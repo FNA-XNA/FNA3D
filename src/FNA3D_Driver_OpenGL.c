@@ -40,7 +40,7 @@ static inline SDL_threadID SDL_GetCurrentThreadID()
 #define SDL_ThreadID SDL_threadID
 #define SDL_Mutex SDL_mutex
 #define SDL_Semaphore SDL_sem
-#define SDL_PostSemaphore SDL_SemPost
+#define SDL_SignalSemaphore SDL_SemPost
 #define SDL_WaitSemaphore SDL_SemWait
 #endif
 
@@ -1267,7 +1267,7 @@ static inline void ExecuteCommands(OpenGLRenderer *renderer)
 			cmd
 		);
 		next = cmd->next;
-		SDL_PostSemaphore(cmd->semaphore);
+		SDL_SignalSemaphore(cmd->semaphore);
 		cmd = next;
 	}
 	renderer->commands = NULL; /* No heap memory to free! -caleb */
