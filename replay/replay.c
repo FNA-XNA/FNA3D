@@ -1387,7 +1387,9 @@ int main(int argc, char **argv)
 		size_t pathLen = SDL_strlen(rootPath) + SDL_strlen(defaultName) + 1;
 		char *path = (char*) SDL_malloc(pathLen);
 		SDL_snprintf(path, pathLen, "%s%s", rootPath, defaultName);
+#ifndef USE_SDL3
 		SDL_free(rootPath);
+#endif
 		replay(path, forceDebugMode, vsync, delayMS);
 		SDL_free(path);
 	}
