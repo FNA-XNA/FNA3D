@@ -3966,7 +3966,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 		MOJOSHADER_sdlGetShaderFormats(),
 		debugMode,
 		0,
-		"Vulkan"
+		NULL
 	);
 
 	if (device == NULL)
