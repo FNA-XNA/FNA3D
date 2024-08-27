@@ -385,8 +385,8 @@ typedef struct GraphicsPipelineHash
 	FNA3D_PrimitiveType primitiveType;
 	SDL_GpuSampleCount sampleCount;
 	uint32_t sampleMask;
-	MOJOSHADER_sdlShaderData *vertShader;
-	MOJOSHADER_sdlShaderData *fragShader;
+	SDL_GpuShader *vertShader;
+	SDL_GpuShader *fragShader;
 	SDL_GpuTextureFormat colorFormats[MAX_RENDERTARGET_BINDINGS];
 	uint32_t colorFormatCount;
 	SDL_bool hasDepthStencilAttachment;
@@ -1222,6 +1222,7 @@ static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
 	FNA3D_VertexDeclaration vertexDeclaration;
 	FNA3D_VertexElement element;
 	FNA3D_VertexElementUsage usage;
+	MOJOSHADER_sdlVertexAttribute mojoshaderVertexAttributes[16];
 	int32_t index, attribLoc;
 
 	MOJOSHADER_sdlGetBoundShaderData(renderer->mojoshaderContext, &vertexShader, &blah);
@@ -1278,6 +1279,10 @@ static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
 			attributes[attributeDescriptionCounter].offset = element.offset;
 			attributes[attributeDescriptionCounter].binding = i;
 
+			mojoshaderVertexAttributes[attributeDescriptionCounter].usage = VertexAttribUsage(element.vertexElementUsage);
+			mojoshaderVertexAttributes[attributeDescriptionCounter].vertexElementFormat = element.vertexElementFormat;
+			mojoshaderVertexAttributes[attributeDescriptionCounter].usageIndex = index;
+
 			attributeDescriptionCounter += 1;
 		}
 
@@ -1299,6 +1304,12 @@ static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
 	}
 
 	*attributeCount = attributeDescriptionCounter;
+
+	MOJOSHADER_sdlLinkProgram(
+		renderer->mojoshaderContext,
+		mojoshaderVertexAttributes,
+		attributeDescriptionCounter
+	);
 }
 
 static SDL_GpuGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
@@ -1313,6 +1324,31 @@ static SDL_GpuGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 	SDL_GpuVertexAttribute *vertexAttributes;
 	int32_t i;
 
+	vertexBindings = SDL_malloc(
+		renderer->numVertexBindings *
+		sizeof(SDL_GpuVertexBinding)
+	);
+	vertexAttributes = SDL_malloc(
+		renderer->numVertexBindings *
+		MAX_VERTEX_ATTRIBUTES *
+		sizeof(SDL_GpuVertexAttribute)
+	);
+
+	/* We have to do this to link the vertex attribute modified shader program */
+	SDLGPU_INTERNAL_GenerateVertexInputInfo(
+		renderer,
+		vertexBindings,
+		vertexAttributes,
+		&createInfo.vertexInputState.vertexAttributeCount
+	);
+
+	/* Shaders */
+	MOJOSHADER_sdlGetShaders(
+		renderer->mojoshaderContext,
+		&createInfo.vertexShader,
+		&createInfo.fragmentShader
+	);
+
 	hash.blendState = GetPackedBlendState(renderer->fnaBlendState);
 
 	hash.depthStencilState = GetPackedDepthStencilState(
@@ -1324,8 +1360,8 @@ static SDL_GpuGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 	hash.sampleCount = renderer->nextRenderPassMultisampleCount;
 	hash.sampleMask = renderer->multisampleMask;
 	MOJOSHADER_sdlGetBoundShaderData(renderer->mojoshaderContext, &vertShader, &fragShader);
-	hash.vertShader = vertShader;
-	hash.fragShader = fragShader;
+	hash.vertShader = createInfo.vertexShader;
+	hash.fragShader = createInfo.fragmentShader;
 
 	hash.colorFormatCount = renderer->nextRenderPassColorAttachmentCount;
 	hash.colorFormats[0] = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
@@ -1358,29 +1394,14 @@ static SDL_GpuGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 
 	if (pipeline != NULL)
 	{
+		SDL_free(vertexBindings);
+		SDL_free(vertexAttributes);
 		return pipeline;
 	}
 
 	createInfo.primitiveType = XNAToSDL_PrimitiveType[renderer->fnaPrimitiveType];
 
 	/* Vertex Input State */
-
-	vertexBindings = SDL_malloc(
-		renderer->numVertexBindings *
-		sizeof(SDL_GpuVertexBinding)
-	);
-	vertexAttributes = SDL_malloc(
-		renderer->numVertexBindings *
-		MAX_VERTEX_ATTRIBUTES *
-		sizeof(SDL_GpuVertexAttribute)
-	);
-
-	SDLGPU_INTERNAL_GenerateVertexInputInfo(
-		renderer,
-		vertexBindings,
-		vertexAttributes,
-		&createInfo.vertexInputState.vertexAttributeCount
-	);
 
 	createInfo.vertexInputState.vertexBindings = vertexBindings;
 	createInfo.vertexInputState.vertexBindingCount = renderer->numVertexBindings;
@@ -1520,14 +1541,6 @@ static SDL_GpuGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 		renderer->fnaDepthStencilState.stencilWriteMask;
 	createInfo.depthStencilState.reference =
 		renderer->fnaDepthStencilState.referenceStencil;
-
-	/* Shaders */
-
-	MOJOSHADER_sdlGetShaders(
-		renderer->mojoshaderContext,
-		&createInfo.vertexShader,
-		&createInfo.fragmentShader
-	);
 
 	/* Finally, after 1000 years, create the pipeline! */
 
@@ -2204,10 +2217,10 @@ static void SDLGPU_DrawInstancedPrimitives(
 
 	SDL_GpuDrawIndexedPrimitives(
 		renderer->renderPass,
-		baseVertex,
-		startIndex,
 		PrimitiveVerts(primitiveType, primitiveCount),
 		instanceCount,
+		startIndex,
+		baseVertex,
 		0
 	);
 }
@@ -2254,9 +2267,9 @@ static void SDLGPU_DrawPrimitives(
 
 	SDL_GpuDrawPrimitives(
 		renderer->renderPass,
-		vertexStart,
 		PrimitiveVerts(primitiveType, primitiveCount),
 		1,
+		vertexStart,
 		0
 	);
 }
@@ -3953,7 +3966,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 		MOJOSHADER_sdlGetShaderFormats(),
 		debugMode,
 		0,
-		NULL
+		"Vulkan"
 	);
 
 	if (device == NULL)
