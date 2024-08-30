@@ -11117,7 +11117,11 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 	SDL_setenv("MVK_CONFIG_FULL_IMAGE_VIEW_SWIZZLE", "1", 1);
 	SDL_setenv("MVK_CONFIG_SHADER_CONVERSION_FLIP_VERTEX_Y", "0", 1);
 
+#ifdef USE_SDL3
+	if (!SDL_Vulkan_LoadLibrary(NULL))
+#else
 	if (SDL_Vulkan_LoadLibrary(NULL) < 0)
+#endif
 	{
 		FNA3D_LogWarn("Vulkan: SDL_Vulkan_LoadLibrary failed!");
 		return 0;

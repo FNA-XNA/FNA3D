@@ -3314,7 +3314,11 @@ static void OPENGL_INTERNAL_SetPresentationInterval(
 		}
 		else
 		{
+#ifdef USE_SDL3
+			if (SDL_GL_SetSwapInterval(-1))
+#else
 			if (SDL_GL_SetSwapInterval(-1) != -1)
+#endif
 			{
 				FNA3D_LogInfo(
 					"Using EXT_swap_control_tear VSync!"
@@ -5834,7 +5838,11 @@ static uint8_t OPENGL_PrepareWindowAttributes(uint32_t *flags)
 	 * which GL library actually gets loaded (desktop vs ES, for example).
 	 * -flibit
 	 */
+#ifdef USE_SDL3
+	if (!SDL_GL_LoadLibrary(NULL))
+#else
 	if (SDL_GL_LoadLibrary(NULL) < 0)
+#endif
 	{
 		return 0;
 	}
