@@ -93,9 +93,9 @@ static SDL_GPUTextureFormat XNAToSDL_SurfaceFormat[] =
 	SDL_GPU_TEXTUREFORMAT_B5G6R5_UNORM,		/* SurfaceFormat.Bgr565 */
 	SDL_GPU_TEXTUREFORMAT_B5G5R5A1_UNORM,		/* SurfaceFormat.Bgra5551 */
 	SDL_GPU_TEXTUREFORMAT_B4G4R4A4_UNORM,		/* SurfaceFormat.Bgra4444 */
-	SDL_GPU_TEXTUREFORMAT_BC1_UNORM,		/* SurfaceFormat.Dxt1 */
-	SDL_GPU_TEXTUREFORMAT_BC2_UNORM,		/* SurfaceFormat.Dxt3 */
-	SDL_GPU_TEXTUREFORMAT_BC3_UNORM,		/* SurfaceFormat.Dxt5 */
+	SDL_GPU_TEXTUREFORMAT_BC1_RGBA_UNORM,		/* SurfaceFormat.Dxt1 */
+	SDL_GPU_TEXTUREFORMAT_BC2_RGBA_UNORM,		/* SurfaceFormat.Dxt3 */
+	SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM,		/* SurfaceFormat.Dxt5 */
 	SDL_GPU_TEXTUREFORMAT_R8G8_SNORM,		/* SurfaceFormat.NormalizedByte2 */
 	SDL_GPU_TEXTUREFORMAT_R8G8B8A8_SNORM,		/* SurfaceFormat.NormalizedByte4 */
 	SDL_GPU_TEXTUREFORMAT_R10G10B10A2_UNORM,	/* SurfaceFormat.Rgba1010102 */
@@ -111,9 +111,9 @@ static SDL_GPUTextureFormat XNAToSDL_SurfaceFormat[] =
 	SDL_GPU_TEXTUREFORMAT_R16G16B16A16_FLOAT,	/* SurfaceFormat.HdrBlendable */
 	SDL_GPU_TEXTUREFORMAT_B8G8R8A8_UNORM,		/* SurfaceFormat.ColorBgraEXT */
 	SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB,	/* SurfaceFormat.ColorSrgbEXT */
-	SDL_GPU_TEXTUREFORMAT_BC3_UNORM_SRGB,		/* SurfaceFormat.Dxt5SrgbEXT */
-	SDL_GPU_TEXTUREFORMAT_BC7_UNORM,		/* SurfaceFormat.Bc7EXT */
-	SDL_GPU_TEXTUREFORMAT_BC7_UNORM_SRGB		/* SurfaceFormat.Bc7SrgbEXT */
+	SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM_SRGB,	/* SurfaceFormat.Dxt5SrgbEXT */
+	SDL_GPU_TEXTUREFORMAT_BC7_RGBA_UNORM,		/* SurfaceFormat.Bc7EXT */
+	SDL_GPU_TEXTUREFORMAT_BC7_RGBA_UNORM_SRGB	/* SurfaceFormat.Bc7SrgbEXT */
 };
 
 static SDL_GPUPrimitiveType XNAToSDL_PrimitiveType[] =
@@ -210,9 +210,9 @@ static SDL_GPUVertexElementFormat XNAToSDL_VertexAttribType[] =
 	SDL_GPU_VERTEXELEMENTFORMAT_FLOAT3,		/* FNA3D_VERTEXELEMENTFORMAT_VECTOR3 */
 	SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4,		/* FNA3D_VERTEXELEMENTFORMAT_VECTOR4 */
 	SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4_NORM,	/* FNA3D_VERTEXELEMENTFORMAT_COLOR */
-	SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4,		/* FNA3D_VERTEXELEMENTFORMAT_BYTE4 */ /* FIXME: NOT SCALED */
-	SDL_GPU_VERTEXELEMENTFORMAT_SHORT2,		/* FNA3D_VERTEXELEMENTFORMAT_SHORT2 */ /* FIXME: NOT SCALED */
-	SDL_GPU_VERTEXELEMENTFORMAT_SHORT4,		/* FNA3D_VERTEXELEMENTFORMAT_SHORT4 */ /* FIXME: NOT SCALED */
+	SDL_GPU_VERTEXELEMENTFORMAT_UBYTE4,		/* FNA3D_VERTEXELEMENTFORMAT_BYTE4 */
+	SDL_GPU_VERTEXELEMENTFORMAT_SHORT2,		/* FNA3D_VERTEXELEMENTFORMAT_SHORT2 */
+	SDL_GPU_VERTEXELEMENTFORMAT_SHORT4,		/* FNA3D_VERTEXELEMENTFORMAT_SHORT4 */
 	SDL_GPU_VERTEXELEMENTFORMAT_SHORT2_NORM,	/* FNA3D_VERTEXELEMENTFORMAT_NORMALIZEDSHORT2 */
 	SDL_GPU_VERTEXELEMENTFORMAT_SHORT4_NORM,	/* FNA3D_VERTEXELEMENTFORMAT_NORMALIZEDSHORT4 */
 	SDL_GPU_VERTEXELEMENTFORMAT_HALF2,		/* FNA3D_VERTEXELEMENTFORMAT_HALFVECTOR2 */
@@ -516,7 +516,8 @@ typedef struct SDLGPU_Renderer
 	uint8_t shouldClearStencilOnBeginPass;
 
 	SDL_FColor clearColorValue;
-	SDL_GPUDepthStencilValue clearDepthStencilValue;
+	float clearDepthValue;
+	Uint8 clearStencilValue;
 
 	/* Defer render pass settings */
 	SDLGPU_TextureHandle *nextRenderPassColorAttachments[MAX_RENDERTARGET_BINDINGS];
@@ -562,8 +563,10 @@ typedef struct SDLGPU_Renderer
 	FNA3D_DepthStencilState fnaDepthStencilState;
 	FNA3D_PrimitiveType fnaPrimitiveType;
 	float blendConstants[4];
-	uint32_t multisampleMask;
+	SDL_FColor currentBlendConstants;
 	uint32_t stencilReference;
+	uint32_t currentStencilReference;
+	uint32_t multisampleMask;
 	SDL_Rect scissorRect;
 
 	/* Presentation structure */
@@ -717,6 +720,8 @@ static void SDLGPU_INTERNAL_EndRenderPass(
 	renderer->needNewRenderPass = 1;
 	renderer->currentGraphicsPipeline = NULL;
 	renderer->needNewGraphicsPipeline = 1;
+	SDL_zero(renderer->currentBlendConstants);
+	renderer->currentStencilReference = 0;
 }
 
 static void SDLGPU_INTERNAL_FlushCommandsAndAcquireFence(
@@ -786,8 +791,7 @@ static void SDLGPU_SwapBuffers(
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
 	SDL_GPUTexture *swapchainTexture;
-	SDL_GPUBlitRegion srcRegion;
-	SDL_GPUBlitRegion dstRegion;
+	SDL_GPUBlitInfo blitInfo;
 	uint32_t width, height, i;
 
 	SDLGPU_INTERNAL_EndCopyPass(renderer);
@@ -826,29 +830,34 @@ static void SDLGPU_SwapBuffers(
 
 	if (swapchainTexture != NULL)
 	{
-		srcRegion.texture = renderer->fauxBackbufferColor->texture;
-		srcRegion.mipLevel = 0;
-		srcRegion.layerOrDepthPlane = 0;
-		srcRegion.x = 0;
-		srcRegion.y = 0;
-		srcRegion.w = renderer->fauxBackbufferColor->createInfo.width;
-		srcRegion.h = renderer->fauxBackbufferColor->createInfo.height;
+		blitInfo.source.texture = renderer->fauxBackbufferColor->texture;
+		blitInfo.source.mip_level = 0;
+		blitInfo.source.layer_or_depth_plane = 0;
+		blitInfo.source.x = 0;
+		blitInfo.source.y = 0;
+		blitInfo.source.w = renderer->fauxBackbufferColor->createInfo.width;
+		blitInfo.source.h = renderer->fauxBackbufferColor->createInfo.height;
 
-		dstRegion.texture = swapchainTexture;
-		dstRegion.mipLevel = 0;
-		dstRegion.layerOrDepthPlane = 0;
-		dstRegion.x = 0;
-		dstRegion.y = 0;
-		dstRegion.w = width;
-		dstRegion.h = height;
+		blitInfo.destination.texture = swapchainTexture;
+		blitInfo.destination.mip_level = 0;
+		blitInfo.destination.layer_or_depth_plane = 0;
+		blitInfo.destination.x = 0;
+		blitInfo.destination.y = 0;
+		blitInfo.destination.w = width;
+		blitInfo.destination.h = height;
+
+		blitInfo.load_op = SDL_GPU_LOADOP_DONT_CARE;
+		blitInfo.clear_color.r = 0;
+		blitInfo.clear_color.g = 0;
+		blitInfo.clear_color.b = 0;
+		blitInfo.clear_color.a = 0;
+		blitInfo.flip_mode = SDL_FLIP_NONE;
+		blitInfo.filter = SDL_GPU_FILTER_LINEAR;
+		blitInfo.cycle = SDL_FALSE;
 
 		SDL_BlitGPUTexture(
 			renderer->renderCommandBuffer,
-			&srcRegion,
-			&dstRegion,
-			SDL_FLIP_NONE,
-			SDL_GPU_FILTER_LINEAR,
-			SDL_FALSE
+			&blitInfo
 		);
 	}
 
@@ -908,12 +917,12 @@ static void SDLGPU_INTERNAL_PrepareRenderPassClear(
 			depth = 1.0f;
 		}
 
-		renderer->clearDepthStencilValue.depth = depth;
+		renderer->clearDepthValue = depth;
 	}
 
 	if (clearStencil)
 	{
-		renderer->clearDepthStencilValue.stencil = stencil;
+		renderer->clearStencilValue = stencil;
 	}
 
 	renderer->needNewRenderPass = 1;
@@ -975,8 +984,8 @@ static void SDLGPU_INTERNAL_BindRenderTarget(
 static void SDLGPU_INTERNAL_BeginRenderPass(
 	SDLGPU_Renderer *renderer
 ) {
-	SDL_GPUColorAttachmentInfo colorAttachmentInfos[MAX_RENDERTARGET_BINDINGS];
-	SDL_GPUDepthStencilAttachmentInfo depthStencilAttachmentInfo;
+	SDL_GPUColorTargetInfo colorAttachmentInfos[MAX_RENDERTARGET_BINDINGS];
+	SDL_GPUDepthStencilTargetInfo depthStencilAttachmentInfo;
 	SDL_GPUViewport gpuViewport;
 	uint32_t i;
 
@@ -991,33 +1000,33 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 	for (i = 0; i < renderer->nextRenderPassColorAttachmentCount; i += 1)
 	{
 		colorAttachmentInfos[i].texture = renderer->nextRenderPassColorAttachments[i]->texture;
-		colorAttachmentInfos[i].layerOrDepthPlane = renderer->nextRenderPassColorAttachmentCubeFace[i];
-		colorAttachmentInfos[i].mipLevel = 0;
+		colorAttachmentInfos[i].layer_or_depth_plane = renderer->nextRenderPassColorAttachmentCubeFace[i];
+		colorAttachmentInfos[i].mip_level = 0;
 
-		colorAttachmentInfos[i].loadOp =
+		colorAttachmentInfos[i].load_op =
 			renderer->shouldClearColorOnBeginPass ?
 				SDL_GPU_LOADOP_CLEAR :
 				SDL_GPU_LOADOP_LOAD;
 
 		/* We always have to store just in case changing render state breaks the render pass. */
 		/* FIXME: perhaps there is a way around this? */
-		colorAttachmentInfos[i].storeOp = SDL_GPU_STOREOP_STORE;
+		colorAttachmentInfos[i].store_op = SDL_GPU_STOREOP_STORE;
 
 		colorAttachmentInfos[i].cycle =
-			renderer->nextRenderPassColorAttachments[i]->boundAsRenderTarget || colorAttachmentInfos[i].loadOp == SDL_GPU_LOADOP_LOAD ?
+			renderer->nextRenderPassColorAttachments[i]->boundAsRenderTarget || colorAttachmentInfos[i].load_op == SDL_GPU_LOADOP_LOAD ?
 				SDL_FALSE :
 				SDL_TRUE; /* cycle if we can, it's fast! */
 
 		if (renderer->shouldClearColorOnBeginPass)
 		{
-			colorAttachmentInfos[i].clearColor = renderer->clearColorValue;
+			colorAttachmentInfos[i].clear_color = renderer->clearColorValue;
 		}
 		else
 		{
-			colorAttachmentInfos[i].clearColor.r = 0;
-			colorAttachmentInfos[i].clearColor.g = 0;
-			colorAttachmentInfos[i].clearColor.b = 0;
-			colorAttachmentInfos[i].clearColor.a = 0;
+			colorAttachmentInfos[i].clear_color.r = 0;
+			colorAttachmentInfos[i].clear_color.g = 0;
+			colorAttachmentInfos[i].clear_color.b = 0;
+			colorAttachmentInfos[i].clear_color.a = 0;
 		}
 
 		SDLGPU_INTERNAL_BindRenderTarget(renderer, renderer->nextRenderPassColorAttachments[i]);
@@ -1027,44 +1036,45 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 	{
 		depthStencilAttachmentInfo.texture = renderer->nextRenderPassDepthStencilAttachment->texture;
 
-		depthStencilAttachmentInfo.loadOp =
+		depthStencilAttachmentInfo.load_op =
 			renderer->shouldClearDepthOnBeginPass ?
 				SDL_GPU_LOADOP_CLEAR :
 				SDL_GPU_LOADOP_DONT_CARE;
 
 		if (renderer->shouldClearDepthOnBeginPass)
 		{
-			depthStencilAttachmentInfo.loadOp = SDL_GPU_LOADOP_CLEAR;
+			depthStencilAttachmentInfo.load_op = SDL_GPU_LOADOP_CLEAR;
 		}
 		else
 		{
 			/* FIXME: is there a way to safely get rid of this load op? */
-			depthStencilAttachmentInfo.loadOp = SDL_GPU_LOADOP_LOAD;
+			depthStencilAttachmentInfo.load_op = SDL_GPU_LOADOP_LOAD;
 		}
 
 		if (renderer->shouldClearStencilOnBeginPass)
 		{
-			depthStencilAttachmentInfo.stencilLoadOp = SDL_GPU_LOADOP_CLEAR;
+			depthStencilAttachmentInfo.stencil_load_op = SDL_GPU_LOADOP_CLEAR;
 		}
 		else
 		{
 			/* FIXME: is there a way to safely get rid of this load op? */
-			depthStencilAttachmentInfo.stencilLoadOp = SDL_GPU_LOADOP_LOAD;
+			depthStencilAttachmentInfo.stencil_load_op = SDL_GPU_LOADOP_LOAD;
 		}
 
 		/* We always have to store just in case changing render state breaks the render pass. */
 		/* FIXME: perhaps there is a way around this? */
-		depthStencilAttachmentInfo.storeOp = SDL_GPU_STOREOP_STORE;
-		depthStencilAttachmentInfo.stencilStoreOp = SDL_GPU_STOREOP_STORE;
+		depthStencilAttachmentInfo.store_op = SDL_GPU_STOREOP_STORE;
+		depthStencilAttachmentInfo.stencil_store_op = SDL_GPU_STOREOP_STORE;
 
 		depthStencilAttachmentInfo.cycle =
-			renderer->nextRenderPassDepthStencilAttachment->boundAsRenderTarget || depthStencilAttachmentInfo.loadOp == SDL_GPU_LOADOP_LOAD || depthStencilAttachmentInfo.loadOp == SDL_GPU_LOADOP_LOAD ?
+			renderer->nextRenderPassDepthStencilAttachment->boundAsRenderTarget || depthStencilAttachmentInfo.load_op == SDL_GPU_LOADOP_LOAD || depthStencilAttachmentInfo.load_op == SDL_GPU_LOADOP_LOAD ?
 				SDL_FALSE :
 				SDL_TRUE; /* Cycle if we can! */
 
 		if (renderer->shouldClearDepthOnBeginPass || renderer->shouldClearStencilOnBeginPass)
 		{
-			depthStencilAttachmentInfo.depthStencilClearValue = renderer->clearDepthStencilValue;
+			depthStencilAttachmentInfo.clear_depth = renderer->clearDepthValue;
+			depthStencilAttachmentInfo.clear_stencil = renderer->clearStencilValue;
 		}
 
 		SDLGPU_INTERNAL_BindRenderTarget(renderer, renderer->nextRenderPassDepthStencilAttachment);
@@ -1081,8 +1091,8 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 	gpuViewport.y = (float) renderer->viewport.y;
 	gpuViewport.w = (float) renderer->viewport.w;
 	gpuViewport.h = (float) renderer->viewport.h;
-	gpuViewport.minDepth = renderer->viewport.minDepth;
-	gpuViewport.maxDepth = renderer->viewport.maxDepth;
+	gpuViewport.min_depth = renderer->viewport.minDepth;
+	gpuViewport.max_depth = renderer->viewport.maxDepth;
 
 	SDL_SetGPUViewport(
 		renderer->renderPass,
@@ -1137,7 +1147,7 @@ static void SDLGPU_SetRenderTargets(
 	{
 		renderer->nextRenderPassColorAttachments[0] = renderer->fauxBackbufferColor;
 		renderer->nextRenderPassColorAttachmentCubeFace[0] = 0;
-		renderer->nextRenderPassMultisampleCount = renderer->fauxBackbufferColor->createInfo.sampleCount;
+		renderer->nextRenderPassMultisampleCount = renderer->fauxBackbufferColor->createInfo.sample_count;
 		renderer->nextRenderPassColorAttachmentCount = 1;
 
 		renderer->nextRenderPassDepthStencilAttachment = renderer->fauxBackbufferDepthStencil;
@@ -1198,7 +1208,7 @@ static void SDLGPU_ResolveTarget(
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
 	SDLGPU_TextureHandle *texture = (SDLGPU_TextureHandle*) target->texture;
 
-	if (texture->createInfo.levelCount <= 1)
+	if (texture->createInfo.num_levels <= 1)
 	{
 		/* Nothing to do, SDL_GPU resolves MSAA for us */
 		return;
@@ -1277,7 +1287,7 @@ static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
 				element.vertexElementFormat
 			];
 			attributes[attributeDescriptionCounter].offset = element.offset;
-			attributes[attributeDescriptionCounter].binding = i;
+			attributes[attributeDescriptionCounter].binding_index = i;
 
 			mojoshaderVertexAttributes[attributeDescriptionCounter].usage = VertexAttribUsage(element.vertexElementUsage);
 			mojoshaderVertexAttributes[attributeDescriptionCounter].vertexElementFormat = element.vertexElementFormat;
@@ -1286,20 +1296,20 @@ static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
 			attributeDescriptionCounter += 1;
 		}
 
-		bindings[i].binding = i;
-		bindings[i].stride = vertexDeclaration.vertexStride;
+		bindings[i].index = i;
+		bindings[i].pitch = vertexDeclaration.vertexStride;
 
 		if (renderer->vertexBindings[i].instanceFrequency > 0)
 		{
-			bindings[i].inputRate =
+			bindings[i].input_rate =
 				SDL_GPU_VERTEXINPUTRATE_INSTANCE;
-			bindings[i].instanceStepRate = renderer->vertexBindings[i].instanceFrequency;
+			bindings[i].instance_step_rate = renderer->vertexBindings[i].instanceFrequency;
 		}
 		else
 		{
-			bindings[i].inputRate =
+			bindings[i].input_rate =
 				SDL_GPU_VERTEXINPUTRATE_VERTEX;
-			bindings[i].instanceStepRate = 0; /* should be ignored */
+			bindings[i].instance_step_rate = 0; /* should be ignored */
 		}
 	}
 
@@ -1319,7 +1329,7 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 	GraphicsPipelineHash hash;
 	SDL_GPUGraphicsPipeline *pipeline;
 	SDL_GPUGraphicsPipelineCreateInfo createInfo;
-	SDL_GPUColorAttachmentDescription colorAttachmentDescriptions[MAX_RENDERTARGET_BINDINGS];
+	SDL_GPUColorTargetDescription colorAttachmentDescriptions[MAX_RENDERTARGET_BINDINGS];
 	SDL_GPUVertexBinding *vertexBindings;
 	SDL_GPUVertexAttribute *vertexAttributes;
 	int32_t i;
@@ -1339,14 +1349,14 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 		renderer,
 		vertexBindings,
 		vertexAttributes,
-		&createInfo.vertexInputState.vertexAttributeCount
+		&createInfo.vertex_input_state.num_vertex_attributes
 	);
 
 	/* Shaders */
 	MOJOSHADER_sdlGetShaders(
 		renderer->mojoshaderContext,
-		&createInfo.vertexShader,
-		&createInfo.fragmentShader
+		&createInfo.vertex_shader,
+		&createInfo.fragment_shader
 	);
 
 	hash.blendState = GetPackedBlendState(renderer->fnaBlendState);
@@ -1360,8 +1370,8 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 	hash.sampleCount = renderer->nextRenderPassMultisampleCount;
 	hash.sampleMask = renderer->multisampleMask;
 	MOJOSHADER_sdlGetBoundShaderData(renderer->mojoshaderContext, &vertShader, &fragShader);
-	hash.vertShader = createInfo.vertexShader;
-	hash.fragShader = createInfo.fragmentShader;
+	hash.vertShader = createInfo.vertex_shader;
+	hash.fragShader = createInfo.fragment_shader;
 
 	hash.colorFormatCount = renderer->nextRenderPassColorAttachmentCount;
 	hash.colorFormats[0] = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
@@ -1399,80 +1409,80 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 		return pipeline;
 	}
 
-	createInfo.primitiveType = XNAToSDL_PrimitiveType[renderer->fnaPrimitiveType];
+	createInfo.primitive_type = XNAToSDL_PrimitiveType[renderer->fnaPrimitiveType];
 
 	/* Vertex Input State */
 
-	createInfo.vertexInputState.vertexBindings = vertexBindings;
-	createInfo.vertexInputState.vertexBindingCount = renderer->numVertexBindings;
-	createInfo.vertexInputState.vertexAttributes = vertexAttributes;
+	createInfo.vertex_input_state.vertex_bindings = vertexBindings;
+	createInfo.vertex_input_state.num_vertex_bindings = renderer->numVertexBindings;
+	createInfo.vertex_input_state.vertex_attributes = vertexAttributes;
 
 	/* Rasterizer */
 
-	createInfo.rasterizerState.cullMode = XNAToSDL_CullMode[renderer->fnaRasterizerState.cullMode];
-	createInfo.rasterizerState.depthBiasClamp = 0.0f;
-	createInfo.rasterizerState.depthBiasConstantFactor = renderer->fnaRasterizerState.depthBias;
-	createInfo.rasterizerState.depthBiasEnable = 1;
-	createInfo.rasterizerState.depthBiasSlopeFactor = renderer->fnaRasterizerState.slopeScaleDepthBias;
-	createInfo.rasterizerState.fillMode = XNAToSDL_FillMode[renderer->fnaRasterizerState.fillMode];
-	createInfo.rasterizerState.frontFace = SDL_GPU_FRONTFACE_CLOCKWISE;
+	createInfo.rasterizer_state.cull_mode = XNAToSDL_CullMode[renderer->fnaRasterizerState.cullMode];
+	createInfo.rasterizer_state.depth_bias_clamp = 0.0f;
+	createInfo.rasterizer_state.depth_bias_constant_factor = renderer->fnaRasterizerState.depthBias;
+	createInfo.rasterizer_state.enable_depth_bias = 1;
+	createInfo.rasterizer_state.depth_bias_slope_factor = renderer->fnaRasterizerState.slopeScaleDepthBias;
+	createInfo.rasterizer_state.fill_mode = XNAToSDL_FillMode[renderer->fnaRasterizerState.fillMode];
+	createInfo.rasterizer_state.front_face = SDL_GPU_FRONTFACE_CLOCKWISE;
 
 	/* Multisample */
 
-	createInfo.multisampleState.sampleCount = renderer->nextRenderPassMultisampleCount;
-	createInfo.multisampleState.sampleMask = renderer->multisampleMask;
+	createInfo.multisample_state.sample_count = renderer->nextRenderPassMultisampleCount;
+	createInfo.multisample_state.sample_mask = renderer->multisampleMask;
 
 	/* Blend State */
 
-	colorAttachmentDescriptions[0].blendState.blendEnable = !(
+	colorAttachmentDescriptions[0].blend_state.enable_blend = !(
 		renderer->fnaBlendState.colorSourceBlend == FNA3D_BLEND_ONE &&
 		renderer->fnaBlendState.colorDestinationBlend == FNA3D_BLEND_ZERO &&
 		renderer->fnaBlendState.alphaSourceBlend == FNA3D_BLEND_ONE &&
 		renderer->fnaBlendState.alphaDestinationBlend == FNA3D_BLEND_ZERO
 	);
-	if (colorAttachmentDescriptions[0].blendState.blendEnable)
+	if (colorAttachmentDescriptions[0].blend_state.enable_blend)
 	{
-		colorAttachmentDescriptions[0].blendState.srcColorBlendFactor = XNAToSDL_BlendFactor[
+		colorAttachmentDescriptions[0].blend_state.src_color_blendfactor = XNAToSDL_BlendFactor[
 			renderer->fnaBlendState.colorSourceBlend
 		];
-		colorAttachmentDescriptions[0].blendState.srcAlphaBlendFactor = XNAToSDL_BlendFactor[
+		colorAttachmentDescriptions[0].blend_state.src_alpha_blendfactor = XNAToSDL_BlendFactor[
 			renderer->fnaBlendState.alphaSourceBlend
 		];
-		colorAttachmentDescriptions[0].blendState.dstColorBlendFactor = XNAToSDL_BlendFactor[
+		colorAttachmentDescriptions[0].blend_state.dst_color_blendfactor = XNAToSDL_BlendFactor[
 			renderer->fnaBlendState.colorDestinationBlend
 		];
-		colorAttachmentDescriptions[0].blendState.dstAlphaBlendFactor = XNAToSDL_BlendFactor[
+		colorAttachmentDescriptions[0].blend_state.dst_alpha_blendfactor = XNAToSDL_BlendFactor[
 			renderer->fnaBlendState.alphaDestinationBlend
 		];
 
-		colorAttachmentDescriptions[0].blendState.colorBlendOp = XNAToSDL_BlendOp[
+		colorAttachmentDescriptions[0].blend_state.color_blend_op = XNAToSDL_BlendOp[
 			renderer->fnaBlendState.colorBlendFunction
 		];
-		colorAttachmentDescriptions[0].blendState.alphaBlendOp = XNAToSDL_BlendOp[
+		colorAttachmentDescriptions[0].blend_state.alpha_blend_op = XNAToSDL_BlendOp[
 			renderer->fnaBlendState.alphaBlendFunction
 		];
 	}
 	else
 	{
-		colorAttachmentDescriptions[0].blendState.srcColorBlendFactor = SDL_GPU_BLENDFACTOR_ONE;
-		colorAttachmentDescriptions[0].blendState.srcAlphaBlendFactor = SDL_GPU_BLENDFACTOR_ONE;
-		colorAttachmentDescriptions[0].blendState.dstColorBlendFactor = SDL_GPU_BLENDFACTOR_ZERO;
-		colorAttachmentDescriptions[0].blendState.dstAlphaBlendFactor = SDL_GPU_BLENDFACTOR_ZERO;
-		colorAttachmentDescriptions[0].blendState.colorBlendOp = SDL_GPU_BLENDOP_ADD;
-		colorAttachmentDescriptions[0].blendState.alphaBlendOp = SDL_GPU_BLENDOP_ADD;
+		colorAttachmentDescriptions[0].blend_state.src_color_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+		colorAttachmentDescriptions[0].blend_state.src_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ONE;
+		colorAttachmentDescriptions[0].blend_state.dst_color_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
+		colorAttachmentDescriptions[0].blend_state.dst_alpha_blendfactor = SDL_GPU_BLENDFACTOR_ZERO;
+		colorAttachmentDescriptions[0].blend_state.color_blend_op = SDL_GPU_BLENDOP_ADD;
+		colorAttachmentDescriptions[0].blend_state.alpha_blend_op = SDL_GPU_BLENDOP_ADD;
 	}
 
-	colorAttachmentDescriptions[1].blendState = colorAttachmentDescriptions[0].blendState;
-	colorAttachmentDescriptions[2].blendState = colorAttachmentDescriptions[0].blendState;
-	colorAttachmentDescriptions[3].blendState = colorAttachmentDescriptions[0].blendState;
+	colorAttachmentDescriptions[1].blend_state = colorAttachmentDescriptions[0].blend_state;
+	colorAttachmentDescriptions[2].blend_state = colorAttachmentDescriptions[0].blend_state;
+	colorAttachmentDescriptions[3].blend_state = colorAttachmentDescriptions[0].blend_state;
 
-	colorAttachmentDescriptions[0].blendState.colorWriteMask =
+	colorAttachmentDescriptions[0].blend_state.color_write_mask =
 		renderer->fnaBlendState.colorWriteEnable;
-	colorAttachmentDescriptions[1].blendState.colorWriteMask =
+	colorAttachmentDescriptions[1].blend_state.color_write_mask =
 		renderer->fnaBlendState.colorWriteEnable1;
-	colorAttachmentDescriptions[2].blendState.colorWriteMask =
+	colorAttachmentDescriptions[2].blend_state.color_write_mask =
 		renderer->fnaBlendState.colorWriteEnable2;
-	colorAttachmentDescriptions[3].blendState.colorWriteMask =
+	colorAttachmentDescriptions[3].blend_state.color_write_mask =
 		renderer->fnaBlendState.colorWriteEnable3;
 
 	colorAttachmentDescriptions[0].format = hash.colorFormats[0];
@@ -1480,67 +1490,60 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 	colorAttachmentDescriptions[2].format = hash.colorFormats[2];
 	colorAttachmentDescriptions[3].format = hash.colorFormats[3];
 
-	createInfo.attachmentInfo.colorAttachmentCount = renderer->nextRenderPassColorAttachmentCount;
-	createInfo.attachmentInfo.colorAttachmentDescriptions = colorAttachmentDescriptions;
-	createInfo.attachmentInfo.hasDepthStencilAttachment = hash.hasDepthStencilAttachment;
-	createInfo.attachmentInfo.depthStencilFormat = hash.depthStencilFormat;
-
-	createInfo.blendConstants[0] = renderer->blendConstants[0];
-	createInfo.blendConstants[1] = renderer->blendConstants[1];
-	createInfo.blendConstants[2] = renderer->blendConstants[2];
-	createInfo.blendConstants[3] = renderer->blendConstants[3];
+	createInfo.target_info.num_color_targets = renderer->nextRenderPassColorAttachmentCount;
+	createInfo.target_info.color_target_descriptions = colorAttachmentDescriptions;
+	createInfo.target_info.has_depth_stencil_target = hash.hasDepthStencilAttachment;
+	createInfo.target_info.depth_stencil_format = hash.depthStencilFormat;
 
 	/* Depth Stencil */
 
-	createInfo.depthStencilState.depthTestEnable =
+	createInfo.depth_stencil_state.enable_depth_test =
 		renderer->fnaDepthStencilState.depthBufferEnable;
-	createInfo.depthStencilState.depthWriteEnable =
+	createInfo.depth_stencil_state.enable_depth_write =
 		renderer->fnaDepthStencilState.depthBufferWriteEnable;
-	createInfo.depthStencilState.compareOp = XNAToSDL_CompareOp[
+	createInfo.depth_stencil_state.compare_op = XNAToSDL_CompareOp[
 		renderer->fnaDepthStencilState.depthBufferFunction
 	];
-	createInfo.depthStencilState.stencilTestEnable =
+	createInfo.depth_stencil_state.enable_stencil_test =
 		renderer->fnaDepthStencilState.stencilEnable;
 
-	createInfo.depthStencilState.frontStencilState.compareOp = XNAToSDL_CompareOp[
+	createInfo.depth_stencil_state.front_stencil_state.compare_op = XNAToSDL_CompareOp[
 		renderer->fnaDepthStencilState.stencilFunction
 	];
-	createInfo.depthStencilState.frontStencilState.depthFailOp = XNAToSDL_StencilOp[
+	createInfo.depth_stencil_state.front_stencil_state.depth_fail_op = XNAToSDL_StencilOp[
 		renderer->fnaDepthStencilState.stencilDepthBufferFail
 	];
-	createInfo.depthStencilState.frontStencilState.failOp = XNAToSDL_StencilOp[
+	createInfo.depth_stencil_state.front_stencil_state.fail_op = XNAToSDL_StencilOp[
 		renderer->fnaDepthStencilState.stencilFail
 	];
-	createInfo.depthStencilState.frontStencilState.passOp = XNAToSDL_StencilOp[
+	createInfo.depth_stencil_state.front_stencil_state.pass_op = XNAToSDL_StencilOp[
 		renderer->fnaDepthStencilState.stencilPass
 	];
 
 	if (renderer->fnaDepthStencilState.twoSidedStencilMode)
 	{
-		createInfo.depthStencilState.backStencilState.compareOp = XNAToSDL_CompareOp[
+		createInfo.depth_stencil_state.back_stencil_state.compare_op = XNAToSDL_CompareOp[
 			renderer->fnaDepthStencilState.ccwStencilFunction
 		];
-		createInfo.depthStencilState.backStencilState.depthFailOp = XNAToSDL_StencilOp[
+		createInfo.depth_stencil_state.back_stencil_state.depth_fail_op = XNAToSDL_StencilOp[
 			renderer->fnaDepthStencilState.ccwStencilDepthBufferFail
 		];
-		createInfo.depthStencilState.backStencilState.failOp = XNAToSDL_StencilOp[
+		createInfo.depth_stencil_state.back_stencil_state.fail_op = XNAToSDL_StencilOp[
 			renderer->fnaDepthStencilState.ccwStencilFail
 		];
-		createInfo.depthStencilState.backStencilState.passOp = XNAToSDL_StencilOp[
+		createInfo.depth_stencil_state.back_stencil_state.pass_op = XNAToSDL_StencilOp[
 			renderer->fnaDepthStencilState.ccwStencilPass
 		];
 	}
 	else
 	{
-		createInfo.depthStencilState.backStencilState = createInfo.depthStencilState.frontStencilState;
+		createInfo.depth_stencil_state.back_stencil_state = createInfo.depth_stencil_state.front_stencil_state;
 	}
 
-	createInfo.depthStencilState.compareMask =
+	createInfo.depth_stencil_state.compare_mask =
 		renderer->fnaDepthStencilState.stencilMask;
-	createInfo.depthStencilState.writeMask =
+	createInfo.depth_stencil_state.write_mask =
 		renderer->fnaDepthStencilState.stencilWriteMask;
-	createInfo.depthStencilState.reference =
-		renderer->fnaDepthStencilState.referenceStencil;
 
 	/* Finally, after 1000 years, create the pipeline! */
 
@@ -1600,6 +1603,24 @@ static void SDLGPU_INTERNAL_BindGraphicsPipeline(
 		renderer->currentGraphicsPipeline = pipeline;
 	}
 
+	if (	renderer->currentBlendConstants.r != renderer->blendConstants[0] ||
+		renderer->currentBlendConstants.g != renderer->blendConstants[1] ||
+		renderer->currentBlendConstants.b != renderer->blendConstants[2] ||
+		renderer->currentBlendConstants.a != renderer->blendConstants[3]	)
+	{
+		renderer->currentBlendConstants.r = renderer->blendConstants[0];
+		renderer->currentBlendConstants.g = renderer->blendConstants[1];
+		renderer->currentBlendConstants.b = renderer->blendConstants[2];
+		renderer->currentBlendConstants.a = renderer->blendConstants[3];
+		SDL_SetGPUBlendConstants(renderer->renderPass, renderer->currentBlendConstants);
+	}
+
+	if (renderer->currentStencilReference != renderer->stencilReference)
+	{
+		SDL_SetGPUStencilReference(renderer->renderPass, renderer->stencilReference);
+		renderer->currentStencilReference = renderer->stencilReference;
+	}
+
 	MOJOSHADER_sdlUpdateUniformBuffers(
 		renderer->mojoshaderContext,
 		renderer->renderCommandBuffer
@@ -1633,26 +1654,26 @@ static SDL_GPUSampler* SDLGPU_INTERNAL_FetchSamplerState(
 		return sampler;
 	}
 
-	samplerCreateInfo.magFilter = XNAToSDL_MagFilter[samplerState->filter];
-	samplerCreateInfo.minFilter = XNAToSDL_MinFilter[samplerState->filter];
-	samplerCreateInfo.mipmapMode = XNAToSDL_MipFilter[samplerState->filter];
-	samplerCreateInfo.addressModeU = XNAToSDL_SamplerAddressMode[
+	samplerCreateInfo.mag_filter = XNAToSDL_MagFilter[samplerState->filter];
+	samplerCreateInfo.min_filter = XNAToSDL_MinFilter[samplerState->filter];
+	samplerCreateInfo.mipmap_mode = XNAToSDL_MipFilter[samplerState->filter];
+	samplerCreateInfo.address_mode_u = XNAToSDL_SamplerAddressMode[
 		samplerState->addressU
 	];
-	samplerCreateInfo.addressModeV = XNAToSDL_SamplerAddressMode[
+	samplerCreateInfo.address_mode_v = XNAToSDL_SamplerAddressMode[
 		samplerState->addressV
 	];
-	samplerCreateInfo.addressModeW = XNAToSDL_SamplerAddressMode[
+	samplerCreateInfo.address_mode_w = XNAToSDL_SamplerAddressMode[
 		samplerState->addressW
 	];
 
-	samplerCreateInfo.mipLodBias = samplerState->mipMapLevelOfDetailBias;
-	samplerCreateInfo.anisotropyEnable = (samplerState->filter == FNA3D_TEXTUREFILTER_ANISOTROPIC);
-	samplerCreateInfo.maxAnisotropy = (float) SDL_max(1, samplerState->maxAnisotropy);
-	samplerCreateInfo.compareEnable = 0;
-	samplerCreateInfo.compareOp = 0;
-	samplerCreateInfo.minLod = (float) samplerState->maxMipLevel;
-	samplerCreateInfo.maxLod = 1000.0f;
+	samplerCreateInfo.mip_lod_bias = samplerState->mipMapLevelOfDetailBias;
+	samplerCreateInfo.enable_anisotropy = (samplerState->filter == FNA3D_TEXTUREFILTER_ANISOTROPIC);
+	samplerCreateInfo.max_anisotropy = (float) SDL_max(1, samplerState->maxAnisotropy);
+	samplerCreateInfo.enable_compare = 0;
+	samplerCreateInfo.compare_op = 0;
+	samplerCreateInfo.min_lod = (float) samplerState->maxMipLevel;
+	samplerCreateInfo.max_lod = 1000.0f;
 	samplerCreateInfo.props = 0;
 
 	sampler = SDL_CreateGPUSampler(
@@ -1890,8 +1911,8 @@ static void SDLGPU_SetViewport(
 			gpuViewport.y = (float) viewport->y;
 			gpuViewport.w = (float) viewport->w;
 			gpuViewport.h = (float) viewport->h;
-			gpuViewport.minDepth = viewport->minDepth;
-			gpuViewport.maxDepth = viewport->maxDepth;
+			gpuViewport.min_depth = viewport->minDepth;
+			gpuViewport.max_depth = viewport->maxDepth;
 
 			SDL_SetGPUViewport(
 				renderer->renderPass,
@@ -2318,24 +2339,24 @@ static SDLGPU_TextureHandle* SDLGPU_INTERNAL_CreateTextureWithHandle(
 	textureCreateInfo.width = width;
 	textureCreateInfo.height = height;
 	textureCreateInfo.format = format;
-	textureCreateInfo.levelCount = levelCount;
+	textureCreateInfo.num_levels = levelCount;
 	if (layerCount == 6)
 	{
 		textureCreateInfo.type = SDL_GPU_TEXTURETYPE_CUBE;
-		textureCreateInfo.layerCountOrDepth = layerCount;
+		textureCreateInfo.layer_count_or_depth = layerCount;
 	}
 	else if (depth > 1)
 	{
 		textureCreateInfo.type = SDL_GPU_TEXTURETYPE_3D;
-		textureCreateInfo.layerCountOrDepth = depth;
+		textureCreateInfo.layer_count_or_depth = depth;
 	}
 	else
 	{
 		textureCreateInfo.type = SDL_GPU_TEXTURETYPE_2D;
-		textureCreateInfo.layerCountOrDepth = 1;
+		textureCreateInfo.layer_count_or_depth = 1;
 	}
-	textureCreateInfo.usageFlags = usageFlags;
-	textureCreateInfo.sampleCount = sampleCount;
+	textureCreateInfo.usage = usageFlags;
+	textureCreateInfo.sample_count = sampleCount;
 	textureCreateInfo.props = 0;
 
 	texture = SDL_CreateGPUTexture(
@@ -2369,7 +2390,7 @@ static void SDLGPU_INTERNAL_CreateFauxBackbuffer(
 		XNAToSDL_SurfaceFormat[presentationParameters->backBufferFormat],
 		1,
 		1,
-		SDL_GPU_TEXTUREUSAGE_COLOR_TARGET_BIT | SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT,
+		SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
 		XNAToSDL_SampleCount(presentationParameters->multiSampleCount)
 	);
 
@@ -2383,7 +2404,7 @@ static void SDLGPU_INTERNAL_CreateFauxBackbuffer(
 			XNAToSDL_DepthFormat(renderer, presentationParameters->depthStencilFormat),
 			1,
 			1,
-			SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET_BIT,
+			SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
 			XNAToSDL_SampleCount(presentationParameters->multiSampleCount)
 		);
 	}
@@ -2398,7 +2419,7 @@ static void SDLGPU_INTERNAL_CreateFauxBackbuffer(
 		renderer->nextRenderPassColorAttachments[0] = renderer->fauxBackbufferColor;
 		renderer->nextRenderPassColorAttachmentCubeFace[0] = 0;
 		renderer->nextRenderPassColorAttachmentCount = 1;
-		renderer->nextRenderPassMultisampleCount = renderer->fauxBackbufferColor->createInfo.sampleCount;
+		renderer->nextRenderPassMultisampleCount = renderer->fauxBackbufferColor->createInfo.sample_count;
 
 		if (presentationParameters->depthStencilFormat != FNA3D_DEPTHFORMAT_NONE)
 		{
@@ -2503,11 +2524,11 @@ static FNA3D_Texture* SDLGPU_CreateTexture2D(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
-	SDL_GPUTextureUsageFlags usageFlags = SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT;
+	SDL_GPUTextureUsageFlags usageFlags = SDL_GPU_TEXTUREUSAGE_SAMPLER;
 
 	if (isRenderTarget)
 	{
-		usageFlags |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET_BIT;
+		usageFlags |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
 	}
 
 	return (FNA3D_Texture*) SDLGPU_INTERNAL_CreateTextureWithHandle(
@@ -2539,7 +2560,7 @@ static FNA3D_Texture* SDLGPU_CreateTexture3D(
 		XNAToSDL_SurfaceFormat[format],
 		1,
 		levelCount,
-		SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT,
+		SDL_GPU_TEXTUREUSAGE_SAMPLER,
 		SDL_GPU_SAMPLECOUNT_1
 	);
 }
@@ -2551,11 +2572,11 @@ static FNA3D_Texture* SDLGPU_CreateTextureCube(
 	int32_t levelCount,
 	uint8_t isRenderTarget
 ) {
-	SDL_GPUTextureUsageFlags usageFlags = SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT;
+	SDL_GPUTextureUsageFlags usageFlags = SDL_GPU_TEXTUREUSAGE_SAMPLER;
 
 	if (isRenderTarget)
 	{
-		usageFlags |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET_BIT;
+		usageFlags |= SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
 	}
 
 	return (FNA3D_Texture*) SDLGPU_INTERNAL_CreateTextureWithHandle(
@@ -2586,10 +2607,10 @@ static FNA3D_Renderbuffer* SDLGPU_GenColorRenderbuffer(
 	/* Recreate texture with appropriate settings */
 	SDL_ReleaseGPUTexture(renderer->device, textureHandle->texture);
 
-	textureHandle->createInfo.sampleCount = XNAToSDL_SampleCount(multiSampleCount);
-	textureHandle->createInfo.usageFlags =
-		SDL_GPU_TEXTUREUSAGE_COLOR_TARGET_BIT |
-		SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT;
+	textureHandle->createInfo.sample_count = XNAToSDL_SampleCount(multiSampleCount);
+	textureHandle->createInfo.usage =
+		SDL_GPU_TEXTUREUSAGE_COLOR_TARGET |
+		SDL_GPU_TEXTUREUSAGE_SAMPLER;
 
 	textureHandle->texture = SDL_CreateGPUTexture(
 		renderer->device,
@@ -2630,7 +2651,7 @@ static FNA3D_Renderbuffer* SDLGPU_GenDepthStencilRenderbuffer(
 		XNAToSDL_DepthFormat(renderer, format),
 		1,
 		1,
-		SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET_BIT,
+		SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
 		XNAToSDL_SampleCount(multiSampleCount)
 	);
 
@@ -2720,7 +2741,7 @@ static void SDLGPU_INTERNAL_SetTextureData(
 	{
 		/* Upload is too big, create a temporary transfer buffer */
 		transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-		transferBufferCreateInfo.sizeInBytes = dataLength;
+		transferBufferCreateInfo.size = dataLength;
 		transferBufferCreateInfo.props = 0;
 		transferBuffer = SDL_CreateGPUTransferBuffer(
 			renderer->device,
@@ -2757,7 +2778,7 @@ static void SDLGPU_INTERNAL_SetTextureData(
 
 	textureRegion.texture = texture;
 	textureRegion.layer = layer;
-	textureRegion.mipLevel = mipLevel;
+	textureRegion.mip_level = mipLevel;
 	textureRegion.x = x;
 	textureRegion.y = y;
 	textureRegion.z = z;
@@ -2765,10 +2786,10 @@ static void SDLGPU_INTERNAL_SetTextureData(
 	textureRegion.h = h;
 	textureRegion.d = d;
 
-	textureCopyParams.transferBuffer = transferBuffer;
+	textureCopyParams.transfer_buffer = transferBuffer;
 	textureCopyParams.offset = transferOffset;
-	textureCopyParams.imagePitch = 0;	/* default, assume tightly packed */
-	textureCopyParams.imageHeight = 0;	/* default, assume tightly packed */
+	textureCopyParams.pixels_per_row = 0;	/* default, assume tightly packed */
+	textureCopyParams.rows_per_layer = 0;	/* default, assume tightly packed */
 
 	SDL_UploadToGPUTexture(
 		renderer->copyPass,
@@ -2962,8 +2983,8 @@ static FNA3D_Buffer* SDLGPU_GenVertexBuffer(
 	SDLGPU_BufferHandle *bufferHandle =
 		SDL_malloc(sizeof(SDLGPU_BufferHandle));
 
-	createInfo.usageFlags = SDL_GPU_BUFFERUSAGE_VERTEX_BIT;
-	createInfo.sizeInBytes = sizeInBytes;
+	createInfo.usage = SDL_GPU_BUFFERUSAGE_VERTEX;
+	createInfo.size = sizeInBytes;
 	createInfo.props = 0;
 	bufferHandle->buffer = SDL_CreateGPUBuffer(
 		renderer->device,
@@ -2985,8 +3006,8 @@ static FNA3D_Buffer* SDLGPU_GenIndexBuffer(
 	SDLGPU_BufferHandle *bufferHandle =
 		SDL_malloc(sizeof(SDLGPU_BufferHandle));
 
-	createInfo.usageFlags = SDL_GPU_BUFFERUSAGE_INDEX_BIT;
-	createInfo.sizeInBytes = sizeInBytes;
+	createInfo.usage = SDL_GPU_BUFFERUSAGE_INDEX;
+	createInfo.size = sizeInBytes;
 	createInfo.props = 0;
 	bufferHandle->buffer = SDL_CreateGPUBuffer(
 		renderer->device,
@@ -3050,7 +3071,7 @@ static void SDLGPU_INTERNAL_SetBufferData(
 	{
 		/* Upload is too big, create a temporary transfer buffer */
 		transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-		transferBufferCreateInfo.sizeInBytes = dataLength;
+		transferBufferCreateInfo.size = dataLength;
 		transferBufferCreateInfo.props = 0;
 		transferBuffer = SDL_CreateGPUTransferBuffer(
 			renderer->device,
@@ -3084,7 +3105,7 @@ static void SDLGPU_INTERNAL_SetBufferData(
 	SDL_memcpy(dst + transferOffset, data, dataLength);
 	SDL_UnmapGPUTransferBuffer(renderer->device, transferBuffer);
 
-	transferLocation.transferBuffer = transferBuffer;
+	transferLocation.transfer_buffer = transferBuffer;
 	transferLocation.offset = transferOffset;
 
 	bufferRegion.buffer = buffer;
@@ -3229,7 +3250,7 @@ static void SDLGPU_INTERNAL_GetTextureData(
 	if (renderer->textureDownloadBuffer == NULL)
 	{
 		transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
-		transferBufferCreateInfo.sizeInBytes = dataLength;
+		transferBufferCreateInfo.size = dataLength;
 		transferBufferCreateInfo.props = 0;
 		renderer->textureDownloadBuffer = SDL_CreateGPUTransferBuffer(
 			renderer->device,
@@ -3246,7 +3267,7 @@ static void SDLGPU_INTERNAL_GetTextureData(
 		);
 
 		transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
-		transferBufferCreateInfo.sizeInBytes = dataLength;
+		transferBufferCreateInfo.size = dataLength;
 		transferBufferCreateInfo.props = 0;
 		renderer->textureDownloadBuffer = SDL_CreateGPUTransferBuffer(
 			renderer->device,
@@ -3260,7 +3281,7 @@ static void SDLGPU_INTERNAL_GetTextureData(
 
 	/* Set up texture download */
 	region.texture = texture;
-	region.mipLevel = level;
+	region.mip_level = level;
 	region.layer = layer;
 	region.x = x;
 	region.y = y;
@@ -3270,10 +3291,10 @@ static void SDLGPU_INTERNAL_GetTextureData(
 	region.d = d;
 
 	/* All zeroes, assume tight packing */
-	textureCopyParams.transferBuffer = renderer->textureDownloadBuffer;
+	textureCopyParams.transfer_buffer = renderer->textureDownloadBuffer;
 	textureCopyParams.offset = 0;
-	textureCopyParams.imagePitch = 0;
-	textureCopyParams.imageHeight = 0;
+	textureCopyParams.pixels_per_row = 0;
+	textureCopyParams.rows_per_layer = 0;
 
 	SDL_DownloadFromGPUTexture(
 		renderer->copyPass,
@@ -3308,7 +3329,7 @@ static void SDLGPU_INTERNAL_GetBufferData(
 	if (renderer->bufferDownloadBuffer == NULL)
 	{
 		transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
-		transferBufferCreateInfo.sizeInBytes = dataLength;
+		transferBufferCreateInfo.size = dataLength;
 		transferBufferCreateInfo.props = 0;
 		renderer->bufferDownloadBuffer = SDL_CreateGPUTransferBuffer(
 			renderer->device,
@@ -3325,7 +3346,7 @@ static void SDLGPU_INTERNAL_GetBufferData(
 		);
 
 		transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD;
-		transferBufferCreateInfo.sizeInBytes = dataLength;
+		transferBufferCreateInfo.size = dataLength;
 		transferBufferCreateInfo.props = 0;
 		renderer->bufferDownloadBuffer = SDL_CreateGPUTransferBuffer(
 			renderer->device,
@@ -3341,7 +3362,7 @@ static void SDLGPU_INTERNAL_GetBufferData(
 	bufferRegion.buffer = buffer;
 	bufferRegion.offset = offset;
 	bufferRegion.size = dataLength;
-	transferLocation.transferBuffer = renderer->bufferDownloadBuffer;
+	transferLocation.transfer_buffer = renderer->bufferDownloadBuffer;
 	transferLocation.offset = 0;
 
 	SDL_DownloadFromGPUBuffer(
@@ -4048,7 +4069,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	}
 
 	transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-	transferBufferCreateInfo.sizeInBytes = TRANSFER_BUFFER_SIZE;
+	transferBufferCreateInfo.size = TRANSFER_BUFFER_SIZE;
 	transferBufferCreateInfo.props = 0;
 	renderer->textureUploadBufferOffset = 0;
 	renderer->textureUploadBuffer = SDL_CreateGPUTransferBuffer(
@@ -4065,7 +4086,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	}
 
 	transferBufferCreateInfo.usage = SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD;
-	transferBufferCreateInfo.sizeInBytes = TRANSFER_BUFFER_SIZE;
+	transferBufferCreateInfo.size = TRANSFER_BUFFER_SIZE;
 	transferBufferCreateInfo.props = 0;
 	renderer->bufferUploadBufferOffset = 0;
 	renderer->bufferUploadBuffer = SDL_CreateGPUTransferBuffer(
@@ -4103,45 +4124,45 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 
 	renderer->supportsDXT1 = SDL_GPUTextureSupportsFormat(
 		renderer->device,
-		SDL_GPU_TEXTUREFORMAT_BC1_UNORM,
+		SDL_GPU_TEXTUREFORMAT_BC1_RGBA_UNORM,
 		SDL_GPU_TEXTURETYPE_2D,
-		SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT
+		SDL_GPU_TEXTUREUSAGE_SAMPLER
 	);
 	renderer->supportsBC2 = SDL_GPUTextureSupportsFormat(
 		renderer->device,
-		SDL_GPU_TEXTUREFORMAT_BC2_UNORM,
+		SDL_GPU_TEXTUREFORMAT_BC2_RGBA_UNORM,
 		SDL_GPU_TEXTURETYPE_2D,
-		SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT
+		SDL_GPU_TEXTUREUSAGE_SAMPLER
 	);
 	renderer->supportsBC3 = SDL_GPUTextureSupportsFormat(
 		renderer->device,
-		SDL_GPU_TEXTUREFORMAT_BC3_UNORM,
+		SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM,
 		SDL_GPU_TEXTURETYPE_2D,
-		SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT
+		SDL_GPU_TEXTUREUSAGE_SAMPLER
 	);
 	renderer->supportsBC7 = SDL_GPUTextureSupportsFormat(
 		renderer->device,
-		SDL_GPU_TEXTUREFORMAT_BC7_UNORM,
+		SDL_GPU_TEXTUREFORMAT_BC7_RGBA_UNORM,
 		SDL_GPU_TEXTURETYPE_2D,
-		SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT
+		SDL_GPU_TEXTUREUSAGE_SAMPLER
 	);
 	renderer->supportsSRGB = SDL_GPUTextureSupportsFormat(
 		renderer->device,
 		SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB,
 		SDL_GPU_TEXTURETYPE_2D,
-		SDL_GPU_TEXTUREUSAGE_COLOR_TARGET_BIT | SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT
+		SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER
 	);
 	renderer->supportsD24 = SDL_GPUTextureSupportsFormat(
 		renderer->device,
 		SDL_GPU_TEXTUREFORMAT_D24_UNORM,
 		SDL_GPU_TEXTURETYPE_2D,
-		SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET_BIT
+		SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET
 	);
 	renderer->supportsD24S8 = SDL_GPUTextureSupportsFormat(
 		renderer->device,
 		SDL_GPU_TEXTUREFORMAT_D24_UNORM_S8_UINT,
 		SDL_GPU_TEXTURETYPE_2D,
-		SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET_BIT
+		SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET
 	);
 	renderer->supportsBaseVertex = 1; /* FIXME: moltenVK fix */
 
@@ -4149,12 +4170,12 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 
 	textureCreateInfo.width = 1;
 	textureCreateInfo.height = 1;
-	textureCreateInfo.layerCountOrDepth = 1;
+	textureCreateInfo.layer_count_or_depth = 1;
 	textureCreateInfo.format = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
 	textureCreateInfo.type = SDL_GPU_TEXTURETYPE_2D;
-	textureCreateInfo.levelCount = 1;
-	textureCreateInfo.usageFlags = SDL_GPU_TEXTUREUSAGE_SAMPLER_BIT;
-	textureCreateInfo.sampleCount = SDL_GPU_SAMPLECOUNT_1;
+	textureCreateInfo.num_levels = 1;
+	textureCreateInfo.usage = SDL_GPU_TEXTUREUSAGE_SAMPLER;
+	textureCreateInfo.sample_count = SDL_GPU_SAMPLECOUNT_1;
 	textureCreateInfo.props = 0;
 
 	renderer->dummyTexture2D = SDL_CreateGPUTexture(
@@ -4162,7 +4183,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 		&textureCreateInfo
 	);
 
-	textureCreateInfo.layerCountOrDepth = 2;
+	textureCreateInfo.layer_count_or_depth = 2;
 	textureCreateInfo.type = SDL_GPU_TEXTURETYPE_3D;
 
 	renderer->dummyTexture3D = SDL_CreateGPUTexture(
@@ -4170,7 +4191,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 		&textureCreateInfo
 	);
 
-	textureCreateInfo.layerCountOrDepth = 6;
+	textureCreateInfo.layer_count_or_depth = 6;
 	textureCreateInfo.type = SDL_GPU_TEXTURETYPE_CUBE;
 
 	renderer->dummyTextureCube = SDL_CreateGPUTexture(
@@ -4178,19 +4199,19 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 		&textureCreateInfo
 	);
 
-	samplerCreateInfo.addressModeU = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
-	samplerCreateInfo.addressModeV = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
-	samplerCreateInfo.addressModeW = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
-	samplerCreateInfo.anisotropyEnable = 0;
-	samplerCreateInfo.maxAnisotropy = 0;
-	samplerCreateInfo.compareEnable = 0;
-	samplerCreateInfo.compareOp = SDL_GPU_COMPAREOP_NEVER;
-	samplerCreateInfo.magFilter = SDL_GPU_FILTER_NEAREST;
-	samplerCreateInfo.minFilter = SDL_GPU_FILTER_NEAREST;
-	samplerCreateInfo.mipmapMode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
-	samplerCreateInfo.mipLodBias = 0;
-	samplerCreateInfo.minLod = 1;
-	samplerCreateInfo.maxLod = 1;
+	samplerCreateInfo.address_mode_u = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
+	samplerCreateInfo.address_mode_v = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
+	samplerCreateInfo.address_mode_w = SDL_GPU_SAMPLERADDRESSMODE_REPEAT;
+	samplerCreateInfo.enable_anisotropy = 0;
+	samplerCreateInfo.max_anisotropy = 0;
+	samplerCreateInfo.enable_compare = 0;
+	samplerCreateInfo.compare_op = SDL_GPU_COMPAREOP_NEVER;
+	samplerCreateInfo.mag_filter = SDL_GPU_FILTER_NEAREST;
+	samplerCreateInfo.min_filter = SDL_GPU_FILTER_NEAREST;
+	samplerCreateInfo.mipmap_mode = SDL_GPU_SAMPLERMIPMAPMODE_NEAREST;
+	samplerCreateInfo.mip_lod_bias = 0;
+	samplerCreateInfo.min_lod = 1;
+	samplerCreateInfo.max_lod = 1;
 	samplerCreateInfo.props = 0;
 
 	renderer->dummySampler = SDL_CreateGPUSampler(
