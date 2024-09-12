@@ -1461,6 +1461,9 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 		colorAttachmentDescriptions[0].blend_state.alpha_blend_op = XNAToSDL_BlendOp[
 			renderer->fnaBlendState.alphaBlendFunction
 		];
+
+		/* FIXME: Can this be disabled when mask is R|G|B|A? -flibit */
+		colorAttachmentDescriptions[0].blend_state.enable_color_write_mask = SDL_TRUE;
 	}
 	else
 	{
