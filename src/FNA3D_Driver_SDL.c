@@ -1603,24 +1603,6 @@ static void SDLGPU_INTERNAL_BindGraphicsPipeline(
 		renderer->currentGraphicsPipeline = pipeline;
 	}
 
-	if (	renderer->currentBlendConstants.r != renderer->blendConstants[0] ||
-		renderer->currentBlendConstants.g != renderer->blendConstants[1] ||
-		renderer->currentBlendConstants.b != renderer->blendConstants[2] ||
-		renderer->currentBlendConstants.a != renderer->blendConstants[3]	)
-	{
-		renderer->currentBlendConstants.r = renderer->blendConstants[0];
-		renderer->currentBlendConstants.g = renderer->blendConstants[1];
-		renderer->currentBlendConstants.b = renderer->blendConstants[2];
-		renderer->currentBlendConstants.a = renderer->blendConstants[3];
-		SDL_SetGPUBlendConstants(renderer->renderPass, renderer->currentBlendConstants);
-	}
-
-	if (renderer->currentStencilReference != renderer->stencilReference)
-	{
-		SDL_SetGPUStencilReference(renderer->renderPass, renderer->stencilReference);
-		renderer->currentStencilReference = renderer->stencilReference;
-	}
-
 	MOJOSHADER_sdlUpdateUniformBuffers(
 		renderer->mojoshaderContext,
 		renderer->renderCommandBuffer
@@ -2175,6 +2157,24 @@ static void SDLGPU_INTERNAL_BindDeferredState(
 
 	SDLGPU_INTERNAL_BeginRenderPass(renderer);
 	SDLGPU_INTERNAL_BindGraphicsPipeline(renderer);
+
+	if (	renderer->currentBlendConstants.r != renderer->blendConstants[0] ||
+		renderer->currentBlendConstants.g != renderer->blendConstants[1] ||
+		renderer->currentBlendConstants.b != renderer->blendConstants[2] ||
+		renderer->currentBlendConstants.a != renderer->blendConstants[3]	)
+	{
+		renderer->currentBlendConstants.r = renderer->blendConstants[0];
+		renderer->currentBlendConstants.g = renderer->blendConstants[1];
+		renderer->currentBlendConstants.b = renderer->blendConstants[2];
+		renderer->currentBlendConstants.a = renderer->blendConstants[3];
+		SDL_SetGPUBlendConstants(renderer->renderPass, renderer->currentBlendConstants);
+	}
+
+	if (renderer->currentStencilReference != renderer->stencilReference)
+	{
+		SDL_SetGPUStencilReference(renderer->renderPass, renderer->stencilReference);
+		renderer->currentStencilReference = renderer->stencilReference;
+	}
 
 	if (renderer->needVertexSamplerBind || renderer->needFragmentSamplerBind)
 	{
