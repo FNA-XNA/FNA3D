@@ -3969,6 +3969,7 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 
 static uint8_t SDLGPU_PrepareWindowAttributes(uint32_t *flags)
 {
+	/* FIXME: Query support first! */
 	return 1;
 }
 
@@ -3986,6 +3987,10 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	uint64_t dummyInt = 0;
 	FNA3D_Device *result;
 	int32_t i;
+
+	SDL_SetLogPriority(
+		SDL_LOG_CATEGORY_GPU,
+		debugMode ? SDL_LOG_PRIORITY_DEBUG : SDL_LOG_PRIORITY_INFO);
 
 	requestedPresentationParameters = *presentationParameters;
 	device = SDL_CreateGPUDevice(
