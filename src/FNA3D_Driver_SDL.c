@@ -1429,7 +1429,9 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 
 	/* Multisample */
 
+	/* FIXME: Can this be disabled when mask is -1? -flibit */
 	createInfo.multisample_state.sample_count = renderer->nextRenderPassMultisampleCount;
+	createInfo.multisample_state.enable_mask = SDL_TRUE;
 	createInfo.multisample_state.sample_mask = renderer->multisampleMask;
 
 	/* Blend State */
