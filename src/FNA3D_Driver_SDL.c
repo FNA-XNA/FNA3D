@@ -3969,8 +3969,7 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 
 static uint8_t SDLGPU_PrepareWindowAttributes(uint32_t *flags)
 {
-	/* FIXME: Query support first! */
-	return 1;
+	return SDL_QueryGPUSupport(MOJOSHADER_sdlGetShaderFormats(), NULL);
 }
 
 static FNA3D_Device* SDLGPU_CreateDevice(
