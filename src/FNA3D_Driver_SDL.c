@@ -1221,7 +1221,7 @@ static void SDLGPU_ResolveTarget(
 
 static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
 	SDLGPU_Renderer *renderer,
-	SDL_GPUVertexBinding *bindings,
+	SDL_GPUVertexBufferDescription *bindings,
 	SDL_GPUVertexAttribute *attributes,
 	uint32_t *attributeCount
 ) {
@@ -1287,7 +1287,7 @@ static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
 				element.vertexElementFormat
 			];
 			attributes[attributeDescriptionCounter].offset = element.offset;
-			attributes[attributeDescriptionCounter].binding_index = i;
+			attributes[attributeDescriptionCounter].buffer_slot = i;
 
 			mojoshaderVertexAttributes[attributeDescriptionCounter].usage = VertexAttribUsage(element.vertexElementUsage);
 			mojoshaderVertexAttributes[attributeDescriptionCounter].vertexElementFormat = element.vertexElementFormat;
@@ -1296,7 +1296,7 @@ static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
 			attributeDescriptionCounter += 1;
 		}
 
-		bindings[i].index = i;
+		bindings[i].slot = i;
 		bindings[i].pitch = vertexDeclaration.vertexStride;
 
 		if (renderer->vertexBindings[i].instanceFrequency > 0)
@@ -1330,13 +1330,13 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 	SDL_GPUGraphicsPipeline *pipeline;
 	SDL_GPUGraphicsPipelineCreateInfo createInfo;
 	SDL_GPUColorTargetDescription colorAttachmentDescriptions[MAX_RENDERTARGET_BINDINGS];
-	SDL_GPUVertexBinding *vertexBindings;
+	SDL_GPUVertexBufferDescription *vertexBindings;
 	SDL_GPUVertexAttribute *vertexAttributes;
 	int32_t i;
 
 	vertexBindings = SDL_malloc(
 		renderer->numVertexBindings *
-		sizeof(SDL_GPUVertexBinding)
+		sizeof(SDL_GPUVertexBufferDescription)
 	);
 	vertexAttributes = SDL_malloc(
 		renderer->numVertexBindings *
@@ -1413,8 +1413,8 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 
 	/* Vertex Input State */
 
-	createInfo.vertex_input_state.vertex_bindings = vertexBindings;
-	createInfo.vertex_input_state.num_vertex_bindings = renderer->numVertexBindings;
+	createInfo.vertex_input_state.vertex_buffer_descriptions = vertexBindings;
+	createInfo.vertex_input_state.num_vertex_buffers = renderer->numVertexBindings;
 	createInfo.vertex_input_state.vertex_attributes = vertexAttributes;
 
 	/* Rasterizer */
