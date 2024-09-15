@@ -11114,8 +11114,13 @@ static uint8_t VULKAN_PrepareWindowAttributes(uint32_t *flags)
 	uint8_t result;
 
 	/* Required for MoltenVK support */
+#ifdef USE_SDL3
+	SDL_setenv_unsafe("MVK_CONFIG_FULL_IMAGE_VIEW_SWIZZLE", "1", 1);
+	SDL_setenv_unsafe("MVK_CONFIG_SHADER_CONVERSION_FLIP_VERTEX_Y", "0", 1);
+#else
 	SDL_setenv("MVK_CONFIG_FULL_IMAGE_VIEW_SWIZZLE", "1", 1);
 	SDL_setenv("MVK_CONFIG_SHADER_CONVERSION_FLIP_VERTEX_Y", "0", 1);
+#endif
 
 #ifdef USE_SDL3
 	if (!SDL_Vulkan_LoadLibrary(NULL))
