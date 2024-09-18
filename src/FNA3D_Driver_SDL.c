@@ -1073,7 +1073,7 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 		depthStencilAttachmentInfo.stencil_store_op = SDL_GPU_STOREOP_STORE;
 
 		depthStencilAttachmentInfo.cycle =
-			renderer->nextRenderPassDepthStencilAttachment->boundAsRenderTarget || depthStencilAttachmentInfo.load_op == SDL_GPU_LOADOP_LOAD || depthStencilAttachmentInfo.load_op == SDL_GPU_LOADOP_LOAD ?
+			renderer->nextRenderPassDepthStencilAttachment->boundAsRenderTarget || depthStencilAttachmentInfo.load_op == SDL_GPU_LOADOP_LOAD || depthStencilAttachmentInfo.stencil_load_op == SDL_GPU_LOADOP_LOAD ?
 				SDL_FALSE :
 				SDL_TRUE; /* Cycle if we can! */
 
