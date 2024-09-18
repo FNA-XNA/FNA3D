@@ -1017,6 +1017,12 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 				SDL_FALSE :
 				SDL_TRUE; /* cycle if we can, it's fast! */
 
+		/* TODO: Need to store resolve textures with attachments  */
+		colorAttachmentInfos[i].resolve_texture = NULL;
+		colorAttachmentInfos[i].resolve_mip_level = 0;
+		colorAttachmentInfos[i].resolve_layer = 0;
+		colorAttachmentInfos[i].cycle_resolve_texture = colorAttachmentInfos[i].cycle;
+
 		if (renderer->shouldClearColorOnBeginPass)
 		{
 			colorAttachmentInfos[i].clear_color = renderer->clearColorValue;
