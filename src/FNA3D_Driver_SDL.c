@@ -521,6 +521,7 @@ typedef struct SDLGPU_Renderer
 
 	/* Defer render pass settings */
 	SDLGPU_TextureHandle *nextRenderPassColorAttachments[MAX_RENDERTARGET_BINDINGS];
+	SDLGPU_TextureHandle *nextRenderPassColorResolves[MAX_RENDERTARGET_BINDINGS];
 	SDL_GPUCubeMapFace nextRenderPassColorAttachmentCubeFace[MAX_RENDERTARGET_BINDINGS];
 	uint32_t nextRenderPassColorAttachmentCount;
 	SDL_GPUSampleCount nextRenderPassMultisampleCount;
@@ -1017,8 +1018,14 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 				SDL_FALSE :
 				SDL_TRUE; /* cycle if we can, it's fast! */
 
-		/* TODO: Need to store resolve textures with attachments  */
-		colorAttachmentInfos[i].resolve_texture = NULL;
+		if (renderer->nextRenderPassColorResolves[i] != NULL)
+		{
+			colorAttachmentInfos[i].resolve_texture = renderer->nextRenderPassColorResolves[i]->texture;
+		}
+		else
+		{
+			colorAttachmentInfos[i].resolve_texture = NULL;
+		}
 		colorAttachmentInfos[i].resolve_mip_level = 0;
 		colorAttachmentInfos[i].resolve_layer = 0;
 		colorAttachmentInfos[i].cycle_resolve_texture = colorAttachmentInfos[i].cycle;
@@ -1146,6 +1153,7 @@ static void SDLGPU_SetRenderTargets(
 	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
 	{
 		renderer->nextRenderPassColorAttachments[i] = NULL;
+		renderer->nextRenderPassColorResolves[i] = NULL;
 	}
 	renderer->nextRenderPassDepthStencilAttachment = NULL;
 
@@ -1174,6 +1182,7 @@ static void SDLGPU_SetRenderTargets(
 			{
 				renderer->nextRenderPassColorAttachments[i] = ((SDLGPU_Renderbuffer*) renderTargets[i].colorBuffer)->textureHandle;
 				renderer->nextRenderPassMultisampleCount = ((SDLGPU_Renderbuffer*) renderTargets[i].colorBuffer)->sampleCount;
+				renderer->nextRenderPassColorResolves[i] = (SDLGPU_TextureHandle*) renderTargets[i].texture;
 			}
 			else
 			{
@@ -2428,6 +2437,7 @@ static void SDLGPU_INTERNAL_CreateFauxBackbuffer(
 	if (!renderer->renderTargetInUse)
 	{
 		renderer->nextRenderPassColorAttachments[0] = renderer->fauxBackbufferColor;
+		renderer->nextRenderPassColorResolves[0] = NULL;
 		renderer->nextRenderPassColorAttachmentCubeFace[0] = 0;
 		renderer->nextRenderPassColorAttachmentCount = 1;
 		renderer->nextRenderPassMultisampleCount = renderer->fauxBackbufferColor->createInfo.sample_count;
