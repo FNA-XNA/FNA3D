@@ -107,6 +107,55 @@ typedef enum
 	VSYNC_FORCE_OFF
 } VSyncMode;
 
+/* #define TOO_MUCH_RAM */
+#ifdef TOO_MUCH_RAM
+typedef struct FAKEIO
+{
+	uint8_t *buffer;
+	uint8_t *current;
+} FAKEIO;
+static FAKEIO* FAKE_IOFromFile(const char *file, const char *mode)
+{
+	size_t len;
+	void *blob;
+
+	FAKEIO *io = (FAKEIO*) SDL_malloc(sizeof(io));
+	if (io == NULL)
+	{
+		return NULL;
+	}
+
+	blob = SDL_LoadFile(file, &len);
+	if (blob == NULL)
+	{
+		SDL_free(io);
+		return NULL;
+	}
+
+	io->buffer = (uint8_t*) blob;
+	io->current = io->buffer;
+	return io;
+}
+
+static SDL_bool FAKE_CloseIO(FAKEIO *io)
+{
+	SDL_free(io->buffer);
+	SDL_free(io);
+}
+
+static size_t FAKE_ReadIO(FAKEIO *io, void *ptr, size_t size)
+{
+	/* Size checks? Where we're going we don't need size checks */
+	SDL_memcpy(ptr, io->current, size);
+	io->current += size;
+}
+
+#define SDL_IOStream FAKEIO
+#define SDL_IOFromFile FAKE_IOFromFile
+#define SDL_CloseIO FAKE_CloseIO
+#define SDL_ReadIO FAKE_ReadIO
+#endif /* TOO_MUCH_RAM */
+
 static uint8_t replay(
 	const char *filename,
 	uint8_t forceDebugMode,
