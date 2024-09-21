@@ -137,10 +137,11 @@ static FAKEIO* FAKE_IOFromFile(const char *file, const char *mode)
 	return io;
 }
 
-static SDL_bool FAKE_CloseIO(FAKEIO *io)
+static bool FAKE_CloseIO(FAKEIO *io)
 {
 	SDL_free(io->buffer);
 	SDL_free(io);
+	return true;
 }
 
 static size_t FAKE_ReadIO(FAKEIO *io, void *ptr, size_t size)

@@ -33,6 +33,9 @@
 
 #ifdef USE_SDL3
 #include <SDL3/SDL.h>
+
+#undef SDL_FALSE
+#define SDL_FALSE false
 #else
 #include <SDL.h>
 #ifndef FNA3D_DXVK_NATIVE

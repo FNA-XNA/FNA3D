@@ -31,6 +31,13 @@
 
 #ifdef USE_SDL3
 #include <SDL3/SDL.h>
+
+#undef SDL_bool
+#undef SDL_TRUE
+#undef SDL_FALSE
+#define SDL_bool bool
+#define SDL_TRUE true
+#define SDL_FALSE false
 #else
 #include <SDL.h>
 #define SDL_Mutex SDL_mutex

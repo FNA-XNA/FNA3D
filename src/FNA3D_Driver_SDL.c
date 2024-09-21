@@ -256,7 +256,7 @@ static SDL_GPUStencilOp XNAToSDL_StencilOp[] =
 	SDL_GPU_STENCILOP_INVERT		/* FNA3D_STENCILOPERATION_INVERT */
 };
 
-static inline SDL_bool XNAToSDL_PresentMode(
+static inline bool XNAToSDL_PresentMode(
 	SDL_GPUDevice *device,
 	SDL_Window *window,
 	FNA3D_PresentInterval interval,
@@ -278,7 +278,7 @@ static inline SDL_bool XNAToSDL_PresentMode(
 		{
 			*presentMode = SDL_GPU_PRESENTMODE_VSYNC;
 		}
-		return SDL_TRUE;
+		return true;
 	}
 	else if (interval == FNA3D_PRESENTINTERVAL_IMMEDIATE)
 	{
@@ -287,17 +287,17 @@ static inline SDL_bool XNAToSDL_PresentMode(
 		{
 			*presentMode = SDL_GPU_PRESENTMODE_VSYNC;
 		}
-		return SDL_TRUE;
+		return true;
 	}
 	else if (interval == FNA3D_PRESENTINTERVAL_TWO)
 	{
 		FNA3D_LogError("FNA3D_PRESENTINTERVAL_TWO not supported by SDL GPU backend!");
-		return SDL_FALSE;
+		return false;
 	}
 	else
 	{
 		FNA3D_LogError("Unrecognized presentation interval!");
-		return SDL_FALSE;
+		return false;
 	}
 }
 
@@ -389,7 +389,7 @@ typedef struct GraphicsPipelineHash
 	SDL_GPUShader *fragShader;
 	SDL_GPUTextureFormat colorFormats[MAX_RENDERTARGET_BINDINGS];
 	uint32_t colorFormatCount;
-	SDL_bool hasDepthStencilAttachment;
+	bool hasDepthStencilAttachment;
 	SDL_GPUTextureFormat depthStencilFormat;
 } GraphicsPipelineHash;
 
@@ -854,7 +854,7 @@ static void SDLGPU_SwapBuffers(
 		blitInfo.clear_color.a = 0;
 		blitInfo.flip_mode = SDL_FLIP_NONE;
 		blitInfo.filter = SDL_GPU_FILTER_LINEAR;
-		blitInfo.cycle = SDL_FALSE;
+		blitInfo.cycle = false;
 
 		SDL_BlitGPUTexture(
 			renderer->renderCommandBuffer,
@@ -1015,8 +1015,8 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 
 		colorAttachmentInfos[i].cycle =
 			renderer->nextRenderPassColorAttachments[i]->boundAsRenderTarget || colorAttachmentInfos[i].load_op == SDL_GPU_LOADOP_LOAD ?
-				SDL_FALSE :
-				SDL_TRUE; /* cycle if we can, it's fast! */
+				false :
+				true; /* cycle if we can, it's fast! */
 
 		if (renderer->nextRenderPassColorResolves[i] != NULL)
 		{
@@ -1081,8 +1081,8 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 
 		depthStencilAttachmentInfo.cycle =
 			renderer->nextRenderPassDepthStencilAttachment->boundAsRenderTarget || depthStencilAttachmentInfo.load_op == SDL_GPU_LOADOP_LOAD || depthStencilAttachmentInfo.stencil_load_op == SDL_GPU_LOADOP_LOAD ?
-				SDL_FALSE :
-				SDL_TRUE; /* Cycle if we can! */
+				false :
+				true; /* Cycle if we can! */
 
 		if (renderer->shouldClearDepthOnBeginPass || renderer->shouldClearStencilOnBeginPass)
 		{
@@ -1446,7 +1446,7 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 
 	/* FIXME: Can this be disabled when mask is -1? -flibit */
 	createInfo.multisample_state.sample_count = renderer->nextRenderPassMultisampleCount;
-	createInfo.multisample_state.enable_mask = SDL_TRUE;
+	createInfo.multisample_state.enable_mask = true;
 	createInfo.multisample_state.sample_mask = renderer->multisampleMask;
 
 	/* Blend State */
@@ -1480,7 +1480,7 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 		];
 
 		/* FIXME: Can this be disabled when mask is R|G|B|A? -flibit */
-		colorAttachmentDescriptions[0].blend_state.enable_color_write_mask = SDL_TRUE;
+		colorAttachmentDescriptions[0].blend_state.enable_color_write_mask = true;
 	}
 	else
 	{
@@ -2471,7 +2471,7 @@ static void SDLGPU_ResetBackbuffer(
 
 	swapchainComposition = SDL_GPU_SWAPCHAINCOMPOSITION_SDR;
 
-	if (SDL_GetHintBoolean("FNA3D_ENABLE_HDR_COLORSPACE", SDL_FALSE))
+	if (SDL_GetHintBoolean("FNA3D_ENABLE_HDR_COLORSPACE", false))
 	{
 		if (presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_RGBA1010102)
 		{
@@ -2746,8 +2746,8 @@ static void SDLGPU_INTERNAL_SetTextureData(
 	SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
 	SDL_GPUTransferBuffer *transferBuffer = renderer->textureUploadBuffer;
 	uint32_t transferOffset;
-	SDL_bool cycle = renderer->textureUploadBufferOffset == 0;
-	SDL_bool usingTemporaryTransferBuffer = SDL_FALSE;
+	bool cycle = renderer->textureUploadBufferOffset == 0;
+	bool usingTemporaryTransferBuffer = false;
 	uint8_t *dst;
 
 	SDLGPU_INTERNAL_BeginCopyPass(renderer);
@@ -2768,8 +2768,8 @@ static void SDLGPU_INTERNAL_SetTextureData(
 			renderer->device,
 			&transferBufferCreateInfo
 		);
-		usingTemporaryTransferBuffer = SDL_TRUE;
-		cycle = SDL_FALSE;
+		usingTemporaryTransferBuffer = true;
+		cycle = false;
 		transferOffset = 0;
 	}
 	else if (
@@ -2778,7 +2778,7 @@ static void SDLGPU_INTERNAL_SetTextureData(
 		if (renderer->textureUploadCycleCount < MAX_UPLOAD_CYCLE_COUNT)
 		{
 			/* Cycle transfer buffer if necessary */
-			cycle = SDL_TRUE;
+			cycle = true;
 			renderer->textureUploadCycleCount += 1;
 			renderer->textureUploadBufferOffset = 0;
 			transferOffset = 0;
@@ -2788,7 +2788,7 @@ static void SDLGPU_INTERNAL_SetTextureData(
 			/* We already cycled too much, time to stall! */
 			SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
 			SDLGPU_INTERNAL_BeginCopyPass(renderer);
-			cycle = SDL_TRUE;
+			cycle = true;
 			transferOffset = 0;
 		}
 	}
@@ -2816,7 +2816,7 @@ static void SDLGPU_INTERNAL_SetTextureData(
 		renderer->copyPass,
 		&textureCopyParams,
 		&textureRegion,
-		SDL_FALSE /* FIXME: we could check if it's a complete overwrite and set it to cycle here */
+		false /* FIXME: we could check if it's a complete overwrite and set it to cycle here */
 	);
 
 	if (usingTemporaryTransferBuffer)
@@ -3075,15 +3075,15 @@ static void SDLGPU_INTERNAL_SetBufferData(
 	uint32_t dstOffset,
 	void *data,
 	uint32_t dataLength,
-	SDL_bool cycle
+	bool cycle
 ) {
 	SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
 	SDL_GPUTransferBufferLocation transferLocation;
 	SDL_GPUBufferRegion bufferRegion;
 	SDL_GPUTransferBuffer *transferBuffer = renderer->bufferUploadBuffer;
 	uint32_t transferOffset = renderer->bufferUploadBufferOffset;
-	SDL_bool transferCycle = renderer->bufferUploadBufferOffset == 0;
-	SDL_bool usingTemporaryTransferBuffer = SDL_FALSE;
+	bool transferCycle = renderer->bufferUploadBufferOffset == 0;
+	bool usingTemporaryTransferBuffer = false;
 	uint8_t *dst;
 
 	SDLGPU_INTERNAL_BeginCopyPass(renderer);
@@ -3098,8 +3098,8 @@ static void SDLGPU_INTERNAL_SetBufferData(
 			renderer->device,
 			&transferBufferCreateInfo
 		);
-		usingTemporaryTransferBuffer = SDL_TRUE;
-		transferCycle = SDL_FALSE;
+		usingTemporaryTransferBuffer = true;
+		transferCycle = false;
 		transferOffset = 0;
 	}
 	else if (
@@ -3108,7 +3108,7 @@ static void SDLGPU_INTERNAL_SetBufferData(
 		if (renderer->bufferUploadCycleCount < MAX_UPLOAD_CYCLE_COUNT)
 		{
 			/* Cycle transfer buffer if necessary */
-			transferCycle = SDL_TRUE;
+			transferCycle = true;
 			renderer->bufferUploadCycleCount += 1;
 			renderer->bufferUploadBufferOffset = 0;
 			transferOffset = 0;
@@ -3117,7 +3117,7 @@ static void SDLGPU_INTERNAL_SetBufferData(
 		{
 			/* We already cycled too much, time to stall! */
 			SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
-			transferCycle = SDL_TRUE;
+			transferCycle = true;
 			transferOffset = 0;
 		}
 	}
@@ -3163,20 +3163,20 @@ static void SDLGPU_SetVertexBufferData(
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
 	SDLGPU_BufferHandle *bufferHandle = (SDLGPU_BufferHandle*) buffer;
 
-	SDL_bool cycle;
+	bool cycle;
 	uint32_t dataLen = (uint32_t) elementCount * (uint32_t) vertexStride;
 
 	if (options == FNA3D_SETDATAOPTIONS_DISCARD)
 	{
-		cycle = SDL_TRUE;
+		cycle = true;
 	}
 	else if (options == FNA3D_SETDATAOPTIONS_NOOVERWRITE)
 	{
-		cycle = SDL_FALSE;
+		cycle = false;
 	}
 	else if (dataLen == bufferHandle->size) /* NONE and full buffer update */
 	{
-		cycle = SDL_TRUE;
+		cycle = true;
 	}
 	else /* Partial NONE update! This will be broken! */
 	{
@@ -3184,7 +3184,7 @@ static void SDLGPU_SetVertexBufferData(
 			"Dynamic buffer using SetDataOptions.None, expect bad performance and broken output!"
 		);
 
-		cycle = SDL_FALSE;
+		cycle = false;
 	}
 
 	SDLGPU_INTERNAL_SetBufferData(
@@ -3212,19 +3212,19 @@ static void SDLGPU_SetIndexBufferData(
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
 	SDLGPU_BufferHandle *bufferHandle = (SDLGPU_BufferHandle*) buffer;
-	SDL_bool cycle;
+	bool cycle;
 
 	if (options == FNA3D_SETDATAOPTIONS_DISCARD)
 	{
-		cycle = SDL_TRUE;
+		cycle = true;
 	}
 	else if (options == FNA3D_SETDATAOPTIONS_NOOVERWRITE)
 	{
-		cycle = SDL_FALSE;
+		cycle = false;
 	}
 	else if (dataLength == bufferHandle->size) /* NONE and full buffer update */
 	{
-		cycle = SDL_TRUE;
+		cycle = true;
 	}
 	else /* Partial NONE update! This will be broken! */
 	{
@@ -3233,7 +3233,7 @@ static void SDLGPU_SetIndexBufferData(
 		);
 
 		SDLGPU_INTERNAL_FlushCommands(renderer);
-		cycle = SDL_TRUE;
+		cycle = true;
 	}
 
 	SDLGPU_INTERNAL_SetBufferData(
@@ -3329,7 +3329,7 @@ static void SDLGPU_INTERNAL_GetTextureData(
 	SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
 
 	/* Copy into data pointer */
-	src = (uint8_t*) SDL_MapGPUTransferBuffer(renderer->device, renderer->textureDownloadBuffer, SDL_FALSE);
+	src = (uint8_t*) SDL_MapGPUTransferBuffer(renderer->device, renderer->textureDownloadBuffer, false);
 	SDL_memcpy(data, src, dataLength);
 	SDL_UnmapGPUTransferBuffer(renderer->device, renderer->textureDownloadBuffer);
 }
@@ -3398,7 +3398,7 @@ static void SDLGPU_INTERNAL_GetBufferData(
 	SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
 
 	/* Copy into data pointer */
-	src = (uint8_t*) SDL_MapGPUTransferBuffer(renderer->device, renderer->bufferDownloadBuffer, SDL_FALSE);
+	src = (uint8_t*) SDL_MapGPUTransferBuffer(renderer->device, renderer->bufferDownloadBuffer, false);
 	SDL_memcpy(data, src, dataLength);
 	SDL_UnmapGPUTransferBuffer(renderer->device, renderer->bufferDownloadBuffer);
 }
@@ -3825,9 +3825,9 @@ static int32_t SDLGPU_GetMaxMultiSampleCount(
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
 
-	SDL_bool supports2 = SDL_GPUTextureSupportsSampleCount(renderer->device, XNAToSDL_SurfaceFormat[format], SDL_GPU_SAMPLECOUNT_2);
-	SDL_bool supports4 = SDL_GPUTextureSupportsSampleCount(renderer->device, XNAToSDL_SurfaceFormat[format], SDL_GPU_SAMPLECOUNT_4);
-	SDL_bool supports8 = SDL_GPUTextureSupportsSampleCount(renderer->device, XNAToSDL_SurfaceFormat[format], SDL_GPU_SAMPLECOUNT_8);
+	bool supports2 = SDL_GPUTextureSupportsSampleCount(renderer->device, XNAToSDL_SurfaceFormat[format], SDL_GPU_SAMPLECOUNT_2);
+	bool supports4 = SDL_GPUTextureSupportsSampleCount(renderer->device, XNAToSDL_SurfaceFormat[format], SDL_GPU_SAMPLECOUNT_4);
+	bool supports8 = SDL_GPUTextureSupportsSampleCount(renderer->device, XNAToSDL_SurfaceFormat[format], SDL_GPU_SAMPLECOUNT_8);
 
 	if (supports8) return SDL_min(multiSampleCount, 8);
 	if (supports4) return SDL_min(multiSampleCount, 4);
@@ -4031,7 +4031,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 
 	swapchainComposition = SDL_GPU_SWAPCHAINCOMPOSITION_SDR;
 
-	if (SDL_GetHintBoolean("FNA3D_ENABLE_HDR_COLORSPACE", SDL_FALSE))
+	if (SDL_GetHintBoolean("FNA3D_ENABLE_HDR_COLORSPACE", false))
 	{
 		if (presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_RGBA1010102)
 		{
