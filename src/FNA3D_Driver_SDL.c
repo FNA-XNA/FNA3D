@@ -505,11 +505,9 @@ typedef struct SDLGPU_Renderer
 	SDL_GPUCommandBuffer *uploadCommandBuffer;
 
 	SDL_GPURenderPass *renderPass;
-	uint8_t renderPassInProgress;
 	uint8_t needNewRenderPass;
 
 	SDL_GPUCopyPass *copyPass;
-	uint8_t copyPassInProgress;
 
 	uint8_t shouldClearColorOnBeginPass;
 	uint8_t shouldClearDepthOnBeginPass;
@@ -693,7 +691,7 @@ static void SDLGPU_ResetCommandBufferState(
 static void SDLGPU_INTERNAL_EndCopyPass(
 	SDLGPU_Renderer *renderer
 ) {
-	if (renderer->copyPassInProgress)
+	if (renderer->copyPass != NULL)
 	{
 		SDL_EndGPUCopyPass(
 			renderer->copyPass
@@ -701,14 +699,12 @@ static void SDLGPU_INTERNAL_EndCopyPass(
 
 		renderer->copyPass = NULL;
 	}
-
-	renderer->copyPassInProgress = 0;
 }
 
 static void SDLGPU_INTERNAL_EndRenderPass(
 	SDLGPU_Renderer *renderer
 ) {
-	if (renderer->renderPassInProgress)
+	if (renderer->renderPass != NULL)
 	{
 		SDL_EndGPURenderPass(
 			renderer->renderPass
@@ -717,7 +713,6 @@ static void SDLGPU_INTERNAL_EndRenderPass(
 		renderer->renderPass = NULL;
 	}
 
-	renderer->renderPassInProgress = 0;
 	renderer->needNewRenderPass = 1;
 	renderer->currentGraphicsPipeline = NULL;
 	renderer->needNewGraphicsPipeline = 1;
@@ -1126,8 +1121,6 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 	renderer->shouldClearStencilOnBeginPass = 0;
 
 	renderer->needNewGraphicsPipeline = 1;
-
-	renderer->renderPassInProgress = 1;
 }
 
 static void SDLGPU_SetRenderTargets(
@@ -1205,13 +1198,11 @@ static void SDLGPU_SetRenderTargets(
 static void SDLGPU_INTERNAL_BeginCopyPass(
 	SDLGPU_Renderer *renderer
 ) {
-	if (!renderer->copyPassInProgress)
+	if (renderer->copyPass == NULL)
 	{
 		renderer->copyPass = SDL_BeginGPUCopyPass(
 			renderer->uploadCommandBuffer
 		);
-
-		renderer->copyPassInProgress = 1;
 	}
 }
 
@@ -1907,7 +1898,7 @@ static void SDLGPU_SetViewport(
 	{
 		renderer->viewport = *viewport;
 
-		if (renderer->renderPassInProgress)
+		if (renderer->renderPass != NULL)
 		{
 			gpuViewport.x = (float) viewport->x;
 			gpuViewport.y = (float) viewport->y;
@@ -1935,7 +1926,7 @@ static void SDLGPU_SetScissorRect(
 	renderer->scissorRect.w = scissor->w;
 	renderer->scissorRect.h = scissor->h;
 
-	if (renderer->renderPassInProgress && renderer->fnaRasterizerState.scissorTestEnable)
+	if (renderer->renderPass != NULL && renderer->fnaRasterizerState.scissorTestEnable)
 	{
 		SDL_SetGPUScissor(
 			renderer->renderPass,
@@ -2095,7 +2086,7 @@ static void SDLGPU_ApplyRasterizerState(
 	{
 		renderer->fnaRasterizerState.scissorTestEnable = rasterizerState->scissorTestEnable;
 
-		if (renderer->renderPassInProgress)
+		if (renderer->renderPass != NULL)
 		{
 			SDL_SetGPUScissor(
 				renderer->renderPass,
