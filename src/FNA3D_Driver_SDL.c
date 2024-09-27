@@ -314,7 +314,6 @@ typedef struct SDLGPU_Renderbuffer /* Cast from FNA3D_Renderbuffer* */
 	SDLGPU_TextureHandle *textureHandle;
 	SDL_GPUTextureFormat format;
 	SDL_GPUSampleCount sampleCount;
-	uint8_t isDepth; /* if true, owns the texture reference */
 } SDLGPU_Renderbuffer;
 
 typedef struct SDLGPU_Effect /* Cast from FNA3D_Effect* */
@@ -2682,7 +2681,6 @@ static FNA3D_Renderbuffer* SDLGPU_GenColorRenderbuffer(
 
 	colorBufferHandle = SDL_malloc(sizeof(SDLGPU_Renderbuffer));
 	colorBufferHandle->textureHandle = textureHandle;
-	colorBufferHandle->isDepth = 0;
 	colorBufferHandle->sampleCount = sampleCount;
 	colorBufferHandle->format = XNAToSDL_SurfaceFormat[format];
 
@@ -2720,7 +2718,6 @@ static FNA3D_Renderbuffer* SDLGPU_GenDepthStencilRenderbuffer(
 
 	renderbuffer = SDL_malloc(sizeof(SDLGPU_Renderbuffer));
 	renderbuffer->textureHandle = textureHandle;
-	renderbuffer->isDepth = 1;
 	renderbuffer->sampleCount = XNAToSDL_SampleCount(multiSampleCount);
 	renderbuffer->format = XNAToSDL_DepthFormat(renderer, format);
 
@@ -2749,16 +2746,12 @@ static void SDLGPU_AddDisposeRenderbuffer(
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
 	SDLGPU_Renderbuffer *renderbufferHandle = (SDLGPU_Renderbuffer*) renderbuffer;
 
-	if (renderbufferHandle->isDepth)
-	{
-		SDL_ReleaseGPUTexture(
-			renderer->device,
-			renderbufferHandle->textureHandle->texture
-		);
+	SDL_ReleaseGPUTexture(
+		renderer->device,
+		renderbufferHandle->textureHandle->texture
+	);
 
-		SDL_free(renderbufferHandle->textureHandle);
-	}
-
+	SDL_free(renderbufferHandle->textureHandle);
 	SDL_free(renderbufferHandle);
 }
 
