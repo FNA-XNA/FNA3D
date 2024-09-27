@@ -827,7 +827,7 @@ static void SDLGPU_SwapBuffers(
 		renderer->renderCommandBuffer,
 		overrideWindowHandle,
 		&swapchainTexture
-	)) {
+	) && swapchainTexture != NULL) {
 		SDL_GetWindowSizeInPixels(overrideWindowHandle, &width, &height);
 
 		blitInfo.source.texture = renderer->fauxBackbufferColor->texture;
