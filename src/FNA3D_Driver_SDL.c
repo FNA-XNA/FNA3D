@@ -1006,7 +1006,14 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 
 		/* We always have to store just in case changing render state breaks the render pass. */
 		/* FIXME: perhaps there is a way around this? */
-		colorAttachmentInfos[i].store_op = SDL_GPU_STOREOP_STORE;
+		if (renderer->nextRenderPassColorResolves[i] != NULL)
+		{
+			colorAttachmentInfos[i].store_op = SDL_GPU_STOREOP_RESOLVE_AND_STORE;
+		}
+		else
+		{
+			colorAttachmentInfos[i].store_op = SDL_GPU_STOREOP_STORE;
+		}
 
 		colorAttachmentInfos[i].cycle =
 			renderer->nextRenderPassColorAttachments[i]->boundAsRenderTarget || colorAttachmentInfos[i].load_op == SDL_GPU_LOADOP_LOAD ?
