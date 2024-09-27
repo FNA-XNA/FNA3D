@@ -793,7 +793,8 @@ static void SDLGPU_SwapBuffers(
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
 	SDL_GPUTexture *swapchainTexture;
 	SDL_GPUBlitInfo blitInfo;
-	uint32_t width, height, i;
+	int32_t width, height;
+	uint32_t i;
 
 	SDLGPU_INTERNAL_EndCopyPass(renderer);
 	SDLGPU_INTERNAL_EndRenderPass(renderer);
@@ -822,15 +823,13 @@ static void SDLGPU_SwapBuffers(
 		renderer->fenceGroups[renderer->frameCounter][1] = NULL;
 	}
 
-	swapchainTexture = SDL_AcquireGPUSwapchainTexture(
+	if (SDL_AcquireGPUSwapchainTexture(
 		renderer->renderCommandBuffer,
 		overrideWindowHandle,
-		&width,
-		&height
-	);
+		&swapchainTexture
+	)) {
+		SDL_GetWindowSizeInPixels(overrideWindowHandle, &width, &height);
 
-	if (swapchainTexture != NULL)
-	{
 		blitInfo.source.texture = renderer->fauxBackbufferColor->texture;
 		blitInfo.source.mip_level = 0;
 		blitInfo.source.layer_or_depth_plane = 0;
@@ -1438,6 +1437,7 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 	createInfo.rasterizer_state.depth_bias_clamp = 0.0f;
 	createInfo.rasterizer_state.depth_bias_constant_factor = renderer->fnaRasterizerState.depthBias;
 	createInfo.rasterizer_state.enable_depth_bias = 1;
+	createInfo.rasterizer_state.enable_depth_clip = 0;
 	createInfo.rasterizer_state.depth_bias_slope_factor = renderer->fnaRasterizerState.slopeScaleDepthBias;
 	createInfo.rasterizer_state.fill_mode = XNAToSDL_FillMode[renderer->fnaRasterizerState.fillMode];
 	createInfo.rasterizer_state.front_face = SDL_GPU_FRONTFACE_CLOCKWISE;
