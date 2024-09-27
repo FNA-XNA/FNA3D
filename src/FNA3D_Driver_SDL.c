@@ -2658,22 +2658,23 @@ static FNA3D_Renderbuffer* SDLGPU_GenColorRenderbuffer(
 	int32_t multiSampleCount,
 	FNA3D_Texture *texture
 ) {
-	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
-	SDLGPU_TextureHandle *textureHandle = (SDLGPU_TextureHandle*) texture;
+	SDLGPU_TextureHandle *textureHandle;
 	SDLGPU_Renderbuffer *colorBufferHandle;
+	SDL_GPUSampleCount sampleCount = XNAToSDL_SampleCount(multiSampleCount);
 
-	/* Recreate texture with appropriate settings */
-	SDL_ReleaseGPUTexture(renderer->device, textureHandle->texture);
-
-	textureHandle->createInfo.sample_count = XNAToSDL_SampleCount(multiSampleCount);
-	textureHandle->createInfo.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
-
-	textureHandle->texture = SDL_CreateGPUTexture(
-		renderer->device,
-		&textureHandle->createInfo
+	textureHandle = SDLGPU_INTERNAL_CreateTextureWithHandle(
+		(SDLGPU_Renderer*) driverData,
+		(uint32_t) width,
+		(uint32_t) height,
+		1,
+		XNAToSDL_SurfaceFormat[format],
+		1,
+		1,
+		SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+		sampleCount
 	);
 
-	if (textureHandle->texture == NULL)
+	if (textureHandle == NULL)
 	{
 		FNA3D_LogError("Failed to recreate color buffer texture!");
 		return NULL;
@@ -2682,7 +2683,7 @@ static FNA3D_Renderbuffer* SDLGPU_GenColorRenderbuffer(
 	colorBufferHandle = SDL_malloc(sizeof(SDLGPU_Renderbuffer));
 	colorBufferHandle->textureHandle = textureHandle;
 	colorBufferHandle->isDepth = 0;
-	colorBufferHandle->sampleCount = XNAToSDL_SampleCount(multiSampleCount);
+	colorBufferHandle->sampleCount = sampleCount;
 	colorBufferHandle->format = XNAToSDL_SurfaceFormat[format];
 
 	return (FNA3D_Renderbuffer*) colorBufferHandle;
