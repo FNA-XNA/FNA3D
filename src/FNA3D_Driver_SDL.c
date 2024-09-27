@@ -571,7 +571,8 @@ typedef struct SDLGPU_Renderer
 	/* Presentation structure */
 
 	void *mainWindowHandle;
-	SDLGPU_TextureHandle *fauxBackbufferColor;
+	SDLGPU_TextureHandle *fauxBackbufferColorTexture;
+	SDLGPU_TextureHandle *fauxBackbufferColorRenderbuffer;
 	SDLGPU_TextureHandle *fauxBackbufferDepthStencil; /* may be NULL */
 
 	/* Transfer structure */
@@ -825,13 +826,13 @@ static void SDLGPU_SwapBuffers(
 	) && swapchainTexture != NULL) {
 		SDL_GetWindowSizeInPixels(overrideWindowHandle, &width, &height);
 
-		blitInfo.source.texture = renderer->fauxBackbufferColor->texture;
+		blitInfo.source.texture = renderer->fauxBackbufferColorTexture->texture;
 		blitInfo.source.mip_level = 0;
 		blitInfo.source.layer_or_depth_plane = 0;
 		blitInfo.source.x = 0;
 		blitInfo.source.y = 0;
-		blitInfo.source.w = renderer->fauxBackbufferColor->createInfo.width;
-		blitInfo.source.h = renderer->fauxBackbufferColor->createInfo.height;
+		blitInfo.source.w = renderer->fauxBackbufferColorTexture->createInfo.width;
+		blitInfo.source.h = renderer->fauxBackbufferColorTexture->createInfo.height;
 
 		blitInfo.destination.texture = swapchainTexture;
 		blitInfo.destination.mip_level = 0;
@@ -1151,9 +1152,18 @@ static void SDLGPU_SetRenderTargets(
 
 	if (numRenderTargets <= 0)
 	{
-		renderer->nextRenderPassColorAttachments[0] = renderer->fauxBackbufferColor;
+		if (renderer->fauxBackbufferColorRenderbuffer != NULL)
+		{
+			renderer->nextRenderPassColorAttachments[0] = renderer->fauxBackbufferColorRenderbuffer;
+			renderer->nextRenderPassColorResolves[0] = renderer->fauxBackbufferColorTexture;
+			renderer->nextRenderPassMultisampleCount = renderer->fauxBackbufferColorRenderbuffer->createInfo.sample_count;
+		}
+		else
+		{
+			renderer->nextRenderPassColorAttachments[0] = renderer->fauxBackbufferColorTexture;
+			renderer->nextRenderPassMultisampleCount = SDL_GPU_SAMPLECOUNT_1;
+		}
 		renderer->nextRenderPassColorAttachmentCubeFace[0] = 0;
-		renderer->nextRenderPassMultisampleCount = renderer->fauxBackbufferColor->createInfo.sample_count;
 		renderer->nextRenderPassColorAttachmentCount = 1;
 
 		renderer->nextRenderPassDepthStencilAttachment = renderer->fauxBackbufferDepthStencil;
@@ -2311,12 +2321,22 @@ static void SDLGPU_DrawPrimitives(
 static void SDLGPU_INTERNAL_DestroyFauxBackbuffer(
 	SDLGPU_Renderer *renderer
 ) {
+	if (renderer->fauxBackbufferColorRenderbuffer != NULL)
+	{
+		SDL_ReleaseGPUTexture(
+			renderer->device,
+			renderer->fauxBackbufferColorRenderbuffer->texture
+		);
+
+		SDL_free(renderer->fauxBackbufferColorRenderbuffer);
+	}
+
 	SDL_ReleaseGPUTexture(
 		renderer->device,
-		renderer->fauxBackbufferColor->texture
+		renderer->fauxBackbufferColorTexture->texture
 	);
 
-	SDL_free(renderer->fauxBackbufferColor);
+	SDL_free(renderer->fauxBackbufferColorTexture);
 
 	if (renderer->fauxBackbufferDepthStencil != NULL)
 	{
@@ -2328,7 +2348,8 @@ static void SDLGPU_INTERNAL_DestroyFauxBackbuffer(
 		SDL_free(renderer->fauxBackbufferDepthStencil);
 	}
 
-	renderer->fauxBackbufferColor = NULL;
+	renderer->fauxBackbufferColorRenderbuffer = NULL;
+	renderer->fauxBackbufferColorTexture = NULL;
 	renderer->fauxBackbufferDepthStencil = NULL;
 }
 
@@ -2393,7 +2414,23 @@ static void SDLGPU_INTERNAL_CreateFauxBackbuffer(
 	SDLGPU_Renderer *renderer,
 	FNA3D_PresentationParameters *presentationParameters
 ) {
-	renderer->fauxBackbufferColor = SDLGPU_INTERNAL_CreateTextureWithHandle(
+	SDL_GPUSampleCount sampleCount = XNAToSDL_SampleCount(presentationParameters->multiSampleCount);
+
+	if (sampleCount > SDL_GPU_SAMPLECOUNT_1)
+	{
+		renderer->fauxBackbufferColorRenderbuffer = SDLGPU_INTERNAL_CreateTextureWithHandle(
+			renderer,
+			presentationParameters->backBufferWidth,
+			presentationParameters->backBufferHeight,
+			1,
+			XNAToSDL_SurfaceFormat[presentationParameters->backBufferFormat],
+			1,
+			1,
+			SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+			sampleCount
+		);
+	}
+	renderer->fauxBackbufferColorTexture = SDLGPU_INTERNAL_CreateTextureWithHandle(
 		renderer,
 		presentationParameters->backBufferWidth,
 		presentationParameters->backBufferHeight,
@@ -2402,7 +2439,7 @@ static void SDLGPU_INTERNAL_CreateFauxBackbuffer(
 		1,
 		1,
 		SDL_GPU_TEXTUREUSAGE_COLOR_TARGET | SDL_GPU_TEXTUREUSAGE_SAMPLER,
-		XNAToSDL_SampleCount(presentationParameters->multiSampleCount)
+		SDL_GPU_SAMPLECOUNT_1
 	);
 
 	if (presentationParameters->depthStencilFormat != FNA3D_DEPTHFORMAT_NONE)
@@ -2416,7 +2453,7 @@ static void SDLGPU_INTERNAL_CreateFauxBackbuffer(
 			1,
 			1,
 			SDL_GPU_TEXTUREUSAGE_DEPTH_STENCIL_TARGET,
-			XNAToSDL_SampleCount(presentationParameters->multiSampleCount)
+			sampleCount
 		);
 	}
 
@@ -2427,20 +2464,22 @@ static void SDLGPU_INTERNAL_CreateFauxBackbuffer(
 	/* Set default render pass state if necessary */
 	if (!renderer->renderTargetInUse)
 	{
-		renderer->nextRenderPassColorAttachments[0] = renderer->fauxBackbufferColor;
-		renderer->nextRenderPassColorResolves[0] = NULL;
-		renderer->nextRenderPassColorAttachmentCubeFace[0] = 0;
-		renderer->nextRenderPassColorAttachmentCount = 1;
-		renderer->nextRenderPassMultisampleCount = renderer->fauxBackbufferColor->createInfo.sample_count;
-
-		if (presentationParameters->depthStencilFormat != FNA3D_DEPTHFORMAT_NONE)
+		if (renderer->fauxBackbufferColorRenderbuffer != NULL)
 		{
-			renderer->nextRenderPassDepthStencilAttachment = renderer->fauxBackbufferDepthStencil;
+			renderer->nextRenderPassColorAttachments[0] = renderer->fauxBackbufferColorRenderbuffer;
+			renderer->nextRenderPassColorResolves[0] = renderer->fauxBackbufferColorTexture;
+			renderer->nextRenderPassMultisampleCount = renderer->fauxBackbufferColorRenderbuffer->createInfo.sample_count;
 		}
 		else
 		{
-			renderer->nextRenderPassDepthStencilAttachment = NULL;
+			renderer->nextRenderPassColorAttachments[0] = renderer->fauxBackbufferColorTexture;
+			renderer->nextRenderPassColorResolves[0] = NULL;
+			renderer->nextRenderPassMultisampleCount = SDL_GPU_SAMPLECOUNT_1;
 		}
+		renderer->nextRenderPassColorAttachmentCubeFace[0] = 0;
+		renderer->nextRenderPassColorAttachmentCount = 1;
+
+		renderer->nextRenderPassDepthStencilAttachment = renderer->fauxBackbufferDepthStencil;
 	}
 }
 
@@ -2501,8 +2540,8 @@ static void SDLGPU_GetBackbufferSize(
 	int32_t *h
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
-	*w = (int32_t) renderer->fauxBackbufferColor->createInfo.width;
-	*h = (int32_t) renderer->fauxBackbufferColor->createInfo.height;
+	*w = (int32_t) renderer->fauxBackbufferColorTexture->createInfo.width;
+	*h = (int32_t) renderer->fauxBackbufferColorTexture->createInfo.height;
 }
 
 static FNA3D_SurfaceFormat SDLGPU_GetBackbufferSurfaceFormat(
@@ -2620,9 +2659,7 @@ static FNA3D_Renderbuffer* SDLGPU_GenColorRenderbuffer(
 	SDL_ReleaseGPUTexture(renderer->device, textureHandle->texture);
 
 	textureHandle->createInfo.sample_count = XNAToSDL_SampleCount(multiSampleCount);
-	textureHandle->createInfo.usage =
-		SDL_GPU_TEXTUREUSAGE_COLOR_TARGET |
-		SDL_GPU_TEXTUREUSAGE_SAMPLER;
+	textureHandle->createInfo.usage = SDL_GPU_TEXTUREUSAGE_COLOR_TARGET;
 
 	textureHandle->texture = SDL_CreateGPUTexture(
 		renderer->device,
@@ -3522,7 +3559,7 @@ static void SDLGPU_ReadBackbuffer(
 
 	SDLGPU_INTERNAL_GetTextureData(
 		renderer,
-		renderer->fauxBackbufferColor->texture,
+		renderer->fauxBackbufferColorTexture->texture,
 		(uint32_t) x,
 		(uint32_t) y,
 		0,
@@ -4076,7 +4113,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 		presentationParameters
 	);
 
-	if (renderer->fauxBackbufferColor == NULL)
+	if (renderer->fauxBackbufferColorTexture == NULL)
 	{
 		FNA3D_LogError("Failed to create faux backbuffer!");
 		SDL_free(renderer);
