@@ -3912,8 +3912,7 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) device->driverData;
 	int32_t i, j;
 
-	SDL_SubmitGPUCommandBuffer(renderer->renderCommandBuffer);
-	SDL_SubmitGPUCommandBuffer(renderer->uploadCommandBuffer);
+	SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
 
 	if (renderer->textureDownloadBuffer != NULL)
 	{
