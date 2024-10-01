@@ -788,7 +788,7 @@ static void SDLGPU_SwapBuffers(
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
 	SDL_GPUTexture *swapchainTexture;
 	SDL_GPUBlitInfo blitInfo;
-	int32_t width, height;
+	uint32_t width, height;
 	uint32_t i;
 
 	SDLGPU_INTERNAL_EndCopyPass(renderer);
@@ -821,10 +821,10 @@ static void SDLGPU_SwapBuffers(
 	if (SDL_AcquireGPUSwapchainTexture(
 		renderer->renderCommandBuffer,
 		overrideWindowHandle,
-		&swapchainTexture
+		&swapchainTexture,
+		&width,
+		&height
 	) && swapchainTexture != NULL) {
-		SDL_GetWindowSizeInPixels(overrideWindowHandle, &width, &height);
-
 		blitInfo.source.texture = renderer->fauxBackbufferColorTexture->texture;
 		blitInfo.source.mip_level = 0;
 		blitInfo.source.layer_or_depth_plane = 0;
