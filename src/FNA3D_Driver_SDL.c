@@ -1740,12 +1740,6 @@ static void SDLGPU_VerifyVertexSampler(
 			renderer->vertexTextureSamplerBindings[index].texture = renderer->dummyTextureCube;
 		}
 
-		if (renderer->vertexTextureSamplerBindings[index].texture != NULL)
-		{
-			renderer->vertexTextureSamplerBindings[index].texture = NULL;
-			renderer->vertexTextureSamplerBindings[index].sampler = NULL;
-		}
-
 		return;
 	}
 
