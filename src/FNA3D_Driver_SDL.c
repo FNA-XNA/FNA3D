@@ -1803,7 +1803,7 @@ static void SDLGPU_VerifySampler(
 				renderer->fragmentTextureSamplerBindings[index].texture = renderer->dummyTextureCube;
 			}
 		}
-		else 
+		else
 		{
 			renderer->fragmentTextureSamplerBindings[index].texture = renderer->dummyTexture2D;
 		}
