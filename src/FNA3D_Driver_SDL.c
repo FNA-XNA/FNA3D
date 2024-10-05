@@ -1725,19 +1725,26 @@ static void SDLGPU_VerifyVertexSampler(
 	{
 		renderer->vertexTextureSamplerBindings[index].sampler = renderer->dummySampler;
 
-		samplerType = MOJOSHADER_sdlGetShaderParseData(vertShader)->samplers[index].type;
+		if (vertShader)
+		{
+			samplerType = MOJOSHADER_sdlGetShaderParseData(vertShader)->samplers[index].type;
 
-		if (samplerType == MOJOSHADER_SAMPLER_2D)
-		{
-			renderer->vertexTextureSamplerBindings[index].texture = renderer->dummyTexture2D;
-		}
-		else if (samplerType == MOJOSHADER_SAMPLER_VOLUME)
-		{
-			renderer->vertexTextureSamplerBindings[index].texture = renderer->dummyTexture3D;
-		}
+			if (samplerType == MOJOSHADER_SAMPLER_2D)
+			{
+				renderer->vertexTextureSamplerBindings[index].texture = renderer->dummyTexture2D;
+			}
+			else if (samplerType == MOJOSHADER_SAMPLER_VOLUME)
+			{
+				renderer->vertexTextureSamplerBindings[index].texture = renderer->dummyTexture3D;
+			}
+			else
+			{
+				renderer->vertexTextureSamplerBindings[index].texture = renderer->dummyTextureCube;
+			}
+		} 
 		else
 		{
-			renderer->vertexTextureSamplerBindings[index].texture = renderer->dummyTextureCube;
+			renderer->vertexTextureSamplerBindings[index].texture = renderer->dummyTexture2D;
 		}
 
 		return;
@@ -1780,18 +1787,25 @@ static void SDLGPU_VerifySampler(
 	{
 		renderer->fragmentTextureSamplerBindings[index].sampler = renderer->dummySampler;
 
-		samplerType = MOJOSHADER_sdlGetShaderParseData(fragShader)->samplers[index].type;
-		if (samplerType == MOJOSHADER_SAMPLER_2D)
+		if (fragShader) 
+		{
+			samplerType = MOJOSHADER_sdlGetShaderParseData(fragShader)->samplers[index].type;
+			if (samplerType == MOJOSHADER_SAMPLER_2D)
+			{
+				renderer->fragmentTextureSamplerBindings[index].texture = renderer->dummyTexture2D;
+			}
+			else if (samplerType == MOJOSHADER_SAMPLER_VOLUME)
+			{
+				renderer->fragmentTextureSamplerBindings[index].texture = renderer->dummyTexture3D;
+			}
+			else
+			{
+				renderer->fragmentTextureSamplerBindings[index].texture = renderer->dummyTextureCube;
+			}
+		}
+		else 
 		{
 			renderer->fragmentTextureSamplerBindings[index].texture = renderer->dummyTexture2D;
-		}
-		else if (samplerType == MOJOSHADER_SAMPLER_VOLUME)
-		{
-			renderer->fragmentTextureSamplerBindings[index].texture = renderer->dummyTexture3D;
-		}
-		else
-		{
-			renderer->fragmentTextureSamplerBindings[index].texture = renderer->dummyTextureCube;
 		}
 
 		return;
