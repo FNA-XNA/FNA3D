@@ -3909,6 +3909,7 @@ static void SDLGPU_GetSysRenderer(
 ) {
 	/* TODO */
 	SDL_memset(sysrenderer, '\0', sizeof(FNA3D_SysRendererEXT));
+	sysrenderer->rendererType = FNA3D_RENDERER_TYPE_SDL_GPU_EXT;
 }
 
 static FNA3D_Texture* SDLGPU_CreateSysTexture(
