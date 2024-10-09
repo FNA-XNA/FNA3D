@@ -1741,7 +1741,7 @@ static void SDLGPU_VerifyVertexSampler(
 			{
 				renderer->vertexTextureSamplerBindings[index].texture = renderer->dummyTextureCube;
 			}
-		} 
+		}
 		else
 		{
 			renderer->vertexTextureSamplerBindings[index].texture = renderer->dummyTexture2D;
@@ -1787,7 +1787,7 @@ static void SDLGPU_VerifySampler(
 	{
 		renderer->fragmentTextureSamplerBindings[index].sampler = renderer->dummySampler;
 
-		if (fragShader) 
+		if (fragShader)
 		{
 			samplerType = MOJOSHADER_sdlGetShaderParseData(fragShader)->samplers[index].type;
 			if (samplerType == MOJOSHADER_SAMPLER_2D)
@@ -3927,7 +3927,11 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) device->driverData;
 	int32_t i, j;
 
-	SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
+	// Completely flush command buffers and stall
+	SDLGPU_INTERNAL_FlushCommands(renderer);
+	SDL_SubmitGPUCommandBuffer(renderer->uploadCommandBuffer);
+	SDL_SubmitGPUCommandBuffer(renderer->renderCommandBuffer);
+	SDL_WaitForGPUIdle(renderer->device);
 
 	if (renderer->textureDownloadBuffer != NULL)
 	{
