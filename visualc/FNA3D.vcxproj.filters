@@ -39,13 +39,9 @@
       <Filter>mojoshader</Filter>
     </ClCompile>
     <ClCompile Include="..\src\FNA3D_Driver_D3D11.c" />
-    <ClCompile Include="..\MojoShader\mojoshader_vulkan.c">
-      <Filter>mojoshader</Filter>
-    </ClCompile>
     <ClCompile Include="..\MojoShader\mojoshader_sdlgpu.c">
       <Filter>mojoshader</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\FNA3D_Driver_Vulkan.c" />
     <ClCompile Include="..\src\FNA3D_Driver_SDL.c" />
     <ClCompile Include="..\src\FNA3D_Tracing.c" />
   </ItemGroup>
@@ -57,7 +53,6 @@
     <ClInclude Include="..\include\FNA3D_Image.h" />
     <ClInclude Include="..\src\FNA3D_PipelineCache.h" />
     <ClInclude Include="..\src\FNA3D_Driver_D3D11.h" />
-    <ClInclude Include="..\src\FNA3D_Driver_Vulkan_vkfuncs.h" />
     <ClInclude Include="..\src\FNA3D_Tracing.h" />
   </ItemGroup>
   <ItemGroup>
