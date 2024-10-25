@@ -12101,7 +12101,7 @@ static FNA3D_Device* VULKAN_CreateDevice(
 	return result;
 }
 
-FNA3D_Driver VulkanDriver = {
+FNA3D_Driver LegacyVulkanDriver = {
 	"Vulkan",
 	VULKAN_PrepareWindowAttributes,
 	VULKAN_CreateDevice
