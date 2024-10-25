@@ -50,7 +50,7 @@ static const FNA3D_Driver *drivers[] = {
 	&OpenGLDriver,
 #endif
 #if FNA3D_DRIVER_VULKAN /* TODO: Bump this to the top when Vulkan is done! */
-	&VulkanDriver,
+	&LegacyVulkanDriver,
 #endif
 #if FNA3D_DRIVER_GNMX
 	&GNMXDriver,
