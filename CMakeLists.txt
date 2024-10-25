@@ -7,6 +7,7 @@ project(FNA3D C)
 option(BUILD_SHARED_LIBS "Build shared library" ON)
 option(TRACING_SUPPORT "Build with tracing enabled" OFF)
 option(BUILD_SDL3 "Build against SDL 3.0" OFF)
+option(MOJOSHADER_STATIC_SPIRVCROSS "Build against statically linked spirvcross" OFF)
 
 # Version
 SET(LIB_MAJOR_VERSION "0")
@@ -72,6 +73,9 @@ if(TRACING_SUPPORT)
 endif()
 if(BUILD_SDL3)
 	add_definitions(-DUSE_SDL3)
+endif()
+if (MOJOSHADER_STATIC_SPIRVCROSS)
+	add_definitions(-DSDL_GPU_SHADERCROSS_STATIC)
 endif()
 
 if(WIN32 OR BUILD_DXVK_NATIVE)
