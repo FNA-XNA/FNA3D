@@ -66,7 +66,6 @@ add_definitions(
 	-DSUPPORT_PROFILE_ARB1_NV=0
 	-DSUPPORT_PROFILE_BYTECODE=0
 	-DSUPPORT_PROFILE_D3D=0
-	-DSUPPORT_PROFILE_METAL=0
 )
 if(TRACING_SUPPORT)
 	add_definitions(-DFNA3D_TRACING)
@@ -95,6 +94,12 @@ if(EMSCRIPTEN)
 	add_definitions(
 		-DSUPPORT_PROFILE_GLSPIRV=0
 		-DSUPPORT_PROFILE_SPIRV=0
+	)
+endif()
+
+if(NOT APPLE)
+	add_definitions(
+		-DSUPPORT_PROFILE_METAL=0
 	)
 endif()
 
@@ -135,6 +140,7 @@ add_library(mojoshader STATIC
 	MojoShader/profiles/mojoshader_profile_glsl.c
 	MojoShader/profiles/mojoshader_profile_hlsl.c
 	MojoShader/profiles/mojoshader_profile_spirv.c
+	MojoShader/profiles/mojoshader_profile_metal.c
 )
 if(TRACING_SUPPORT)
 	add_executable(fna3d_replay replay/replay.c)
