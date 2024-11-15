@@ -5798,8 +5798,8 @@ static VkPipelineLayout VULKAN_INTERNAL_FetchPipelineLayout(
 	}
 
 	setLayouts[0] = pipelineLayoutHash.vertexSamplerLayout;
-	setLayouts[1] = pipelineLayoutHash.fragSamplerLayout;
-	setLayouts[2] = renderer->vertexUniformBufferDescriptorSetLayout;
+	setLayouts[1] = renderer->vertexUniformBufferDescriptorSetLayout;
+	setLayouts[2] = pipelineLayoutHash.fragSamplerLayout;
 	setLayouts[3] = renderer->fragUniformBufferDescriptorSetLayout;
 
 	layoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
