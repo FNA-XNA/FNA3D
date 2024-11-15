@@ -986,6 +986,8 @@ static inline void PipelineLayoutHashArray_Insert(
 	arr->count += 1;
 }
 
+#define MAX_FRAMES_IN_FLIGHT 3
+
 typedef struct VulkanSwapchainData
 {
 	/* Window surface */
@@ -1007,9 +1009,11 @@ typedef struct VulkanSwapchainData
 	uint32_t imageCount;
 
 	/* Synchronization */
-	VkSemaphore imageAvailableSemaphore;
-	VkSemaphore renderFinishedSemaphore;
-	VkFence fence; /* owned by command buffer container */
+	VkSemaphore imageAvailableSemaphore[MAX_FRAMES_IN_FLIGHT];
+	VkSemaphore renderFinishedSemaphore[MAX_FRAMES_IN_FLIGHT];
+	VkFence inFlightFence[MAX_FRAMES_IN_FLIGHT]; /* owned by command buffer container */
+
+	Uint32 frameCounter;
 } VulkanSwapchainData;
 
 typedef struct VulkanBuffer VulkanBuffer;
@@ -4425,7 +4429,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 				renderer->logicalDevice,
 				swapchainData->swapchain,
 				10000000000 / mode.refresh_rate, /* ~10 frames, so we'll progress even if throttled to zero. */
-				swapchainData->imageAvailableSemaphore,
+				swapchainData->imageAvailableSemaphore[swapchainData->frameCounter],
 				VK_NULL_HANDLE,
 				&swapchainImageIndex
 			);
@@ -4462,9 +4466,9 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	fences[fenceCount] = ((VulkanCommandBuffer*) FNA3D_CommandBuffer_GetDefragBuffer(renderer->commandBuffers))->inFlightFence;
 	fenceCount += 1;
 
-	if (validSwapchainExists && swapchainData->fence != VK_NULL_HANDLE)
+	if (validSwapchainExists && swapchainData->inFlightFence[swapchainData->frameCounter] != VK_NULL_HANDLE)
 	{
-		fences[fenceCount] = swapchainData->fence;
+		fences[fenceCount] = swapchainData->inFlightFence[swapchainData->frameCounter];
 		fenceCount += 1;
 	}
 
@@ -4488,7 +4492,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 	if (validSwapchainExists)
 	{
-		swapchainData->fence = VK_NULL_HANDLE;
+		swapchainData->inFlightFence[swapchainData->frameCounter] = VK_NULL_HANDLE;
 	}
 
 	VULKAN_INTERNAL_CleanDefrag(renderer);
@@ -4530,9 +4534,9 @@ static void VULKAN_INTERNAL_SubmitCommands(
 	if (present && acquireSuccess)
 	{
 		submitInfo.waitSemaphoreCount = 1;
-		submitInfo.pWaitSemaphores = &swapchainData->imageAvailableSemaphore;
+		submitInfo.pWaitSemaphores = &swapchainData->imageAvailableSemaphore[swapchainData->frameCounter];
 		submitInfo.pWaitDstStageMask = &waitStages;
-		semaphores[submitInfo.signalSemaphoreCount] = swapchainData->renderFinishedSemaphore;
+		semaphores[submitInfo.signalSemaphoreCount] = swapchainData->renderFinishedSemaphore[swapchainData->frameCounter];
 		submitInfo.signalSemaphoreCount += 1;
 	}
 	else
@@ -4567,7 +4571,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 
 	if (validSwapchainExists)
 	{
-		swapchainData->fence = commandBufferToSubmit->inFlightFence;
+		swapchainData->inFlightFence[swapchainData->frameCounter] = commandBufferToSubmit->inFlightFence;
 	}
 
 	FNA3D_CommandBuffer_SubmitCurrent(renderer->commandBuffers);
@@ -4605,7 +4609,7 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		presentInfo.pNext = NULL;
 		presentInfo.waitSemaphoreCount = 1;
 		presentInfo.pWaitSemaphores =
-			&swapchainData->renderFinishedSemaphore;
+			&swapchainData->renderFinishedSemaphore[swapchainData->frameCounter];
 		presentInfo.swapchainCount = 1;
 		presentInfo.pSwapchains = &swapchainData->swapchain;
 		presentInfo.pImageIndices = &swapchainImageIndex;
@@ -4642,6 +4646,8 @@ static void VULKAN_INTERNAL_SubmitCommands(
 		{
 			FNA3D_LogInfo("Failed to acquire swapchain image, not presenting");
 		}
+
+		swapchainData->frameCounter = (swapchainData->frameCounter + 1) % MAX_FRAMES_IN_FLIGHT;
 	}
 
 	if (performDefrag)
@@ -4717,8 +4723,9 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	uint8_t swapchainSupport;
 	int32_t drawableWidth, drawableHeight;
 
-	swapchainData = SDL_malloc(sizeof(VulkanSwapchainData));
+	swapchainData = (VulkanSwapchainData*) SDL_malloc(sizeof(VulkanSwapchainData));
 	swapchainData->windowHandle = windowHandle;
+	swapchainData->frameCounter = 0;
 
 	/* Each swapchain must have its own surface. */
 	if (!SDL_Vulkan_CreateSurface(
@@ -4916,7 +4923,7 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	swapchainData->extent.width = drawableWidth;
 	swapchainData->extent.height = drawableHeight;
 
-	swapchainData->imageCount = swapchainSupportDetails.capabilities.minImageCount + 1;
+	swapchainData->imageCount = MAX_FRAMES_IN_FLIGHT;
 
 	if (	swapchainSupportDetails.capabilities.maxImageCount > 0 &&
 		swapchainData->imageCount > swapchainSupportDetails.capabilities.maxImageCount	)
@@ -5095,21 +5102,52 @@ static CreateSwapchainResult VULKAN_INTERNAL_CreateSwapchain(
 	semaphoreCreateInfo.pNext = NULL;
 	semaphoreCreateInfo.flags = 0;
 
-	renderer->vkCreateSemaphore(
-		renderer->logicalDevice,
-		&semaphoreCreateInfo,
-		NULL,
-		&swapchainData->imageAvailableSemaphore
-	);
+	for (i = 0; i < MAX_FRAMES_IN_FLIGHT; i += 1)
+	{
+		vulkanResult = renderer->vkCreateSemaphore(
+			renderer->logicalDevice,
+			&semaphoreCreateInfo,
+			NULL,
+			&swapchainData->imageAvailableSemaphore[i]);
 
-	renderer->vkCreateSemaphore(
-		renderer->logicalDevice,
-		&semaphoreCreateInfo,
-		NULL,
-		&swapchainData->renderFinishedSemaphore
-	);
+		if (vulkanResult != VK_SUCCESS)
+		{
+			renderer->vkDestroySurfaceKHR(
+				renderer->instance,
+				swapchainData->surface,
+				NULL);
+			renderer->vkDestroySwapchainKHR(
+				renderer->logicalDevice,
+				swapchainData->swapchain,
+				NULL);
+			swapchainData->surface = VK_NULL_HANDLE;
+			swapchainData->swapchain = VK_NULL_HANDLE;
+			VULKAN_ERROR_CHECK(vulkanResult, vkCreateSemaphore, CREATE_SWAPCHAIN_FAIL)
+		}
 
-	swapchainData->fence = VK_NULL_HANDLE;
+		renderer->vkCreateSemaphore(
+			renderer->logicalDevice,
+			&semaphoreCreateInfo,
+			NULL,
+			&swapchainData->renderFinishedSemaphore[i]);
+
+		if (vulkanResult != VK_SUCCESS)
+		{
+			renderer->vkDestroySurfaceKHR(
+				renderer->instance,
+				swapchainData->surface,
+				NULL);
+			renderer->vkDestroySwapchainKHR(
+				renderer->logicalDevice,
+				swapchainData->swapchain,
+				NULL);
+			swapchainData->surface = VK_NULL_HANDLE;
+			swapchainData->swapchain = VK_NULL_HANDLE;
+			VULKAN_ERROR_CHECK(vulkanResult, vkCreateSemaphore, CREATE_SWAPCHAIN_FAIL)
+		}
+
+		swapchainData->inFlightFence[i] = VK_NULL_HANDLE;
+	}
 
 #if SDL_MAJOR_VERSION >= 3
 	SDL_SetPointerProperty(SDL_GetWindowProperties(windowHandle), WINDOW_SWAPCHAIN_DATA, swapchainData);
@@ -5196,17 +5234,27 @@ static void VULKAN_INTERNAL_DestroySwapchain(
 		NULL
 	);
 
-	renderer->vkDestroySemaphore(
-		renderer->logicalDevice,
-		swapchainData->imageAvailableSemaphore,
-		NULL
-	);
-
-	renderer->vkDestroySemaphore(
-		renderer->logicalDevice,
-		swapchainData->renderFinishedSemaphore,
-		NULL
-	);
+	for (i = 0; i < MAX_FRAMES_IN_FLIGHT; i += 1)
+	{
+		if (swapchainData->imageAvailableSemaphore[i])
+		{
+			renderer->vkDestroySemaphore(
+				renderer->logicalDevice,
+				swapchainData->imageAvailableSemaphore[i],
+				NULL
+			);
+			swapchainData->imageAvailableSemaphore[i] = VK_NULL_HANDLE;
+		}
+		if (swapchainData->renderFinishedSemaphore[i])
+		{
+			renderer->vkDestroySemaphore(
+				renderer->logicalDevice,
+				swapchainData->renderFinishedSemaphore[i],
+				NULL
+			);
+			swapchainData->renderFinishedSemaphore[i] = VK_NULL_HANDLE;
+		}
+	}
 
 	for (i = 0; i < renderer->swapchainDataCount; i += 1)
 	{
