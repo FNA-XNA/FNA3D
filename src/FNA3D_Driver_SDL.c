@@ -4026,7 +4026,13 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 
 static uint8_t SDLGPU_PrepareWindowAttributes(uint32_t *flags)
 {
-	return SDL_GPUSupportsShaderFormats(MOJOSHADER_sdlGetShaderFormats(), NULL);
+	uint8_t result = SDL_GPUSupportsShaderFormats(MOJOSHADER_sdlGetShaderFormats(), NULL);
+	const char* error = SDL_GetError();
+	if (error)
+	{
+		FNA3D_LogWarn("SDL_GPUSupportsShaderFormats failed: %s", error);
+	}
+	return result;
 }
 
 static FNA3D_Device* SDLGPU_CreateDevice(
@@ -4057,7 +4063,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 
 	if (device == NULL)
 	{
-		FNA3D_LogError("Failed to create SDLGPU device!");
+		FNA3D_LogError("Failed to create SDLGPU device: %s", SDL_GetError());
 		return NULL;
 	}
 
