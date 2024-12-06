@@ -4027,10 +4027,9 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 static uint8_t SDLGPU_PrepareWindowAttributes(uint32_t *flags)
 {
 	uint8_t result = SDL_GPUSupportsShaderFormats(MOJOSHADER_sdlGetShaderFormats(), NULL);
-	const char* error = SDL_GetError();
-	if (error)
+	if (!result)
 	{
-		FNA3D_LogWarn("SDL_GPUSupportsShaderFormats failed: %s", error);
+		FNA3D_LogWarn("SDL_GPUSupportsShaderFormats failed: %s", SDL_GetError());
 	}
 	return result;
 }
