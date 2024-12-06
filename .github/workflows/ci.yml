@@ -4,7 +4,7 @@ on: [push, pull_request]
 
 env:
   SDL2_VERSION: 2.30.8
-  SDL3_VERSION: 3.1.3
+  SDL3_VERSION: 3.1.6
 
 jobs:
   linux:
@@ -279,7 +279,7 @@ jobs:
     - name: Build SDL3 (Debug)
       run: |
         cd SDL
-        cmake -B debug -G Ninja . -DCMAKE_BUILD_TYPE=Debug
+        cmake -B debug -G Ninja . -DCMAKE_BUILD_TYPE=Debug -DSDL_UNIX_CONSOLE_BUILD=ON
         ninja -C debug
         cd ..
 
@@ -327,7 +327,7 @@ jobs:
     - name: Build SDL3 (Debug)
       run: |
         cd SDL
-        cmake -B debug -G Ninja . -DCMAKE_BUILD_TYPE=Debug
+        cmake -B debug -G Ninja . -DCMAKE_BUILD_TYPE=Debug -DSDL_UNIX_CONSOLE_BUILD=ON
         ninja -C debug
         cd ..
 
@@ -365,7 +365,7 @@ jobs:
           dnf update -y
           dnf install -y epel-release
           crb enable
-          dnf install -y git cmake ninja-build mingw32-gcc mingw64-gcc xz
+          dnf install -y git cmake ninja-build mingw32-gcc mingw64-gcc
 
       - uses: actions/checkout@v4
         with:
@@ -373,8 +373,8 @@ jobs:
 
       - name: Download SDL
         run: |
-          curl -LO https://github.com/libsdl-org/SDL/releases/download/preview-$SDL3_VERSION/SDL3-devel-$SDL3_VERSION-mingw.tar.xz
-          tar -xvf SDL3-devel-$SDL3_VERSION-mingw.tar.xz -C ${GITHUB_WORKSPACE}
+          curl -LO https://github.com/libsdl-org/SDL/releases/download/preview-$SDL3_VERSION/SDL3-devel-$SDL3_VERSION-mingw.tar.gz
+          tar -xvf SDL3-devel-$SDL3_VERSION-mingw.tar.gz -C ${GITHUB_WORKSPACE}
 
       - name: CMake configure 32-bit (Release)
         run: mingw32-cmake -B release-x86 -G Ninja . -DBUILD_SDL3=ON -DCMAKE_BUILD_TYPE=Release -DSDL3_LIBRARIES=${GITHUB_WORKSPACE}/SDL3-$SDL3_VERSION/i686-w64-mingw32/bin/SDL3.dll -DSDL3_INCLUDE_DIRS=${GITHUB_WORKSPACE}/SDL3-$SDL3_VERSION/i686-w64-mingw32/include
