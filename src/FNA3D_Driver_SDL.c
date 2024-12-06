@@ -507,6 +507,7 @@ typedef struct SDLGPU_Renderer
 	uint8_t needNewRenderPass;
 
 	SDL_GPUCopyPass *copyPass;
+	SDL_Mutex *copyPassMutex;
 
 	uint8_t shouldClearColorOnBeginPass;
 	uint8_t shouldClearDepthOnBeginPass;
@@ -669,23 +670,15 @@ static FNA3D_PresentationParameters requestedPresentationParameters;
 
 /* Submission / Presentation */
 
-static void SDLGPU_ResetCommandBufferState(
+static void SDLGPU_INTERNAL_BeginCopyPass(
 	SDLGPU_Renderer *renderer
 ) {
-	renderer->renderCommandBuffer = SDL_AcquireGPUCommandBuffer(renderer->device);
-	renderer->uploadCommandBuffer = SDL_AcquireGPUCommandBuffer(renderer->device);
-
-	/* Reset state */
-	renderer->needNewRenderPass = 1;
-	renderer->needNewGraphicsPipeline = 1;
-	renderer->needVertexBufferBind = 1;
-	renderer->needVertexSamplerBind = 1;
-	renderer->needFragmentSamplerBind = 1;
-
-	renderer->textureUploadCycleCount = 0;
-	renderer->bufferUploadCycleCount = 0;
-	renderer->textureUploadBufferOffset = 0;
-	renderer->bufferUploadBufferOffset = 0;
+	if (renderer->copyPass == NULL)
+	{
+		renderer->copyPass = SDL_BeginGPUCopyPass(
+			renderer->uploadCommandBuffer
+		);
+	}
 }
 
 static void SDLGPU_INTERNAL_EndCopyPass(
@@ -699,6 +692,27 @@ static void SDLGPU_INTERNAL_EndCopyPass(
 
 		renderer->copyPass = NULL;
 	}
+}
+
+
+static void SDLGPU_ResetCommandBufferState(
+	SDLGPU_Renderer *renderer
+) {
+	renderer->renderCommandBuffer = SDL_AcquireGPUCommandBuffer(renderer->device);
+	renderer->uploadCommandBuffer = SDL_AcquireGPUCommandBuffer(renderer->device);
+	SDLGPU_INTERNAL_BeginCopyPass(renderer);
+
+	/* Reset state */
+	renderer->needNewRenderPass = 1;
+	renderer->needNewGraphicsPipeline = 1;
+	renderer->needVertexBufferBind = 1;
+	renderer->needVertexSamplerBind = 1;
+	renderer->needFragmentSamplerBind = 1;
+
+	renderer->textureUploadCycleCount = 0;
+	renderer->bufferUploadCycleCount = 0;
+	renderer->textureUploadBufferOffset = 0;
+	renderer->bufferUploadBufferOffset = 0;
 }
 
 static void SDLGPU_INTERNAL_EndRenderPass(
@@ -725,6 +739,7 @@ static void SDLGPU_INTERNAL_FlushCommandsAndAcquireFence(
 	SDL_GPUFence **uploadFence,
 	SDL_GPUFence **renderFence
 ) {
+	SDL_LockMutex(renderer->copyPassMutex);
 	SDLGPU_INTERNAL_EndCopyPass(renderer);
 	SDLGPU_INTERNAL_EndRenderPass(renderer);
 
@@ -737,16 +752,21 @@ static void SDLGPU_INTERNAL_FlushCommandsAndAcquireFence(
 	);
 
 	SDLGPU_ResetCommandBufferState(renderer);
+	SDL_UnlockMutex(renderer->copyPassMutex);
 }
 
 static void SDLGPU_INTERNAL_FlushCommands(
 	SDLGPU_Renderer *renderer
 ) {
+	SDL_LockMutex(renderer->copyPassMutex);
+	
 	SDLGPU_INTERNAL_EndCopyPass(renderer);
 	SDLGPU_INTERNAL_EndRenderPass(renderer);
 	SDL_SubmitGPUCommandBuffer(renderer->uploadCommandBuffer);
 	SDL_SubmitGPUCommandBuffer(renderer->renderCommandBuffer);
 	SDLGPU_ResetCommandBufferState(renderer);
+
+	SDL_UnlockMutex(renderer->copyPassMutex);
 }
 
 static void SDLGPU_INTERNAL_FlushCommandsAndStall(
@@ -786,13 +806,15 @@ static void SDLGPU_SwapBuffers(
 	void* overrideWindowHandle
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+	SDL_LockMutex(renderer->copyPassMutex);
+
+	SDLGPU_INTERNAL_EndCopyPass(renderer);
+	SDLGPU_INTERNAL_EndRenderPass(renderer);
+
 	SDL_GPUTexture *swapchainTexture;
 	SDL_GPUBlitInfo blitInfo;
 	uint32_t width, height;
 	uint32_t i;
-
-	SDLGPU_INTERNAL_EndCopyPass(renderer);
-	SDLGPU_INTERNAL_EndRenderPass(renderer);
 
 	if (renderer->fenceGroups[renderer->frameCounter][0] != NULL)
 	{
@@ -871,6 +893,8 @@ static void SDLGPU_SwapBuffers(
 		renderer->boundRenderTargets[i]->boundAsRenderTarget = 0;
 	}
 	renderer->boundRenderTargetCount = 0;
+
+	SDL_UnlockMutex(renderer->copyPassMutex);
 }
 
 /* Drawing */
@@ -1146,7 +1170,9 @@ static void SDLGPU_SetRenderTargets(
 		renderer->shouldClearDepthOnBeginPass ||
 		renderer->shouldClearDepthOnBeginPass
 	) {
+		SDL_LockMutex(renderer->copyPassMutex);
 		SDLGPU_INTERNAL_BeginRenderPass(renderer);
+		SDL_UnlockMutex(renderer->copyPassMutex);
 	}
 
 	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
@@ -1211,17 +1237,6 @@ static void SDLGPU_SetRenderTargets(
 	renderer->needNewRenderPass = 1;
 }
 
-static void SDLGPU_INTERNAL_BeginCopyPass(
-	SDLGPU_Renderer *renderer
-) {
-	if (renderer->copyPass == NULL)
-	{
-		renderer->copyPass = SDL_BeginGPUCopyPass(
-			renderer->uploadCommandBuffer
-		);
-	}
-}
-
 static void SDLGPU_ResolveTarget(
 	FNA3D_Renderer *driverData,
 	FNA3D_RenderTargetBinding *target
@@ -1236,8 +1251,10 @@ static void SDLGPU_ResolveTarget(
 	}
 
 	/* Rendering needs to finish to get the target data to make mips from */
+	SDL_LockMutex(renderer->copyPassMutex);
 	SDLGPU_INTERNAL_FlushCommands(renderer);
 	SDL_GenerateMipmapsForGPUTexture(renderer->renderCommandBuffer, texture->texture);
+	SDL_UnlockMutex(renderer->copyPassMutex);
 }
 
 static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
@@ -1618,6 +1635,8 @@ static void SDLGPU_INTERNAL_BindGraphicsPipeline(
 		return;
 	}
 
+	SDL_LockMutex(renderer->copyPassMutex);
+
 	pipeline = SDLGPU_INTERNAL_FetchGraphicsPipeline(renderer);
 
 	if (pipeline != renderer->currentGraphicsPipeline)
@@ -1644,6 +1663,8 @@ static void SDLGPU_INTERNAL_BindGraphicsPipeline(
 	renderer->needVertexSamplerBind = 1;
 	renderer->needVertexBufferBind = 1;
 	renderer->indexBufferBinding.buffer = NULL;
+
+	SDL_UnlockMutex(renderer->copyPassMutex);
 }
 
 static SDL_GPUSampler* SDLGPU_INTERNAL_FetchSamplerState(
@@ -2190,7 +2211,10 @@ static void SDLGPU_INTERNAL_BindDeferredState(
 		renderer->needNewGraphicsPipeline = 1;
 	}
 
+	SDL_LockMutex(renderer->copyPassMutex);
 	SDLGPU_INTERNAL_BeginRenderPass(renderer);
+	SDL_UnlockMutex(renderer->copyPassMutex);
+
 	SDLGPU_INTERNAL_BindGraphicsPipeline(renderer);
 
 	if (	renderer->currentBlendConstants.r != renderer->blendConstants[0] ||
@@ -2505,6 +2529,7 @@ static void SDLGPU_ResetBackbuffer(
 	SDL_GPUSwapchainComposition swapchainComposition;
 	SDL_GPUPresentMode presentMode;
 
+	SDL_LockMutex(renderer->copyPassMutex);
 	SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
 
 	SDLGPU_INTERNAL_DestroyFauxBackbuffer(renderer);
@@ -2546,6 +2571,8 @@ static void SDLGPU_ResetBackbuffer(
 	);
 
 	renderer->mainWindowHandle = presentationParameters->deviceWindowHandle;
+
+	SDL_UnlockMutex(renderer->copyPassMutex);
 }
 
 static void SDLGPU_GetBackbufferSize(
@@ -2778,6 +2805,8 @@ static void SDLGPU_INTERNAL_SetTextureData(
 	void* data,
 	uint32_t dataLength
 ) {
+	SDL_LockMutex(renderer->copyPassMutex);
+
 	SDL_GPUTextureRegion textureRegion;
 	SDL_GPUTextureTransferInfo textureCopyParams;
 	SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
@@ -2786,8 +2815,6 @@ static void SDLGPU_INTERNAL_SetTextureData(
 	bool cycle = renderer->textureUploadBufferOffset == 0;
 	bool usingTemporaryTransferBuffer = false;
 	uint8_t *dst;
-
-	SDLGPU_INTERNAL_BeginCopyPass(renderer);
 
 	renderer->textureUploadBufferOffset = SDLGPU_INTERNAL_RoundToAlignment(
 		renderer->textureUploadBufferOffset,
@@ -2824,7 +2851,6 @@ static void SDLGPU_INTERNAL_SetTextureData(
 		{
 			/* We already cycled too much, time to stall! */
 			SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
-			SDLGPU_INTERNAL_BeginCopyPass(renderer);
 			cycle = true;
 			transferOffset = 0;
 		}
@@ -2864,6 +2890,8 @@ static void SDLGPU_INTERNAL_SetTextureData(
 	{
 		renderer->textureUploadBufferOffset += dataLength;
 	}
+
+	SDL_UnlockMutex(renderer->copyPassMutex);
 }
 
 static void SDLGPU_SetTextureData2D(
@@ -3114,6 +3142,8 @@ static void SDLGPU_INTERNAL_SetBufferData(
 	uint32_t dataLength,
 	bool cycle
 ) {
+	SDL_LockMutex(renderer->copyPassMutex);
+
 	SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
 	SDL_GPUTransferBufferLocation transferLocation;
 	SDL_GPUBufferRegion bufferRegion;
@@ -3122,8 +3152,6 @@ static void SDLGPU_INTERNAL_SetBufferData(
 	bool transferCycle = renderer->bufferUploadBufferOffset == 0;
 	bool usingTemporaryTransferBuffer = false;
 	uint8_t *dst;
-
-	SDLGPU_INTERNAL_BeginCopyPass(renderer);
 
 	if (dataLength >= TRANSFER_BUFFER_SIZE)
 	{
@@ -3185,6 +3213,8 @@ static void SDLGPU_INTERNAL_SetBufferData(
 	{
 		renderer->bufferUploadBufferOffset += dataLength;
 	}
+
+	SDL_UnlockMutex(renderer->copyPassMutex);
 }
 
 static void SDLGPU_SetVertexBufferData(
@@ -3235,7 +3265,9 @@ static void SDLGPU_SetVertexBufferData(
 
 	if (options == FNA3D_SETDATAOPTIONS_NONE && dataLen != bufferHandle->size)
 	{
+		SDL_LockMutex(renderer->copyPassMutex);
 		SDLGPU_INTERNAL_FlushCommands(renderer);
+		SDL_UnlockMutex(renderer->copyPassMutex);
 	}
 }
 
@@ -3304,6 +3336,8 @@ static void SDLGPU_INTERNAL_GetTextureData(
 	SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
 	uint8_t *src;
 
+	SDL_LockMutex(renderer->copyPassMutex);
+
 	/* Create transfer buffer if necessary */
 	if (renderer->textureDownloadBuffer == NULL)
 	{
@@ -3335,8 +3369,6 @@ static void SDLGPU_INTERNAL_GetTextureData(
 		renderer->textureDownloadBufferSize = dataLength;
 	}
 
-	SDLGPU_INTERNAL_BeginCopyPass(renderer);
-
 	/* Set up texture download */
 	region.texture = texture;
 	region.mip_level = level;
@@ -3360,8 +3392,6 @@ static void SDLGPU_INTERNAL_GetTextureData(
 		&textureCopyParams
 	);
 
-	SDLGPU_INTERNAL_EndCopyPass(renderer);
-
 	/* Flush and stall so the data is up to date */
 	SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
 
@@ -3369,6 +3399,8 @@ static void SDLGPU_INTERNAL_GetTextureData(
 	src = (uint8_t*) SDL_MapGPUTransferBuffer(renderer->device, renderer->textureDownloadBuffer, false);
 	SDL_memcpy(data, src, dataLength);
 	SDL_UnmapGPUTransferBuffer(renderer->device, renderer->textureDownloadBuffer);
+
+	SDL_UnlockMutex(renderer->copyPassMutex);
 }
 
 static void SDLGPU_INTERNAL_GetBufferData(
@@ -3382,6 +3414,8 @@ static void SDLGPU_INTERNAL_GetBufferData(
 	SDL_GPUTransferBufferLocation transferLocation;
 	SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
 	uint8_t *src;
+
+	SDL_LockMutex(renderer->copyPassMutex);
 
 	/* Create transfer buffer if necessary */
 	if (renderer->bufferDownloadBuffer == NULL)
@@ -3414,8 +3448,6 @@ static void SDLGPU_INTERNAL_GetBufferData(
 		renderer->bufferDownloadBufferSize = dataLength;
 	}
 
-	SDLGPU_INTERNAL_BeginCopyPass(renderer);
-
 	/* Set up buffer download */
 	bufferRegion.buffer = buffer;
 	bufferRegion.offset = offset;
@@ -3429,8 +3461,6 @@ static void SDLGPU_INTERNAL_GetBufferData(
 		&transferLocation
 	);
 
-	SDLGPU_INTERNAL_EndCopyPass(renderer);
-
 	/* Flush and stall so the data is up to date */
 	SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
 
@@ -3438,6 +3468,8 @@ static void SDLGPU_INTERNAL_GetBufferData(
 	src = (uint8_t*) SDL_MapGPUTransferBuffer(renderer->device, renderer->bufferDownloadBuffer, false);
 	SDL_memcpy(data, src, dataLength);
 	SDL_UnmapGPUTransferBuffer(renderer->device, renderer->bufferDownloadBuffer);
+
+	SDL_UnlockMutex(renderer->copyPassMutex);
 }
 
 static void SDLGPU_GetVertexBufferData(
@@ -3928,10 +3960,16 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 	int32_t i, j;
 
 	// Completely flush command buffers and stall
+	SDL_LockMutex(renderer->copyPassMutex);
+
 	SDLGPU_INTERNAL_FlushCommands(renderer);
-	SDL_SubmitGPUCommandBuffer(renderer->uploadCommandBuffer);
-	SDL_SubmitGPUCommandBuffer(renderer->renderCommandBuffer);
+	// avoid command buffer leaks by explicitly canceling newly-acquired command buffers
+	SDL_CancelGPUCommandBuffer(renderer->uploadCommandBuffer);
+	SDL_CancelGPUCommandBuffer(renderer->renderCommandBuffer);
 	SDL_WaitForGPUIdle(renderer->device);
+
+	SDL_UnlockMutex(renderer->copyPassMutex);
+	SDL_DestroyMutex(renderer->copyPassMutex);
 
 	if (renderer->textureDownloadBuffer != NULL)
 	{
@@ -4066,7 +4104,9 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 
 	renderer = SDL_malloc(sizeof(SDLGPU_Renderer));
 	SDL_memset(renderer, '\0', sizeof(SDLGPU_Renderer));
+
 	renderer->device = device;
+	renderer->copyPassMutex = SDL_CreateMutex();
 
 	result->driverData = (FNA3D_Renderer*) renderer;
 
