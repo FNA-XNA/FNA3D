@@ -694,25 +694,34 @@ static void SDLGPU_INTERNAL_EndCopyPass(
 	}
 }
 
-
-static void SDLGPU_ResetCommandBufferState(
-	SDLGPU_Renderer *renderer
+static void SDLGPU_INTERNAL_BindRenderTarget(
+	SDLGPU_Renderer *renderer,
+	SDLGPU_TextureHandle *textureHandle
 ) {
-	renderer->renderCommandBuffer = SDL_AcquireGPUCommandBuffer(renderer->device);
-	renderer->uploadCommandBuffer = SDL_AcquireGPUCommandBuffer(renderer->device);
-	SDLGPU_INTERNAL_BeginCopyPass(renderer);
+	uint32_t i;
 
-	/* Reset state */
-	renderer->needNewRenderPass = 1;
-	renderer->needNewGraphicsPipeline = 1;
-	renderer->needVertexBufferBind = 1;
-	renderer->needVertexSamplerBind = 1;
-	renderer->needFragmentSamplerBind = 1;
+	for (i = 0; i < renderer->boundRenderTargetCount; i += 1)
+	{
+		if (renderer->boundRenderTargets[i] == textureHandle)
+		{
+			return;
+		}
+	}
 
-	renderer->textureUploadCycleCount = 0;
-	renderer->bufferUploadCycleCount = 0;
-	renderer->textureUploadBufferOffset = 0;
-	renderer->bufferUploadBufferOffset = 0;
+	if (renderer->boundRenderTargetCount >= renderer->boundRenderTargetCapacity)
+	{
+		renderer->boundRenderTargetCapacity *= 2;
+		renderer->boundRenderTargets = SDL_realloc(
+			renderer->boundRenderTargets,
+			renderer->boundRenderTargetCapacity * sizeof(SDLGPU_TextureHandle*)
+		);
+	}
+
+	renderer->boundRenderTargets[renderer->boundRenderTargetCount] =
+		textureHandle;
+	renderer->boundRenderTargetCount += 1;
+
+	textureHandle->boundAsRenderTarget = 1;
 }
 
 static void SDLGPU_INTERNAL_EndRenderPass(
@@ -734,39 +743,246 @@ static void SDLGPU_INTERNAL_EndRenderPass(
 	renderer->currentStencilReference = 0;
 }
 
-static void SDLGPU_INTERNAL_FlushCommandsAndAcquireFence(
+static void SDLGPU_INTERNAL_BeginRenderPass(
+	SDLGPU_Renderer *renderer
+) {
+	SDL_GPUColorTargetInfo colorAttachmentInfos[MAX_RENDERTARGET_BINDINGS];
+	SDL_GPUDepthStencilTargetInfo depthStencilAttachmentInfo;
+	SDL_GPUViewport gpuViewport;
+	uint32_t i;
+
+	if (!renderer->needNewRenderPass)
+	{
+		return;
+	}
+
+	SDLGPU_INTERNAL_EndRenderPass(renderer);
+
+	/* Set up the next render pass */
+	for (i = 0; i < renderer->nextRenderPassColorAttachmentCount; i += 1)
+	{
+		colorAttachmentInfos[i].texture = renderer->nextRenderPassColorAttachments[i]->texture;
+		colorAttachmentInfos[i].layer_or_depth_plane = renderer->nextRenderPassColorAttachmentCubeFace[i];
+		colorAttachmentInfos[i].mip_level = 0;
+
+		colorAttachmentInfos[i].load_op =
+			renderer->shouldClearColorOnBeginPass ?
+				SDL_GPU_LOADOP_CLEAR :
+				SDL_GPU_LOADOP_LOAD;
+
+		/* We always have to store just in case changing render state breaks the render pass. */
+		/* FIXME: perhaps there is a way around this? */
+		if (renderer->nextRenderPassColorResolves[i] != NULL)
+		{
+			colorAttachmentInfos[i].store_op = SDL_GPU_STOREOP_RESOLVE_AND_STORE;
+		}
+		else
+		{
+			colorAttachmentInfos[i].store_op = SDL_GPU_STOREOP_STORE;
+		}
+
+		colorAttachmentInfos[i].cycle =
+			renderer->nextRenderPassColorAttachments[i]->boundAsRenderTarget || colorAttachmentInfos[i].load_op == SDL_GPU_LOADOP_LOAD ?
+				false :
+				true; /* cycle if we can, it's fast! */
+
+		if (renderer->nextRenderPassColorResolves[i] != NULL)
+		{
+			colorAttachmentInfos[i].resolve_texture = renderer->nextRenderPassColorResolves[i]->texture;
+		}
+		else
+		{
+			colorAttachmentInfos[i].resolve_texture = NULL;
+		}
+		colorAttachmentInfos[i].resolve_mip_level = 0;
+		colorAttachmentInfos[i].resolve_layer = 0;
+		colorAttachmentInfos[i].cycle_resolve_texture = colorAttachmentInfos[i].cycle;
+
+		if (renderer->shouldClearColorOnBeginPass)
+		{
+			colorAttachmentInfos[i].clear_color = renderer->clearColorValue;
+		}
+		else
+		{
+			colorAttachmentInfos[i].clear_color.r = 0;
+			colorAttachmentInfos[i].clear_color.g = 0;
+			colorAttachmentInfos[i].clear_color.b = 0;
+			colorAttachmentInfos[i].clear_color.a = 0;
+		}
+
+		SDLGPU_INTERNAL_BindRenderTarget(renderer, renderer->nextRenderPassColorAttachments[i]);
+	}
+
+	if (renderer->nextRenderPassDepthStencilAttachment != NULL)
+	{
+		depthStencilAttachmentInfo.texture = renderer->nextRenderPassDepthStencilAttachment->texture;
+
+		depthStencilAttachmentInfo.load_op =
+			renderer->shouldClearDepthOnBeginPass ?
+				SDL_GPU_LOADOP_CLEAR :
+				SDL_GPU_LOADOP_DONT_CARE;
+
+		if (renderer->shouldClearDepthOnBeginPass)
+		{
+			depthStencilAttachmentInfo.load_op = SDL_GPU_LOADOP_CLEAR;
+		}
+		else
+		{
+			/* FIXME: is there a way to safely get rid of this load op? */
+			depthStencilAttachmentInfo.load_op = SDL_GPU_LOADOP_LOAD;
+		}
+
+		if (renderer->shouldClearStencilOnBeginPass)
+		{
+			depthStencilAttachmentInfo.stencil_load_op = SDL_GPU_LOADOP_CLEAR;
+		}
+		else
+		{
+			/* FIXME: is there a way to safely get rid of this load op? */
+			depthStencilAttachmentInfo.stencil_load_op = SDL_GPU_LOADOP_LOAD;
+		}
+
+		/* We always have to store just in case changing render state breaks the render pass. */
+		/* FIXME: perhaps there is a way around this? */
+		depthStencilAttachmentInfo.store_op = SDL_GPU_STOREOP_STORE;
+		depthStencilAttachmentInfo.stencil_store_op = SDL_GPU_STOREOP_STORE;
+
+		depthStencilAttachmentInfo.cycle =
+			renderer->nextRenderPassDepthStencilAttachment->boundAsRenderTarget || depthStencilAttachmentInfo.load_op == SDL_GPU_LOADOP_LOAD || depthStencilAttachmentInfo.stencil_load_op == SDL_GPU_LOADOP_LOAD ?
+				false :
+				true; /* Cycle if we can! */
+
+		if (renderer->shouldClearDepthOnBeginPass || renderer->shouldClearStencilOnBeginPass)
+		{
+			depthStencilAttachmentInfo.clear_depth = renderer->clearDepthValue;
+			depthStencilAttachmentInfo.clear_stencil = renderer->clearStencilValue;
+		}
+
+		SDLGPU_INTERNAL_BindRenderTarget(renderer, renderer->nextRenderPassDepthStencilAttachment);
+	}
+
+	renderer->renderPass = SDL_BeginGPURenderPass(
+		renderer->renderCommandBuffer,
+		colorAttachmentInfos,
+		renderer->nextRenderPassColorAttachmentCount,
+		renderer->nextRenderPassDepthStencilAttachment != NULL ? &depthStencilAttachmentInfo : NULL
+	);
+
+	gpuViewport.x = (float) renderer->viewport.x;
+	gpuViewport.y = (float) renderer->viewport.y;
+	gpuViewport.w = (float) renderer->viewport.w;
+	gpuViewport.h = (float) renderer->viewport.h;
+	gpuViewport.min_depth = renderer->viewport.minDepth;
+	gpuViewport.max_depth = renderer->viewport.maxDepth;
+
+	SDL_SetGPUViewport(
+		renderer->renderPass,
+		&gpuViewport
+	);
+
+	if (renderer->fnaRasterizerState.scissorTestEnable)
+	{
+		SDL_SetGPUScissor(
+			renderer->renderPass,
+			&renderer->scissorRect
+		);
+	}
+
+	renderer->needNewRenderPass = 0;
+
+	renderer->shouldClearColorOnBeginPass = 0;
+	renderer->shouldClearDepthOnBeginPass = 0;
+	renderer->shouldClearStencilOnBeginPass = 0;
+
+	renderer->needNewGraphicsPipeline = 1;
+}
+
+static void SDLGPU_INTERNAL_ResetUploadCommandBufferState(
+	SDLGPU_Renderer *renderer
+) {
+	renderer->uploadCommandBuffer = SDL_AcquireGPUCommandBuffer(renderer->device);
+	SDLGPU_INTERNAL_BeginCopyPass(renderer);
+
+	/* Reset state */
+	renderer->textureUploadCycleCount = 0;
+	renderer->bufferUploadCycleCount = 0;
+	renderer->textureUploadBufferOffset = 0;
+	renderer->bufferUploadBufferOffset = 0;
+}
+
+static void SDLGPU_INTERNAL_ResetRenderCommandBufferState(
+	SDLGPU_Renderer *renderer
+) {
+	renderer->renderCommandBuffer = SDL_AcquireGPUCommandBuffer(renderer->device);
+
+	/* Reset state */
+	renderer->needNewRenderPass = 1;
+	renderer->needNewGraphicsPipeline = 1;
+	renderer->needVertexBufferBind = 1;
+	renderer->needVertexSamplerBind = 1;
+	renderer->needFragmentSamplerBind = 1;
+}
+
+static void SDLGPU_ResetCommandBufferState(
+	SDLGPU_Renderer *renderer
+) {
+	SDLGPU_INTERNAL_ResetUploadCommandBufferState(renderer);
+	SDLGPU_INTERNAL_ResetRenderCommandBufferState(renderer);
+}
+
+static void SDLGPU_INTERNAL_FlushUploadCommandsAndAcquireFence(
 	SDLGPU_Renderer *renderer,
-	SDL_GPUFence **uploadFence,
-	SDL_GPUFence **renderFence
+	SDL_GPUFence **uploadFence
 ) {
 	SDL_LockMutex(renderer->copyPassMutex);
+
 	SDLGPU_INTERNAL_EndCopyPass(renderer);
-	SDLGPU_INTERNAL_EndRenderPass(renderer);
 
 	*uploadFence = SDL_SubmitGPUCommandBufferAndAcquireFence(
 		renderer->uploadCommandBuffer
 	);
 
+	SDLGPU_INTERNAL_ResetUploadCommandBufferState(renderer);
+
+	SDL_UnlockMutex(renderer->copyPassMutex);
+}
+
+static void SDLGPU_INTERNAL_FlushCommandsAndAcquireFence(
+	SDLGPU_Renderer *renderer,
+	SDL_GPUFence **uploadFence,
+	SDL_GPUFence **renderFence
+) {
+	SDLGPU_INTERNAL_FlushUploadCommandsAndAcquireFence(renderer, uploadFence);
+
+	SDLGPU_INTERNAL_EndRenderPass(renderer);
+
 	*renderFence = SDL_SubmitGPUCommandBufferAndAcquireFence(
 		renderer->renderCommandBuffer
 	);
 
-	SDLGPU_ResetCommandBufferState(renderer);
+	SDLGPU_INTERNAL_ResetRenderCommandBufferState(renderer);
+}
+
+static void SDLGPU_INTERNAL_FlushUploadCommands(
+	SDLGPU_Renderer *renderer
+) {
+	SDL_LockMutex(renderer->copyPassMutex);
+	
+	SDLGPU_INTERNAL_EndCopyPass(renderer);
+	SDL_SubmitGPUCommandBuffer(renderer->uploadCommandBuffer);
+	SDLGPU_INTERNAL_ResetUploadCommandBufferState(renderer);
+
 	SDL_UnlockMutex(renderer->copyPassMutex);
 }
 
 static void SDLGPU_INTERNAL_FlushCommands(
 	SDLGPU_Renderer *renderer
 ) {
-	SDL_LockMutex(renderer->copyPassMutex);
-	
-	SDLGPU_INTERNAL_EndCopyPass(renderer);
-	SDLGPU_INTERNAL_EndRenderPass(renderer);
-	SDL_SubmitGPUCommandBuffer(renderer->uploadCommandBuffer);
-	SDL_SubmitGPUCommandBuffer(renderer->renderCommandBuffer);
-	SDLGPU_ResetCommandBufferState(renderer);
+	SDLGPU_INTERNAL_FlushUploadCommands(renderer);
 
-	SDL_UnlockMutex(renderer->copyPassMutex);
+	SDLGPU_INTERNAL_EndRenderPass(renderer);
+	SDL_SubmitGPUCommandBuffer(renderer->renderCommandBuffer);
+	SDLGPU_INTERNAL_ResetRenderCommandBufferState(renderer);
 }
 
 static void SDLGPU_INTERNAL_FlushCommandsAndStall(
@@ -795,6 +1011,30 @@ static void SDLGPU_INTERNAL_FlushCommandsAndStall(
 	SDL_ReleaseGPUFence(
 		renderer->device,
 		fences[1]
+	);
+}
+
+static void SDLGPU_INTERNAL_FlushUploadCommandsAndStall(
+	SDLGPU_Renderer *renderer
+)
+{
+	SDL_GPUFence* fences[1];
+
+	SDLGPU_INTERNAL_FlushUploadCommandsAndAcquireFence(
+		renderer, 
+		&fences[0]
+	);
+
+	SDL_WaitForGPUFences(
+		renderer->device, 
+		1, 
+		fences, 
+		1
+	);
+
+	SDL_ReleaseGPUFence(
+		renderer->device,
+		fences[0]
 	);
 }
 
@@ -970,190 +1210,6 @@ static void SDLGPU_Clear(
 	);
 }
 
-static void SDLGPU_INTERNAL_BindRenderTarget(
-	SDLGPU_Renderer *renderer,
-	SDLGPU_TextureHandle *textureHandle
-) {
-	uint32_t i;
-
-	for (i = 0; i < renderer->boundRenderTargetCount; i += 1)
-	{
-		if (renderer->boundRenderTargets[i] == textureHandle)
-		{
-			return;
-		}
-	}
-
-	if (renderer->boundRenderTargetCount >= renderer->boundRenderTargetCapacity)
-	{
-		renderer->boundRenderTargetCapacity *= 2;
-		renderer->boundRenderTargets = SDL_realloc(
-			renderer->boundRenderTargets,
-			renderer->boundRenderTargetCapacity * sizeof(SDLGPU_TextureHandle*)
-		);
-	}
-
-	renderer->boundRenderTargets[renderer->boundRenderTargetCount] =
-		textureHandle;
-	renderer->boundRenderTargetCount += 1;
-
-	textureHandle->boundAsRenderTarget = 1;
-}
-
-static void SDLGPU_INTERNAL_BeginRenderPass(
-	SDLGPU_Renderer *renderer
-) {
-	SDL_GPUColorTargetInfo colorAttachmentInfos[MAX_RENDERTARGET_BINDINGS];
-	SDL_GPUDepthStencilTargetInfo depthStencilAttachmentInfo;
-	SDL_GPUViewport gpuViewport;
-	uint32_t i;
-
-	if (!renderer->needNewRenderPass)
-	{
-		return;
-	}
-
-	SDLGPU_INTERNAL_EndRenderPass(renderer);
-
-	/* Set up the next render pass */
-	for (i = 0; i < renderer->nextRenderPassColorAttachmentCount; i += 1)
-	{
-		colorAttachmentInfos[i].texture = renderer->nextRenderPassColorAttachments[i]->texture;
-		colorAttachmentInfos[i].layer_or_depth_plane = renderer->nextRenderPassColorAttachmentCubeFace[i];
-		colorAttachmentInfos[i].mip_level = 0;
-
-		colorAttachmentInfos[i].load_op =
-			renderer->shouldClearColorOnBeginPass ?
-				SDL_GPU_LOADOP_CLEAR :
-				SDL_GPU_LOADOP_LOAD;
-
-		/* We always have to store just in case changing render state breaks the render pass. */
-		/* FIXME: perhaps there is a way around this? */
-		if (renderer->nextRenderPassColorResolves[i] != NULL)
-		{
-			colorAttachmentInfos[i].store_op = SDL_GPU_STOREOP_RESOLVE_AND_STORE;
-		}
-		else
-		{
-			colorAttachmentInfos[i].store_op = SDL_GPU_STOREOP_STORE;
-		}
-
-		colorAttachmentInfos[i].cycle =
-			renderer->nextRenderPassColorAttachments[i]->boundAsRenderTarget || colorAttachmentInfos[i].load_op == SDL_GPU_LOADOP_LOAD ?
-				false :
-				true; /* cycle if we can, it's fast! */
-
-		if (renderer->nextRenderPassColorResolves[i] != NULL)
-		{
-			colorAttachmentInfos[i].resolve_texture = renderer->nextRenderPassColorResolves[i]->texture;
-		}
-		else
-		{
-			colorAttachmentInfos[i].resolve_texture = NULL;
-		}
-		colorAttachmentInfos[i].resolve_mip_level = 0;
-		colorAttachmentInfos[i].resolve_layer = 0;
-		colorAttachmentInfos[i].cycle_resolve_texture = colorAttachmentInfos[i].cycle;
-
-		if (renderer->shouldClearColorOnBeginPass)
-		{
-			colorAttachmentInfos[i].clear_color = renderer->clearColorValue;
-		}
-		else
-		{
-			colorAttachmentInfos[i].clear_color.r = 0;
-			colorAttachmentInfos[i].clear_color.g = 0;
-			colorAttachmentInfos[i].clear_color.b = 0;
-			colorAttachmentInfos[i].clear_color.a = 0;
-		}
-
-		SDLGPU_INTERNAL_BindRenderTarget(renderer, renderer->nextRenderPassColorAttachments[i]);
-	}
-
-	if (renderer->nextRenderPassDepthStencilAttachment != NULL)
-	{
-		depthStencilAttachmentInfo.texture = renderer->nextRenderPassDepthStencilAttachment->texture;
-
-		depthStencilAttachmentInfo.load_op =
-			renderer->shouldClearDepthOnBeginPass ?
-				SDL_GPU_LOADOP_CLEAR :
-				SDL_GPU_LOADOP_DONT_CARE;
-
-		if (renderer->shouldClearDepthOnBeginPass)
-		{
-			depthStencilAttachmentInfo.load_op = SDL_GPU_LOADOP_CLEAR;
-		}
-		else
-		{
-			/* FIXME: is there a way to safely get rid of this load op? */
-			depthStencilAttachmentInfo.load_op = SDL_GPU_LOADOP_LOAD;
-		}
-
-		if (renderer->shouldClearStencilOnBeginPass)
-		{
-			depthStencilAttachmentInfo.stencil_load_op = SDL_GPU_LOADOP_CLEAR;
-		}
-		else
-		{
-			/* FIXME: is there a way to safely get rid of this load op? */
-			depthStencilAttachmentInfo.stencil_load_op = SDL_GPU_LOADOP_LOAD;
-		}
-
-		/* We always have to store just in case changing render state breaks the render pass. */
-		/* FIXME: perhaps there is a way around this? */
-		depthStencilAttachmentInfo.store_op = SDL_GPU_STOREOP_STORE;
-		depthStencilAttachmentInfo.stencil_store_op = SDL_GPU_STOREOP_STORE;
-
-		depthStencilAttachmentInfo.cycle =
-			renderer->nextRenderPassDepthStencilAttachment->boundAsRenderTarget || depthStencilAttachmentInfo.load_op == SDL_GPU_LOADOP_LOAD || depthStencilAttachmentInfo.stencil_load_op == SDL_GPU_LOADOP_LOAD ?
-				false :
-				true; /* Cycle if we can! */
-
-		if (renderer->shouldClearDepthOnBeginPass || renderer->shouldClearStencilOnBeginPass)
-		{
-			depthStencilAttachmentInfo.clear_depth = renderer->clearDepthValue;
-			depthStencilAttachmentInfo.clear_stencil = renderer->clearStencilValue;
-		}
-
-		SDLGPU_INTERNAL_BindRenderTarget(renderer, renderer->nextRenderPassDepthStencilAttachment);
-	}
-
-	renderer->renderPass = SDL_BeginGPURenderPass(
-		renderer->renderCommandBuffer,
-		colorAttachmentInfos,
-		renderer->nextRenderPassColorAttachmentCount,
-		renderer->nextRenderPassDepthStencilAttachment != NULL ? &depthStencilAttachmentInfo : NULL
-	);
-
-	gpuViewport.x = (float) renderer->viewport.x;
-	gpuViewport.y = (float) renderer->viewport.y;
-	gpuViewport.w = (float) renderer->viewport.w;
-	gpuViewport.h = (float) renderer->viewport.h;
-	gpuViewport.min_depth = renderer->viewport.minDepth;
-	gpuViewport.max_depth = renderer->viewport.maxDepth;
-
-	SDL_SetGPUViewport(
-		renderer->renderPass,
-		&gpuViewport
-	);
-
-	if (renderer->fnaRasterizerState.scissorTestEnable)
-	{
-		SDL_SetGPUScissor(
-			renderer->renderPass,
-			&renderer->scissorRect
-		);
-	}
-
-	renderer->needNewRenderPass = 0;
-
-	renderer->shouldClearColorOnBeginPass = 0;
-	renderer->shouldClearDepthOnBeginPass = 0;
-	renderer->shouldClearStencilOnBeginPass = 0;
-
-	renderer->needNewGraphicsPipeline = 1;
-}
-
 static void SDLGPU_SetRenderTargets(
 	FNA3D_Renderer *driverData,
 	FNA3D_RenderTargetBinding *renderTargets,
@@ -1170,9 +1226,7 @@ static void SDLGPU_SetRenderTargets(
 		renderer->shouldClearDepthOnBeginPass ||
 		renderer->shouldClearDepthOnBeginPass
 	) {
-		SDL_LockMutex(renderer->copyPassMutex);
 		SDLGPU_INTERNAL_BeginRenderPass(renderer);
-		SDL_UnlockMutex(renderer->copyPassMutex);
 	}
 
 	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
@@ -1251,10 +1305,8 @@ static void SDLGPU_ResolveTarget(
 	}
 
 	/* Rendering needs to finish to get the target data to make mips from */
-	SDL_LockMutex(renderer->copyPassMutex);
 	SDLGPU_INTERNAL_FlushCommands(renderer);
 	SDL_GenerateMipmapsForGPUTexture(renderer->renderCommandBuffer, texture->texture);
-	SDL_UnlockMutex(renderer->copyPassMutex);
 }
 
 static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
@@ -1635,8 +1687,6 @@ static void SDLGPU_INTERNAL_BindGraphicsPipeline(
 		return;
 	}
 
-	SDL_LockMutex(renderer->copyPassMutex);
-
 	pipeline = SDLGPU_INTERNAL_FetchGraphicsPipeline(renderer);
 
 	if (pipeline != renderer->currentGraphicsPipeline)
@@ -1663,8 +1713,6 @@ static void SDLGPU_INTERNAL_BindGraphicsPipeline(
 	renderer->needVertexSamplerBind = 1;
 	renderer->needVertexBufferBind = 1;
 	renderer->indexBufferBinding.buffer = NULL;
-
-	SDL_UnlockMutex(renderer->copyPassMutex);
 }
 
 static SDL_GPUSampler* SDLGPU_INTERNAL_FetchSamplerState(
@@ -2211,9 +2259,7 @@ static void SDLGPU_INTERNAL_BindDeferredState(
 		renderer->needNewGraphicsPipeline = 1;
 	}
 
-	SDL_LockMutex(renderer->copyPassMutex);
 	SDLGPU_INTERNAL_BeginRenderPass(renderer);
-	SDL_UnlockMutex(renderer->copyPassMutex);
 
 	SDLGPU_INTERNAL_BindGraphicsPipeline(renderer);
 
@@ -2850,7 +2896,7 @@ static void SDLGPU_INTERNAL_SetTextureData(
 		else
 		{
 			/* We already cycled too much, time to stall! */
-			SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
+			SDLGPU_INTERNAL_FlushUploadCommandsAndStall(renderer);
 			cycle = true;
 			transferOffset = 0;
 		}
@@ -3181,7 +3227,7 @@ static void SDLGPU_INTERNAL_SetBufferData(
 		else
 		{
 			/* We already cycled too much, time to stall! */
-			SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
+			SDLGPU_INTERNAL_FlushUploadCommandsAndStall(renderer);
 			transferCycle = true;
 			transferOffset = 0;
 		}
@@ -3393,7 +3439,7 @@ static void SDLGPU_INTERNAL_GetTextureData(
 	);
 
 	/* Flush and stall so the data is up to date */
-	SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
+	SDLGPU_INTERNAL_FlushUploadCommandsAndStall(renderer);
 
 	/* Copy into data pointer */
 	src = (uint8_t*) SDL_MapGPUTransferBuffer(renderer->device, renderer->textureDownloadBuffer, false);
@@ -3462,7 +3508,7 @@ static void SDLGPU_INTERNAL_GetBufferData(
 	);
 
 	/* Flush and stall so the data is up to date */
-	SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
+	SDLGPU_INTERNAL_FlushUploadCommandsAndStall(renderer);
 
 	/* Copy into data pointer */
 	src = (uint8_t*) SDL_MapGPUTransferBuffer(renderer->device, renderer->bufferDownloadBuffer, false);
