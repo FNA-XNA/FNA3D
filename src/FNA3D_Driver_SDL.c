@@ -1046,15 +1046,14 @@ static void SDLGPU_SwapBuffers(
 	void* overrideWindowHandle
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
-	SDL_LockMutex(renderer->copyPassMutex);
-
-	SDLGPU_INTERNAL_EndCopyPass(renderer);
-	SDLGPU_INTERNAL_EndRenderPass(renderer);
-
 	SDL_GPUTexture *swapchainTexture;
 	SDL_GPUBlitInfo blitInfo;
 	uint32_t width, height;
 	uint32_t i;
+
+	SDL_LockMutex(renderer->copyPassMutex);
+	SDLGPU_INTERNAL_EndCopyPass(renderer);
+	SDLGPU_INTERNAL_EndRenderPass(renderer);
 
 	if (renderer->fenceGroups[renderer->frameCounter][0] != NULL)
 	{
