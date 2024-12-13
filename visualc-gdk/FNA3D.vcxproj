@@ -47,6 +47,7 @@
     </ClCompile>
     <ClCompile Include="..\src\FNA3D.c" />
     <ClCompile Include="..\src\FNA3D_Image.c" />
+    <ClCompile Include="..\src\FNA3D_PipelineCache.c" />
     <ClCompile Include="..\src\FNA3D_Driver_SDL.c" />
     <ClCompile Include="..\src\FNA3D_Tracing.c" />
   </ItemGroup>
@@ -56,7 +57,12 @@
     <ClInclude Include="..\src\FNA3D_Driver.h" />
     <ClInclude Include="..\src\FNA3D_Tracing.h" />
   </ItemGroup>
-  <ItemGroup>
+  <ItemGroup Condition="Exists('..\..\..\..\SDL\VisualC-GDK\SDL\SDL.vcxproj')">
+    <ProjectReference Include="..\..\..\..\SDL\VisualC-GDK\SDL\SDL.vcxproj">
+      <Project>{81ce8daf-ebb2-4761-8e45-b71abcca8c68}</Project>
+    </ProjectReference>
+  </ItemGroup>
+  <ItemGroup Condition="!Exists('..\..\..\..\SDL\VisualC-GDK\SDL\SDL.vcxproj')">
     <ProjectReference Include="..\..\SDL\VisualC-GDK\SDL\SDL.vcxproj">
       <Project>{81ce8daf-ebb2-4761-8e45-b71abcca8c68}</Project>
     </ProjectReference>
@@ -150,7 +156,7 @@
     <ReferencePath>$(Console_SdkLibPath);$(Console_SdkWindowsMetadataPath)</ReferencePath>
     <LibraryPath>$(Console_SdkLibPath)</LibraryPath>
     <LibraryWPath>$(Console_SdkLibPath);$(Console_SdkWindowsMetadataPath)</LibraryWPath>
-    <IncludePath>..\..\SDL\include;..\MojoShader;..\include;$(Console_SdkIncludeRoot)</IncludePath>
+    <IncludePath>..\..\SDL\include;..\..\..\..\SDL\include;..\MojoShader;..\include;$(Console_SdkIncludeRoot)</IncludePath>
     <ExecutablePath>$(Console_SdkRoot)bin;$(Console_SdkToolPath);$(ExecutablePath)</ExecutablePath>
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
@@ -158,7 +164,7 @@
     <ReferencePath>$(Console_SdkLibPath);$(Console_SdkWindowsMetadataPath)</ReferencePath>
     <LibraryPath>$(Console_SdkLibPath)</LibraryPath>
     <LibraryWPath>$(Console_SdkLibPath);$(Console_SdkWindowsMetadataPath)</LibraryWPath>
-    <IncludePath>..\..\SDL\include;..\MojoShader;..\include;$(Console_SdkIncludeRoot)</IncludePath>
+    <IncludePath>..\..\SDL\include;..\..\..\..\SDL\include;..\MojoShader;..\include;$(Console_SdkIncludeRoot)</IncludePath>
     <ExecutablePath>$(Console_SdkRoot)bin;$(Console_SdkToolPath);$(ExecutablePath)</ExecutablePath>
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
@@ -166,7 +172,7 @@
     <ReferencePath>$(Console_SdkLibPath);$(Console_SdkWindowsMetadataPath)</ReferencePath>
     <LibraryPath>$(Console_SdkLibPath)</LibraryPath>
     <LibraryWPath>$(Console_SdkLibPath);$(Console_SdkWindowsMetadataPath)</LibraryWPath>
-    <IncludePath>..\..\SDL\include;..\MojoShader;..\include;$(Console_SdkIncludeRoot)</IncludePath>
+    <IncludePath>..\..\SDL\include;..\..\..\..\SDL\include;..\MojoShader;..\include;$(Console_SdkIncludeRoot)</IncludePath>
     <ExecutablePath>$(Console_SdkRoot)bin;$(Console_SdkToolPath);$(ExecutablePath)</ExecutablePath>
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
@@ -174,7 +180,7 @@
     <ReferencePath>$(Console_SdkLibPath);$(Console_SdkWindowsMetadataPath)</ReferencePath>
     <LibraryPath>$(Console_SdkLibPath)</LibraryPath>
     <LibraryWPath>$(Console_SdkLibPath);$(Console_SdkWindowsMetadataPath)</LibraryWPath>
-    <IncludePath>..\..\SDL\include;..\MojoShader;..\include;$(Console_SdkIncludeRoot)</IncludePath>
+    <IncludePath>..\..\SDL\include;..\..\..\..\SDL\include;..\MojoShader;..\include;$(Console_SdkIncludeRoot)</IncludePath>
     <ExecutablePath>$(Console_SdkRoot)bin;$(Console_SdkToolPath);$(ExecutablePath)</ExecutablePath>
     <LinkIncremental>false</LinkIncremental>
   </PropertyGroup>
@@ -182,7 +188,7 @@
     <ReferencePath>$(Console_SdkLibPath);$(Console_SdkWindowsMetadataPath)</ReferencePath>
     <LibraryPath>$(Console_SdkLibPath)</LibraryPath>
     <LibraryWPath>$(Console_SdkLibPath);$(Console_SdkWindowsMetadataPath)</LibraryWPath>
-    <IncludePath>..\..\SDL\include;..\MojoShader;..\include;$(Console_SdkIncludeRoot)</IncludePath>
+    <IncludePath>..\..\SDL\include;..\..\..\..\SDL\include;..\MojoShader;..\include;$(Console_SdkIncludeRoot)</IncludePath>
     <ExecutablePath>$(Console_SdkRoot)bin;$(Console_SdkToolPath);$(ExecutablePath)</ExecutablePath>
     <LinkIncremental>true</LinkIncremental>
   </PropertyGroup>
@@ -190,7 +196,7 @@
     <ReferencePath>$(Console_SdkLibPath);$(Console_SdkWindowsMetadataPath)</ReferencePath>
     <LibraryPath>$(Console_SdkLibPath)</LibraryPath>
     <LibraryWPath>$(Console_SdkLibPath);$(Console_SdkWindowsMetadataPath)</LibraryWPath>
-    <IncludePath>..\..\SDL\include;..\MojoShader;..\include;$(Console_SdkIncludeRoot)</IncludePath>
+    <IncludePath>..\..\SDL\include;..\..\..\..\SDL\include;..\MojoShader;..\include;$(Console_SdkIncludeRoot)</IncludePath>
     <ExecutablePath>$(Console_SdkRoot)bin;$(Console_SdkToolPath);$(ExecutablePath)</ExecutablePath>
     <LinkIncremental>true</LinkIncremental>
   </PropertyGroup>
