@@ -749,6 +749,7 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 	SDL_GPUColorTargetInfo colorAttachmentInfos[MAX_RENDERTARGET_BINDINGS];
 	SDL_GPUDepthStencilTargetInfo depthStencilAttachmentInfo;
 	SDL_GPUViewport gpuViewport;
+	SDL_Rect scissorRect;
 	uint32_t i;
 
 	if (!renderer->needNewRenderPass)
@@ -882,11 +883,19 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 
 	if (renderer->fnaRasterizerState.scissorTestEnable)
 	{
-		SDL_SetGPUScissor(
-			renderer->renderPass,
-			&renderer->scissorRect
-		);
+		scissorRect = renderer->scissorRect;
 	}
+	else
+	{
+		scissorRect.x = gpuViewport.x;
+		scissorRect.y = gpuViewport.y;
+		scissorRect.w = gpuViewport.w;
+		scissorRect.h = gpuViewport.h;
+	}
+	SDL_SetGPUScissor(
+		renderer->renderPass,
+		&scissorRect
+	);
 
 	renderer->needNewRenderPass = 0;
 
@@ -2167,6 +2176,7 @@ static void SDLGPU_ApplyRasterizerState(
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
 	SDL_GPUTextureFormat depthStencilFormat = SDL_GPU_TEXTUREFORMAT_D16_UNORM;
+	SDL_Rect scissorRect;
 	float realDepthBias;
 
 	if (renderer->nextRenderPassDepthStencilAttachment != NULL)
@@ -2180,9 +2190,20 @@ static void SDLGPU_ApplyRasterizerState(
 
 		if (renderer->renderPass != NULL)
 		{
+			if (renderer->fnaRasterizerState.scissorTestEnable)
+			{
+				scissorRect = renderer->scissorRect;
+			}
+			else
+			{
+				scissorRect.x = renderer->viewport.x;
+				scissorRect.y = renderer->viewport.y;
+				scissorRect.w = renderer->viewport.w;
+				scissorRect.h = renderer->viewport.h;
+			}
 			SDL_SetGPUScissor(
 				renderer->renderPass,
-				&renderer->scissorRect
+				&scissorRect
 			);
 		}
 	}
