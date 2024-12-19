@@ -151,6 +151,18 @@ uint32_t FNA3D_PrepareWindowAttributes(void)
 	uint32_t result = 0;
 	uint32_t i;
 	const char *hint = SDL_GetHint("FNA3D_FORCE_DRIVER");
+
+	/* We used to have our own Vulkan renderer, but that work is now in SDL
+	 * instead. For maximum compatibility, alias this to SDL_GPU!
+	 * -flibit
+	 */
+#ifdef USE_SDL3
+	if ((hint != NULL) && (SDL_strcasecmp(hint, "Vulkan") == 0))
+	{
+		hint = "SDLGPU";
+	}
+#endif
+
 	for (i = 0; drivers[i] != NULL; i += 1)
 	{
 		if (hint != NULL)
