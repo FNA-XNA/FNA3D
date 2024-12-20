@@ -591,11 +591,6 @@ typedef struct SDLGPU_Renderer
 	uint32_t bufferUploadBufferOffset;
 	uint32_t bufferUploadCycleCount;
 
-	/* Synchronization */
-
-	SDL_GPUFence **fenceGroups[MAX_FRAMES_IN_FLIGHT];
-	uint8_t frameCounter;
-
 	/* RT tracking to reduce unnecessary cycling */
 
 	SDLGPU_TextureHandle **boundRenderTargets;
@@ -985,7 +980,7 @@ static void SDLGPU_INTERNAL_FlushUploadCommands(
 	SDLGPU_Renderer *renderer
 ) {
 	SDL_LockMutex(renderer->copyPassMutex);
-	
+
 	SDLGPU_INTERNAL_EndCopyPass(renderer);
 	SDL_SubmitGPUCommandBuffer(renderer->uploadCommandBuffer);
 	SDLGPU_INTERNAL_ResetUploadCommandBufferState(renderer);
@@ -1039,14 +1034,14 @@ static void SDLGPU_INTERNAL_FlushUploadCommandsAndStall(
 	SDL_GPUFence* fences[1];
 
 	SDLGPU_INTERNAL_FlushUploadCommandsAndAcquireFence(
-		renderer, 
+		renderer,
 		&fences[0]
 	);
 
 	SDL_WaitForGPUFences(
-		renderer->device, 
-		1, 
-		fences, 
+		renderer->device,
+		1,
+		fences,
 		1
 	);
 
@@ -1056,7 +1051,6 @@ static void SDLGPU_INTERNAL_FlushUploadCommandsAndStall(
 	);
 }
 
-/* FIXME: this will break with multi-window, need a claim/unclaim structure */
 static void SDLGPU_SwapBuffers(
 	FNA3D_Renderer *driverData,
 	FNA3D_Rect *sourceRectangle,
@@ -1073,31 +1067,7 @@ static void SDLGPU_SwapBuffers(
 	SDLGPU_INTERNAL_EndCopyPass(renderer);
 	SDLGPU_INTERNAL_EndRenderPass(renderer);
 
-	if (renderer->fenceGroups[renderer->frameCounter][0] != NULL)
-	{
-		/* Wait for the least-recent fence */
-		SDL_WaitForGPUFences(
-			renderer->device,
-			1,
-			renderer->fenceGroups[renderer->frameCounter],
-			2
-		);
-
-		SDL_ReleaseGPUFence(
-			renderer->device,
-			renderer->fenceGroups[renderer->frameCounter][0]
-		);
-
-		SDL_ReleaseGPUFence(
-			renderer->device,
-			renderer->fenceGroups[renderer->frameCounter][1]
-		);
-
-		renderer->fenceGroups[renderer->frameCounter][0] = NULL;
-		renderer->fenceGroups[renderer->frameCounter][1] = NULL;
-	}
-
-	if (SDL_AcquireGPUSwapchainTexture(
+	if (SDL_WaitAndAcquireGPUSwapchainTexture(
 		renderer->renderCommandBuffer,
 		overrideWindowHandle,
 		&swapchainTexture,
@@ -1135,14 +1105,7 @@ static void SDLGPU_SwapBuffers(
 		);
 	}
 
-	SDLGPU_INTERNAL_FlushCommandsAndAcquireFence(
-		renderer,
-		&renderer->fenceGroups[renderer->frameCounter][0],
-		&renderer->fenceGroups[renderer->frameCounter][1]
-	);
-
-	renderer->frameCounter =
-		(renderer->frameCounter + 1) % MAX_FRAMES_IN_FLIGHT;
+	SDLGPU_INTERNAL_FlushCommands(renderer);
 
 	/* Reset bound RT state */
 	for (i = 0; i < renderer->boundRenderTargetCount; i += 1)
@@ -4084,27 +4047,6 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 
 	SDLGPU_INTERNAL_DestroyFauxBackbuffer(renderer);
 
-	for (i = 0; i < MAX_FRAMES_IN_FLIGHT; i += 1)
-	{
-		if (renderer->fenceGroups[i][0] != NULL)
-		{
-			SDL_ReleaseGPUFence(
-				renderer->device,
-				renderer->fenceGroups[i][0]
-			);
-		}
-
-		if (renderer->fenceGroups[i][1] != NULL)
-		{
-			SDL_ReleaseGPUFence(
-				renderer->device,
-				renderer->fenceGroups[i][1]
-			);
-		}
-
-		SDL_free(renderer->fenceGroups[i]);
-	}
-
 	for (i = 0; i < NUM_PIPELINE_HASH_BUCKETS; i += 1)
 	{
 		for (j = 0; j < renderer->graphicsPipelineHashTable.buckets[i].count; j += 1)
@@ -4501,13 +4443,6 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 			&dummyInt,
 			sizeof(uint32_t)
 		);
-	}
-
-	for (i = 0; i < MAX_FRAMES_IN_FLIGHT; i += 1)
-	{
-		renderer->fenceGroups[i] = SDL_malloc(2 * sizeof(SDL_GPUFence*));
-		renderer->fenceGroups[i][0] = NULL;
-		renderer->fenceGroups[i][1] = NULL;
 	}
 
 #if SDL_PLATFORM_GDK
