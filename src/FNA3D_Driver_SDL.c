@@ -1145,6 +1145,23 @@ static void SDLGPU_SwapBuffers(
 	SDL_UnlockMutex(renderer->copyPassMutex);
 }
 
+/* GDK Support */
+
+#if SDL_PLATFORM_GDK
+static bool SDLCALL SDLGPU_INTERNAL_GDKEventFilter(void* userdata, SDL_Event* event)
+{
+	if (event->type == SDL_EVENT_DID_ENTER_BACKGROUND)
+	{
+		SDL_GDKSuspendGPU((SDL_GPUDevice*) userdata);
+	}
+	else if (event->type == SDL_EVENT_WILL_ENTER_FOREGROUND)
+	{
+		SDL_GDKResumeGPU((SDL_GPUDevice*) userdata);
+	}
+	return true;
+}
+#endif
+
 /* Drawing */
 
 static void SDLGPU_INTERNAL_PrepareRenderPassClear(
@@ -4120,6 +4137,10 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 
 	MOJOSHADER_sdlDestroyContext(renderer->mojoshaderContext);
 
+#if SDL_PLATFORM_GDK
+	SDL_RemoveEventWatch(SDLGPU_INTERNAL_GDKEventFilter, renderer->device);
+#endif
+
 	SDL_DestroyGPUDevice(renderer->device);
 
 	SDL_free(renderer);
@@ -4472,6 +4493,10 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 		renderer->fenceGroups[i][0] = NULL;
 		renderer->fenceGroups[i][1] = NULL;
 	}
+
+#if SDL_PLATFORM_GDK
+	SDL_AddEventWatch(SDLGPU_INTERNAL_GDKEventFilter, renderer->device);
+#endif
 
 	return result;
 }
