@@ -1071,13 +1071,18 @@ static void SDLGPU_SwapBuffers(
 	SDLGPU_INTERNAL_EndCopyPass(renderer);
 	SDLGPU_INTERNAL_EndRenderPass(renderer);
 
-	if (SDL_WaitAndAcquireGPUSwapchainTexture(
+	if (!SDL_WaitAndAcquireGPUSwapchainTexture(
 		renderer->renderCommandBuffer,
 		overrideWindowHandle,
 		&swapchainTexture,
 		&width,
 		&height
-	) && swapchainTexture != NULL) {
+	)) {
+		FNA3D_LogError("Acquiring swapchain failed: %s", SDL_GetError());
+		return;
+	}
+
+	if (swapchainTexture != NULL) {
 		blitInfo.source.texture = renderer->fauxBackbufferColorTexture->texture;
 		blitInfo.source.mip_level = 0;
 		blitInfo.source.layer_or_depth_plane = 0;
