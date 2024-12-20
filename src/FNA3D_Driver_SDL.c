@@ -724,9 +724,23 @@ static void SDLGPU_INTERNAL_BindRenderTarget(
 	textureHandle->boundAsRenderTarget = 1;
 }
 
+static void SDLGPU_INTERNAL_BeginRenderPass(
+	SDLGPU_Renderer* renderer
+);
+
 static void SDLGPU_INTERNAL_EndRenderPass(
 	SDLGPU_Renderer *renderer
 ) {
+	/* If we got to EndRenderPass without actually making a new render pass,
+	 * we're looking at a clear-only pass, so just forcibly start it so we
+	 * can have the clear execute instead of silently discarding it.
+	 * -flibit
+	 */
+	if (renderer->needNewRenderPass)
+	{
+		SDLGPU_INTERNAL_BeginRenderPass(renderer);
+	}
+
 	if (renderer->renderPass != NULL)
 	{
 		SDL_EndGPURenderPass(
@@ -756,6 +770,7 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 	{
 		return;
 	}
+	renderer->needNewRenderPass = 0;
 
 	SDLGPU_INTERNAL_EndRenderPass(renderer);
 
@@ -896,8 +911,6 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 		renderer->renderPass,
 		&scissorRect
 	);
-
-	renderer->needNewRenderPass = 0;
 
 	renderer->shouldClearColorOnBeginPass = 0;
 	renderer->shouldClearDepthOnBeginPass = 0;
