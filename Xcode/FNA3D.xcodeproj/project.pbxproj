@@ -7,10 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		021FF3972A4A764500A63B55 /* FNA3D_Memory.c in Sources */ = {isa = PBXBuildFile; fileRef = 021FF3962A4A764500A63B55 /* FNA3D_Memory.c */; };
-		021FF3982A4A764500A63B55 /* FNA3D_Memory.c in Sources */ = {isa = PBXBuildFile; fileRef = 021FF3962A4A764500A63B55 /* FNA3D_Memory.c */; };
-		02FD608F2A7B227300E1D7A5 /* FNA3D_CommandBuffer.c in Sources */ = {isa = PBXBuildFile; fileRef = 02FD608E2A7B227300E1D7A5 /* FNA3D_CommandBuffer.c */; };
-		02FD60902A7B227300E1D7A5 /* FNA3D_CommandBuffer.c in Sources */ = {isa = PBXBuildFile; fileRef = 02FD608E2A7B227300E1D7A5 /* FNA3D_CommandBuffer.c */; };
 		7B8B6CBE24452690001C08D6 /* mojoshader_common.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B8B6CB824452690001C08D6 /* mojoshader_common.c */; };
 		7B8B6CBF24452690001C08D6 /* mojoshader_common.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B8B6CB824452690001C08D6 /* mojoshader_common.c */; };
 		7B8B6CC224452690001C08D6 /* mojoshader.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B8B6CBA24452690001C08D6 /* mojoshader.c */; };
@@ -25,15 +21,11 @@
 		7BC01C072B4348F300941563 /* mojoshader_profile_spirv.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF94B9F275C046100050413 /* mojoshader_profile_spirv.c */; };
 		7BC01C082B4348F300941563 /* mojoshader.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B8B6CBA24452690001C08D6 /* mojoshader.c */; };
 		7BC01C092B4348F300941563 /* mojoshader_common.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B8B6CB824452690001C08D6 /* mojoshader_common.c */; };
-		7BC01C0A2B4348F300941563 /* mojoshader_vulkan.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF94B9C275C044E00050413 /* mojoshader_vulkan.c */; };
 		7BC01C0B2B4348F300941563 /* mojoshader_profile_common.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B8B6CC6244526A7001C08D6 /* mojoshader_profile_common.c */; };
 		7BC01C0C2B4348F300941563 /* mojoshader_effects.c in Sources */ = {isa = PBXBuildFile; fileRef = 7B8B6CBB24452690001C08D6 /* mojoshader_effects.c */; };
-		7BC01C0D2B4348F700941563 /* FNA3D_Driver_Vulkan.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF94B99275C042200050413 /* FNA3D_Driver_Vulkan.c */; };
-		7BC01C0E2B4348F700941563 /* FNA3D_CommandBuffer.c in Sources */ = {isa = PBXBuildFile; fileRef = 02FD608E2A7B227300E1D7A5 /* FNA3D_CommandBuffer.c */; };
 		7BC01C0F2B4348F700941563 /* FNA3D_Image.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF8206C2445254300736AB0 /* FNA3D_Image.c */; };
 		7BC01C102B4348F700941563 /* FNA3D_PipelineCache.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF8206E2445254300736AB0 /* FNA3D_PipelineCache.c */; };
 		7BC01C112B4348F700941563 /* FNA3D.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF820682445254300736AB0 /* FNA3D.c */; };
-		7BC01C122B4348F700941563 /* FNA3D_Memory.c in Sources */ = {isa = PBXBuildFile; fileRef = 021FF3962A4A764500A63B55 /* FNA3D_Memory.c */; };
 		7BC01C142B43490100941563 /* FNA3D_Driver_OpenGL.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BC01C132B43490100941563 /* FNA3D_Driver_OpenGL.c */; };
 		7BF820702445254300736AB0 /* FNA3D.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF820682445254300736AB0 /* FNA3D.c */; };
 		7BF820712445254300736AB0 /* FNA3D.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF820682445254300736AB0 /* FNA3D.c */; };
@@ -41,10 +33,6 @@
 		7BF820792445254300736AB0 /* FNA3D_Image.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF8206C2445254300736AB0 /* FNA3D_Image.c */; };
 		7BF8207C2445254300736AB0 /* FNA3D_PipelineCache.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF8206E2445254300736AB0 /* FNA3D_PipelineCache.c */; };
 		7BF8207D2445254300736AB0 /* FNA3D_PipelineCache.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF8206E2445254300736AB0 /* FNA3D_PipelineCache.c */; };
-		7BF94B9A275C042200050413 /* FNA3D_Driver_Vulkan.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF94B99275C042200050413 /* FNA3D_Driver_Vulkan.c */; };
-		7BF94B9B275C042200050413 /* FNA3D_Driver_Vulkan.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF94B99275C042200050413 /* FNA3D_Driver_Vulkan.c */; };
-		7BF94B9D275C044E00050413 /* mojoshader_vulkan.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF94B9C275C044E00050413 /* mojoshader_vulkan.c */; };
-		7BF94B9E275C044E00050413 /* mojoshader_vulkan.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF94B9C275C044E00050413 /* mojoshader_vulkan.c */; };
 		7BF94BA0275C046100050413 /* mojoshader_profile_spirv.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF94B9F275C046100050413 /* mojoshader_profile_spirv.c */; };
 		7BF94BA1275C046100050413 /* mojoshader_profile_spirv.c in Sources */ = {isa = PBXBuildFile; fileRef = 7BF94B9F275C046100050413 /* mojoshader_profile_spirv.c */; };
 /* End PBXBuildFile section */
@@ -151,9 +139,6 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		021FF3962A4A764500A63B55 /* FNA3D_Memory.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = FNA3D_Memory.c; path = ../src/FNA3D_Memory.c; sourceTree = "<group>"; };
-		02FD608D2A7B226300E1D7A5 /* FNA3D_CommandBuffer.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = FNA3D_CommandBuffer.h; path = ../src/FNA3D_CommandBuffer.h; sourceTree = "<group>"; };
-		02FD608E2A7B227300E1D7A5 /* FNA3D_CommandBuffer.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = FNA3D_CommandBuffer.c; path = ../src/FNA3D_CommandBuffer.c; sourceTree = "<group>"; };
 		7B1CDD452190C0A200175C7B /* libFNA3D.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libFNA3D.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B7E140D2190E0CB00616654 /* libFNA3D.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libFNA3D.a; sourceTree = BUILT_PRODUCTS_DIR; };
 		7B81CE172B434A04007EC76D /* SDL.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = SDL.xcodeproj; path = ../../SDL2/Xcode/SDL/SDL.xcodeproj; sourceTree = "<group>"; };
@@ -171,8 +156,6 @@
 		7BF820682445254300736AB0 /* FNA3D.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = FNA3D.c; path = ../src/FNA3D.c; sourceTree = "<group>"; };
 		7BF8206C2445254300736AB0 /* FNA3D_Image.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = FNA3D_Image.c; path = ../src/FNA3D_Image.c; sourceTree = "<group>"; };
 		7BF8206E2445254300736AB0 /* FNA3D_PipelineCache.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = FNA3D_PipelineCache.c; path = ../src/FNA3D_PipelineCache.c; sourceTree = "<group>"; };
-		7BF94B99275C042200050413 /* FNA3D_Driver_Vulkan.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = FNA3D_Driver_Vulkan.c; path = ../src/FNA3D_Driver_Vulkan.c; sourceTree = "<group>"; };
-		7BF94B9C275C044E00050413 /* mojoshader_vulkan.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = mojoshader_vulkan.c; path = ../MojoShader/mojoshader_vulkan.c; sourceTree = "<group>"; };
 		7BF94B9F275C046100050413 /* mojoshader_profile_spirv.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = mojoshader_profile_spirv.c; path = ../MojoShader/profiles/mojoshader_profile_spirv.c; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -227,9 +210,6 @@
 		7B1CDDA62190C50300175C7B /* Library Source */ = {
 			isa = PBXGroup;
 			children = (
-				02FD608E2A7B227300E1D7A5 /* FNA3D_CommandBuffer.c */,
-				021FF3962A4A764500A63B55 /* FNA3D_Memory.c */,
-				7BF94B99275C042200050413 /* FNA3D_Driver_Vulkan.c */,
 				7BC01C132B43490100941563 /* FNA3D_Driver_OpenGL.c */,
 				7BF8206C2445254300736AB0 /* FNA3D_Image.c */,
 				7BF8206E2445254300736AB0 /* FNA3D_PipelineCache.c */,
@@ -241,7 +221,6 @@
 		7B1CDDA72190C52900175C7B /* Public Headers */ = {
 			isa = PBXGroup;
 			children = (
-				02FD608D2A7B226300E1D7A5 /* FNA3D_CommandBuffer.h */,
 				7BF820652445251D00736AB0 /* FNA3D_SysRenderer.h */,
 				7BF820662445251D00736AB0 /* FNA3D_Image.h */,
 				7BF820672445251D00736AB0 /* FNA3D.h */,
@@ -273,7 +252,6 @@
 				7BC01C052B4348EC00941563 /* mojoshader_profile_glsl.c */,
 				7BC01C032B4348CD00941563 /* mojoshader_opengl.c */,
 				7BF94B9F275C046100050413 /* mojoshader_profile_spirv.c */,
-				7BF94B9C275C044E00050413 /* mojoshader_vulkan.c */,
 				7B8B6CC6244526A7001C08D6 /* mojoshader_profile_common.c */,
 				7B8B6CB824452690001C08D6 /* mojoshader_common.c */,
 				7B8B6CBB24452690001C08D6 /* mojoshader_effects.c */,
@@ -483,14 +461,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				021FF3972A4A764500A63B55 /* FNA3D_Memory.c in Sources */,
 				7BF94BA0275C046100050413 /* mojoshader_profile_spirv.c in Sources */,
 				7B8B6CC9244526A7001C08D6 /* mojoshader_profile_common.c in Sources */,
-				7BF94B9A275C042200050413 /* FNA3D_Driver_Vulkan.c in Sources */,
 				7B8B6CC224452690001C08D6 /* mojoshader.c in Sources */,
 				7B8B6CC424452690001C08D6 /* mojoshader_effects.c in Sources */,
-				02FD608F2A7B227300E1D7A5 /* FNA3D_CommandBuffer.c in Sources */,
-				7BF94B9D275C044E00050413 /* mojoshader_vulkan.c in Sources */,
 				7BF820702445254300736AB0 /* FNA3D.c in Sources */,
 				7B8B6CBE24452690001C08D6 /* mojoshader_common.c in Sources */,
 				7BF8207C2445254300736AB0 /* FNA3D_PipelineCache.c in Sources */,
@@ -502,14 +476,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				021FF3982A4A764500A63B55 /* FNA3D_Memory.c in Sources */,
 				7BF94BA1275C046100050413 /* mojoshader_profile_spirv.c in Sources */,
 				7B8B6CCA244526A7001C08D6 /* mojoshader_profile_common.c in Sources */,
-				7BF94B9B275C042200050413 /* FNA3D_Driver_Vulkan.c in Sources */,
 				7B8B6CC324452690001C08D6 /* mojoshader.c in Sources */,
 				7B8B6CC524452690001C08D6 /* mojoshader_effects.c in Sources */,
-				02FD60902A7B227300E1D7A5 /* FNA3D_CommandBuffer.c in Sources */,
-				7BF94B9E275C044E00050413 /* mojoshader_vulkan.c in Sources */,
 				7BF820712445254300736AB0 /* FNA3D.c in Sources */,
 				7B8B6CBF24452690001C08D6 /* mojoshader_common.c in Sources */,
 				7BF8207D2445254300736AB0 /* FNA3D_PipelineCache.c in Sources */,
@@ -523,18 +493,14 @@
 			files = (
 				7BC01C0C2B4348F300941563 /* mojoshader_effects.c in Sources */,
 				7BC01C0B2B4348F300941563 /* mojoshader_profile_common.c in Sources */,
-				7BC01C0E2B4348F700941563 /* FNA3D_CommandBuffer.c in Sources */,
 				7BC01C112B4348F700941563 /* FNA3D.c in Sources */,
 				7BC01C0F2B4348F700941563 /* FNA3D_Image.c in Sources */,
-				7BC01C122B4348F700941563 /* FNA3D_Memory.c in Sources */,
 				7BC01C042B4348CD00941563 /* mojoshader_opengl.c in Sources */,
 				7BC01C082B4348F300941563 /* mojoshader.c in Sources */,
-				7BC01C0D2B4348F700941563 /* FNA3D_Driver_Vulkan.c in Sources */,
 				7BC01C142B43490100941563 /* FNA3D_Driver_OpenGL.c in Sources */,
 				7BC01C102B4348F700941563 /* FNA3D_PipelineCache.c in Sources */,
 				7BC01C062B4348ED00941563 /* mojoshader_profile_glsl.c in Sources */,
 				7BC01C072B4348F300941563 /* mojoshader_profile_spirv.c in Sources */,
-				7BC01C0A2B4348F300941563 /* mojoshader_vulkan.c in Sources */,
 				7BC01C092B4348F300941563 /* mojoshader_common.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -584,7 +550,6 @@
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_OPTIMIZATION_LEVEL = 0;
 				GCC_PREPROCESSOR_DEFINITIONS = (
-					FNA3D_DRIVER_VULKAN,
 					MOJOSHADER_NO_VERSION_INCLUDE,
 					MOJOSHADER_USE_SDL_STDLIB,
 					MOJOSHADER_EFFECT_SUPPORT,
@@ -610,7 +575,6 @@
 				HEADER_SEARCH_PATHS = (
 					../../SDL2/include,
 					../mojoshader/,
-					"../Vulkan-Headers/include",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
 				MACOSX_DEPLOYMENT_TARGET = 10.9;
@@ -661,7 +625,6 @@
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_PREPROCESSOR_DEFINITIONS = (
-					FNA3D_DRIVER_VULKAN,
 					MOJOSHADER_NO_VERSION_INCLUDE,
 					MOJOSHADER_USE_SDL_STDLIB,
 					MOJOSHADER_EFFECT_SUPPORT,
@@ -687,7 +650,6 @@
 				HEADER_SEARCH_PATHS = (
 					../../SDL2/include,
 					../mojoshader/,
-					"../Vulkan-Headers/include",
 				);
 				IPHONEOS_DEPLOYMENT_TARGET = 11.0;
 				MACOSX_DEPLOYMENT_TARGET = 10.9;
