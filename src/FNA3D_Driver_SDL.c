@@ -113,7 +113,9 @@ static SDL_GPUTextureFormat XNAToSDL_SurfaceFormat[] =
 	SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM_SRGB,	/* SurfaceFormat.ColorSrgbEXT */
 	SDL_GPU_TEXTUREFORMAT_BC3_RGBA_UNORM_SRGB,	/* SurfaceFormat.Dxt5SrgbEXT */
 	SDL_GPU_TEXTUREFORMAT_BC7_RGBA_UNORM,		/* SurfaceFormat.Bc7EXT */
-	SDL_GPU_TEXTUREFORMAT_BC7_RGBA_UNORM_SRGB	/* SurfaceFormat.Bc7SrgbEXT */
+	SDL_GPU_TEXTUREFORMAT_BC7_RGBA_UNORM_SRGB,	/* SurfaceFormat.Bc7SrgbEXT */
+	SDL_GPU_TEXTUREFORMAT_R8_UNORM,			/* SurfaceFormat.NormalizedByteEXT */
+	SDL_GPU_TEXTUREFORMAT_R16_UNORM,		/* SurfaceFormat.NormalizedUShortEXT */
 };
 
 static SDL_GPUPrimitiveType XNAToSDL_PrimitiveType[] =

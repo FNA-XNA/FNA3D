@@ -356,6 +356,8 @@ static int32_t XNAToGL_TextureFormat[] =
 	GL_COMPRESSED_TEXTURE_FORMATS,	/* SurfaceFormat.Dxt5SrgbEXT */
 	GL_COMPRESSED_TEXTURE_FORMATS,	/* SurfaceFormat.Bc7EXT */
 	GL_COMPRESSED_TEXTURE_FORMATS,	/* SurfaceFormat.Bc7SrgbEXT */
+	GL_RED,				/* SurfaceFormat.NormalizedByteEXT */
+	GL_RED,				/* SurfaceFormat.NormalizedUShortEXT */
 };
 
 static int32_t XNAToGL_TextureInternalFormat[] =
@@ -385,6 +387,8 @@ static int32_t XNAToGL_TextureInternalFormat[] =
 	GL_COMPRESSED_SRGB_ALPHA_S3TC_DXT5_EXT,	/* SurfaceFormat.Dxt5SrgbEXT */
 	GL_COMPRESSED_RGBA_BPTC_UNORM_EXT,	/* SurfaceFormat.BC7EXT */
 	GL_COMPRESSED_SRGB_ALPHA_BPTC_UNORM_EXT,/* SurfaceFormat.BC7SrgbEXT */
+	GL_R8,				/* SurfaceFormat.NormalizedByteEXT */
+	GL_R16,				/* SurfaceFormat.NormalizedUShortEXT */
 };
 
 static int32_t XNAToGL_TextureDataType[] =
@@ -414,6 +418,8 @@ static int32_t XNAToGL_TextureDataType[] =
 	GL_ZERO,			/* NOPE */
 	GL_ZERO,			/* NOPE */
 	GL_ZERO,			/* NOPE */
+	GL_UNSIGNED_BYTE,		/* SurfaceFormat.NormalizedByteEXT */
+	GL_UNSIGNED_SHORT,		/* SurfaceFormat.NormalizedUShortEXT */
 };
 
 static int32_t XNAToGL_BlendMode[] =

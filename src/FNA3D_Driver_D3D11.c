@@ -331,6 +331,8 @@ static DXGI_FORMAT XNAToD3D_TextureFormat[] =
 	DXGI_FORMAT_BC3_UNORM_SRGB,	/* SurfaceFormat.Dxt5SrgbEXT */
 	DXGI_FORMAT_BC7_UNORM, /* SurfaceFormat.BC7EXT */
 	DXGI_FORMAT_BC7_UNORM_SRGB,	/* SurfaceFormat.BC7SrgbEXT */
+	DXGI_FORMAT_R8_UNORM,		/* SurfaceFormat.NormalizedByteEXT */
+	DXGI_FORMAT_R16_UNORM,		/* SurfaceFormat.NormalizedUShortEXT */
 };
 
 static DXGI_FORMAT XNAToD3D_DepthFormat[] =
