@@ -1375,7 +1375,9 @@ static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
 		{
 			element = vertexDeclaration.elements[j];
 			usage = element.vertexElementUsage;
+			SDL_assert(usage < MOJOSHADER_USAGE_TOTAL);
 			index = element.usageIndex;
+			SDL_assert(index < sizeof(attrUse[usage]));
 
 			if (attrUse[usage][index])
 			{
@@ -1834,7 +1836,9 @@ static void SDLGPU_VerifyVertexSampler(
 
 		if (vertShader)
 		{
-			samplerType = MOJOSHADER_sdlGetShaderParseData(vertShader)->samplers[index].type;
+			MOJOSHADER_parseData *parseData = MOJOSHADER_sdlGetShaderParseData(vertShader);
+			SDL_assert(parseData);
+			samplerType = parseData->samplers[index].type;
 
 			if (samplerType == MOJOSHADER_SAMPLER_2D)
 			{
@@ -1896,7 +1900,9 @@ static void SDLGPU_VerifySampler(
 
 		if (fragShader)
 		{
-			samplerType = MOJOSHADER_sdlGetShaderParseData(fragShader)->samplers[index].type;
+			MOJOSHADER_parseData* parseData = MOJOSHADER_sdlGetShaderParseData(fragShader);
+			SDL_assert(parseData);
+			samplerType = parseData->samplers[index].type;
 			if (samplerType == MOJOSHADER_SAMPLER_2D)
 			{
 				renderer->fragmentTextureSamplerBindings[index].texture = renderer->dummyTexture2D;
@@ -2640,7 +2646,7 @@ static void SDLGPU_ResetBackbuffer(
 	{
 		if (presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_RGBA1010102)
 		{
-			swapchainComposition = SDL_GPU_SWAPCHAINCOMPOSITION_HDR10_ST2048;
+			swapchainComposition = SDL_GPU_SWAPCHAINCOMPOSITION_HDR10_ST2084;
 		}
 		else if (	presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_HALFVECTOR4 ||
 				presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_HDRBLENDABLE	)
@@ -4035,17 +4041,35 @@ static void SDLGPU_GetSysRenderer(
 	FNA3D_Renderer *driverData,
 	FNA3D_SysRendererEXT *sysrenderer
 ) {
-	/* TODO */
+	SDLGPU_Renderer* renderer = (SDLGPU_Renderer*)driverData;
+
 	SDL_memset(sysrenderer, '\0', sizeof(FNA3D_SysRendererEXT));
 	sysrenderer->rendererType = FNA3D_RENDERER_TYPE_SDL_GPU_EXT;
+	sysrenderer->renderer.sdl.device = renderer->device;
+	// FIXME: Expose other necessary pointers. -kg
 }
 
 static FNA3D_Texture* SDLGPU_CreateSysTexture(
 	FNA3D_Renderer *driverData,
 	FNA3D_SysTextureEXT *systexture
 ) {
-	/* TODO */
-	return NULL;
+	SDLGPU_TextureHandle* result;
+
+	if (systexture->rendererType != FNA3D_RENDERER_TYPE_SDL_GPU_EXT)
+	{
+		return NULL;
+	}
+
+	result = (SDLGPU_TextureHandle*)SDL_malloc(sizeof(SDLGPU_TextureHandle));
+	SDL_zerop(result);
+
+	SDL_assert(systexture->texture.sdl.texture);
+	result->texture = systexture->texture.sdl.texture;
+	SDL_assert(systexture->texture.sdl.createInfo);
+	result->createInfo = *(SDL_GPUTextureCreateInfo *)systexture->texture.sdl.createInfo;
+	result->boundAsRenderTarget = 0;
+
+	return (FNA3D_Texture*)result;
 }
 
 /* Destroy */
@@ -4060,8 +4084,10 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 
 	SDLGPU_INTERNAL_FlushCommands(renderer);
 	// avoid command buffer leaks by explicitly canceling newly-acquired command buffers
+	/*
 	SDL_CancelGPUCommandBuffer(renderer->uploadCommandBuffer);
 	SDL_CancelGPUCommandBuffer(renderer->renderCommandBuffer);
+	*/
 	SDL_WaitForGPUIdle(renderer->device);
 
 	SDL_UnlockMutex(renderer->copyPassMutex);
@@ -4221,7 +4247,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	{
 		if (presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_RGBA1010102)
 		{
-			swapchainComposition = SDL_GPU_SWAPCHAINCOMPOSITION_HDR10_ST2048;
+			swapchainComposition = SDL_GPU_SWAPCHAINCOMPOSITION_HDR10_ST2084;
 		}
 		else if (	presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_HALFVECTOR4 ||
 				presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_HDRBLENDABLE	)
