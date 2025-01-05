@@ -5538,7 +5538,9 @@ static FNA3D_Device* D3D11_CreateDevice(
 		IDXGIFactory6_EnumAdapterByGpuPreference(
 			(IDXGIFactory6*) factory6,
 			0,
-			DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
+			SDL_GetHintBoolean("FNA3D_PREFER_LOW_POWER", SDL_FALSE) ?
+				DXGI_GPU_PREFERENCE_MINIMUM_POWER :
+				DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE,
 			&D3D_IID_IDXGIAdapter1,
 			(void**) &renderer->adapter
 		);

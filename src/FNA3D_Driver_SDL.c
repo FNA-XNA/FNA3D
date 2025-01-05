@@ -4173,6 +4173,8 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	uint8_t debugMode
 ) {
 	SDLGPU_Renderer *renderer;
+	SDL_PropertiesID props;
+	SDL_GPUShaderFormat formats;
 	SDL_GPUDevice *device;
 	SDL_GPUSwapchainComposition swapchainComposition;
 	SDL_GPUTextureCreateInfo textureCreateInfo;
@@ -4187,11 +4189,17 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 		SDL_LOG_CATEGORY_GPU,
 		debugMode ? SDL_LOG_PRIORITY_DEBUG : SDL_LOG_PRIORITY_INFO);
 
-	device = SDL_CreateGPUDevice(
-		MOJOSHADER_sdlGetShaderFormats(),
-		debugMode,
-		NULL
-	);
+
+	formats = MOJOSHADER_sdlGetShaderFormats();
+	props = SDL_CreateProperties();
+	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, debugMode);
+	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_PREFERLOWPOWER_BOOLEAN, SDL_GetHintBoolean("FNA3D_PREFER_LOW_POWER", false));
+	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_PRIVATE_BOOLEAN, !!(formats & SDL_GPU_SHADERFORMAT_PRIVATE));
+	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, !!(formats & SDL_GPU_SHADERFORMAT_SPIRV));
+	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_DXIL_BOOLEAN, !!(formats & SDL_GPU_SHADERFORMAT_DXIL));
+	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_MSL_BOOLEAN, !!(formats & SDL_GPU_SHADERFORMAT_MSL));
+	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_METALLIB_BOOLEAN, !!(formats & SDL_GPU_SHADERFORMAT_METALLIB));
+	device = SDL_CreateGPUDeviceWithProperties(props);
 
 	if (device == NULL)
 	{
