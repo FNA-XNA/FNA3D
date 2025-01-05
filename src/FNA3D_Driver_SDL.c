@@ -664,10 +664,6 @@ static inline SDL_GPUTextureFormat XNAToSDL_DepthFormat(
 	}
 }
 
-/* Statics */
-
-static FNA3D_PresentationParameters requestedPresentationParameters;
-
 /* Submission / Presentation */
 
 static void SDLGPU_INTERNAL_BeginCopyPass(
@@ -4191,7 +4187,6 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 		SDL_LOG_CATEGORY_GPU,
 		debugMode ? SDL_LOG_PRIORITY_DEBUG : SDL_LOG_PRIORITY_INFO);
 
-	requestedPresentationParameters = *presentationParameters;
 	device = SDL_CreateGPUDevice(
 		MOJOSHADER_sdlGetShaderFormats(),
 		debugMode,
