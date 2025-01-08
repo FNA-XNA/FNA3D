@@ -2636,7 +2636,7 @@ static void SDLGPU_ResetBackbuffer(
 	{
 		if (presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_RGBA1010102)
 		{
-			swapchainComposition = SDL_GPU_SWAPCHAINCOMPOSITION_HDR10_ST2048;
+			swapchainComposition = SDL_GPU_SWAPCHAINCOMPOSITION_HDR10_ST2084;
 		}
 		else if (	presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_HALFVECTOR4 ||
 				presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_HDRBLENDABLE	)
@@ -4224,7 +4224,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	{
 		if (presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_RGBA1010102)
 		{
-			swapchainComposition = SDL_GPU_SWAPCHAINCOMPOSITION_HDR10_ST2048;
+			swapchainComposition = SDL_GPU_SWAPCHAINCOMPOSITION_HDR10_ST2084;
 		}
 		else if (	presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_HALFVECTOR4 ||
 				presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_HDRBLENDABLE	)
