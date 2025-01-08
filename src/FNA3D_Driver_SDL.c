@@ -4043,10 +4043,8 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 
 	SDLGPU_INTERNAL_FlushCommands(renderer);
 	// avoid command buffer leaks by explicitly canceling newly-acquired command buffers
-	/*
 	SDL_CancelGPUCommandBuffer(renderer->uploadCommandBuffer);
 	SDL_CancelGPUCommandBuffer(renderer->renderCommandBuffer);
-	*/
 	SDL_WaitForGPUIdle(renderer->device);
 
 	SDL_UnlockMutex(renderer->copyPassMutex);
