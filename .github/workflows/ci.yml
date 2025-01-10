@@ -243,7 +243,7 @@ jobs:
       with:
         submodules: true
     - name: Build
-      uses: cross-platform-actions/action@v0.24.0
+      uses: cross-platform-actions/action@v0.26.0
       with:
         operating_system: freebsd
         version: '14.2'
