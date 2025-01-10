@@ -145,15 +145,40 @@ uint32_t FNA3D_PrepareWindowAttributes(void)
 	uint32_t result = 0;
 	uint32_t i;
 	const char *hint = SDL_GetHint("FNA3D_FORCE_DRIVER");
+	const char *gpuhint;
 
 	/* We used to have our own Vulkan renderer, but that work is now in SDL
 	 * instead. For maximum compatibility, alias this to SDL_GPU!
+	 *
+	 * And hey, since we're here, let's do this for D3D12/Metal too.
 	 * -flibit
 	 */
 #ifdef USE_SDL3
-	if ((hint != NULL) && (SDL_strcasecmp(hint, "Vulkan") == 0))
+	if (hint != NULL)
 	{
-		hint = "SDLGPU";
+		gpuhint = NULL;
+		if (SDL_strcasecmp(hint, "Vulkan") == 0)
+		{
+			gpuhint = "vulkan";
+		}
+		else if (SDL_strcasecmp(hint, "D3D12") == 0)
+		{
+			gpuhint = "direct3d12";
+		}
+		else if (SDL_strcasecmp(hint, "Metal") == 0)
+		{
+			gpuhint = "metal";
+		}
+
+		if (gpuhint != NULL)
+		{
+			hint = "SDLGPU";
+			SDL_SetHintWithPriority(
+				SDL_HINT_GPU_DRIVER,
+				gpuhint,
+				SDL_HINT_OVERRIDE
+			);
+		}
 	}
 #endif
 
