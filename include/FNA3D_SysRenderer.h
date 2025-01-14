@@ -86,6 +86,20 @@ typedef struct FNA3D_SysRendererEXT
 			uint32_t queueFamilyIndex;
 		} vulkan;
 #endif /* FNA3D_DRIVER_VULKAN */
+#if FNA3D_DRIVER_SDL
+		struct
+		{
+			// FIXME: This definition is incomplete! -kg
+			SDL_GPUDevice *device;
+			// Reserved pointers to create space for things we need to expose later, for compatibility
+			void *reserved1,
+				*reserved2,
+				*reserved3,
+				*reserved4,
+				*reserved5,
+				*reserved6;
+		} sdl;
+#endif
 		uint8_t filler[64];
 	} renderer;
 } FNA3D_SysRendererEXT;
@@ -131,6 +145,13 @@ typedef struct FNA3D_SysTextureEXT
 			FNA3D_VULKAN_HANDLE_TYPE view;	/* VkImageView */
 		} vulkan;
 #endif /* FNA3D_DRIVER_VULKAN */
+#if FNA3D_DRIVER_SDL
+		struct
+		{
+			void /* SDL_GPUTexture */ *texture;
+			void /* SDL_GPUTextureCreateInfo */ *createInfo;
+		} sdl;
+#endif
 		uint8_t filler[64];
 	} texture;
 } FNA3D_SysTextureEXT;
