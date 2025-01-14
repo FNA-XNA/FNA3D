@@ -4017,6 +4017,9 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 	// Completely flush command buffers and stall
 	SDL_LockMutex(renderer->copyPassMutex);
 
+	/* Ignore any pending render passes, they're getting canceled anyway */
+	renderer->needNewRenderPass = 0;
+
 	SDLGPU_INTERNAL_FlushCommands(renderer);
 	// avoid command buffer leaks by explicitly canceling newly-acquired command buffers
 	SDL_CancelGPUCommandBuffer(renderer->uploadCommandBuffer);
