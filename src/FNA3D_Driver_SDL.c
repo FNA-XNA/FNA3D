@@ -1319,7 +1319,7 @@ static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
 	FNA3D_VertexDeclaration vertexDeclaration;
 	FNA3D_VertexElement element;
 	FNA3D_VertexElementUsage usage;
-	MOJOSHADER_sdlVertexAttribute mojoshaderVertexAttributes[16];
+	MOJOSHADER_vertexAttribute mojoshaderVertexAttributes[16];
 	int32_t index, attribLoc;
 
 	MOJOSHADER_sdlGetBoundShaderData(renderer->mojoshaderContext, &vertexShader, &blah);
@@ -1377,7 +1377,7 @@ static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
 			attributes[attributeDescriptionCounter].buffer_slot = i;
 
 			mojoshaderVertexAttributes[attributeDescriptionCounter].usage = VertexAttribUsage(element.vertexElementUsage);
-			mojoshaderVertexAttributes[attributeDescriptionCounter].vertexElementFormat = element.vertexElementFormat;
+			mojoshaderVertexAttributes[attributeDescriptionCounter].vertexElementFormat = (MOJOSHADER_vertexElementFormat) element.vertexElementFormat; /* FNA3D/MojoShader use the same enum values */
 			mojoshaderVertexAttributes[attributeDescriptionCounter].usageIndex = index;
 
 			attributeDescriptionCounter += 1;
