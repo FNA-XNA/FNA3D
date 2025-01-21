@@ -1110,7 +1110,14 @@ static void SDLGPU_SwapBuffers(
 	/* Reset bound RT state */
 	for (i = 0; i < renderer->boundRenderTargetCount; i += 1)
 	{
-		renderer->boundRenderTargets[i]->boundAsRenderTarget = 0;
+		/* This can be null if the texture was released after a render
+		 * pass was completed - this typically happens when resizing the
+		 * swapchain.
+		 */
+		if (renderer->boundRenderTargets[i] != NULL)
+		{
+			renderer->boundRenderTargets[i]->boundAsRenderTarget = 0;
+		}
 	}
 	renderer->boundRenderTargetCount = 0;
 
@@ -2430,39 +2437,55 @@ static void SDLGPU_DrawPrimitives(
 
 /* Backbuffer Functions */
 
+static void SDLGPU_INTERNAL_FreeTextureHandle(
+	SDLGPU_Renderer *renderer,
+	SDLGPU_TextureHandle *handle
+) {
+	uint32_t i;
+	if (handle->boundAsRenderTarget)
+	{
+		for (i = 0; i < renderer->boundRenderTargetCount; i += 1)
+		{
+			if (renderer->boundRenderTargets[i] == handle)
+			{
+				renderer->boundRenderTargets[i] = NULL;
+				break;
+			}
+		}
+	}
+	SDL_ReleaseGPUTexture(
+		renderer->device,
+		handle->texture
+	);
+	SDL_free(handle);
+}
+
 static void SDLGPU_INTERNAL_DestroyFauxBackbuffer(
 	SDLGPU_Renderer *renderer
 ) {
 	if (renderer->fauxBackbufferColorRenderbuffer != NULL)
 	{
-		SDL_ReleaseGPUTexture(
-			renderer->device,
-			renderer->fauxBackbufferColorRenderbuffer->texture
+		SDLGPU_INTERNAL_FreeTextureHandle(
+			renderer,
+			renderer->fauxBackbufferColorRenderbuffer
 		);
-
-		SDL_free(renderer->fauxBackbufferColorRenderbuffer);
+		renderer->fauxBackbufferColorRenderbuffer = NULL;
 	}
 
-	SDL_ReleaseGPUTexture(
-		renderer->device,
-		renderer->fauxBackbufferColorTexture->texture
+	SDLGPU_INTERNAL_FreeTextureHandle(
+		renderer,
+		renderer->fauxBackbufferColorTexture
 	);
-
-	SDL_free(renderer->fauxBackbufferColorTexture);
+	renderer->fauxBackbufferColorTexture = NULL;
 
 	if (renderer->fauxBackbufferDepthStencil != NULL)
 	{
-		SDL_ReleaseGPUTexture(
-			renderer->device,
-			renderer->fauxBackbufferDepthStencil->texture
+		SDLGPU_INTERNAL_FreeTextureHandle(
+			renderer,
+			renderer->fauxBackbufferDepthStencil
 		);
-
-		SDL_free(renderer->fauxBackbufferDepthStencil);
+		renderer->fauxBackbufferDepthStencil = NULL;
 	}
-
-	renderer->fauxBackbufferColorRenderbuffer = NULL;
-	renderer->fauxBackbufferColorTexture = NULL;
-	renderer->fauxBackbufferDepthStencil = NULL;
 }
 
 static SDLGPU_TextureHandle* SDLGPU_INTERNAL_CreateTextureWithHandle(
@@ -2840,12 +2863,7 @@ static void SDLGPU_AddDisposeTexture(
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
 	SDLGPU_TextureHandle *textureHandle = (SDLGPU_TextureHandle*) texture;
 
-	SDL_ReleaseGPUTexture(
-		renderer->device,
-		textureHandle->texture
-	);
-
-	SDL_free(textureHandle);
+	SDLGPU_INTERNAL_FreeTextureHandle(renderer, textureHandle);
 }
 
 static void SDLGPU_AddDisposeRenderbuffer(
@@ -2855,12 +2873,8 @@ static void SDLGPU_AddDisposeRenderbuffer(
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
 	SDLGPU_Renderbuffer *renderbufferHandle = (SDLGPU_Renderbuffer*) renderbuffer;
 
-	SDL_ReleaseGPUTexture(
-		renderer->device,
-		renderbufferHandle->textureHandle->texture
-	);
+	SDLGPU_INTERNAL_FreeTextureHandle(renderer, renderbufferHandle->textureHandle);
 
-	SDL_free(renderbufferHandle->textureHandle);
 	SDL_free(renderbufferHandle);
 }
 
