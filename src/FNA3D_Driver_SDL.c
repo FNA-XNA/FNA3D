@@ -1551,9 +1551,6 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 		colorAttachmentDescriptions[0].blend_state.alpha_blend_op = XNAToSDL_BlendOp[
 			renderer->fnaBlendState.alphaBlendFunction
 		];
-
-		/* FIXME: Can this be disabled when mask is R|G|B|A? -flibit */
-		colorAttachmentDescriptions[0].blend_state.enable_color_write_mask = true;
 	}
 	else
 	{
@@ -1577,6 +1574,12 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 		renderer->fnaBlendState.colorWriteEnable2;
 	colorAttachmentDescriptions[3].blend_state.color_write_mask =
 		renderer->fnaBlendState.colorWriteEnable3;
+
+	/* FIXME: Can this be disabled when mask is R|G|B|A? -flibit */
+	colorAttachmentDescriptions[0].blend_state.enable_color_write_mask = true;
+	colorAttachmentDescriptions[1].blend_state.enable_color_write_mask = true;
+	colorAttachmentDescriptions[2].blend_state.enable_color_write_mask = true;
+	colorAttachmentDescriptions[3].blend_state.enable_color_write_mask = true;
 
 	colorAttachmentDescriptions[0].format = hash.colorFormats[0];
 	colorAttachmentDescriptions[1].format = hash.colorFormats[1];
