@@ -140,9 +140,8 @@ if(TRACING_SUPPORT)
 endif()
 if(BUILD_SDL3)
 	add_executable(fna3d_dumpspirv dumpspirv/dumpspirv.c)
-	target_link_libraries(fna3d_dumpspirv mojoshader)
+	target_link_libraries(fna3d_dumpspirv FNA3D)
 	target_include_directories(fna3d_dumpspirv PUBLIC
-		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 		$<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/MojoShader>
 	)
 endif()
