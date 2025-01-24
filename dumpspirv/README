@@ -15,11 +15,10 @@ the IR are generated.
 For example, D3D9 bytecode generally assumes that all input types are floats,
 while modern APIs are more specific about vertex types, meaning the renderer
 needs SPIR-V that properly reads the input and converts to float for the rest
-of the shader asm to work work. Additionally, vertex shader output and pixel
-shader output needs to be linked properly, so we're effectively generating fully
-linked shader program IR that can be directly compiled without further
-modification, while retaining compatibility with a typical D3D9 graphics call
-stream.
+of the shader asm to work. Additionally, vertex shader output and pixel shader
+output needs to be linked properly, so we're effectively generating fully linked
+shader program IR that can be directly compiled without further modification,
+while retaining compatibility with a typical D3D9 graphics call stream.
 
 How to Use
 ----------
