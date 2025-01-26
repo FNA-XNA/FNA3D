@@ -25,8 +25,59 @@
  */
 
 #include <SDL3/SDL.h>
-#include <mojoshader.h>
+#define __MOJOSHADER_INTERNAL__ 1
+#include <mojoshader_internal.h>
 #include <FNA3D.h>
+
+static uint8_t compileFromFXB(const char *filename, const char *folder, SDL_IOStream *ops);
+static uint8_t compileFromTrace(const char *filename, const char *folder, SDL_IOStream *ops);
+
+int main(int argc, char** argv)
+{
+	int arg;
+	char *folder;
+	unsigned char buf[4];
+	SDL_IOStream *ops;
+
+	for (arg = 1; arg < argc; arg += 1)
+	{
+		ops = SDL_IOFromFile(argv[arg], "rb");
+		if (ops == NULL)
+		{
+			SDL_Log("%s not found, ignoring", argv[arg]);
+			continue;
+		}
+		if (SDL_ReadIO(ops, buf, sizeof(buf)) < sizeof(buf))
+		{
+			SDL_Log("%s is too small, ignoring", argv[arg]);
+			SDL_CloseIO(ops);
+			continue;
+		}
+		SDL_SeekIO(ops, 0, SDL_IO_SEEK_SET);
+
+		SDL_asprintf(&folder, "%s.spirv", argv[arg]);
+		SDL_CreateDirectory(folder);
+
+		if (	((buf[0] == 0x01) && (buf[1] == 0x09) && (buf[2] == 0xFF) && (buf[3] == 0xFE)) ||
+			((buf[0] == 0xCF) && (buf[1] == 0x0B) && (buf[2] == 0xF0) && (buf[3] == 0xBC))	)
+		{
+			compileFromFXB(argv[arg], folder, ops);
+		}
+		else
+		{
+			compileFromTrace(argv[arg], folder, ops);
+		}
+
+		SDL_free(folder);
+		SDL_CloseIO(ops);
+	}
+
+	return 0;
+}
+
+/*
+ * MojoShader Effects Implementation
+ */
 
 #define MAX_REG_FILE_F 8192
 #define MAX_REG_FILE_I 2047
@@ -151,20 +202,105 @@ static const char* MOJOSHADERCALL getError(const void *ctx)
 	return "";
 }
 
-static uint8_t compileFromTrace(const char *filename);
+/*
+ * FXB Compiler
+ */
 
-int main(int argc, char** argv)
+static uint8_t compileFromFXB(const char *filename, const char *folder, SDL_IOStream *ops)
 {
-	if (argc < 2)
+	MOJOSHADER_effect *effect;
+	TraceShader *shader;
+	SDL_PathInfo shaderPathInfo;
+	SDL_IOStream *shaderFile;
+	uint32_t shaderCrc;
+	char *shaderPath;
+	int64_t size;
+	void *fxb;
+	int i;
+
+	TraceContext traceCtx;
+	const MOJOSHADER_effectShaderContext ctx =
 	{
-		return 1;
+		compileShader,
+		addRef,
+		deleteShader,
+		getParseData,
+		bindShaders,
+		getBoundShaders,
+		mapUniformBufferMemory,
+		unmapUniformBufferMemory,
+		getError,
+		&traceCtx, /* shaderContext */
+		NULL, /* m */
+		NULL, /* f */
+		NULL /* malloc_data */
+	};
+
+	size = SDL_GetIOSize(ops);
+	fxb = SDL_malloc(size);
+	if (fxb == NULL)
+	{
+		return 0;
+	}
+	SDL_ReadIO(ops, fxb, size);
+
+	effect = MOJOSHADER_compileEffect(
+		(const unsigned char*) fxb,
+		size,
+		NULL,
+		0,
+		NULL,
+		0,
+		&ctx
+	);
+	SDL_free(fxb);
+	if (effect == NULL)
+	{
+		SDL_Log("Compiling %s failed", filename);
+		return 0;
 	}
 
-	/* TODO: Add support for individual effects */
-	compileFromTrace(argv[1]);
+	for (i = 0; i < effect->object_count; i += 1)
+	{
+		if (	(effect->objects[i].type != MOJOSHADER_SYMTYPE_VERTEXSHADER) &&
+			(effect->objects[i].type != MOJOSHADER_SYMTYPE_PIXELSHADER)	)
+		{
+			continue;
+		}
+		if (effect->objects[i].shader.is_preshader)
+		{
+			continue;
+		}
 
-	return 0;
+		shader = (TraceShader*) effect->objects[i].shader.shader;
+
+		shaderCrc = SDL_crc32(
+			0,
+			shader->pd->output,
+			shader->pd->output_len - sizeof(SpirvPatchTable)
+		);
+		SDL_asprintf(&shaderPath, "%s/%x.spv", folder, shaderCrc);
+		SDL_GetPathInfo(shaderPath, &shaderPathInfo);
+		if (shaderPathInfo.type == SDL_PATHTYPE_NONE)
+		{
+			SDL_Log("New shader, crc %x\n", shaderCrc);
+			shaderFile = SDL_IOFromFile(shaderPath, "wb");
+			SDL_WriteIO(
+				shaderFile,
+				shader->pd->output,
+				shader->pd->output_len - sizeof(SpirvPatchTable)
+			);
+			SDL_CloseIO(shaderFile);
+		}
+		SDL_free(shaderPath);
+	}
+
+	MOJOSHADER_deleteEffect(effect);
 }
+
+/*
+ * FNA3D Trace Compiler
+ */
 
 /* This is ripped from FNA3D_Driver.h */
 static inline MOJOSHADER_usage VertexAttribUsage(
@@ -265,7 +401,7 @@ static inline MOJOSHADER_usage VertexAttribUsage(
 #define MARK_QUERYPIXELCOUNT			55
 #define MARK_SETSTRINGMARKER			56
 
-static uint8_t compileFromTrace(const char *filename)
+static uint8_t compileFromTrace(const char *filename, const char *folder, SDL_IOStream *ops)
 {
 	#define READ(val) SDL_ReadIO(ops, &val, sizeof(val))
 
@@ -287,7 +423,6 @@ static uint8_t compileFromTrace(const char *filename)
 		NULL /* malloc_data */
 	};
 
-	SDL_IOStream *ops;
 	uint8_t mark, run;
 
 	/* CreateDevice, ResetBackbuffer */
@@ -434,7 +569,6 @@ static uint8_t compileFromTrace(const char *filename)
 		}
 
 	/* Compiler objects */
-	char *folder;
 	int numElements;
 	int curElement;
 	MOJOSHADER_vertexAttribute *vtxDecl;
@@ -449,20 +583,11 @@ static uint8_t compileFromTrace(const char *filename)
 	uint32_t numPasses;
 	MOJOSHADER_effectStateChanges stateChanges;
 
-	/* Check for the trace file */
-	ops = SDL_IOFromFile(filename, "rb");
-	if (ops == NULL)
-	{
-		SDL_Log("%s not found!", filename);
-		return 0;
-	}
-
 	/* Beginning of the file should be a CreateDevice call */
 	READ(mark);
 	if (mark != MARK_CREATEDEVICE)
 	{
 		SDL_Log("%s is a bad trace!", filename);
-		SDL_CloseIO(ops);
 		return 0;
 	}
 	READ(presentationParameters.backBufferWidth);
@@ -475,9 +600,6 @@ static uint8_t compileFromTrace(const char *filename)
 	READ(presentationParameters.displayOrientation);
 	READ(presentationParameters.renderTargetUsage);
 	READ(debugMode);
-
-	SDL_asprintf(&folder, "%s.spirv", filename);
-	SDL_CreateDirectory(folder);
 
 	/* Go through all the calls, let vsync do the timing if applicable */
 	run = 1;
@@ -1229,10 +1351,7 @@ static uint8_t compileFromTrace(const char *filename)
 		READ(mark);
 	}
 
-	SDL_free(folder);
-
 	/* Clean up. We out. */
-	SDL_CloseIO(ops);
 	#define FREE_TRACES(type) \
 		if (trace##type##Count > 0) \
 		{ \
