@@ -12,9 +12,6 @@
     <ClCompile Include="..\MojoShader\mojoshader_effects.c">
       <Filter>mojoshader</Filter>
     </ClCompile>
-    <ClCompile Include="..\MojoShader\mojoshader_metal.c">
-      <Filter>mojoshader</Filter>
-    </ClCompile>
     <ClCompile Include="..\MojoShader\mojoshader_opengl.c">
       <Filter>mojoshader</Filter>
     </ClCompile>

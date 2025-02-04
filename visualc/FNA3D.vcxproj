@@ -83,9 +83,6 @@
     <ClCompile Include="..\MojoShader\mojoshader_effects.c">
       <CompileAs>CompileAsCpp</CompileAs>
     </ClCompile>
-    <ClCompile Include="..\MojoShader\mojoshader_metal.c">
-      <CompileAs>CompileAsCpp</CompileAs>
-    </ClCompile>
     <ClCompile Include="..\MojoShader\mojoshader_opengl.c">
       <CompileAs>CompileAsCpp</CompileAs>
     </ClCompile>
