@@ -1096,7 +1096,9 @@ static void SDLGPU_SwapBuffers(
 		blitInfo.clear_color.b = 0;
 		blitInfo.clear_color.a = 0;
 		blitInfo.flip_mode = SDL_FLIP_NONE;
-		blitInfo.filter = SDL_GPU_FILTER_LINEAR;
+		blitInfo.filter = SDL_GetHintBoolean("FNA3D_BACKBUFFER_SCALE_NEAREST", false) ?
+			SDL_GPU_FILTER_NEAREST :
+			SDL_GPU_FILTER_LINEAR;
 		blitInfo.cycle = false;
 
 		SDL_BlitGPUTexture(
