@@ -6,7 +6,7 @@ project(FNA3D C)
 # Options
 option(BUILD_SHARED_LIBS "Build shared library" ON)
 option(TRACING_SUPPORT "Build with tracing enabled" OFF)
-option(BUILD_SDL3 "Build against SDL 3.0" OFF)
+option(BUILD_SDL3 "Build against SDL 3.0" ON)
 option(MOJOSHADER_STATIC_SPIRVCROSS "Build against statically linked spirvcross" OFF)
 
 # Version
