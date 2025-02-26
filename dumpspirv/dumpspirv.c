@@ -815,7 +815,7 @@ static uint8_t compileFromTrace(const char *filename, const char *folder, SDL_IO
 				traceCtx.vertex->pd->output,
 				traceCtx.vertex->pd->output_len - patchLen
 			);
-			SDL_asprintf(&shaderPath, "%s/%x.spv", folder, shaderCrc);
+			SDL_asprintf(&shaderPath, "%s/%x.vert.spv", folder, shaderCrc);
 			SDL_GetPathInfo(shaderPath, &shaderPathInfo);
 			if (shaderPathInfo.type == SDL_PATHTYPE_NONE)
 			{
@@ -835,7 +835,7 @@ static uint8_t compileFromTrace(const char *filename, const char *folder, SDL_IO
 				traceCtx.fragment->pd->output,
 				traceCtx.fragment->pd->output_len - patchLen
 			);
-			SDL_asprintf(&shaderPath, "%s/%x.spv", folder, shaderCrc);
+			SDL_asprintf(&shaderPath, "%s/%x.frag.spv", folder, shaderCrc);
 			SDL_GetPathInfo(shaderPath, &shaderPathInfo);
 			if (shaderPathInfo.type == SDL_PATHTYPE_NONE)
 			{
@@ -1258,10 +1258,10 @@ static uint8_t compileFromTrace(const char *filename, const char *folder, SDL_IO
 			effectData = traceEffectData[i];
 			for (vi = 0; vi < effectData->param_count; vi += 1)
 			{
-				SDL_SeekIO(
+				SDL_ReadIO(
 					ops,
-					effectData->params[vi].value.value_count * 4,
-					SDL_IO_SEEK_CUR
+					effectData->params[vi].value.values,
+					effectData->params[vi].value.value_count * 4
 				);
 			}
 			if (effectData == currentEffect)
