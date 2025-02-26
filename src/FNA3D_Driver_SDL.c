@@ -1527,14 +1527,15 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 	/* Multisample */
 
 	createInfo.multisample_state.sample_count = renderer->nextRenderPassMultisampleCount;
-	createInfo.multisample_state.sample_mask = renderer->multisampleMask;
 	if (renderer->multisampleMask != 0xFFFFFFFF)
 	{
 		createInfo.multisample_state.enable_mask = true;
+		createInfo.multisample_state.sample_mask = renderer->multisampleMask;
 	}
 	else
 	{
 		createInfo.multisample_state.enable_mask = false;
+		createInfo.multisample_state.sample_mask = 0;
 	}
 
 	/* Blend State */
