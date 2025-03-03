@@ -859,11 +859,9 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 				false :
 				true; /* Cycle if we can! */
 
-		if (renderer->shouldClearDepthOnBeginPass || renderer->shouldClearStencilOnBeginPass)
-		{
-			depthStencilAttachmentInfo.clear_depth = renderer->clearDepthValue;
-			depthStencilAttachmentInfo.clear_stencil = renderer->clearStencilValue;
-		}
+		/* FIXME: Do we want to default to 0 when the render pass load op isn't clear? */
+		depthStencilAttachmentInfo.clear_depth = renderer->clearDepthValue;
+		depthStencilAttachmentInfo.clear_stencil = renderer->clearStencilValue;
 
 		SDLGPU_INTERNAL_BindRenderTarget(renderer, renderer->nextRenderPassDepthStencilAttachment);
 	}
