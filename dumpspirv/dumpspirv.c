@@ -39,6 +39,20 @@ int main(int argc, char** argv)
 	unsigned char buf[4];
 	SDL_IOStream *ops;
 
+	if (argc <= 1)
+	{
+		SDL_asprintf(&folder, "%sFNA3D_Trace.bin", SDL_GetBasePath());
+		ops = SDL_IOFromFile(folder, "rb");
+		if (ops == NULL)
+		{
+			SDL_Log("FNA3D_Trace.bin not found");
+			return 1;
+		}
+		compileFromTrace(folder, SDL_GetPrefPath("FNA3D", "DumpSPIRV"), ops);
+		SDL_CloseIO(ops);
+		return 0;
+	}
+
 	for (arg = 1; arg < argc; arg += 1)
 	{
 		ops = SDL_IOFromFile(argv[arg], "rb");
