@@ -145,6 +145,51 @@ jobs:
           name: FNA3D-x64
           path: release-x64/FNA3D.dll
 
+  linux-mingw-tracing:
+    name: Fedora Linux MinGW (Tracing)
+    runs-on: ubuntu-latest
+    container:
+      image: fedora
+    steps:
+      - name: Install toolchain
+        run: |
+          dnf update -y
+          dnf install -y git cmake ninja-build mingw32-gcc mingw64-gcc mingw32-SDL3 mingw64-SDL3
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: CMake configure 32-bit (Release)
+        run: mingw32-cmake -B release-x86 -G Ninja . -DCMAKE_BUILD_TYPE=Release -DTRACING_SUPPORT=ON
+
+      - name: Build 32-bit (Release)
+        run: ninja -C release-x86
+
+      - name: CMake configure 64-bit (Release)
+        run: mingw64-cmake -B release-x64 -G Ninja . -DCMAKE_BUILD_TYPE=Release -DTRACING_SUPPORT=ON
+
+      - name: Build 64-bit (Release)
+        run: ninja -C release-x64
+
+      - name: Archive build result 32-bit
+        uses: actions/upload-artifact@v4
+        with:
+          name: FNA3D-Tracing-x86
+          path: |
+            release-x86/FNA3D.dll
+            release-x86/fna3d_replay.exe
+            release-x86/fna3d_dumpspirv.exe
+
+      - name: Archive build result 64-bit
+        uses: actions/upload-artifact@v4
+        with:
+          name: FNA3D-Tracing-x64
+          path: |
+            release-x64/FNA3D.dll
+            release-x64/fna3d_replay.exe
+            release-x64/fna3d_dumpspirv.exe
+
   macos:
     name: macOS (Universal)
     runs-on: macos-latest
