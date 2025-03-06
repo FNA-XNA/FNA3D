@@ -161,6 +161,7 @@ static uint8_t replay(
 	const char *filename,
 	uint8_t forceDebugMode,
 	VSyncMode vsync,
+	uint8_t fullscreen,
 	uint32_t delayMS
 ) {
 	#define READ(val) SDL_ReadIO(ops, &val, sizeof(val))
@@ -351,6 +352,8 @@ static uint8_t replay(
 	{
 		presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_IMMEDIATE;
 	}
+
+	presentationParameters.isFullScreen |= fullscreen;
 
 	/* Create a window alongside the device */
 	flags = FNA3D_PrepareWindowAttributes();
@@ -777,6 +780,7 @@ static uint8_t replay(
 			{
 				presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_IMMEDIATE;
 			}
+			presentationParameters.isFullScreen |= fullscreen;
 			SDL_SetWindowFullscreen(
 				presentationParameters.deviceWindowHandle,
 				presentationParameters.isFullScreen ?
@@ -1395,8 +1399,8 @@ static uint8_t replay(
 int main(int argc, char **argv)
 {
 	int i;
-	int replayArgIndex = 1;
 	uint8_t forceDebugMode = 0;
+	uint8_t forceFullscreen = 0;
 	VSyncMode vsync = VSYNC_DEFAULT;
 	uint32_t delayMS = 0;
 
@@ -1419,6 +1423,10 @@ int main(int argc, char **argv)
 		{
 			vsync = VSYNC_FORCE_OFF;
 		}
+		else if (SDL_strcmp(argv[i], "-fullscreen") == 0)
+		{
+			forceFullscreen = 1;
+		}
 		else if (SDL_strstr(argv[i], "-delayms=") == argv[i])
 		{
 			delayMS = SDL_atoi(argv[i] + SDL_strlen("-delayms="));
@@ -1440,14 +1448,14 @@ int main(int argc, char **argv)
 #ifndef USE_SDL3
 		SDL_free(rootPath);
 #endif
-		replay(path, forceDebugMode, vsync, delayMS);
+		replay(path, forceDebugMode, vsync, forceFullscreen, delayMS);
 		SDL_free(path);
 	}
 	else
 	{
 		for (; i < argc; i += 1)
 		{
-			if (replay(argv[i], forceDebugMode, vsync, delayMS))
+			if (replay(argv[i], forceDebugMode, vsync, forceFullscreen, delayMS))
 			{
 				break;
 			}
