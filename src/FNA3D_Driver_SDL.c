@@ -2376,6 +2376,11 @@ static void SDLGPU_DrawInstancedPrimitives(
 
 	/* Note that minVertexIndex/numVertices are NOT used! */
 
+	if (!renderer->supportsBaseVertex)
+	{
+		baseVertex = 0;
+	}
+
 	SDLGPU_INTERNAL_BindDeferredState(
 		renderer,
 		primitiveType,
