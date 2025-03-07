@@ -761,9 +761,13 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 	{
 		return;
 	}
-	renderer->needNewRenderPass = 0;
 
+	/* We write to this variable twice to make absolutely sure we don't let End
+	 * cause unnecessary Begins later
+	 */
+	renderer->needNewRenderPass = 0;
 	SDLGPU_INTERNAL_EndRenderPass(renderer);
+	renderer->needNewRenderPass = 0;
 
 	/* Set up the next render pass */
 	for (i = 0; i < renderer->nextRenderPassColorAttachmentCount; i += 1)
