@@ -820,7 +820,7 @@ static uint8_t compileFromTrace(const char *filename, const char *folder, SDL_IO
 				traceCtx.vertex->pd,
 				traceCtx.fragment->pd,
 				vtxDecl,
-				numBindings
+				numElements
 			);
 			SDL_free(vtxDecl);
 
