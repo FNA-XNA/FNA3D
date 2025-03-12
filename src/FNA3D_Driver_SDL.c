@@ -2651,7 +2651,9 @@ static void SDLGPU_ResetBackbuffer(
 		presentationParameters
 	);
 
-	swapchainComposition = SDL_GPU_SWAPCHAINCOMPOSITION_SDR;
+	swapchainComposition = (presentationParameters->backBufferFormat == FNA3D_SURFACEFORMAT_COLORSRGB_EXT)
+		? SDL_GPU_SWAPCHAINCOMPOSITION_SDR_LINEAR
+		: SDL_GPU_SWAPCHAINCOMPOSITION_SDR;
 
 	if (SDL_GetHintBoolean("FNA3D_ENABLE_HDR_COLORSPACE", false))
 	{
