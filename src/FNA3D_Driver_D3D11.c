@@ -2717,6 +2717,8 @@ static void D3D11_INTERNAL_CreateSwapChain(
 				colorSpace = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
 			}
 			IDXGISwapChain3_SetColorSpace1(swapchain3, colorSpace);
+
+			IDXGISwapChain_Release(swapchain);
 		}
 	}
 
