@@ -2602,7 +2602,9 @@ static void D3D11_INTERNAL_CreateSwapChain(
 		swapchainDesc.BufferDesc.Format = XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_COLOR];
 	}
 	else
+	{
 		swapchainDesc.BufferDesc.Format = XNAToD3D_TextureFormat[backBufferFormat];
+	}
 	swapchainDesc.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
 	swapchainDesc.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
 
