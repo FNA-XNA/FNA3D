@@ -1133,13 +1133,22 @@ static void SDLGPU_SwapBuffers(
 #if SDL_PLATFORM_GDK
 static bool SDLCALL SDLGPU_INTERNAL_GDKEventFilter(void* userdata, SDL_Event* event)
 {
+	/* These events are called from a system thread, so we need to try and
+	 * intercept presentation and discard any SwapBuffers calls being made before
+	 * the app could reasonably stop rendering.
+	 */
+	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) userdata;
 	if (event->type == SDL_EVENT_DID_ENTER_BACKGROUND)
 	{
-		SDL_GDKSuspendGPU((SDL_GPUDevice*) userdata);
+		SDL_LockMutex(renderer->copyPassMutex);
+		SDL_GDKSuspendGPU(renderer->device);
+		SDL_UnlockMutex(renderer->copyPassMutex);
 	}
 	else if (event->type == SDL_EVENT_WILL_ENTER_FOREGROUND)
 	{
-		SDL_GDKResumeGPU((SDL_GPUDevice*) userdata);
+		SDL_LockMutex(renderer->copyPassMutex);
+		SDL_GDKResumeGPU(renderer->device);
+		SDL_UnlockMutex(renderer->copyPassMutex);
 	}
 	return true;
 }
@@ -4141,7 +4150,7 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 	MOJOSHADER_sdlDestroyContext(renderer->mojoshaderContext);
 
 #if SDL_PLATFORM_GDK
-	SDL_RemoveEventWatch(SDLGPU_INTERNAL_GDKEventFilter, renderer->device);
+	SDL_RemoveEventWatch(SDLGPU_INTERNAL_GDKEventFilter, renderer);
 #endif
 
 	SDL_DestroyGPUDevice(renderer->device);
@@ -4498,7 +4507,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	}
 
 #if SDL_PLATFORM_GDK
-	SDL_AddEventWatch(SDLGPU_INTERNAL_GDKEventFilter, renderer->device);
+	SDL_AddEventWatch(SDLGPU_INTERNAL_GDKEventFilter, renderer);
 #endif
 
 	return result;
