@@ -4475,6 +4475,8 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 		sizeof(uint32_t)
 	);
 
+	/* FIXME: https://github.com/libsdl-org/SDL/issues/11675 */
+#if !SDL_PLATFORM_XBOXSERIES
 	SDLGPU_INTERNAL_SetTextureData(
 		renderer,
 		renderer->dummyTexture3D,
@@ -4490,6 +4492,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 		&dummyInt,
 		sizeof(uint64_t)
 	);
+#endif
 
 	for (i = 0; i < 6; i += 1)
 	{
