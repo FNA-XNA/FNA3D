@@ -1408,9 +1408,13 @@ static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
 
 		if (renderer->vertexBindings[i].instanceFrequency > 0)
 		{
+			if (renderer->vertexBindings[i].instanceFrequency > 1)
+			{
+				FNA3D_LogError("Vertex instanceFrequency must be either 0 or 1!");
+			}
 			bindings[i].input_rate =
 				SDL_GPU_VERTEXINPUTRATE_INSTANCE;
-			bindings[i].instance_step_rate = renderer->vertexBindings[i].instanceFrequency;
+			bindings[i].instance_step_rate = 0;
 		}
 		else
 		{
