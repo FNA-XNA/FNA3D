@@ -3503,13 +3503,16 @@ static void SDLGPU_INTERNAL_GetTextureData(
 	textureCopyParams.pixels_per_row = 0;
 	textureCopyParams.rows_per_layer = 0;
 
+	/* Flush and stall so the target data is up-to-date */
+	SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
+	
 	SDL_DownloadFromGPUTexture(
 		renderer->copyPass,
 		&region,
 		&textureCopyParams
 	);
 
-	/* Flush and stall so the data is up to date */
+	/* Flush and stall _again_ so the transfer data is up to date */
 	SDLGPU_INTERNAL_FlushUploadCommandsAndStall(renderer);
 
 	/* Copy into data pointer */
