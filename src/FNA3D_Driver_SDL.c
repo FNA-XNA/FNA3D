@@ -301,6 +301,23 @@ static inline bool XNAToSDL_PresentMode(
 	}
 }
 
+static inline SDL_Rect ComputeRectIntersection(int x1, int x2, int y1, int y2, int w1, int w2, int h1, int h2)
+{
+	SDL_Rect newRect;
+	newRect.x = SDL_max(x1, x2);
+	newRect.y = SDL_max(y1, y2);
+	newRect.w = SDL_min(x1 + w1, x2 + w2) - newRect.x;
+	newRect.h = SDL_min(y1 + h1, y2 + h2) - newRect.y;
+	if (newRect.w < 0 || newRect.h < 0) {
+		FNA3D_LogWarn("Scissor rect and viewport appear not to overlap");
+		newRect.x = x1;
+		newRect.y = y1;
+		newRect.w = 0;
+		newRect.h = 0;
+	}
+	return newRect;
+}
+
 /* Indirection to cleanly handle Renderbuffers */
 typedef struct SDLGPU_TextureHandle /* Cast from FNA3D_Texture* */
 {
@@ -891,7 +908,10 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 
 	if (renderer->fnaRasterizerState.scissorTestEnable)
 	{
-		scissorRect = renderer->scissorRect;
+		scissorRect = ComputeRectIntersection(gpuViewport.x, renderer->scissorRect.x,
+			gpuViewport.y, renderer->scissorRect.y,
+			gpuViewport.w, renderer->scissorRect.w,
+			gpuViewport.h, renderer->scissorRect.h);
 	}
 	else
 	{
@@ -2061,10 +2081,10 @@ static void SDLGPU_SetScissorRect(
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
 
-	renderer->scissorRect.x = scissor->x;
-	renderer->scissorRect.y = scissor->y;
-	renderer->scissorRect.w = scissor->w;
-	renderer->scissorRect.h = scissor->h;
+	renderer->scissorRect = ComputeRectIntersection(renderer->viewport.x, scissor->x,
+		renderer->viewport.y, scissor->y,
+		renderer->viewport.w, scissor->w,
+		renderer->viewport.h, scissor->h);
 
 	if (renderer->renderPass != NULL && renderer->fnaRasterizerState.scissorTestEnable)
 	{
@@ -2231,7 +2251,10 @@ static void SDLGPU_ApplyRasterizerState(
 		{
 			if (renderer->fnaRasterizerState.scissorTestEnable)
 			{
-				scissorRect = renderer->scissorRect;
+				scissorRect = ComputeRectIntersection(renderer->viewport.x, renderer->scissorRect.x,
+					renderer->viewport.y, renderer->scissorRect.y,
+					renderer->viewport.w, renderer->scissorRect.w,
+					renderer->viewport.h, renderer->scissorRect.h);
 			}
 			else
 			{
