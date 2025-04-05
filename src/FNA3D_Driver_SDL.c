@@ -1261,7 +1261,7 @@ static void SDLGPU_SetRenderTargets(
 	if (
 		renderer->shouldClearColorOnBeginPass ||
 		renderer->shouldClearDepthOnBeginPass ||
-		renderer->shouldClearDepthOnBeginPass
+		renderer->shouldClearStencilOnBeginPass
 	) {
 		SDLGPU_INTERNAL_BeginRenderPass(renderer);
 	}
