@@ -845,11 +845,6 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 	{
 		depthStencilAttachmentInfo.texture = renderer->nextRenderPassDepthStencilAttachment->texture;
 
-		depthStencilAttachmentInfo.load_op =
-			renderer->shouldClearDepthOnBeginPass ?
-				SDL_GPU_LOADOP_CLEAR :
-				SDL_GPU_LOADOP_DONT_CARE;
-
 		if (renderer->shouldClearDepthOnBeginPass)
 		{
 			depthStencilAttachmentInfo.load_op = SDL_GPU_LOADOP_CLEAR;
