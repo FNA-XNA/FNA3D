@@ -232,3 +232,75 @@ else()
 		endif()
 	endif()
 endif()
+
+# define install directories
+# on mingw-w64 cross compilation $CMAKE_INSTALL_LIBDIR is set to an absolute
+# path. Work around that by hard coding the directories on windows
+if(WIN32)
+	set(FNA3D_INSTALL_INCLUDEDIR include)
+	set(FNA3D_INSTALL_BINDIR bin)
+	set(FNA3D_INSTALL_LIBDIR lib)
+else()
+	include(GNUInstallDirs)
+	set(FNA3D_INSTALL_INCLUDEDIR ${CMAKE_INSTALL_INCLUDEDIR})
+	set(FNA3D_INSTALL_BINDIR ${CMAKE_INSTALL_BINDIR})
+	set(FNA3D_INSTALL_LIBDIR ${CMAKE_INSTALL_LIBDIR})
+endif()
+
+# Installation
+
+# Public Headers...
+install(
+	DIRECTORY include/
+	DESTINATION ${FNA3D_INSTALL_INCLUDEDIR}
+)
+# Libraries...
+install(
+	TARGETS ${PROJECT_NAME}
+	EXPORT ${PROJECT_NAME}-targets
+	INCLUDES DESTINATION ${FNA3D_INSTALL_INCLUDEDIR}
+	RUNTIME DESTINATION ${FNA3D_INSTALL_BINDIR}
+	LIBRARY DESTINATION ${FNA3D_INSTALL_LIBDIR}
+	ARCHIVE DESTINATION ${FNA3D_INSTALL_LIBDIR}
+)
+
+# Generate a pkgconfig file
+include(cmake/JoinPaths.cmake)
+join_paths(FNA3D_PKGCONF_LIBDIR "\${prefix}" "${CMAKE_INSTALL_LIBDIR}")
+join_paths(FNA3D_PKGCONF_INCLUDEDIR "\${prefix}" "${CMAKE_INSTALL_INCLUDEDIR}")
+
+if(NOT PLATFORM_WIN32)
+	if(BUILD_SDL3)
+		set(PC_REQUIRES_PRIVATE "Requires.private: sdl3")
+	else()
+		set(PC_REQUIRES_PRIVATE "Requires.private: sdl2")
+	endif()
+endif()
+
+configure_file(
+	"${PROJECT_SOURCE_DIR}/cmake/${PROJECT_NAME}.pc.in"
+	${PROJECT_BINARY_DIR}/generated/${PROJECT_NAME}.pc
+	@ONLY
+)
+install(
+	FILES ${CMAKE_CURRENT_BINARY_DIR}/generated/${PROJECT_NAME}.pc
+	DESTINATION ${FNA3D_INSTALL_LIBDIR}/pkgconfig
+)
+
+# Generate cmake-config file, install CMake files
+include(CMakePackageConfigHelpers)
+configure_package_config_file(
+	cmake/config.cmake.in
+	${CMAKE_CURRENT_BINARY_DIR}/generated/${PROJECT_NAME}Config.cmake
+	INSTALL_DESTINATION ${FNA3D_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
+)
+install(
+	FILES ${CMAKE_CURRENT_BINARY_DIR}/generated/${PROJECT_NAME}Config.cmake
+	DESTINATION ${FNA3D_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
+)
+
+install(
+	EXPORT ${PROJECT_NAME}-targets
+	NAMESPACE ${PROJECT_NAME}::
+	DESTINATION ${FNA3D_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}
+)
