@@ -94,7 +94,7 @@ jobs:
         ninja -C debug
         # Temporary, remove when Release builds work
         chrpath -d debug/libFNA3D.so.0
-        strip -S debug/libFNA3D.so.0
+        powerpc-linux-gnu-strip -S debug/libFNA3D.so.0
 
     - name: CMake configure (Release)
       run: cmake -B release -G Ninja . -DCMAKE_BUILD_TYPE=Release -DSDL3_DIR=${GITHUB_WORKSPACE}/SDL/debug
