@@ -103,7 +103,7 @@ jobs:
     #  run: |
     #    ninja -C release
     #    chrpath -d release/libFNA3D.so.0
-    #    strip -S release/libFNA3D.so.0
+    #    powerpc-unknown-linux-gnu-strip -S release/libFNA3D.so.0
         
     - name: Archive build result
       uses: actions/upload-artifact@v4
