@@ -90,21 +90,15 @@ jobs:
       run: cmake -B debug -G Ninja . -DCMAKE_BUILD_TYPE=Debug -DSDL3_DIR=${GITHUB_WORKSPACE}/SDL/debug
 
     - name: Build (Debug)
-      run: ninja -C debug
-
-    - name: CMake configure (Release)
-      run: cmake -B release -G Ninja . -DCMAKE_BUILD_TYPE=Release -DSDL3_DIR=${GITHUB_WORKSPACE}/SDL/debug
-
-    - name: Build (Release)
       run: |
-        ninja -C release
-        chrpath -d release/libFNA3D.so.0
+        ninja -C debug
+        chrpath -d debug/libFNA3D.so.0
 
     - name: Archive build result
       uses: actions/upload-artifact@v4
       with:
         name: FNA3D-libpowerpc
-        path: release/libFNA3D.so.0
+        path: debug/libFNA3D.so.0
 
   linux-mingw:
     name: Fedora Linux MinGW
