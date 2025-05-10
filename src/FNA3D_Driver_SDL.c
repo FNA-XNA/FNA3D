@@ -1557,6 +1557,7 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 	/* Multisample */
 
 	createInfo.multisample_state.sample_count = renderer->nextRenderPassMultisampleCount;
+	createInfo.multisample_state.enable_alpha_to_coverage = false;
 	if (renderer->multisampleMask != 0xFFFFFFFF)
 	{
 		createInfo.multisample_state.enable_mask = true;
