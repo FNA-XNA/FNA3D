@@ -1556,6 +1556,7 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 
 	/* Multisample */
 
+	SDL_zero(createInfo.multisample_state);
 	createInfo.multisample_state.sample_count = renderer->nextRenderPassMultisampleCount;
 	if (renderer->multisampleMask != 0xFFFFFFFF)
 	{
