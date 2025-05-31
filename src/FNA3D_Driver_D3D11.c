@@ -2571,6 +2571,7 @@ static void D3D11_INTERNAL_CreateSwapChain(
 	DXGI_COLOR_SPACE_TYPE colorSpace;
 	HRESULT res;
 
+	uint8_t sRGB = 0;
 	uint8_t growSwapchains = (swapchainData == NULL);
 
 #ifdef FNA3D_DXVK_NATIVE
@@ -2595,7 +2596,16 @@ static void D3D11_INTERNAL_CreateSwapChain(
 	swapchainDesc.BufferDesc.Height = 0;
 	swapchainDesc.BufferDesc.RefreshRate.Numerator = 0;
 	swapchainDesc.BufferDesc.RefreshRate.Denominator = 0;
-	swapchainDesc.BufferDesc.Format = XNAToD3D_TextureFormat[backBufferFormat];
+	if (backBufferFormat == FNA3D_SURFACEFORMAT_COLORSRGB_EXT)
+	{
+		/* The swapchain RTV uses BGRA8_UNORM but with an SDR Linear colorspace */
+		sRGB = 1;
+		swapchainDesc.BufferDesc.Format = XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_COLOR];
+	}
+	else
+	{
+		swapchainDesc.BufferDesc.Format = XNAToD3D_TextureFormat[backBufferFormat];
+	}
 	swapchainDesc.BufferDesc.ScanlineOrdering = DXGI_MODE_SCANLINE_ORDER_UNSPECIFIED;
 	swapchainDesc.BufferDesc.Scaling = DXGI_MODE_SCALING_UNSPECIFIED;
 
@@ -2683,7 +2693,7 @@ static void D3D11_INTERNAL_CreateSwapChain(
 	}
 
 	/* Set colorspace, if applicable */
-	if (SDL_GetHintBoolean("FNA3D_ENABLE_HDR_COLORSPACE", SDL_FALSE))
+	if (SDL_GetHintBoolean("FNA3D_ENABLE_HDR_COLORSPACE", SDL_FALSE) || sRGB)
 	{
 		if (SUCCEEDED(IDXGISwapChain_QueryInterface(
 			swapchain,
@@ -2704,6 +2714,8 @@ static void D3D11_INTERNAL_CreateSwapChain(
 				colorSpace = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
 			}
 			IDXGISwapChain3_SetColorSpace1(swapchain3, colorSpace);
+
+			IDXGISwapChain_Release(swapchain);
 		}
 	}
 
