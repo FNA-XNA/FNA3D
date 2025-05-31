@@ -2598,6 +2598,7 @@ static void D3D11_INTERNAL_CreateSwapChain(
 	swapchainDesc.BufferDesc.RefreshRate.Denominator = 0;
 	if (backBufferFormat == FNA3D_SURFACEFORMAT_COLORSRGB_EXT)
 	{
+		/* The swapchain RTV uses BGRA8_UNORM but with an SDR Linear colorspace */
 		sRGB = 1;
 		swapchainDesc.BufferDesc.Format = XNAToD3D_TextureFormat[FNA3D_SURFACEFORMAT_COLOR];
 	}
