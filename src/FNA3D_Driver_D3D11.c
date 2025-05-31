@@ -2709,10 +2709,6 @@ static void D3D11_INTERNAL_CreateSwapChain(
 			{
 				colorSpace = DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709;
 			}
-			else if (sRGB)
-			{
-				colorSpace = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
-			}
 			else
 			{
 				colorSpace = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
