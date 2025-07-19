@@ -2941,7 +2941,8 @@ static void SDLGPU_INTERNAL_SetTextureData(
 	uint32_t layer,
 	uint32_t mipLevel,
 	void* data,
-	uint32_t dataLength
+	uint32_t dataLength,
+	bool cycleTexture
 ) {
 	SDL_LockMutex(renderer->copyPassMutex);
 
@@ -3017,7 +3018,7 @@ static void SDLGPU_INTERNAL_SetTextureData(
 		renderer->copyPass,
 		&textureCopyParams,
 		&textureRegion,
-		false /* FIXME: we could check if it's a complete overwrite and set it to cycle here */
+		cycleTexture
 	);
 
 	if (usingTemporaryTransferBuffer)
@@ -3045,6 +3046,12 @@ static void SDLGPU_SetTextureData2D(
 ) {
 	SDLGPU_TextureHandle *textureHandle = (SDLGPU_TextureHandle*) texture;
 
+	bool cycleTexture = (x == 0) && (y == 0) && (level == 0) &&
+		(w == textureHandle->createInfo.width) &&
+		(h == textureHandle->createInfo.height) &&
+		(textureHandle->createInfo.layer_count_or_depth <= 1) &&
+		(textureHandle->createInfo.num_levels <= 1);
+
 	SDLGPU_INTERNAL_SetTextureData(
 		(SDLGPU_Renderer*) driverData,
 		textureHandle->texture,
@@ -3058,7 +3065,8 @@ static void SDLGPU_SetTextureData2D(
 		0,
 		(uint32_t) level,
 		data,
-		dataLength
+		dataLength,
+		cycleTexture
 	);
 }
 
@@ -3090,7 +3098,8 @@ static void SDLGPU_SetTextureData3D(
 		0,
 		(uint32_t) level,
 		data,
-		dataLength
+		dataLength,
+		0 /* cycleTexture */
 	);
 }
 
@@ -3121,7 +3130,8 @@ static void SDLGPU_SetTextureDataCube(
 		(uint32_t) cubeMapFace,
 		(uint32_t) level,
 		data,
-		dataLength
+		dataLength,
+		0 /* cycleTexture */
 	);
 }
 
@@ -3157,7 +3167,8 @@ static void SDLGPU_SetTextureDataYUV(
 		0,
 		0,
 		data,
-		yDataLength
+		yDataLength,
+		0 /* cycleTexture */
 	);
 
 	SDLGPU_INTERNAL_SetTextureData(
@@ -3173,7 +3184,8 @@ static void SDLGPU_SetTextureDataYUV(
 		0,
 		0,
 		(uint8_t*) data + yDataLength,
-		uvDataLength
+		uvDataLength,
+		0 /* cycleTexture */
 	);
 
 	SDLGPU_INTERNAL_SetTextureData(
@@ -3189,7 +3201,8 @@ static void SDLGPU_SetTextureDataYUV(
 		0,
 		0,
 		(uint8_t*) data + yDataLength + uvDataLength,
-		uvDataLength
+		uvDataLength,
+		0 /* cycleTexture */
 	);
 }
 
@@ -4500,7 +4513,8 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 		0,
 		0,
 		&dummyInt,
-		sizeof(uint32_t)
+		sizeof(uint32_t),
+		0 /* cycleTexture */
 	);
 
 	/* FIXME: https://github.com/libsdl-org/SDL/issues/11675 */
@@ -4518,7 +4532,8 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 		0,
 		0,
 		&dummyInt,
-		sizeof(uint64_t)
+		sizeof(uint64_t),
+		0 /* cycleTexture */
 	);
 #endif
 
@@ -4533,7 +4548,8 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 			i,
 			0,
 			&dummyInt,
-			sizeof(uint32_t)
+			sizeof(uint32_t),
+			0 /* cycleTexture */
 		);
 	}
 
