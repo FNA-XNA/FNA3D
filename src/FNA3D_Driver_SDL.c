@@ -2988,8 +2988,8 @@ static void SDLGPU_INTERNAL_SetTextureData(
 		}
 		else
 		{
-			/* We already cycled too much, time to stall! */
-			SDLGPU_INTERNAL_FlushUploadCommandsAndStall(renderer);
+			/* We cycled transfers a lot, send the upload commands to reduce further transfer memory usage */
+			SDLGPU_INTERNAL_FlushUploadCommands(renderer);
 			cycle = true;
 			transferOffset = 0;
 		}
@@ -3331,8 +3331,8 @@ static void SDLGPU_INTERNAL_SetBufferData(
 		}
 		else
 		{
-			/* We already cycled too much, time to stall! */
-			SDLGPU_INTERNAL_FlushUploadCommandsAndStall(renderer);
+			/* We cycled transfers a lot, send the upload commands to reduce further transfer memory usage */
+			SDLGPU_INTERNAL_FlushUploadCommands(renderer);
 			transferCycle = true;
 			transferOffset = 0;
 		}
@@ -3378,7 +3378,6 @@ static void SDLGPU_SetVertexBufferData(
 	int32_t vertexStride,
 	FNA3D_SetDataOptions options
 ) {
-	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
 	SDLGPU_BufferHandle *bufferHandle = (SDLGPU_BufferHandle*) buffer;
 
 	bool cycle;
@@ -3388,20 +3387,13 @@ static void SDLGPU_SetVertexBufferData(
 	{
 		cycle = true;
 	}
-	else if (options == FNA3D_SETDATAOPTIONS_NOOVERWRITE)
+	else if (options == FNA3D_SETDATAOPTIONS_NONE && dataLen == bufferHandle->size)
 	{
-		cycle = false;
-	}
-	else if (dataLen == bufferHandle->size) /* NONE and full buffer update */
-	{
+		/* full buffer update can cycle for efficiency */
 		cycle = true;
 	}
-	else /* Partial NONE update! This will be broken! */
+	else
 	{
-		FNA3D_LogWarn(
-			"Dynamic buffer using SetDataOptions.None, expect bad performance and broken output!"
-		);
-
 		cycle = false;
 	}
 
@@ -3413,13 +3405,6 @@ static void SDLGPU_SetVertexBufferData(
 		elementCount * vertexStride,
 		cycle
 	);
-
-	if (options == FNA3D_SETDATAOPTIONS_NONE && dataLen != bufferHandle->size)
-	{
-		SDL_LockMutex(renderer->copyPassMutex);
-		SDLGPU_INTERNAL_FlushCommands(renderer);
-		SDL_UnlockMutex(renderer->copyPassMutex);
-	}
 }
 
 static void SDLGPU_SetIndexBufferData(
@@ -3539,7 +3524,7 @@ static void SDLGPU_INTERNAL_GetTextureData(
 
 	/* Flush rendering so the target data is up-to-date */
 	SDLGPU_INTERNAL_FlushCommands(renderer);
-	
+
 	SDL_DownloadFromGPUTexture(
 		renderer->copyPass,
 		&region,
