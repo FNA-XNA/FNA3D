@@ -3415,30 +3415,21 @@ static void SDLGPU_SetIndexBufferData(
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
 ) {
-	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
 	SDLGPU_BufferHandle *bufferHandle = (SDLGPU_BufferHandle*) buffer;
-	bool cycle;
 
+	bool cycle;
 	if (options == FNA3D_SETDATAOPTIONS_DISCARD)
 	{
 		cycle = true;
 	}
-	else if (options == FNA3D_SETDATAOPTIONS_NOOVERWRITE)
+	else if (options == FNA3D_SETDATAOPTIONS_NONE && dataLength == bufferHandle->size)
+	{
+		/* full buffer update can cycle for efficiency */
+		cycle = true;
+	}
+	else
 	{
 		cycle = false;
-	}
-	else if (dataLength == bufferHandle->size) /* NONE and full buffer update */
-	{
-		cycle = true;
-	}
-	else /* Partial NONE update! This will be broken! */
-	{
-		FNA3D_LogWarn(
-			"Dynamic buffer using SetDataOptions.None, expect bad performance and broken output!"
-		);
-
-		SDLGPU_INTERNAL_FlushCommands(renderer);
-		cycle = true;
 	}
 
 	SDLGPU_INTERNAL_SetBufferData(
