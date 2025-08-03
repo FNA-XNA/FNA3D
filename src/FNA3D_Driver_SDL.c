@@ -972,6 +972,11 @@ static void SDLGPU_INTERNAL_FlushUploadCommandsAndAcquireFence(
 		renderer->uploadCommandBuffer
 	);
 
+	if (!*uploadFence) {
+		const char *error = SDL_GetError();
+		FNA3D_LogError("SDL_SubmitGPUCommandBufferAndAcquireFence failed: %s", error);
+	}
+
 	SDLGPU_INTERNAL_ResetUploadCommandBufferState(renderer);
 
 	SDL_UnlockMutex(renderer->copyPassMutex);
