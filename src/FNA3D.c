@@ -159,7 +159,12 @@ uint32_t FNA3D_PrepareWindowAttributes(void)
 		gpuhint = NULL;
 		if (SDL_strcasecmp(hint, "Vulkan") == 0)
 		{
+#ifdef __APPLE__
+			/* We were using MoltenVK anyway, so just skip the middle man */
+			gpuhint = "metal";
+#else
 			gpuhint = "vulkan";
+#endif
 		}
 		else if (SDL_strcasecmp(hint, "D3D12") == 0)
 		{
