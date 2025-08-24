@@ -4217,13 +4217,21 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 
 	formats = MOJOSHADER_sdlGetShaderFormats();
 	props = SDL_CreateProperties();
+
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, debugMode);
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_PREFERLOWPOWER_BOOLEAN, SDL_GetHintBoolean("FNA3D_PREFER_LOW_POWER", false));
+
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_PRIVATE_BOOLEAN, !!(formats & SDL_GPU_SHADERFORMAT_PRIVATE));
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, !!(formats & SDL_GPU_SHADERFORMAT_SPIRV));
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_DXIL_BOOLEAN, !!(formats & SDL_GPU_SHADERFORMAT_DXIL));
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_MSL_BOOLEAN, !!(formats & SDL_GPU_SHADERFORMAT_MSL));
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_METALLIB_BOOLEAN, !!(formats & SDL_GPU_SHADERFORMAT_METALLIB));
+
+	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.vulkan.shaderclipdistance", false);
+	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.vulkan.depthclamp", false);
+	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.vulkan.drawindirectfirstinstance", false);
+	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.d3d12.allowtier1resourcebinding", true);
+
 	device = SDL_CreateGPUDeviceWithProperties(props);
 
 	if (device == NULL)
