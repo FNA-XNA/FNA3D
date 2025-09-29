@@ -4227,9 +4227,9 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_MSL_BOOLEAN, !!(formats & SDL_GPU_SHADERFORMAT_MSL));
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_SHADERS_METALLIB_BOOLEAN, !!(formats & SDL_GPU_SHADERFORMAT_METALLIB));
 
-	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.vulkan.shaderclipdistance", false);
-	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.vulkan.depthclamp", false);
-	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.vulkan.drawindirectfirstinstance", false);
+	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.feature.clip_distance", false);
+	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.feature.depth_clamping", false);
+	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.feature.indirect_draw_first_instance", false);
 	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.d3d12.allowtier1resourcebinding", true);
 
 	device = SDL_CreateGPUDeviceWithProperties(props);
