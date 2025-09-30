@@ -766,13 +766,49 @@ static void SDLGPU_INTERNAL_EndRenderPass(
 	renderer->currentStencilReference = 0;
 }
 
+static void SDLGPU_INTERNAL_UpdateViewport(SDLGPU_Renderer *renderer)
+{
+	SDL_GPUViewport gpuViewport;
+	SDL_Rect scissorRect;
+
+	gpuViewport.x = (float) renderer->viewport.x;
+	gpuViewport.y = (float) renderer->viewport.y;
+	gpuViewport.w = (float) renderer->viewport.w;
+	gpuViewport.h = (float) renderer->viewport.h;
+	gpuViewport.min_depth = renderer->viewport.minDepth;
+	gpuViewport.max_depth = renderer->viewport.maxDepth;
+
+	SDL_SetGPUViewport(
+		renderer->renderPass,
+		&gpuViewport
+	);
+
+	// Update the scissor to match/complement new viewport dimensions
+	if (renderer->fnaRasterizerState.scissorTestEnable)
+	{
+		scissorRect = ComputeRectIntersection(gpuViewport.x, renderer->scissorRect.x,
+			gpuViewport.y, renderer->scissorRect.y,
+			gpuViewport.w, renderer->scissorRect.w,
+			gpuViewport.h, renderer->scissorRect.h);
+	}
+	else
+	{
+		scissorRect.x = gpuViewport.x;
+		scissorRect.y = gpuViewport.y;
+		scissorRect.w = gpuViewport.w;
+		scissorRect.h = gpuViewport.h;
+	}
+	SDL_SetGPUScissor(
+		renderer->renderPass,
+		&scissorRect
+	);
+}
+
 static void SDLGPU_INTERNAL_BeginRenderPass(
 	SDLGPU_Renderer *renderer
 ) {
 	SDL_GPUColorTargetInfo colorAttachmentInfos[MAX_RENDERTARGET_BINDINGS];
 	SDL_GPUDepthStencilTargetInfo depthStencilAttachmentInfo;
-	SDL_GPUViewport gpuViewport;
-	SDL_Rect scissorRect;
 	uint32_t i;
 
 	if (!renderer->needNewRenderPass)
@@ -890,36 +926,7 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 		renderer->nextRenderPassDepthStencilAttachment != NULL ? &depthStencilAttachmentInfo : NULL
 	);
 
-	gpuViewport.x = (float) renderer->viewport.x;
-	gpuViewport.y = (float) renderer->viewport.y;
-	gpuViewport.w = (float) renderer->viewport.w;
-	gpuViewport.h = (float) renderer->viewport.h;
-	gpuViewport.min_depth = renderer->viewport.minDepth;
-	gpuViewport.max_depth = renderer->viewport.maxDepth;
-
-	SDL_SetGPUViewport(
-		renderer->renderPass,
-		&gpuViewport
-	);
-
-	if (renderer->fnaRasterizerState.scissorTestEnable)
-	{
-		scissorRect = ComputeRectIntersection(gpuViewport.x, renderer->scissorRect.x,
-			gpuViewport.y, renderer->scissorRect.y,
-			gpuViewport.w, renderer->scissorRect.w,
-			gpuViewport.h, renderer->scissorRect.h);
-	}
-	else
-	{
-		scissorRect.x = gpuViewport.x;
-		scissorRect.y = gpuViewport.y;
-		scissorRect.w = gpuViewport.w;
-		scissorRect.h = gpuViewport.h;
-	}
-	SDL_SetGPUScissor(
-		renderer->renderPass,
-		&scissorRect
-	);
+	SDLGPU_INTERNAL_UpdateViewport(renderer);
 
 	renderer->shouldClearColorOnBeginPass = 0;
 	renderer->shouldClearDepthOnBeginPass = 0;
@@ -2085,7 +2092,6 @@ static void SDLGPU_SetViewport(
 	FNA3D_Viewport *viewport
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
-	SDL_GPUViewport gpuViewport;
 
 	if (	viewport->x != renderer->viewport.x ||
 		viewport->y != renderer->viewport.y ||
@@ -2098,17 +2104,7 @@ static void SDLGPU_SetViewport(
 
 		if (renderer->renderPass != NULL)
 		{
-			gpuViewport.x = (float) viewport->x;
-			gpuViewport.y = (float) viewport->y;
-			gpuViewport.w = (float) viewport->w;
-			gpuViewport.h = (float) viewport->h;
-			gpuViewport.min_depth = viewport->minDepth;
-			gpuViewport.max_depth = viewport->maxDepth;
-
-			SDL_SetGPUViewport(
-				renderer->renderPass,
-				&gpuViewport
-			);
+			SDLGPU_INTERNAL_UpdateViewport(renderer);
 		}
 	}
 }
