@@ -587,7 +587,8 @@ typedef struct SDLGPU_Renderer
 
 	/* Presentation structure */
 
-	void *mainWindowHandle;
+	SDL_Window **windows;
+	uint32_t numWindows;
 	SDLGPU_TextureHandle *fauxBackbufferColorTexture;
 	SDLGPU_TextureHandle *fauxBackbufferColorRenderbuffer;
 	SDLGPU_TextureHandle *fauxBackbufferDepthStencil; /* may be NULL */
@@ -1073,6 +1074,34 @@ static void SDLGPU_INTERNAL_FlushUploadCommandsAndStall(
 	);
 }
 
+static bool SDLGPU_INTERNAL_ClaimWindow(
+	SDLGPU_Renderer *renderer,
+	SDL_Window *window
+) {
+	size_t i;
+	for (i = 0; i < renderer->numWindows; i += 1)
+	{
+		if (window == renderer->windows[i])
+		{
+			return true;
+		}
+	}
+
+	renderer->numWindows += 1;
+	renderer->windows = (SDL_Window**) SDL_realloc(
+		renderer->windows,
+		sizeof(SDL_Window*) * renderer->numWindows
+	);
+	renderer->windows[renderer->numWindows - 1] = window;
+
+	if (!SDL_ClaimWindowForGPUDevice(renderer->device, window))
+	{
+		FNA3D_LogError("Could not claim window for FNA3D renderer: %s", SDL_GetError());
+		return false;
+	}
+	return true;
+}
+
 static void SDLGPU_SwapBuffers(
 	FNA3D_Renderer *driverData,
 	FNA3D_Rect *sourceRectangle,
@@ -1088,6 +1117,14 @@ static void SDLGPU_SwapBuffers(
 	SDL_LockMutex(renderer->copyPassMutex);
 	SDLGPU_INTERNAL_EndCopyPass(renderer);
 	SDLGPU_INTERNAL_EndRenderPass(renderer);
+
+	if (!SDLGPU_INTERNAL_ClaimWindow(
+		renderer,
+		(SDL_Window*) overrideWindowHandle
+	)) {
+		SDL_UnlockMutex(renderer->copyPassMutex);
+		return;
+	}
 
 	if (SDL_WaitAndAcquireGPUSwapchainTexture(
 		renderer->renderCommandBuffer,
@@ -2683,6 +2720,9 @@ static void SDLGPU_ResetBackbuffer(
 	SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
 
 	SDLGPU_INTERNAL_DestroyFauxBackbuffer(renderer);
+
+	SDLGPU_INTERNAL_ClaimWindow(renderer, (SDL_Window*) presentationParameters->deviceWindowHandle);
+
 	SDLGPU_INTERNAL_CreateFauxBackbuffer(
 		renderer,
 		presentationParameters
@@ -2721,8 +2761,6 @@ static void SDLGPU_ResetBackbuffer(
 		swapchainComposition,
 		presentMode
 	);
-
-	renderer->mainWindowHandle = presentationParameters->deviceWindowHandle;
 
 	SDL_UnlockMutex(renderer->copyPassMutex);
 }
@@ -4177,6 +4215,7 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 
 	SDL_DestroyGPUDevice(renderer->device);
 
+	SDL_free(renderer->windows);
 	SDL_free(renderer);
 	SDL_free(device);
 }
@@ -4266,11 +4305,10 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 		}
 	}
 
-	if (!SDL_ClaimWindowForGPUDevice(
-		renderer->device,
-		presentationParameters->deviceWindowHandle
+	if (!SDLGPU_INTERNAL_ClaimWindow(
+		renderer,
+		(SDL_Window*) presentationParameters->deviceWindowHandle
 	)) {
-		FNA3D_LogError("Failed to claim window!");
 		SDL_free(renderer);
 		SDL_free(result);
 		return NULL;
@@ -4299,8 +4337,6 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 		SDL_free(result);
 		return NULL;
 	}
-
-	renderer->mainWindowHandle = presentationParameters->deviceWindowHandle;
 
 	SDLGPU_INTERNAL_CreateFauxBackbuffer(
 		renderer,
