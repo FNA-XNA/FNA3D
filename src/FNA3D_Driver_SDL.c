@@ -2721,7 +2721,13 @@ static void SDLGPU_ResetBackbuffer(
 
 	SDLGPU_INTERNAL_DestroyFauxBackbuffer(renderer);
 
-	SDLGPU_INTERNAL_ClaimWindow(renderer, (SDL_Window*) presentationParameters->deviceWindowHandle);
+	if (presentationParameters->deviceWindowHandle != NULL)
+	{
+		SDLGPU_INTERNAL_ClaimWindow(
+			renderer,
+			(SDL_Window*) presentationParameters->deviceWindowHandle
+		);
+	}
 
 	SDLGPU_INTERNAL_CreateFauxBackbuffer(
 		renderer,
