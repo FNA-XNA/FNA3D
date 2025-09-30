@@ -1087,18 +1087,18 @@ static bool SDLGPU_INTERNAL_ClaimWindow(
 		}
 	}
 
+	if (!SDL_ClaimWindowForGPUDevice(renderer->device, window))
+	{
+		FNA3D_LogError("Could not claim window for FNA3D renderer: %s", SDL_GetError());
+		return false;
+	}
+
 	renderer->numWindows += 1;
 	renderer->windows = (SDL_Window**) SDL_realloc(
 		renderer->windows,
 		sizeof(SDL_Window*) * renderer->numWindows
 	);
 	renderer->windows[renderer->numWindows - 1] = window;
-
-	if (!SDL_ClaimWindowForGPUDevice(renderer->device, window))
-	{
-		FNA3D_LogError("Could not claim window for FNA3D renderer: %s", SDL_GetError());
-		return false;
-	}
 	return true;
 }
 
