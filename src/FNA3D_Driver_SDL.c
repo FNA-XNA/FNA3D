@@ -1136,18 +1136,38 @@ static void SDLGPU_SwapBuffers(
 		blitInfo.source.texture = renderer->fauxBackbufferColorTexture->texture;
 		blitInfo.source.mip_level = 0;
 		blitInfo.source.layer_or_depth_plane = 0;
-		blitInfo.source.x = 0;
-		blitInfo.source.y = 0;
-		blitInfo.source.w = renderer->fauxBackbufferColorTexture->createInfo.width;
-		blitInfo.source.h = renderer->fauxBackbufferColorTexture->createInfo.height;
+		if (sourceRectangle != NULL)
+		{
+			blitInfo.source.x = sourceRectangle->x;
+			blitInfo.source.y = sourceRectangle->y;
+			blitInfo.source.w = sourceRectangle->w;
+			blitInfo.source.h = sourceRectangle->h;
+		}
+		else
+		{
+			blitInfo.source.x = 0;
+			blitInfo.source.y = 0;
+			blitInfo.source.w = renderer->fauxBackbufferColorTexture->createInfo.width;
+			blitInfo.source.h = renderer->fauxBackbufferColorTexture->createInfo.height;
+		}
 
 		blitInfo.destination.texture = swapchainTexture;
 		blitInfo.destination.mip_level = 0;
 		blitInfo.destination.layer_or_depth_plane = 0;
-		blitInfo.destination.x = 0;
-		blitInfo.destination.y = 0;
-		blitInfo.destination.w = width;
-		blitInfo.destination.h = height;
+		if (destinationRectangle != NULL)
+		{
+			blitInfo.destination.x = destinationRectangle->x;
+			blitInfo.destination.y = destinationRectangle->y;
+			blitInfo.destination.w = destinationRectangle->w;
+			blitInfo.destination.h = destinationRectangle->h;
+		}
+		else
+		{
+			blitInfo.destination.x = 0;
+			blitInfo.destination.y = 0;
+			blitInfo.destination.w = width;
+			blitInfo.destination.h = height;
+		}
 
 		blitInfo.load_op = SDL_GPU_LOADOP_DONT_CARE;
 		blitInfo.clear_color.r = 0;
