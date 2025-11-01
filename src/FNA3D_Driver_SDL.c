@@ -880,9 +880,8 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 
 	if (renderer->nextRenderPassDepthStencilAttachment != NULL)
 	{
+		SDL_zero(depthStencilAttachmentInfo);
 		depthStencilAttachmentInfo.texture = renderer->nextRenderPassDepthStencilAttachment->texture;
-		depthStencilAttachmentInfo.layer = 0;
-		depthStencilAttachmentInfo.mip_level = 0;
 
 		if (renderer->shouldClearDepthOnBeginPass)
 		{
