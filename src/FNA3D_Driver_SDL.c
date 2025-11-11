@@ -4245,40 +4245,10 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 
 /* Initialization */
 
-static uint8_t SDLGPU_PrepareWindowAttributes(uint32_t *flags)
+static SDL_PropertiesID SDLGPU_INTERNAL_FillProperties(bool debugMode)
 {
-	uint8_t result = SDL_GPUSupportsShaderFormats(MOJOSHADER_sdlGetShaderFormats(), NULL);
-	if (!result)
-	{
-		FNA3D_LogWarn("SDL_GPUSupportsShaderFormats failed: %s", SDL_GetError());
-	}
-	return result;
-}
-
-static FNA3D_Device* SDLGPU_CreateDevice(
-	FNA3D_PresentationParameters *presentationParameters,
-	uint8_t debugMode
-) {
-	SDLGPU_Renderer *renderer;
-	SDL_PropertiesID props;
-	SDL_GPUShaderFormat formats;
-	SDL_GPUDevice *device;
-	SDL_GPUSwapchainComposition swapchainComposition;
-	SDL_GPUTextureCreateInfo textureCreateInfo;
-	SDL_GPUSamplerCreateInfo samplerCreateInfo;
-	SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
-	SDL_GPUPresentMode desiredPresentMode;
-	uint64_t dummyInt = 0;
-	FNA3D_Device *result;
-	int32_t i;
-
-	SDL_SetLogPriority(
-		SDL_LOG_CATEGORY_GPU,
-		debugMode ? SDL_LOG_PRIORITY_DEBUG : SDL_LOG_PRIORITY_INFO);
-
-
-	formats = MOJOSHADER_sdlGetShaderFormats();
-	props = SDL_CreateProperties();
+	SDL_PropertiesID props = SDL_CreateProperties();
+	SDL_GPUShaderFormat formats = MOJOSHADER_sdlGetShaderFormats();
 
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, debugMode);
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_PREFERLOWPOWER_BOOLEAN, SDL_GetHintBoolean("FNA3D_PREFER_LOW_POWER", false));
@@ -4295,7 +4265,49 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.d3d12.allowtier1resourcebinding", true);
 	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.vulkan.requirehardwareacceleration", true);
 
+	return props;
+}
+
+static uint8_t SDLGPU_PrepareWindowAttributes(uint32_t *flags)
+{
+	uint8_t result;
+	SDL_PropertiesID props;
+
+	/* FIXME: We don't have a good way to ask for debug mode this early... */
+	props = SDLGPU_INTERNAL_FillProperties(false);
+	result = SDL_GPUSupportsProperties(props);
+	SDL_DestroyProperties(props);
+
+	if (!result)
+	{
+		FNA3D_LogWarn("SDL_GPUSupportsProperties failed: %s", SDL_GetError());
+	}
+	return result;
+}
+
+static FNA3D_Device* SDLGPU_CreateDevice(
+	FNA3D_PresentationParameters *presentationParameters,
+	uint8_t debugMode
+) {
+	SDLGPU_Renderer *renderer;
+	SDL_PropertiesID props;
+	SDL_GPUDevice *device;
+	SDL_GPUSwapchainComposition swapchainComposition;
+	SDL_GPUTextureCreateInfo textureCreateInfo;
+	SDL_GPUSamplerCreateInfo samplerCreateInfo;
+	SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
+	SDL_GPUPresentMode desiredPresentMode;
+	uint64_t dummyInt = 0;
+	FNA3D_Device *result;
+	int32_t i;
+
+	SDL_SetLogPriority(
+		SDL_LOG_CATEGORY_GPU,
+		debugMode ? SDL_LOG_PRIORITY_DEBUG : SDL_LOG_PRIORITY_INFO);
+
+	props = SDLGPU_INTERNAL_FillProperties(debugMode);
 	device = SDL_CreateGPUDeviceWithProperties(props);
+	SDL_DestroyProperties(props);
 
 	if (device == NULL)
 	{
