@@ -4293,6 +4293,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.feature.depth_clamping", false);
 	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.feature.indirect_draw_first_instance", false);
 	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.d3d12.allowtier1resourcebinding", true);
+	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.vulkan.requirehardwareacceleration", true);
 
 	device = SDL_CreateGPUDeviceWithProperties(props);
 
