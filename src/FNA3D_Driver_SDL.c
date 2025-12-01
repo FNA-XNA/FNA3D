@@ -4347,7 +4347,9 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	renderer = SDL_malloc(sizeof(SDLGPU_Renderer));
 	SDL_memset(renderer, '\0', sizeof(SDLGPU_Renderer));
 
+#ifndef NDEBUG
 	renderer->ownerThreadID = SDL_GetCurrentThreadID();
+#endif
 	renderer->device = device;
 	renderer->copyPassMutex = SDL_CreateMutex();
 
