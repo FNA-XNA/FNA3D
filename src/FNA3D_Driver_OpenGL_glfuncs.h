@@ -38,6 +38,9 @@ GL_EXT(EXT_framebuffer_blit)
 GL_EXT(EXT_framebuffer_multisample)
 GL_EXT(ARB_internalformat_query)
 GL_EXT(ARB_invalidate_subdata)
+#ifdef USE_ES3
+GL_EXT(ARB_map_buffer_range)
+#endif
 GL_EXT(ARB_draw_instanced)
 GL_EXT(ARB_instanced_arrays)
 GL_EXT(ARB_draw_elements_base_vertex)
@@ -55,6 +58,9 @@ GL_PROC(BaseGL, void, glBlendEquationSeparate, (GLenum a, GLenum b))
 GL_PROC(BaseGL, void, glBlendFuncSeparate, (GLenum a, GLenum b, GLenum c, GLenum d))
 GL_PROC(BaseGL, void, glBufferData, (GLenum a, GLsizeiptr b, const GLvoid *c, GLenum d))
 GL_PROC(BaseGL, void, glBufferSubData, (GLenum a, GLintptr b, GLsizeiptr c, const GLvoid *d))
+#ifdef USE_ES3
+GL_PROC(BaseGL, GLboolean, glUnmapBuffer, (GLenum a))
+#endif
 GL_PROC(BaseGL, void, glClear, (GLbitfield a))
 GL_PROC(BaseGL, void, glClearColor, (GLclampf a, GLclampf b, GLclampf c, GLclampf d))
 GL_PROC(BaseGL, void, glClearStencil, (GLint s))
@@ -148,6 +154,11 @@ GL_PROC(ARB_internalformat_query, void, glGetInternalformativ, (GLenum a, GLenum
 
 /* This is mostly needed by ES3, where loads/stores are a huge slowdown */
 GL_PROC(ARB_invalidate_subdata, void, glInvalidateFramebuffer, (GLenum a, GLsizei b, const GLenum *c))
+
+/* Buffer mapping for GLES3 optimization */
+#ifdef USE_ES3
+GL_PROC_EXT(ARB_map_buffer_range, EXT, GLvoid*, glMapBufferRange, (GLenum a, GLintptr b, GLsizeiptr c, GLbitfield d))
+#endif
 
 /* Hardware instancing is nice to have, but isn't used all the time */
 GL_PROC(ARB_draw_instanced, void, glDrawElementsInstanced, (GLenum a, GLsizei b, GLenum c, const GLvoid *d, GLsizei e))
