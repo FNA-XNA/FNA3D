@@ -38,14 +38,12 @@ GL_EXT(EXT_framebuffer_blit)
 GL_EXT(EXT_framebuffer_multisample)
 GL_EXT(ARB_internalformat_query)
 GL_EXT(ARB_invalidate_subdata)
-#ifdef USE_ES3
-GL_EXT(ARB_map_buffer_range)
-#endif
 GL_EXT(ARB_draw_instanced)
 GL_EXT(ARB_instanced_arrays)
 GL_EXT(ARB_draw_elements_base_vertex)
 GL_EXT(EXT_draw_buffers2)
 GL_EXT(ARB_texture_multisample)
+GL_EXT(ARB_map_buffer_range)
 GL_EXT(KHR_debug)
 GL_EXT(GREMEDY_string_marker)
 
@@ -155,11 +153,6 @@ GL_PROC(ARB_internalformat_query, void, glGetInternalformativ, (GLenum a, GLenum
 /* This is mostly needed by ES3, where loads/stores are a huge slowdown */
 GL_PROC(ARB_invalidate_subdata, void, glInvalidateFramebuffer, (GLenum a, GLsizei b, const GLenum *c))
 
-/* Buffer mapping for GLES3 optimization */
-#ifdef USE_ES3
-GL_PROC_EXT(ARB_map_buffer_range, EXT, GLvoid*, glMapBufferRange, (GLenum a, GLintptr b, GLsizeiptr c, GLbitfield d))
-#endif
-
 /* Hardware instancing is nice to have, but isn't used all the time */
 GL_PROC(ARB_draw_instanced, void, glDrawElementsInstanced, (GLenum a, GLsizei b, GLenum c, const GLvoid *d, GLsizei e))
 GL_PROC(ARB_instanced_arrays, void, glVertexAttribDivisor, (GLuint a, GLuint b))
@@ -177,6 +170,9 @@ GL_PROC(EXT_draw_buffers2, void, glColorMaski, (GLuint a, GLboolean b, GLboolean
 
 /* Probably used by nobody, honestly */
 GL_PROC(ARB_texture_multisample, void, glSampleMaski, (GLuint a, GLuint b))
+
+/* Technically UnmapBuffer is core, but useless without MapBufferRange */
+GL_PROC_EXT(ARB_map_buffer_range, EXT, GLvoid*, glMapBufferRange, (GLenum a, GLintptr b, GLsizeiptr c, GLbitfield d))
 
 /* "NOTE: when implemented in an OpenGL ES context, all entry points defined
  * by this extension must have a "KHR" suffix. When implemented in an
