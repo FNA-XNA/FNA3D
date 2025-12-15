@@ -5675,7 +5675,7 @@ static inline void LoadEntryPoints(
 	}
 
 	/* MAP_UNSYNCHRONIZED _should_ be faster, but on threaded drivers it can stall hard */
-	if (SDL_GetHintBoolean("FNA3D_OPENGL_ALLOW_MAP_UNSYNCHRONIZED", false))
+	if (SDL_GetHintBoolean("FNA3D_OPENGL_ALLOW_MAP_UNSYNCHRONIZED", 0))
 	{
 		renderer->supports_ARB_map_buffer_range = 0;
 	}
