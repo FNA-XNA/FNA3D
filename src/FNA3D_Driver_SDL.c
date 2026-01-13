@@ -522,6 +522,10 @@ typedef struct SDLGPU_Renderer
 	SDL_GPUCommandBuffer *renderCommandBuffer;
 	SDL_GPUCommandBuffer *uploadCommandBuffer;
 
+#ifndef NDEBUG
+	SDL_ThreadID ownerThreadID;
+#endif
+
 	SDL_GPURenderPass *renderPass;
 	uint8_t needNewRenderPass;
 
@@ -679,6 +683,17 @@ static inline SDL_GPUTextureFormat XNAToSDL_DepthFormat(
 	}
 }
 
+static inline void SDLGPU_INTERNAL_ThreadCheck(
+	SDLGPU_Renderer* renderer
+) {
+#ifndef NDEBUG
+	if (renderer)
+	{
+		SDL_assert(SDL_GetCurrentThreadID() == renderer->ownerThreadID);
+	}
+#endif
+}
+
 /* Submission / Presentation */
 
 static void SDLGPU_INTERNAL_BeginCopyPass(
@@ -812,6 +827,8 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 	SDL_GPUColorTargetInfo colorAttachmentInfos[MAX_RENDERTARGET_BINDINGS];
 	SDL_GPUDepthStencilTargetInfo depthStencilAttachmentInfo;
 	uint32_t i;
+
+	SDLGPU_INTERNAL_ThreadCheck(renderer);
 
 	if (!renderer->needNewRenderPass)
 	{
@@ -1299,6 +1316,7 @@ static void SDLGPU_Clear(
 	int32_t stencil
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+	SDLGPU_INTERNAL_ThreadCheck(renderer);
 	uint8_t clearColor = (options & FNA3D_CLEAROPTIONS_TARGET) == FNA3D_CLEAROPTIONS_TARGET;
 	uint8_t clearDepth = (options & FNA3D_CLEAROPTIONS_DEPTHBUFFER) == FNA3D_CLEAROPTIONS_DEPTHBUFFER;
 	uint8_t clearStencil = (options & FNA3D_CLEAROPTIONS_STENCIL) == FNA3D_CLEAROPTIONS_STENCIL;
@@ -2470,6 +2488,7 @@ static void SDLGPU_DrawInstancedPrimitives(
 	FNA3D_IndexElementSize indexElementSize
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+	SDLGPU_INTERNAL_ThreadCheck(renderer);
 
 	/* Note that minVertexIndex/numVertices are NOT used! */
 
@@ -2527,6 +2546,7 @@ static void SDLGPU_DrawPrimitives(
 	int32_t primitiveCount
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+	SDLGPU_INTERNAL_ThreadCheck(renderer);
 
 	SDLGPU_INTERNAL_BindDeferredState(
 		renderer,
@@ -2608,6 +2628,7 @@ static SDLGPU_TextureHandle* SDLGPU_INTERNAL_CreateTextureWithHandle(
 	SDL_GPUTextureUsageFlags usageFlags,
 	SDL_GPUSampleCount sampleCount
 ) {
+	SDLGPU_INTERNAL_ThreadCheck(renderer);
 	SDL_GPUTextureCreateInfo textureCreateInfo;
 	SDL_GPUTexture *texture;
 	SDLGPU_TextureHandle *textureHandle;
@@ -3012,6 +3033,7 @@ static void SDLGPU_INTERNAL_SetTextureData(
 	uint32_t dataLength,
 	bool cycleTexture
 ) {
+	SDLGPU_INTERNAL_ThreadCheck(renderer);
 	SDL_LockMutex(renderer->copyPassMutex);
 
 	SDL_GPUTextureRegion textureRegion;
@@ -3361,6 +3383,7 @@ static void SDLGPU_INTERNAL_SetBufferData(
 	uint32_t dataLength,
 	bool cycle
 ) {
+	SDLGPU_INTERNAL_ThreadCheck(renderer);
 	SDL_LockMutex(renderer->copyPassMutex);
 
 	SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
@@ -3526,6 +3549,7 @@ static void SDLGPU_INTERNAL_GetTextureData(
 	void* data,
 	uint32_t dataLength
 ) {
+	SDLGPU_INTERNAL_ThreadCheck(renderer);
 	SDL_GPUTextureRegion region;
 	SDL_GPUTextureTransferInfo textureCopyParams;
 	SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
@@ -3608,6 +3632,7 @@ static void SDLGPU_INTERNAL_GetBufferData(
 	void *data,
 	uint32_t dataLength
 ) {
+	SDLGPU_INTERNAL_ThreadCheck(renderer);
 	SDL_GPUBufferRegion bufferRegion;
 	SDL_GPUTransferBufferLocation transferLocation;
 	SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
@@ -3921,6 +3946,7 @@ static void SDLGPU_ApplyEffect(
 	MOJOSHADER_effectStateChanges *stateChanges
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
+	SDLGPU_INTERNAL_ThreadCheck(renderer);
 	SDLGPU_Effect *gpuEffect = (SDLGPU_Effect*) effect;
 	MOJOSHADER_effect *effectData = gpuEffect->effect;
 	const MOJOSHADER_effectTechnique *technique = gpuEffect->effect->current_technique;
@@ -4323,6 +4349,9 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	renderer = SDL_malloc(sizeof(SDLGPU_Renderer));
 	SDL_memset(renderer, '\0', sizeof(SDLGPU_Renderer));
 
+#ifndef NDEBUG
+	renderer->ownerThreadID = SDL_GetCurrentThreadID();
+#endif
 	renderer->device = device;
 	renderer->copyPassMutex = SDL_CreateMutex();
 
