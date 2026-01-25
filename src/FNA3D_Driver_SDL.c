@@ -4266,6 +4266,7 @@ static SDL_PropertiesID SDLGPU_INTERNAL_FillProperties(bool debugMode)
 	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.feature.indirect_draw_first_instance", false);
 	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.d3d12.allowtier1resourcebinding", true);
 	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.vulkan.requirehardwareacceleration", true);
+	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.metal.allowmacfamily1", true);
 
 	return props;
 }
