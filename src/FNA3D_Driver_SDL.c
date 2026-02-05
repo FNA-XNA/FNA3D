@@ -587,6 +587,12 @@ typedef struct SDLGPU_Renderer
 	uint32_t multisampleMask;
 	SDL_Rect scissorRect;
 
+	/* Pipeline cache */
+	GraphicsPipelineHash nextPipelineHash;
+	SDL_GPUVertexBufferDescription vertexDescriptions[16];
+	SDL_GPUVertexAttribute vertexAttributes[16 * MAX_VERTEX_ATTRIBUTES];
+	uint32_t numVertexAttributes;
+
 	/* Presentation structure */
 
 	SDL_Window **windows;
@@ -1333,13 +1339,6 @@ static void SDLGPU_SetRenderTargets(
 		SDLGPU_INTERNAL_BeginRenderPass(renderer);
 	}
 
-	for (i = 0; i < MAX_RENDERTARGET_BINDINGS; i += 1)
-	{
-		renderer->nextRenderPassColorAttachments[i] = NULL;
-		renderer->nextRenderPassColorResolves[i] = NULL;
-	}
-	renderer->nextRenderPassDepthStencilAttachment = NULL;
-
 	if (numRenderTargets <= 0)
 	{
 		if (renderer->fauxBackbufferColorRenderbuffer != NULL)
@@ -1351,7 +1350,13 @@ static void SDLGPU_SetRenderTargets(
 		else
 		{
 			renderer->nextRenderPassColorAttachments[0] = renderer->fauxBackbufferColorTexture;
+			renderer->nextRenderPassColorResolves[0] = NULL;
 			renderer->nextRenderPassMultisampleCount = SDL_GPU_SAMPLECOUNT_1;
+		}
+		for (i = 1; i < MAX_RENDERTARGET_BINDINGS; i += 1)
+		{
+			renderer->nextRenderPassColorAttachments[i] = NULL;
+			renderer->nextRenderPassColorResolves[i] = NULL;
 		}
 		renderer->nextRenderPassColorAttachmentCubeFace[0] = 0;
 		renderer->nextRenderPassColorAttachmentCount = 1;
@@ -1380,16 +1385,47 @@ static void SDLGPU_SetRenderTargets(
 			{
 				renderer->nextRenderPassColorAttachments[i] = (SDLGPU_TextureHandle*) renderTargets[i].texture;
 				renderer->nextRenderPassMultisampleCount = SDL_GPU_SAMPLECOUNT_1;
+				renderer->nextRenderPassColorResolves[i] = NULL;
 			}
+		}
+		for (; i < MAX_RENDERTARGET_BINDINGS; i += 1)
+		{
+			renderer->nextRenderPassColorAttachments[i] = NULL;
+			renderer->nextRenderPassColorResolves[i] = NULL;
 		}
 
 		renderer->nextRenderPassColorAttachmentCount = numRenderTargets;
+
+		if (depthStencilBuffer != NULL)
+		{
+			renderer->nextRenderPassDepthStencilAttachment = ((SDLGPU_Renderbuffer*) depthStencilBuffer)->textureHandle;
+		}
+		else
+		{
+			renderer->nextRenderPassDepthStencilAttachment = NULL;
+		}
+
 		renderer->renderTargetInUse = 1;
 	}
 
-	if (depthStencilBuffer != NULL)
+	renderer->nextPipelineHash.sampleCount = renderer->nextRenderPassMultisampleCount;
+	renderer->nextPipelineHash.colorFormatCount = renderer->nextRenderPassColorAttachmentCount;
+	for (i = 0; i < (int32_t) renderer->nextRenderPassColorAttachmentCount; i += 1)
 	{
-		renderer->nextRenderPassDepthStencilAttachment = ((SDLGPU_Renderbuffer*) depthStencilBuffer)->textureHandle;
+		renderer->nextPipelineHash.colorFormats[i] = renderer->nextRenderPassColorAttachments[i]->createInfo.format;
+	}
+	for (; i < 4; i += 1)
+	{
+		renderer->nextPipelineHash.colorFormats[i] = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+	}
+	renderer->nextPipelineHash.hasDepthStencilAttachment = renderer->nextRenderPassDepthStencilAttachment != NULL;
+	if (renderer->nextPipelineHash.hasDepthStencilAttachment)
+	{
+		renderer->nextPipelineHash.depthStencilFormat = renderer->nextRenderPassDepthStencilAttachment->createInfo.format;
+	}
+	else
+	{
+		renderer->nextPipelineHash.depthStencilFormat = SDL_GPU_TEXTUREFORMAT_D16_UNORM;
 	}
 
 	renderer->needNewRenderPass = 1;
@@ -1518,102 +1554,50 @@ static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
 		mojoshaderVertexAttributes,
 		attributeDescriptionCounter
 	);
+	MOJOSHADER_sdlGetShaders(
+		renderer->mojoshaderContext,
+		&renderer->nextPipelineHash.vertShader,
+		&renderer->nextPipelineHash.fragShader
+	);
 }
 
 static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 	SDLGPU_Renderer *renderer
 ) {
-	MOJOSHADER_sdlShaderData *vertShader, *fragShader;
-	GraphicsPipelineHash hash;
 	SDL_GPUGraphicsPipeline *pipeline;
 	SDL_GPUGraphicsPipelineCreateInfo createInfo;
 	SDL_GPUColorTargetDescription colorAttachmentDescriptions[MAX_RENDERTARGET_BINDINGS];
-	SDL_GPUVertexBufferDescription *vertexBindings;
-	SDL_GPUVertexAttribute *vertexAttributes;
-	int32_t i;
-
-	vertexBindings = SDL_malloc(
-		renderer->numVertexBindings *
-		sizeof(SDL_GPUVertexBufferDescription)
-	);
-	vertexAttributes = SDL_malloc(
-		renderer->numVertexBindings *
-		MAX_VERTEX_ATTRIBUTES *
-		sizeof(SDL_GPUVertexAttribute)
-	);
 
 	/* We have to do this to link the vertex attribute modified shader program */
 	SDLGPU_INTERNAL_GenerateVertexInputInfo(
 		renderer,
-		vertexBindings,
-		vertexAttributes,
-		&createInfo.vertex_input_state.num_vertex_attributes
-	);
-
-	/* Shaders */
-	MOJOSHADER_sdlGetShaders(
-		renderer->mojoshaderContext,
-		&createInfo.vertex_shader,
-		&createInfo.fragment_shader
-	);
-
-	hash.blendState = GetPackedBlendState(renderer->fnaBlendState);
-
-	hash.depthStencilState = GetPackedDepthStencilState(
-		renderer->fnaDepthStencilState
-	);
-
-	hash.vertexBufferBindingsIndex = renderer->currentVertexBufferBindingsIndex;
-	hash.primitiveType = renderer->fnaPrimitiveType;
-	hash.sampleCount = renderer->nextRenderPassMultisampleCount;
-	hash.sampleMask = renderer->multisampleMask;
-	MOJOSHADER_sdlGetBoundShaderData(renderer->mojoshaderContext, &vertShader, &fragShader);
-	hash.vertShader = createInfo.vertex_shader;
-	hash.fragShader = createInfo.fragment_shader;
-
-	hash.colorFormatCount = renderer->nextRenderPassColorAttachmentCount;
-	hash.colorFormats[0] = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-	hash.colorFormats[1] = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-	hash.colorFormats[2] = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-	hash.colorFormats[3] = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
-
-	for (i = 0; i < (int32_t) renderer->nextRenderPassColorAttachmentCount; i += 1)
-	{
-		hash.colorFormats[i] = renderer->nextRenderPassColorAttachments[i]->createInfo.format;
-	}
-
-	hash.depthStencilFormat = SDL_GPU_TEXTUREFORMAT_D16_UNORM;
-	hash.hasDepthStencilAttachment = renderer->nextRenderPassDepthStencilAttachment != NULL;
-
-	if (hash.hasDepthStencilAttachment)
-	{
-		hash.depthStencilFormat = renderer->nextRenderPassDepthStencilAttachment->createInfo.format;
-	}
-
-	hash.rasterizerState = GetPackedRasterizerState(
-		renderer->fnaRasterizerState,
-		renderer->fnaRasterizerState.depthBias
+		renderer->vertexDescriptions,
+		renderer->vertexAttributes,
+		&renderer->numVertexAttributes
 	);
 
 	pipeline = GraphicsPipelineHashTable_Fetch(
 		&renderer->graphicsPipelineHashTable,
-		hash
+		renderer->nextPipelineHash
 	);
 
 	if (pipeline != NULL)
 	{
-		SDL_free(vertexBindings);
-		SDL_free(vertexAttributes);
 		return pipeline;
 	}
 
 	createInfo.primitive_type = XNAToSDL_PrimitiveType[renderer->fnaPrimitiveType];
 
+	/* Active Shader */
+	createInfo.vertex_shader = renderer->nextPipelineHash.vertShader;
+	createInfo.fragment_shader = renderer->nextPipelineHash.fragShader;
+
 	/* Vertex Input State */
 
-	createInfo.vertex_input_state.vertex_buffer_descriptions = vertexBindings;
+	createInfo.vertex_input_state.vertex_buffer_descriptions = renderer->vertexDescriptions;
 	createInfo.vertex_input_state.num_vertex_buffers = renderer->numVertexBindings;
-	createInfo.vertex_input_state.vertex_attributes = vertexAttributes;
+	createInfo.vertex_input_state.vertex_attributes = renderer->vertexAttributes;
+	createInfo.vertex_input_state.num_vertex_attributes = renderer->numVertexAttributes;
 
 	/* Rasterizer */
 
@@ -1700,15 +1684,15 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 	colorAttachmentDescriptions[2].blend_state.enable_color_write_mask = true;
 	colorAttachmentDescriptions[3].blend_state.enable_color_write_mask = true;
 
-	colorAttachmentDescriptions[0].format = hash.colorFormats[0];
-	colorAttachmentDescriptions[1].format = hash.colorFormats[1];
-	colorAttachmentDescriptions[2].format = hash.colorFormats[2];
-	colorAttachmentDescriptions[3].format = hash.colorFormats[3];
+	colorAttachmentDescriptions[0].format = renderer->nextPipelineHash.colorFormats[0];
+	colorAttachmentDescriptions[1].format = renderer->nextPipelineHash.colorFormats[1];
+	colorAttachmentDescriptions[2].format = renderer->nextPipelineHash.colorFormats[2];
+	colorAttachmentDescriptions[3].format = renderer->nextPipelineHash.colorFormats[3];
 
 	createInfo.target_info.num_color_targets = renderer->nextRenderPassColorAttachmentCount;
 	createInfo.target_info.color_target_descriptions = colorAttachmentDescriptions;
-	createInfo.target_info.has_depth_stencil_target = hash.hasDepthStencilAttachment;
-	createInfo.target_info.depth_stencil_format = hash.depthStencilFormat;
+	createInfo.target_info.has_depth_stencil_target = renderer->nextPipelineHash.hasDepthStencilAttachment;
+	createInfo.target_info.depth_stencil_format = renderer->nextPipelineHash.depthStencilFormat;
 
 	/* Depth Stencil */
 
@@ -1768,8 +1752,6 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 		&createInfo
 	);
 
-	SDL_free(vertexBindings);
-	SDL_free(vertexAttributes);
 	SDL_stack_free(resourceSetLayoutInfos);
 
 	if (pipeline == NULL)
@@ -1779,7 +1761,7 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 
 	GraphicsPipelineHashTable_Insert(
 		&renderer->graphicsPipelineHashTable,
-		hash,
+		renderer->nextPipelineHash,
 		pipeline
 	);
 
@@ -2097,6 +2079,7 @@ static void SDLGPU_ApplyVertexBufferBindings(
 	if (bindingsIndex != renderer->currentVertexBufferBindingsIndex)
 	{
 		renderer->currentVertexBufferBindingsIndex = bindingsIndex;
+		renderer->nextPipelineHash.vertexBufferBindingsIndex = renderer->currentVertexBufferBindingsIndex;
 		renderer->needNewGraphicsPipeline = 1;
 	}
 
@@ -2201,6 +2184,7 @@ static void SDLGPU_SetMultiSampleMask(
 	if (renderer->multisampleMask != (uint32_t) mask)
 	{
 		renderer->multisampleMask = (uint32_t) mask;
+		renderer->nextPipelineHash.sampleMask = renderer->multisampleMask;
 		renderer->needNewGraphicsPipeline = 1;
 	}
 }
@@ -2243,6 +2227,7 @@ static void SDLGPU_SetBlendState(
 	if (SDL_memcmp(&renderer->fnaBlendState, blendState, sizeof(FNA3D_BlendState)) != 0)
 	{
 		SDL_memcpy(&renderer->fnaBlendState, blendState, sizeof(FNA3D_BlendState));
+		renderer->nextPipelineHash.blendState = GetPackedBlendState(renderer->fnaBlendState);
 		renderer->needNewGraphicsPipeline = 1;
 	}
 }
@@ -2271,13 +2256,17 @@ static void SDLGPU_SetDepthStencilState(
 		renderer->fnaDepthStencilState.ccwStencilFunction != depthStencilState->ccwStencilFunction ||
 		renderer->fnaDepthStencilState.referenceStencil != depthStencilState->referenceStencil	)
 	{
-		renderer->needNewGraphicsPipeline = 1;
-
 		SDL_memcpy(
 			&renderer->fnaDepthStencilState,
 			depthStencilState,
 			sizeof(FNA3D_DepthStencilState)
 		);
+
+		renderer->nextPipelineHash.depthStencilState = GetPackedDepthStencilState(
+			renderer->fnaDepthStencilState
+		);
+
+		renderer->needNewGraphicsPipeline = 1;
 	}
 
 	SDLGPU_SetReferenceStencil(
@@ -2343,6 +2332,12 @@ static void SDLGPU_ApplyRasterizerState(
 		renderer->fnaRasterizerState.multiSampleAntiAlias = rasterizerState->multiSampleAntiAlias;
 		renderer->fnaRasterizerState.depthBias = realDepthBias;
 		renderer->fnaRasterizerState.slopeScaleDepthBias = rasterizerState->slopeScaleDepthBias;
+
+		renderer->nextPipelineHash.rasterizerState = GetPackedRasterizerState(
+			renderer->fnaRasterizerState,
+			renderer->fnaRasterizerState.depthBias
+		);
+
 		renderer->needNewGraphicsPipeline = 1;
 	}
 }
@@ -2395,6 +2390,7 @@ static void SDLGPU_INTERNAL_BindDeferredState(
 	if (primitiveType != renderer->fnaPrimitiveType)
 	{
 		renderer->fnaPrimitiveType = primitiveType;
+		renderer->nextPipelineHash.primitiveType = renderer->fnaPrimitiveType;
 		renderer->needNewGraphicsPipeline = 1;
 	}
 
@@ -2724,6 +2720,22 @@ static void SDLGPU_INTERNAL_CreateFauxBackbuffer(
 		renderer->nextRenderPassColorAttachmentCount = 1;
 
 		renderer->nextRenderPassDepthStencilAttachment = renderer->fauxBackbufferDepthStencil;
+
+		renderer->nextPipelineHash.sampleCount = renderer->nextRenderPassMultisampleCount;
+		renderer->nextPipelineHash.colorFormatCount = renderer->nextRenderPassColorAttachmentCount;
+		renderer->nextPipelineHash.colorFormats[0] = renderer->nextRenderPassColorAttachments[0]->createInfo.format;
+		renderer->nextPipelineHash.colorFormats[1] = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+		renderer->nextPipelineHash.colorFormats[2] = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+		renderer->nextPipelineHash.colorFormats[3] = SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM;
+		renderer->nextPipelineHash.hasDepthStencilAttachment = renderer->nextRenderPassDepthStencilAttachment != NULL;
+		if (renderer->nextPipelineHash.hasDepthStencilAttachment)
+		{
+			renderer->nextPipelineHash.depthStencilFormat = renderer->nextRenderPassDepthStencilAttachment->createInfo.format;
+		}
+		else
+		{
+			renderer->nextPipelineHash.depthStencilFormat = SDL_GPU_TEXTUREFORMAT_D16_UNORM;
+		}
 	}
 }
 
@@ -4421,6 +4433,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	 */
 
 	renderer->multisampleMask = 0xFFFFFFFF;
+	renderer->nextPipelineHash.sampleMask = renderer->multisampleMask;
 
 	for (i = 0; i < MAX_BOUND_VERTEX_BUFFERS; i += 1)
 	{
