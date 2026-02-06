@@ -1445,7 +1445,7 @@ static void SDLGPU_ResolveTarget(
 	}
 
 	/* Rendering needs to finish to get the target data to make mips from */
-	SDLGPU_INTERNAL_FlushCommands(renderer);
+	SDLGPU_INTERNAL_EndRenderPass(renderer);
 	SDL_GenerateMipmapsForGPUTexture(renderer->renderCommandBuffer, texture->texture);
 }
 
