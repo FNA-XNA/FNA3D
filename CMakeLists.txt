@@ -89,7 +89,6 @@ endif()
 if(EMSCRIPTEN)
 	add_definitions(
 		-DSUPPORT_PROFILE_GLSPIRV=0
-		-DSUPPORT_PROFILE_SPIRV=0
 	)
 endif()
 
