@@ -51,7 +51,8 @@ endif()
 add_definitions(
 	-DFNA3D_DRIVER_OPENGL
 )
-if(BUILD_SDL3)
+# SDL_GPU does not have a WASM backend, so don't enable it
+if(BUILD_SDL3 AND NOT BUILD_WASM)
 	add_definitions(-DFNA3D_DRIVER_SDL)
 endif()
 add_definitions(

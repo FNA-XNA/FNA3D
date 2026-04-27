@@ -454,6 +454,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=Release \
           -DBUILD_SHARED_LIBS=OFF \
           -DBUILD_SDL3=ON \
+          -DBUILD_WASM=ON \
           -DSDL3_INCLUDE_DIRS=${GITHUB_WORKSPACE}/SDL/include \
           -DSDL3_LIBRARIES=${GITHUB_WORKSPACE}/SDL/build/libSDL3.a
 
