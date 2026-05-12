@@ -4263,6 +4263,7 @@ static SDL_PropertiesID SDLGPU_INTERNAL_FillProperties(bool debugMode)
 {
 	SDL_PropertiesID props = SDL_CreateProperties();
 	SDL_GPUShaderFormat formats = MOJOSHADER_sdlGetShaderFormats();
+	const char *agilityPath = SDL_GetHint("FNA3D_SDL_AGILITY_SDK_PATH");
 
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, debugMode);
 	SDL_SetBooleanProperty(props, SDL_PROP_GPU_DEVICE_CREATE_PREFERLOWPOWER_BOOLEAN, SDL_GetHintBoolean("FNA3D_PREFER_LOW_POWER", false));
@@ -4280,7 +4281,11 @@ static SDL_PropertiesID SDLGPU_INTERNAL_FillProperties(bool debugMode)
 	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.vulkan.requirehardwareacceleration", false);
 	SDL_SetBooleanProperty(props, "SDL.gpu.device.create.metal.allowmacfamily1", true);
 
-	SDL_SetStringProperty(props, "SDL.gpu.device.create.d3d12.agility_sdk_path", ".\\D3D12\\");
+	if (agilityPath == NULL)
+	{
+		agilityPath = ".\\D3D12\\";
+	}
+	SDL_SetStringProperty(props, "SDL.gpu.device.create.d3d12.agility_sdk_path", agilityPath);
 	SDL_SetNumberProperty(props, "SDL.gpu.device.create.d3d12.agility_sdk_version", 619);
 
 	return props;
