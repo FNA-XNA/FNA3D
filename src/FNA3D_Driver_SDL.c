@@ -1752,8 +1752,6 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 		&createInfo
 	);
 
-	SDL_stack_free(resourceSetLayoutInfos);
-
 	if (pipeline == NULL)
 	{
 		FNA3D_LogError("Failed to create graphics pipeline!");
