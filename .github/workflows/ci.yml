@@ -349,7 +349,7 @@ jobs:
     - name: CMake configure (Debug)
       run: |
         $env:LDFLAGS =  "/LIBPATH:C:\SDL3-$env:SDL3_VERSION\lib\x86 "
-        cmake -B debug -G "Visual Studio 17 2022" . -DCMAKE_BUILD_TYPE=Debug `
+        cmake -B debug -G "Visual Studio 18 2026" . -DCMAKE_BUILD_TYPE=Debug `
           -A Win32 `
           -DSDL3_INCLUDE_DIRS="C:\SDL3-$env:SDL3_VERSION\include" `
           -DSDL3_LIBRARIES="SDL3"
@@ -360,7 +360,7 @@ jobs:
     - name: CMake configure (Release)
       run: |
         $env:LDFLAGS =  "/LIBPATH:C:\SDL3-$env:SDL3_VERSION\lib\x86 "
-        cmake -B release -G "Visual Studio 17 2022" . -DCMAKE_BUILD_TYPE=Release `
+        cmake -B release -G "Visual Studio 18 2026" . -DCMAKE_BUILD_TYPE=Release `
           -A Win32 `
           -DSDL3_INCLUDE_DIRS="C:\SDL3-$env:SDL3_VERSION\include" `
           -DSDL3_LIBRARIES="SDL3"
