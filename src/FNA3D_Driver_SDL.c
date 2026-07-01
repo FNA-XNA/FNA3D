@@ -522,11 +522,11 @@ typedef struct SDLGPU_Renderer
 	SDL_GPUCommandBuffer *renderCommandBuffer;
 	SDL_GPUCommandBuffer *uploadCommandBuffer;
 
+	SDL_GPUCopyPass *copyPass;
 	SDL_GPURenderPass *renderPass;
 	uint8_t needNewRenderPass;
 
-	SDL_GPUCopyPass *copyPass;
-	SDL_Mutex *copyPassMutex;
+	SDL_Mutex *commandLock;
 
 	uint8_t shouldClearColorOnBeginPass;
 	uint8_t shouldClearDepthOnBeginPass;
@@ -690,6 +690,8 @@ static inline SDL_GPUTextureFormat XNAToSDL_DepthFormat(
 static void SDLGPU_INTERNAL_BeginCopyPass(
 	SDLGPU_Renderer *renderer
 ) {
+	/* commandLock should be acquired by this point */
+
 	if (renderer->copyPass == NULL)
 	{
 		renderer->copyPass = SDL_BeginGPUCopyPass(
@@ -701,6 +703,8 @@ static void SDLGPU_INTERNAL_BeginCopyPass(
 static void SDLGPU_INTERNAL_EndCopyPass(
 	SDLGPU_Renderer *renderer
 ) {
+	/* commandLock should be acquired by this point */
+
 	if (renderer->copyPass != NULL)
 	{
 		SDL_EndGPUCopyPass(
@@ -748,6 +752,8 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 static void SDLGPU_INTERNAL_EndRenderPass(
 	SDLGPU_Renderer *renderer
 ) {
+	/* commandLock should be acquired by this point */
+
 	/* If we got to EndRenderPass without actually making a new render pass,
 	 * we're looking at a clear-only pass, so just forcibly start it so we
 	 * can have the clear execute instead of silently discarding it.
@@ -776,6 +782,8 @@ static void SDLGPU_INTERNAL_EndRenderPass(
 
 static void SDLGPU_INTERNAL_UpdateViewport(SDLGPU_Renderer *renderer)
 {
+	/* commandLock should be acquired by this point */
+
 	SDL_GPUViewport gpuViewport;
 	SDL_Rect scissorRect;
 
@@ -815,6 +823,8 @@ static void SDLGPU_INTERNAL_UpdateViewport(SDLGPU_Renderer *renderer)
 static void SDLGPU_INTERNAL_BeginRenderPass(
 	SDLGPU_Renderer *renderer
 ) {
+	/* commandLock should be acquired by this point */
+
 	SDL_GPUColorTargetInfo colorAttachmentInfos[MAX_RENDERTARGET_BINDINGS];
 	SDL_GPUDepthStencilTargetInfo depthStencilAttachmentInfo;
 	uint32_t i;
@@ -947,6 +957,8 @@ static void SDLGPU_INTERNAL_BeginRenderPass(
 static void SDLGPU_INTERNAL_ResetUploadCommandBufferState(
 	SDLGPU_Renderer *renderer
 ) {
+	/* commandLock should be acquired by this point */
+
 	renderer->uploadCommandBuffer = SDL_AcquireGPUCommandBuffer(renderer->device);
 	SDLGPU_INTERNAL_BeginCopyPass(renderer);
 
@@ -960,6 +972,8 @@ static void SDLGPU_INTERNAL_ResetUploadCommandBufferState(
 static void SDLGPU_INTERNAL_ResetRenderCommandBufferState(
 	SDLGPU_Renderer *renderer
 ) {
+	/* commandLock should be acquired by this point */
+
 	renderer->renderCommandBuffer = SDL_AcquireGPUCommandBuffer(renderer->device);
 
 	/* Reset state */
@@ -970,18 +984,11 @@ static void SDLGPU_INTERNAL_ResetRenderCommandBufferState(
 	renderer->needFragmentSamplerBind = 1;
 }
 
-static void SDLGPU_ResetCommandBufferState(
-	SDLGPU_Renderer *renderer
-) {
-	SDLGPU_INTERNAL_ResetUploadCommandBufferState(renderer);
-	SDLGPU_INTERNAL_ResetRenderCommandBufferState(renderer);
-}
-
 static void SDLGPU_INTERNAL_FlushUploadCommandsAndAcquireFence(
 	SDLGPU_Renderer *renderer,
 	SDL_GPUFence **uploadFence
 ) {
-	SDL_LockMutex(renderer->copyPassMutex);
+	/* commandLock should be acquired by this point */
 
 	SDLGPU_INTERNAL_EndCopyPass(renderer);
 
@@ -995,42 +1002,26 @@ static void SDLGPU_INTERNAL_FlushUploadCommandsAndAcquireFence(
 	}
 
 	SDLGPU_INTERNAL_ResetUploadCommandBufferState(renderer);
-
-	SDL_UnlockMutex(renderer->copyPassMutex);
-}
-
-static void SDLGPU_INTERNAL_FlushCommandsAndAcquireFence(
-	SDLGPU_Renderer *renderer,
-	SDL_GPUFence **uploadFence,
-	SDL_GPUFence **renderFence
-) {
-	SDLGPU_INTERNAL_FlushUploadCommandsAndAcquireFence(renderer, uploadFence);
-
-	SDLGPU_INTERNAL_EndRenderPass(renderer);
-
-	*renderFence = SDL_SubmitGPUCommandBufferAndAcquireFence(
-		renderer->renderCommandBuffer
-	);
-
-	SDLGPU_INTERNAL_ResetRenderCommandBufferState(renderer);
 }
 
 static void SDLGPU_INTERNAL_FlushUploadCommands(
 	SDLGPU_Renderer *renderer
 ) {
-	SDL_LockMutex(renderer->copyPassMutex);
+	/* commandLock should be acquired by this point */
 
 	SDLGPU_INTERNAL_EndCopyPass(renderer);
 	SDL_SubmitGPUCommandBuffer(renderer->uploadCommandBuffer);
 	SDLGPU_INTERNAL_ResetUploadCommandBufferState(renderer);
-
-	SDL_UnlockMutex(renderer->copyPassMutex);
 }
 
 static void SDLGPU_INTERNAL_FlushCommands(
 	SDLGPU_Renderer *renderer
 ) {
-	SDLGPU_INTERNAL_FlushUploadCommands(renderer);
+	/* commandLock should be acquired by this point */
+
+	SDLGPU_INTERNAL_EndCopyPass(renderer);
+	SDL_SubmitGPUCommandBuffer(renderer->uploadCommandBuffer);
+	SDLGPU_INTERNAL_ResetUploadCommandBufferState(renderer);
 
 	SDLGPU_INTERNAL_EndRenderPass(renderer);
 	SDL_SubmitGPUCommandBuffer(renderer->renderCommandBuffer);
@@ -1040,13 +1031,19 @@ static void SDLGPU_INTERNAL_FlushCommands(
 static void SDLGPU_INTERNAL_FlushCommandsAndStall(
 	SDLGPU_Renderer *renderer
 ) {
+	/* commandLock should be acquired by this point */
+
 	SDL_GPUFence* fences[2];
 
-	SDLGPU_INTERNAL_FlushCommandsAndAcquireFence(
-		renderer,
-		&fences[0],
-		&fences[1]
+	SDLGPU_INTERNAL_FlushUploadCommandsAndAcquireFence(renderer, &fences[0]);
+
+	SDLGPU_INTERNAL_EndRenderPass(renderer);
+
+	fences[1] = SDL_SubmitGPUCommandBufferAndAcquireFence(
+		renderer->renderCommandBuffer
 	);
+
+	SDLGPU_INTERNAL_ResetRenderCommandBufferState(renderer);
 
 	SDL_WaitForGPUFences(
 		renderer->device,
@@ -1068,8 +1065,9 @@ static void SDLGPU_INTERNAL_FlushCommandsAndStall(
 
 static void SDLGPU_INTERNAL_FlushUploadCommandsAndStall(
 	SDLGPU_Renderer *renderer
-)
-{
+) {
+	/* commandLock should be acquired by this point */
+
 	SDL_GPUFence* fences[1];
 
 	SDLGPU_INTERNAL_FlushUploadCommandsAndAcquireFence(
@@ -1130,7 +1128,7 @@ static void SDLGPU_SwapBuffers(
 	uint32_t width, height;
 	uint32_t i;
 
-	SDL_LockMutex(renderer->copyPassMutex);
+	SDL_LockMutex(renderer->commandLock);
 	SDLGPU_INTERNAL_EndCopyPass(renderer);
 	SDLGPU_INTERNAL_EndRenderPass(renderer);
 
@@ -1138,7 +1136,7 @@ static void SDLGPU_SwapBuffers(
 		renderer,
 		(SDL_Window*) overrideWindowHandle
 	)) {
-		SDL_UnlockMutex(renderer->copyPassMutex);
+		SDL_UnlockMutex(renderer->commandLock);
 		return;
 	}
 
@@ -1218,7 +1216,7 @@ static void SDLGPU_SwapBuffers(
 	}
 	renderer->boundRenderTargetCount = 0;
 
-	SDL_UnlockMutex(renderer->copyPassMutex);
+	SDL_UnlockMutex(renderer->commandLock);
 }
 
 /* GDK Support */
@@ -1233,15 +1231,15 @@ static bool SDLCALL SDLGPU_INTERNAL_GDKEventFilter(void* userdata, SDL_Event* ev
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) userdata;
 	if (event->type == SDL_EVENT_DID_ENTER_BACKGROUND)
 	{
-		SDL_LockMutex(renderer->copyPassMutex);
+		SDL_LockMutex(renderer->commandLock);
 		SDL_GDKSuspendGPU(renderer->device);
-		SDL_UnlockMutex(renderer->copyPassMutex);
+		SDL_UnlockMutex(renderer->commandLock);
 	}
 	else if (event->type == SDL_EVENT_WILL_ENTER_FOREGROUND)
 	{
-		SDL_LockMutex(renderer->copyPassMutex);
+		SDL_LockMutex(renderer->commandLock);
 		SDL_GDKResumeGPU(renderer->device);
-		SDL_UnlockMutex(renderer->copyPassMutex);
+		SDL_UnlockMutex(renderer->commandLock);
 	}
 	return true;
 }
@@ -1336,7 +1334,9 @@ static void SDLGPU_SetRenderTargets(
 		renderer->shouldClearDepthOnBeginPass ||
 		renderer->shouldClearStencilOnBeginPass
 	) {
+		SDL_LockMutex(renderer->commandLock);
 		SDLGPU_INTERNAL_BeginRenderPass(renderer);
+		SDL_UnlockMutex(renderer->commandLock);
 	}
 
 	if (numRenderTargets <= 0)
@@ -1444,9 +1444,13 @@ static void SDLGPU_ResolveTarget(
 		return;
 	}
 
+	SDL_LockMutex(renderer->commandLock);
+
 	/* Rendering needs to finish to get the target data to make mips from */
 	SDLGPU_INTERNAL_EndRenderPass(renderer);
 	SDL_GenerateMipmapsForGPUTexture(renderer->renderCommandBuffer, texture->texture);
+
+	SDL_UnlockMutex(renderer->commandLock);
 }
 
 static void SDLGPU_INTERNAL_GenerateVertexInputInfo(
@@ -1769,6 +1773,8 @@ static SDL_GPUGraphicsPipeline* SDLGPU_INTERNAL_FetchGraphicsPipeline(
 static void SDLGPU_INTERNAL_BindGraphicsPipeline(
 	SDLGPU_Renderer *renderer
 ) {
+	/* commandLock should be acquired by this point */
+
 	SDL_GPUGraphicsPipeline *pipeline;
 	MOJOSHADER_sdlShaderData *vertShaderData, *fragShaderData;
 
@@ -1788,6 +1794,8 @@ static void SDLGPU_INTERNAL_BindGraphicsPipeline(
 
 	pipeline = SDLGPU_INTERNAL_FetchGraphicsPipeline(renderer);
 
+	SDL_LockMutex(renderer->commandLock);
+
 	if (pipeline != renderer->currentGraphicsPipeline)
 	{
 		SDL_BindGPUGraphicsPipeline(
@@ -1802,6 +1810,8 @@ static void SDLGPU_INTERNAL_BindGraphicsPipeline(
 		renderer->mojoshaderContext,
 		renderer->renderCommandBuffer
 	);
+
+	SDL_UnlockMutex(renderer->commandLock);
 
 	renderer->currentVertexShader = vertShaderData;
 	renderer->currentFragmentShader = fragShaderData;
@@ -2108,7 +2118,9 @@ static void SDLGPU_SetViewport(
 
 		if (renderer->renderPass != NULL)
 		{
+			SDL_LockMutex(renderer->commandLock);
 			SDLGPU_INTERNAL_UpdateViewport(renderer);
+			SDL_UnlockMutex(renderer->commandLock);
 		}
 	}
 }
@@ -2126,10 +2138,12 @@ static void SDLGPU_SetScissorRect(
 
 	if (renderer->renderPass != NULL && renderer->fnaRasterizerState.scissorTestEnable)
 	{
+		SDL_LockMutex(renderer->commandLock);
 		SDL_SetGPUScissor(
 			renderer->renderPass,
 			&renderer->scissorRect
 		);
+		SDL_UnlockMutex(renderer->commandLock);
 	}
 }
 
@@ -2307,10 +2321,12 @@ static void SDLGPU_ApplyRasterizerState(
 				scissorRect.w = renderer->viewport.w;
 				scissorRect.h = renderer->viewport.h;
 			}
+			SDL_LockMutex(renderer->commandLock);
 			SDL_SetGPUScissor(
 				renderer->renderPass,
 				&scissorRect
 			);
+			SDL_UnlockMutex(renderer->commandLock);
 		}
 	}
 
@@ -2340,44 +2356,6 @@ static void SDLGPU_ApplyRasterizerState(
 	}
 }
 
-static void SDLGPU_INTERNAL_BindVertexSamplers(
-	SDLGPU_Renderer *renderer
-) {
-	MOJOSHADER_sdlShaderData *vertShaderData, *blah;
-
-	MOJOSHADER_sdlGetBoundShaderData(
-		renderer->mojoshaderContext,
-		&vertShaderData,
-		&blah
-	);
-
-	SDL_BindGPUVertexSamplers(
-		renderer->renderPass,
-		0,
-		renderer->vertexTextureSamplerBindings,
-		MOJOSHADER_sdlGetSamplerSlots(vertShaderData)
-	);
-}
-
-static void SDLGPU_INTERNAL_BindFragmentSamplers(
-	SDLGPU_Renderer *renderer
-) {
-	MOJOSHADER_sdlShaderData *blah, *fragShaderData;
-
-	MOJOSHADER_sdlGetBoundShaderData(
-		renderer->mojoshaderContext,
-		&blah,
-		&fragShaderData
-	);
-
-	SDL_BindGPUFragmentSamplers(
-		renderer->renderPass,
-		0,
-		renderer->fragmentTextureSamplerBindings,
-		MOJOSHADER_sdlGetSamplerSlots(fragShaderData)
-	);
-}
-
 /* Actually bind all deferred state before drawing! */
 static void SDLGPU_INTERNAL_BindDeferredState(
 	SDLGPU_Renderer *renderer,
@@ -2385,6 +2363,8 @@ static void SDLGPU_INTERNAL_BindDeferredState(
 	SDL_GPUBuffer *indexBuffer, /* can be NULL */
 	SDL_GPUIndexElementSize indexElementSize
 ) {
+	/* commandLock should be acquired by this point */
+
 	if (primitiveType != renderer->fnaPrimitiveType)
 	{
 		renderer->fnaPrimitiveType = primitiveType;
@@ -2416,14 +2396,29 @@ static void SDLGPU_INTERNAL_BindDeferredState(
 
 	if (renderer->needVertexSamplerBind || renderer->needFragmentSamplerBind)
 	{
+		MOJOSHADER_sdlShaderData *vertShaderData, *fragShaderData;
+		MOJOSHADER_sdlGetBoundShaderData(
+			renderer->mojoshaderContext,
+			&vertShaderData,
+			&fragShaderData
+		);
 		if (renderer->needVertexSamplerBind)
 		{
-			SDLGPU_INTERNAL_BindVertexSamplers(renderer);
+			SDL_BindGPUVertexSamplers(
+				renderer->renderPass,
+				0,
+				renderer->vertexTextureSamplerBindings,
+				MOJOSHADER_sdlGetSamplerSlots(vertShaderData)
+			);
 		}
-
 		if (renderer->needFragmentSamplerBind)
 		{
-			SDLGPU_INTERNAL_BindFragmentSamplers(renderer);
+			SDL_BindGPUFragmentSamplers(
+				renderer->renderPass,
+				0,
+				renderer->fragmentTextureSamplerBindings,
+				MOJOSHADER_sdlGetSamplerSlots(fragShaderData)
+			);
 		}
 	}
 
@@ -2472,6 +2467,8 @@ static void SDLGPU_DrawInstancedPrimitives(
 		baseVertex = 0;
 	}
 
+	SDL_LockMutex(renderer->commandLock);
+
 	SDLGPU_INTERNAL_BindDeferredState(
 		renderer,
 		primitiveType,
@@ -2487,6 +2484,8 @@ static void SDLGPU_DrawInstancedPrimitives(
 		baseVertex,
 		0
 	);
+
+	SDL_UnlockMutex(renderer->commandLock);
 }
 
 static void SDLGPU_DrawIndexedPrimitives(
@@ -2522,6 +2521,8 @@ static void SDLGPU_DrawPrimitives(
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
 
+	SDL_LockMutex(renderer->commandLock);
+
 	SDLGPU_INTERNAL_BindDeferredState(
 		renderer,
 		primitiveType,
@@ -2536,6 +2537,8 @@ static void SDLGPU_DrawPrimitives(
 		vertexStart,
 		0
 	);
+
+	SDL_UnlockMutex(renderer->commandLock);
 }
 
 /* Backbuffer Functions */
@@ -2745,7 +2748,7 @@ static void SDLGPU_ResetBackbuffer(
 	SDL_GPUSwapchainComposition swapchainComposition;
 	SDL_GPUPresentMode presentMode;
 
-	SDL_LockMutex(renderer->copyPassMutex);
+	SDL_LockMutex(renderer->commandLock);
 	SDLGPU_INTERNAL_FlushCommandsAndStall(renderer);
 
 	SDLGPU_INTERNAL_DestroyFauxBackbuffer(renderer);
@@ -2797,7 +2800,7 @@ static void SDLGPU_ResetBackbuffer(
 		presentMode
 	);
 
-	SDL_UnlockMutex(renderer->copyPassMutex);
+	SDL_UnlockMutex(renderer->commandLock);
 }
 
 static void SDLGPU_GetBackbufferSize(
@@ -3022,7 +3025,7 @@ static void SDLGPU_INTERNAL_SetTextureData(
 	uint32_t dataLength,
 	bool cycleTexture
 ) {
-	SDL_LockMutex(renderer->copyPassMutex);
+	SDL_LockMutex(renderer->commandLock);
 
 	SDL_GPUTextureRegion textureRegion;
 	SDL_GPUTextureTransferInfo textureCopyParams;
@@ -3108,7 +3111,7 @@ static void SDLGPU_INTERNAL_SetTextureData(
 		renderer->textureUploadBufferOffset += dataLength;
 	}
 
-	SDL_UnlockMutex(renderer->copyPassMutex);
+	SDL_UnlockMutex(renderer->commandLock);
 }
 
 static void SDLGPU_SetTextureData2D(
@@ -3371,7 +3374,7 @@ static void SDLGPU_INTERNAL_SetBufferData(
 	uint32_t dataLength,
 	bool cycle
 ) {
-	SDL_LockMutex(renderer->copyPassMutex);
+	SDL_LockMutex(renderer->commandLock);
 
 	SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
 	SDL_GPUTransferBufferLocation transferLocation;
@@ -3443,7 +3446,7 @@ static void SDLGPU_INTERNAL_SetBufferData(
 		renderer->bufferUploadBufferOffset += dataLength;
 	}
 
-	SDL_UnlockMutex(renderer->copyPassMutex);
+	SDL_UnlockMutex(renderer->commandLock);
 }
 
 static void SDLGPU_SetVertexBufferData(
@@ -3541,7 +3544,7 @@ static void SDLGPU_INTERNAL_GetTextureData(
 	SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
 	uint8_t *src;
 
-	SDL_LockMutex(renderer->copyPassMutex);
+	SDL_LockMutex(renderer->commandLock);
 
 	/* Create transfer buffer if necessary */
 	if (renderer->textureDownloadBuffer == NULL)
@@ -3608,7 +3611,7 @@ static void SDLGPU_INTERNAL_GetTextureData(
 	SDL_memcpy(data, src, dataLength);
 	SDL_UnmapGPUTransferBuffer(renderer->device, renderer->textureDownloadBuffer);
 
-	SDL_UnlockMutex(renderer->copyPassMutex);
+	SDL_UnlockMutex(renderer->commandLock);
 }
 
 static void SDLGPU_INTERNAL_GetBufferData(
@@ -3623,7 +3626,7 @@ static void SDLGPU_INTERNAL_GetBufferData(
 	SDL_GPUTransferBufferCreateInfo transferBufferCreateInfo;
 	uint8_t *src;
 
-	SDL_LockMutex(renderer->copyPassMutex);
+	SDL_LockMutex(renderer->commandLock);
 
 	/* Create transfer buffer if necessary */
 	if (renderer->bufferDownloadBuffer == NULL)
@@ -3677,7 +3680,7 @@ static void SDLGPU_INTERNAL_GetBufferData(
 	SDL_memcpy(data, src, dataLength);
 	SDL_UnmapGPUTransferBuffer(renderer->device, renderer->bufferDownloadBuffer);
 
-	SDL_UnlockMutex(renderer->copyPassMutex);
+	SDL_UnlockMutex(renderer->commandLock);
 }
 
 static void SDLGPU_GetVertexBufferData(
@@ -4120,10 +4123,12 @@ static void SDLGPU_SetStringMarker(
 ) {
 	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
 
+	SDL_LockMutex(renderer->commandLock);
 	SDL_InsertGPUDebugLabel(
 		renderer->renderCommandBuffer,
 		text
 	);
+	SDL_UnlockMutex(renderer->commandLock);
 }
 
 static void SDLGPU_SetTextureName(
@@ -4168,7 +4173,7 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 	int32_t i, j;
 
 	// Completely flush command buffers and stall
-	SDL_LockMutex(renderer->copyPassMutex);
+	SDL_LockMutex(renderer->commandLock);
 
 	/* Ignore any pending render passes, they're getting canceled anyway */
 	renderer->needNewRenderPass = 0;
@@ -4179,8 +4184,8 @@ static void SDLGPU_DestroyDevice(FNA3D_Device *device)
 	SDL_CancelGPUCommandBuffer(renderer->renderCommandBuffer);
 	SDL_WaitForGPUIdle(renderer->device);
 
-	SDL_UnlockMutex(renderer->copyPassMutex);
-	SDL_DestroyMutex(renderer->copyPassMutex);
+	SDL_UnlockMutex(renderer->commandLock);
+	SDL_DestroyMutex(renderer->commandLock);
 
 	if (renderer->textureDownloadBuffer != NULL)
 	{
@@ -4343,7 +4348,7 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	SDL_memset(renderer, '\0', sizeof(SDLGPU_Renderer));
 
 	renderer->device = device;
-	renderer->copyPassMutex = SDL_CreateMutex();
+	renderer->commandLock = SDL_CreateMutex();
 
 	result->driverData = (FNA3D_Renderer*) renderer;
 
@@ -4579,7 +4584,8 @@ static FNA3D_Device* SDLGPU_CreateDevice(
 	);
 
 	/* Acquire command buffer, we are ready for takeoff */
-	SDLGPU_ResetCommandBufferState(renderer);
+	SDLGPU_INTERNAL_ResetUploadCommandBufferState(renderer);
+	SDLGPU_INTERNAL_ResetRenderCommandBufferState(renderer);
 
 	/* Enqueue dummy uploads */
 
