@@ -2632,10 +2632,13 @@ static SDLGPU_TextureHandle* SDLGPU_INTERNAL_CreateTextureWithHandle(
 	textureCreateInfo.sample_count = sampleCount;
 	textureCreateInfo.props = 0;
 
+	/* The GPU backend may need to issue commands for the default layout */
+	SDL_LockMutex(renderer->commandLock);
 	texture = SDL_CreateGPUTexture(
 		renderer->device,
 		&textureCreateInfo
 	);
+	SDL_UnlockMutex(renderer->commandLock);
 
 	if (texture == NULL)
 	{
