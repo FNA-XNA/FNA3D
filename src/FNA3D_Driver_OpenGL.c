@@ -5755,7 +5755,8 @@ static inline void CheckExtensions(
 		SDL_strstr(ext, "GL_EXT_texture_compression_s3tc") ||
 		SDL_strstr(ext, "GL_OES_texture_compression_S3TC") ||
 		SDL_strstr(ext, "GL_EXT_texture_compression_dxt3") ||
-		SDL_strstr(ext, "GL_EXT_texture_compression_dxt5")
+		SDL_strstr(ext, "GL_EXT_texture_compression_dxt5") ||
+		SDL_strstr(ext, "WEBGL_compressed_texture_s3tc")
 	);
 	uint8_t bc7 = (
 		SDL_strstr(ext, "GL_ARB_texture_compression_bptc") != NULL
