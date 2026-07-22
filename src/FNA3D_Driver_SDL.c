@@ -2660,12 +2660,18 @@ static void SDLGPU_INTERNAL_CreateFauxBackbuffer(
 ) {
 	SDL_GPUSampleCount sampleCount = XNAToSDL_SampleCount(presentationParameters->multiSampleCount);
 
+	/* A window can report a size of 0 (e.g. zero-height on Win32), but
+	 * texture dimensions must be >= 1
+	 */
+	int32_t backBufferWidth = SDL_max(1, presentationParameters->backBufferWidth);
+	int32_t backBufferHeight = SDL_max(1, presentationParameters->backBufferHeight);
+
 	if (sampleCount > SDL_GPU_SAMPLECOUNT_1)
 	{
 		renderer->fauxBackbufferColorRenderbuffer = SDLGPU_INTERNAL_CreateTextureWithHandle(
 			renderer,
-			presentationParameters->backBufferWidth,
-			presentationParameters->backBufferHeight,
+			backBufferWidth,
+			backBufferHeight,
 			1,
 			XNAToSDL_SurfaceFormat[presentationParameters->backBufferFormat],
 			1,
@@ -2676,8 +2682,8 @@ static void SDLGPU_INTERNAL_CreateFauxBackbuffer(
 	}
 	renderer->fauxBackbufferColorTexture = SDLGPU_INTERNAL_CreateTextureWithHandle(
 		renderer,
-		presentationParameters->backBufferWidth,
-		presentationParameters->backBufferHeight,
+		backBufferWidth,
+		backBufferHeight,
 		1,
 		XNAToSDL_SurfaceFormat[presentationParameters->backBufferFormat],
 		1,
@@ -2690,8 +2696,8 @@ static void SDLGPU_INTERNAL_CreateFauxBackbuffer(
 	{
 		renderer->fauxBackbufferDepthStencil = SDLGPU_INTERNAL_CreateTextureWithHandle(
 			renderer,
-			presentationParameters->backBufferWidth,
-			presentationParameters->backBufferHeight,
+			backBufferWidth,
+			backBufferHeight,
 			1,
 			XNAToSDL_DepthFormat(renderer, presentationParameters->depthStencilFormat),
 			1,
