@@ -107,6 +107,22 @@ typedef enum
 	VSYNC_FORCE_OFF
 } VSyncMode;
 
+typedef enum
+{
+	ERROR_NOTFOUND = -3,
+	ERROR_BADTRACE = -2,
+	ERROR_QUIT = -1,
+	ERROR_NONE = 0
+} ErrorCode;
+
+typedef struct ReplayOptions
+{
+	uint8_t forceDebugMode;
+	VSyncMode vsync;
+	uint8_t forceFullscreen;
+	uint32_t delayMS;
+} ReplayOptions;
+
 /* #define TOO_MUCH_RAM */
 #ifdef TOO_MUCH_RAM
 typedef struct FAKEIO
@@ -157,13 +173,8 @@ static size_t FAKE_ReadIO(FAKEIO *io, void *ptr, size_t size)
 #define SDL_ReadIO FAKE_ReadIO
 #endif /* TOO_MUCH_RAM */
 
-static uint8_t replay(
-	const char *filename,
-	uint8_t forceDebugMode,
-	VSyncMode vsync,
-	uint8_t fullscreen,
-	uint32_t delayMS
-) {
+static ErrorCode replay(const char *filename, const ReplayOptions *options)
+{
 	#define READ(val) SDL_ReadIO(ops, &val, sizeof(val))
 
 #ifdef USE_SDL3
@@ -185,7 +196,7 @@ static uint8_t replay(
 	FNA3D_Rect destinationRectangle;
 
 	/* Clear */
-	FNA3D_ClearOptions options;
+	FNA3D_ClearOptions clearOptions;
 	FNA3D_Vec4 color;
 	float depth;
 	int32_t stencil;
@@ -322,7 +333,7 @@ static uint8_t replay(
 	if (ops == NULL)
 	{
 		SDL_Log("%s not found!", filename);
-		return 0;
+		return ERROR_NOTFOUND;
 	}
 
 	/* Beginning of the file should be a CreateDevice call */
@@ -331,7 +342,7 @@ static uint8_t replay(
 	{
 		SDL_Log("%s is a bad trace!", filename);
 		SDL_CloseIO(ops);
-		return 0;
+		return ERROR_BADTRACE;
 	}
 	READ(presentationParameters.backBufferWidth);
 	READ(presentationParameters.backBufferHeight);
@@ -344,16 +355,16 @@ static uint8_t replay(
 	READ(presentationParameters.renderTargetUsage);
 	READ(debugMode);
 
-	if (vsync == VSYNC_FORCE_ON)
+	if (options->vsync == VSYNC_FORCE_ON)
 	{
 		presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_ONE;
 	}
-	else if (vsync == VSYNC_FORCE_OFF)
+	else if (options->vsync == VSYNC_FORCE_OFF)
 	{
 		presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_IMMEDIATE;
 	}
 
-	presentationParameters.isFullScreen |= fullscreen;
+	presentationParameters.isFullScreen |= options->forceFullscreen;
 
 	/* Create a window alongside the device */
 	flags = FNA3D_PrepareWindowAttributes();
@@ -377,7 +388,7 @@ static uint8_t replay(
 #endif
 		flags
 	);
-	device = FNA3D_CreateDevice(&presentationParameters, debugMode || forceDebugMode);
+	device = FNA3D_CreateDevice(&presentationParameters, debugMode || options->forceDebugMode);
 
 	/* Go through all the calls, let vsync do the timing if applicable */
 	run = 1;
@@ -416,20 +427,20 @@ static uint8_t replay(
 					run = 0;
 				}
 			}
-			if (delayMS > 0)
+			if (options->delayMS > 0)
 			{
-				SDL_Delay(delayMS);
+				SDL_Delay(options->delayMS);
 			}
 			break;
 		case MARK_CLEAR:
-			READ(options);
+			READ(clearOptions);
 			READ(color.x);
 			READ(color.y);
 			READ(color.z);
 			READ(color.w);
 			READ(depth);
 			READ(stencil);
-			FNA3D_Clear(device, options, &color, depth, stencil);
+			FNA3D_Clear(device, clearOptions, &color, depth, stencil);
 			break;
 		case MARK_DRAWINDEXEDPRIMITIVES:
 			READ(primitiveType);
@@ -772,15 +783,15 @@ static uint8_t replay(
 			READ(presentationParameters.presentationInterval);
 			READ(presentationParameters.displayOrientation);
 			READ(presentationParameters.renderTargetUsage);
-			if (vsync == VSYNC_FORCE_ON)
+			if (options->vsync == VSYNC_FORCE_ON)
 			{
 				presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_ONE;
 			}
-			else if (vsync == VSYNC_FORCE_OFF)
+			else if (options->vsync == VSYNC_FORCE_OFF)
 			{
 				presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_IMMEDIATE;
 			}
-			presentationParameters.isFullScreen |= fullscreen;
+			presentationParameters.isFullScreen |= options->forceFullscreen;
 			SDL_SetWindowFullscreen(
 				presentationParameters.deviceWindowHandle,
 				presentationParameters.isFullScreen ?
@@ -1390,19 +1401,79 @@ static uint8_t replay(
 	#undef FREE_TRACES
 	FNA3D_DestroyDevice(device);
 	SDL_DestroyWindow(presentationParameters.deviceWindowHandle);
-	return !run;
+	return run ? ERROR_NONE : ERROR_QUIT;
 
 	#undef REGISTER_OBJECT
 	#undef READ
 }
 
+#ifdef USE_SDL3
+static SDL_AtomicInt dialog_complete;
+
+static void SDLCALL dialog_callback(void *userdata, const char * const *filelist, int filter)
+{
+	char ***files = (char ***) userdata;
+	if (filelist == NULL)
+	{
+		*files = NULL;
+	}
+	else
+	{
+		const char * const *file = filelist;
+		size_t count = 0;
+		while (*file)
+		{
+			count += 1;
+			file++;
+		}
+		*files = (char**) SDL_malloc(sizeof(char*) * (count + 1));
+		for (size_t i = 0; i < count; i += 1)
+		{
+			(*files)[i] = SDL_strdup(filelist[i]);
+		}
+		(*files)[count] = NULL;
+	}
+	SDL_SetAtomicInt(&dialog_complete, 1);
+}
+
+static int replay_via_dialog(const ReplayOptions *options)
+{
+	char **files;
+
+	SDL_SetAtomicInt(&dialog_complete, 0);
+	SDL_ShowOpenFileDialog(dialog_callback, &files, NULL, NULL, 0, SDL_GetBasePath(), true);
+	while (SDL_GetAtomicInt(&dialog_complete) == 0)
+	{
+		SDL_PumpEvents();
+	}
+
+	if (files != NULL)
+	{
+		ErrorCode ret = ERROR_NONE;
+		char **file = files;
+		while (*file)
+		{
+			if (ret != ERROR_QUIT)
+			{
+				ret = replay(*file, options);
+			}
+			SDL_free(*file);
+			file++;
+		}
+		SDL_free(files);
+	}
+	return 0;
+}
+#endif
+
 int main(int argc, char **argv)
 {
 	int i;
-	uint8_t forceDebugMode = 0;
-	uint8_t forceFullscreen = 0;
-	VSyncMode vsync = VSYNC_DEFAULT;
-	uint32_t delayMS = 0;
+	ReplayOptions options;
+	options.forceDebugMode = 0;
+	options.forceFullscreen = 0;
+	options.vsync = VSYNC_DEFAULT;
+	options.delayMS = 0;
 
 	SDL_Init(SDL_INIT_VIDEO);
 
@@ -1413,23 +1484,23 @@ int main(int argc, char **argv)
 	{
 		if (SDL_strcmp(argv[i], "-debug") == 0)
 		{
-			forceDebugMode = 1;
+			options.forceDebugMode = 1;
 		}
 		else if (SDL_strcmp(argv[i], "-vsync") == 0)
 		{
-			vsync = VSYNC_FORCE_ON;
+			options.vsync = VSYNC_FORCE_ON;
 		}
 		else if (SDL_strcmp(argv[i], "-novsync") == 0)
 		{
-			vsync = VSYNC_FORCE_OFF;
+			options.vsync = VSYNC_FORCE_OFF;
 		}
 		else if (SDL_strcmp(argv[i], "-fullscreen") == 0)
 		{
-			forceFullscreen = 1;
+			options.forceFullscreen = 1;
 		}
 		else if (SDL_strstr(argv[i], "-delayms=") == argv[i])
 		{
-			delayMS = SDL_atoi(argv[i] + SDL_strlen("-delayms="));
+			options.delayMS = SDL_atoi(argv[i] + SDL_strlen("-delayms="));
 		}
 		else
 		{
@@ -1448,14 +1519,20 @@ int main(int argc, char **argv)
 #ifndef USE_SDL3
 		SDL_free(rootPath);
 #endif
-		replay(path, forceDebugMode, vsync, forceFullscreen, delayMS);
+		if (replay(path, &options) == ERROR_NOTFOUND)
+		{
+#ifdef USE_SDL3
+			SDL_free(path);
+			return replay_via_dialog(&options);
+#endif
+		}
 		SDL_free(path);
 	}
 	else
 	{
 		for (; i < argc; i += 1)
 		{
-			if (replay(argv[i], forceDebugMode, vsync, forceFullscreen, delayMS))
+			if (replay(argv[i], &options) == ERROR_QUIT)
 			{
 				break;
 			}
