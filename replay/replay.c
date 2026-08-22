@@ -26,6 +26,7 @@
 
 #ifdef USE_SDL3
 #include <SDL3/SDL.h>
+#undef SDL_WINDOW_FULLSCREEN_DESKTOP
 #define SDL_WINDOW_FULLSCREEN_DESKTOP SDL_WINDOW_FULLSCREEN
 #else
 #include <SDL.h>
@@ -40,6 +41,10 @@
 #endif
 #include <mojoshader.h>
 #include <FNA3D.h>
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
 
 #define MARK_CREATEDEVICE			0
 #define MARK_DESTROYDEVICE			1
@@ -173,22 +178,41 @@ static size_t FAKE_ReadIO(FAKEIO *io, void *ptr, size_t size)
 #define SDL_ReadIO FAKE_ReadIO
 #endif /* TOO_MUCH_RAM */
 
-static ErrorCode replay(const char *filename, const ReplayOptions *options)
+typedef struct ReplayContext
 {
-	#define READ(val) SDL_ReadIO(ops, &val, sizeof(val))
-
+	uint8_t finished, quit;
+	SDL_IOStream *ops;
 #ifdef USE_SDL3
 	const SDL_DisplayMode *mode;
 #endif
-	SDL_WindowFlags flags;
-	SDL_IOStream *ops;
-	SDL_Event evt;
-	uint8_t mark, run;
-
-	/* CreateDevice, ResetBackbuffer */
-	FNA3D_Device *device;
 	FNA3D_PresentationParameters presentationParameters;
-	uint8_t debugMode;
+	FNA3D_Device *device;
+	ReplayOptions options;
+
+	/* Trace Objects */
+	FNA3D_Texture **traceTexture;
+	uint64_t traceTextureCount;
+	FNA3D_Renderbuffer **traceRenderbuffer;
+	uint64_t traceRenderbufferCount;
+	FNA3D_Buffer **traceVertexBuffer;
+	uint64_t traceVertexBufferCount;
+	FNA3D_Buffer **traceIndexBuffer;
+	uint64_t traceIndexBufferCount;
+	FNA3D_Effect **traceEffect;
+	MOJOSHADER_effect **traceEffectData;
+	uint64_t traceEffectCount;
+	FNA3D_Query **traceQuery;
+	uint64_t traceQueryCount;
+} ReplayContext;
+
+static ReplayContext ctx;
+
+static void replayOneFrame()
+{
+	#define READ(val) SDL_ReadIO(ctx.ops, &val, sizeof(val))
+
+	SDL_Event evt;
+	uint8_t mark;
 
 	/* SwapBuffers */
 	uint8_t hasSource, hasDestination;
@@ -294,106 +318,29 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 	MOJOSHADER_effect *effectData;
 	FNA3D_Query *query;
 
-	/* Trace Objects */
-	FNA3D_Texture **traceTexture = NULL;
-	uint64_t traceTextureCount = 0;
-	FNA3D_Renderbuffer **traceRenderbuffer = NULL;
-	uint64_t traceRenderbufferCount = 0;
-	FNA3D_Buffer **traceVertexBuffer = NULL;
-	uint64_t traceVertexBufferCount = 0;
-	FNA3D_Buffer **traceIndexBuffer = NULL;
-	uint64_t traceIndexBufferCount = 0;
-	FNA3D_Effect **traceEffect = NULL;
-	MOJOSHADER_effect **traceEffectData = NULL;
-	uint64_t traceEffectCount = 0;
-	FNA3D_Query **traceQuery = NULL;
-	uint64_t traceQueryCount = 0;
 	uint64_t i, j, k;
 	#define REGISTER_OBJECT(array, type, object) \
-		for (i = 0; i < trace##array##Count; i += 1) \
+		for (i = 0; i < ctx.trace##array##Count; i += 1) \
 		{ \
-			if (trace##array[i] == NULL) \
+			if (ctx.trace##array[i] == NULL) \
 			{ \
-				trace##array[i] = object; \
+				ctx.trace##array[i] = object; \
 				break; \
 			} \
 		} \
-		if (i == trace##array##Count) \
+		if (i == ctx.trace##array##Count) \
 		{ \
-			trace##array##Count += 1; \
-			trace##array = (FNA3D_##type**) SDL_realloc( \
-				trace##array, \
-				sizeof(FNA3D_##type*) * trace##array##Count \
+			ctx.trace##array##Count += 1; \
+			ctx.trace##array = (FNA3D_##type**) SDL_realloc( \
+				ctx.trace##array, \
+				sizeof(FNA3D_##type*) * ctx.trace##array##Count \
 			); \
-			trace##array[i] = object; \
+			ctx.trace##array[i] = object; \
 		}
 
-	/* Check for the trace file */
-	ops = SDL_IOFromFile(filename, "rb");
-	if (ops == NULL)
-	{
-		SDL_Log("%s not found!", filename);
-		return ERROR_NOTFOUND;
-	}
-
-	/* Beginning of the file should be a CreateDevice call */
-	READ(mark);
-	if (mark != MARK_CREATEDEVICE)
-	{
-		SDL_Log("%s is a bad trace!", filename);
-		SDL_CloseIO(ops);
-		return ERROR_BADTRACE;
-	}
-	READ(presentationParameters.backBufferWidth);
-	READ(presentationParameters.backBufferHeight);
-	READ(presentationParameters.backBufferFormat);
-	READ(presentationParameters.multiSampleCount);
-	READ(presentationParameters.isFullScreen);
-	READ(presentationParameters.depthStencilFormat);
-	READ(presentationParameters.presentationInterval);
-	READ(presentationParameters.displayOrientation);
-	READ(presentationParameters.renderTargetUsage);
-	READ(debugMode);
-
-	if (options->vsync == VSYNC_FORCE_ON)
-	{
-		presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_ONE;
-	}
-	else if (options->vsync == VSYNC_FORCE_OFF)
-	{
-		presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_IMMEDIATE;
-	}
-
-	presentationParameters.isFullScreen |= options->forceFullscreen;
-
-	/* Create a window alongside the device */
-	flags = FNA3D_PrepareWindowAttributes();
-	if (presentationParameters.isFullScreen)
-	{
-		flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
-	}
-#ifdef USE_SDL3
-	flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
-	mode = SDL_GetDesktopDisplayMode(SDL_GetPrimaryDisplay());
-	SDL_Log("Pixel density is %f", mode->pixel_density);
-#endif
-	presentationParameters.deviceWindowHandle = SDL_CreateWindow(
-		"FNA3D Replay",
-#ifdef USE_SDL3
-		(int) (presentationParameters.backBufferWidth / mode->pixel_density),
-		(int) (presentationParameters.backBufferHeight / mode->pixel_density),
-#else
-		presentationParameters.backBufferWidth,
-		presentationParameters.backBufferHeight,
-#endif
-		flags
-	);
-	device = FNA3D_CreateDevice(&presentationParameters, debugMode || options->forceDebugMode);
-
 	/* Go through all the calls, let vsync do the timing if applicable */
-	run = 1;
 	READ(mark);
-	while (run && mark != MARK_DESTROYDEVICE)
+	while (!ctx.quit && mark != MARK_DESTROYDEVICE)
 	{
 		switch (mark)
 		{
@@ -415,21 +362,25 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 				READ(destinationRectangle.h);
 			}
 			FNA3D_SwapBuffers(
-				device,
+				ctx.device,
 				hasSource ? &sourceRectangle : NULL,
 				hasDestination ? &destinationRectangle : NULL,
-				presentationParameters.deviceWindowHandle
+				ctx.presentationParameters.deviceWindowHandle
 			);
 			while (SDL_PollEvent(&evt) > 0)
 			{
 				if (evt.type == SDL_EVENT_QUIT)
 				{
-					run = 0;
+					ctx.quit = 1;
 				}
 			}
-			if (options->delayMS > 0)
+			if (ctx.options.delayMS > 0)
 			{
-				SDL_Delay(options->delayMS);
+				SDL_Delay(ctx.options.delayMS);
+			}
+			if (!ctx.quit)
+			{
+				return; // see you next loop!
 			}
 			break;
 		case MARK_CLEAR:
@@ -440,7 +391,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(color.w);
 			READ(depth);
 			READ(stencil);
-			FNA3D_Clear(device, clearOptions, &color, depth, stencil);
+			FNA3D_Clear(ctx.device, clearOptions, &color, depth, stencil);
 			break;
 		case MARK_DRAWINDEXEDPRIMITIVES:
 			READ(primitiveType);
@@ -452,14 +403,14 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(i);
 			READ(indexElementSize);
 			FNA3D_DrawIndexedPrimitives(
-				device,
+				ctx.device,
 				primitiveType,
 				baseVertex,
 				minVertexIndex,
 				numVertices,
 				startIndex,
 				primitiveCount,
-				traceIndexBuffer[i],
+				ctx.traceIndexBuffer[i],
 				indexElementSize
 			);
 			break;
@@ -474,7 +425,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(i);
 			READ(indexElementSize);
 			FNA3D_DrawInstancedPrimitives(
-				device,
+				ctx.device,
 				primitiveType,
 				baseVertex,
 				minVertexIndex,
@@ -482,7 +433,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 				startIndex,
 				primitiveCount,
 				instanceCount,
-				traceIndexBuffer[i],
+				ctx.traceIndexBuffer[i],
 				indexElementSize
 			);
 			break;
@@ -491,7 +442,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(vertexStart);
 			READ(primitiveCount);
 			FNA3D_DrawPrimitives(
-				device,
+				ctx.device,
 				primitiveType,
 				vertexStart,
 				primitiveCount
@@ -504,29 +455,29 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(viewport.h);
 			READ(viewport.minDepth);
 			READ(viewport.maxDepth);
-			FNA3D_SetViewport(device, &viewport);
+			FNA3D_SetViewport(ctx.device, &viewport);
 			break;
 		case MARK_SETSCISSORRECT:
 			READ(scissor.x);
 			READ(scissor.y);
 			READ(scissor.w);
 			READ(scissor.h);
-			FNA3D_SetScissorRect(device, &scissor);
+			FNA3D_SetScissorRect(ctx.device, &scissor);
 			break;
 		case MARK_SETBLENDFACTOR:
 			READ(blendFactor.r);
 			READ(blendFactor.g);
 			READ(blendFactor.b);
 			READ(blendFactor.a);
-			FNA3D_SetBlendFactor(device, &blendFactor);
+			FNA3D_SetBlendFactor(ctx.device, &blendFactor);
 			break;
 		case MARK_SETMULTISAMPLEMASK:
 			READ(mask);
-			FNA3D_SetMultiSampleMask(device, mask);
+			FNA3D_SetMultiSampleMask(ctx.device, mask);
 			break;
 		case MARK_SETREFERENCESTENCIL:
 			READ(ref);
-			FNA3D_SetReferenceStencil(device, ref);
+			FNA3D_SetReferenceStencil(ctx.device, ref);
 			break;
 		case MARK_SETBLENDSTATE:
 			READ(blendState.colorSourceBlend);
@@ -544,7 +495,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(blendState.blendFactor.b);
 			READ(blendState.blendFactor.a);
 			READ(blendState.multiSampleMask);
-			FNA3D_SetBlendState(device, &blendState);
+			FNA3D_SetBlendState(ctx.device, &blendState);
 			break;
 		case MARK_SETDEPTHSTENCILSTATE:
 			READ(depthStencilState.depthBufferEnable);
@@ -563,7 +514,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(depthStencilState.ccwStencilPass);
 			READ(depthStencilState.ccwStencilFunction);
 			READ(depthStencilState.referenceStencil);
-			FNA3D_SetDepthStencilState(device, &depthStencilState);
+			FNA3D_SetDepthStencilState(ctx.device, &depthStencilState);
 			break;
 		case MARK_APPLYRASTERIZERSTATE:
 			READ(rasterizerState.fillMode);
@@ -572,7 +523,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(rasterizerState.slopeScaleDepthBias);
 			READ(rasterizerState.scissorTestEnable);
 			READ(rasterizerState.multiSampleAntiAlias);
-			FNA3D_ApplyRasterizerState(device, &rasterizerState);
+			FNA3D_ApplyRasterizerState(ctx.device, &rasterizerState);
 			break;
 		case MARK_VERIFYSAMPLER:
 			READ(index);
@@ -585,9 +536,9 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(sampler.maxAnisotropy);
 			READ(sampler.maxMipLevel);
 			FNA3D_VerifySampler(
-				device,
+				ctx.device,
 				index,
-				traceTexture[i],
+				ctx.traceTexture[i],
 				&sampler
 			);
 			break;
@@ -602,9 +553,9 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(sampler.maxAnisotropy);
 			READ(sampler.maxMipLevel);
 			FNA3D_VerifyVertexSampler(
-				device,
+				ctx.device,
 				index,
-				traceTexture[i],
+				ctx.traceTexture[i],
 				&sampler
 			);
 			break;
@@ -618,7 +569,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			{
 				binding = &bindings[vi];
 				READ(i);
-				binding->vertexBuffer = traceVertexBuffer[i];
+				binding->vertexBuffer = ctx.traceVertexBuffer[i];
 				READ(binding->vertexDeclaration.vertexStride);
 				READ(binding->vertexDeclaration.elementCount);
 				binding->vertexDeclaration.elements = (FNA3D_VertexElement*) SDL_malloc(
@@ -639,7 +590,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(bindingsUpdated);
 			READ(baseVertex);
 			FNA3D_ApplyVertexBufferBindings(
-				device,
+				ctx.device,
 				bindings,
 				numBindings,
 				bindingsUpdated,
@@ -687,7 +638,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 					if (nonNull)
 					{
 						READ(i);
-						target->texture = traceTexture[i];
+						target->texture = ctx.traceTexture[i];
 					}
 					else
 					{
@@ -698,7 +649,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 					if (nonNull)
 					{
 						READ(i);
-						target->colorBuffer = traceRenderbuffer[i];
+						target->colorBuffer = ctx.traceRenderbuffer[i];
 					}
 					else
 					{
@@ -711,7 +662,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			if (nonNull)
 			{
 				READ(i);
-				depthStencilBuffer = traceRenderbuffer[i];
+				depthStencilBuffer = ctx.traceRenderbuffer[i];
 			}
 			else
 			{
@@ -722,7 +673,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(preserveTargetContents);
 
 			FNA3D_SetRenderTargets(
-				device,
+				ctx.device,
 				renderTargets,
 				numRenderTargets,
 				depthStencilBuffer,
@@ -753,7 +704,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			if (nonNull)
 			{
 				READ(i);
-				resolveTarget.texture = traceTexture[i];
+				resolveTarget.texture = ctx.traceTexture[i];
 			}
 			else
 			{
@@ -764,51 +715,51 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			if (nonNull)
 			{
 				READ(i);
-				resolveTarget.colorBuffer = traceRenderbuffer[i];
+				resolveTarget.colorBuffer = ctx.traceRenderbuffer[i];
 			}
 			else
 			{
 				resolveTarget.colorBuffer = NULL;
 			}
 
-			FNA3D_ResolveTarget(device, &resolveTarget);
+			FNA3D_ResolveTarget(ctx.device, &resolveTarget);
 			break;
 		case MARK_RESETBACKBUFFER:
-			READ(presentationParameters.backBufferWidth);
-			READ(presentationParameters.backBufferHeight);
-			READ(presentationParameters.backBufferFormat);
-			READ(presentationParameters.multiSampleCount);
-			READ(presentationParameters.isFullScreen);
-			READ(presentationParameters.depthStencilFormat);
-			READ(presentationParameters.presentationInterval);
-			READ(presentationParameters.displayOrientation);
-			READ(presentationParameters.renderTargetUsage);
-			if (options->vsync == VSYNC_FORCE_ON)
+			READ(ctx.presentationParameters.backBufferWidth);
+			READ(ctx.presentationParameters.backBufferHeight);
+			READ(ctx.presentationParameters.backBufferFormat);
+			READ(ctx.presentationParameters.multiSampleCount);
+			READ(ctx.presentationParameters.isFullScreen);
+			READ(ctx.presentationParameters.depthStencilFormat);
+			READ(ctx.presentationParameters.presentationInterval);
+			READ(ctx.presentationParameters.displayOrientation);
+			READ(ctx.presentationParameters.renderTargetUsage);
+			if (ctx.options.vsync == VSYNC_FORCE_ON)
 			{
-				presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_ONE;
+				ctx.presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_ONE;
 			}
-			else if (options->vsync == VSYNC_FORCE_OFF)
+			else if (ctx.options.vsync == VSYNC_FORCE_OFF)
 			{
-				presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_IMMEDIATE;
+				ctx.presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_IMMEDIATE;
 			}
-			presentationParameters.isFullScreen |= options->forceFullscreen;
+			ctx.presentationParameters.isFullScreen |= ctx.options.forceFullscreen;
 			SDL_SetWindowFullscreen(
-				presentationParameters.deviceWindowHandle,
-				presentationParameters.isFullScreen ?
+				ctx.presentationParameters.deviceWindowHandle,
+				ctx.presentationParameters.isFullScreen ?
 					SDL_WINDOW_FULLSCREEN_DESKTOP :
 					0
 			);
 			SDL_SetWindowSize(
-				presentationParameters.deviceWindowHandle,
+				ctx.presentationParameters.deviceWindowHandle,
 #ifdef USE_SDL3
-				(int) (presentationParameters.backBufferWidth / mode->pixel_density),
-				(int) (presentationParameters.backBufferHeight / mode->pixel_density)
+				(int) (ctx.presentationParameters.backBufferWidth / ctx.mode->pixel_density),
+				(int) (ctx.presentationParameters.backBufferHeight / ctx.mode->pixel_density)
 #else
-				presentationParameters.backBufferWidth,
-				presentationParameters.backBufferHeight
+				ctx.presentationParameters.backBufferWidth,
+				ctx.presentationParameters.backBufferHeight
 #endif
 			);
-			FNA3D_ResetBackbuffer(device, &presentationParameters);
+			FNA3D_ResetBackbuffer(ctx.device, &ctx.presentationParameters);
 			break;
 		case MARK_READBACKBUFFER:
 			READ(x);
@@ -818,7 +769,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
 			FNA3D_ReadBackbuffer(
-				device,
+				ctx.device,
 				x,
 				y,
 				w,
@@ -835,7 +786,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(levelCount);
 			READ(isRenderTarget);
 			texture = FNA3D_CreateTexture2D(
-				device,
+				ctx.device,
 				format,
 				w,
 				h,
@@ -851,7 +802,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(d);
 			READ(levelCount);
 			texture = FNA3D_CreateTexture3D(
-				device,
+				ctx.device,
 				format,
 				w,
 				h,
@@ -866,7 +817,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(levelCount);
 			READ(isRenderTarget);
 			texture = FNA3D_CreateTextureCube(
-				device,
+				ctx.device,
 				format,
 				w,
 				levelCount,
@@ -876,8 +827,8 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			break;
 		case MARK_ADDDISPOSETEXTURE:
 			READ(i);
-			FNA3D_AddDisposeTexture(device, traceTexture[i]);
-			traceTexture[i] = NULL;
+			FNA3D_AddDisposeTexture(ctx.device, ctx.traceTexture[i]);
+			ctx.traceTexture[i] = NULL;
 			break;
 		case MARK_SETTEXTUREDATA2D:
 			READ(i);
@@ -888,10 +839,10 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(level);
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
-			SDL_ReadIO(ops, miscBuffer, dataLength);
+			SDL_ReadIO(ctx.ops, miscBuffer, dataLength);
 			FNA3D_SetTextureData2D(
-				device,
-				traceTexture[i],
+				ctx.device,
+				ctx.traceTexture[i],
 				x,
 				y,
 				w,
@@ -913,10 +864,10 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(level);
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
-			SDL_ReadIO(ops, miscBuffer, dataLength);
+			SDL_ReadIO(ctx.ops, miscBuffer, dataLength);
 			FNA3D_SetTextureData3D(
-				device,
-				traceTexture[i],
+				ctx.device,
+				ctx.traceTexture[i],
 				x,
 				y,
 				z,
@@ -939,10 +890,10 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(level);
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
-			SDL_ReadIO(ops, miscBuffer, dataLength);
+			SDL_ReadIO(ctx.ops, miscBuffer, dataLength);
 			FNA3D_SetTextureDataCube(
-				device,
-				traceTexture[i],
+				ctx.device,
+				ctx.traceTexture[i],
 				x,
 				y,
 				w,
@@ -964,12 +915,12 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(h);
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
-			SDL_ReadIO(ops, miscBuffer, dataLength);
+			SDL_ReadIO(ctx.ops, miscBuffer, dataLength);
 			FNA3D_SetTextureDataYUV(
-				device,
-				traceTexture[i],
-				traceTexture[j],
-				traceTexture[k],
+				ctx.device,
+				ctx.traceTexture[i],
+				ctx.traceTexture[j],
+				ctx.traceTexture[k],
 				x,
 				y,
 				w,
@@ -989,8 +940,8 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
 			FNA3D_GetTextureData2D(
-				device,
-				traceTexture[i],
+				ctx.device,
+				ctx.traceTexture[i],
 				x,
 				y,
 				w,
@@ -1013,8 +964,8 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
 			FNA3D_GetTextureData3D(
-				device,
-				traceTexture[i],
+				ctx.device,
+				ctx.traceTexture[i],
 				x,
 				y,
 				z,
@@ -1038,8 +989,8 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
 			FNA3D_GetTextureDataCube(
-				device,
-				traceTexture[i],
+				ctx.device,
+				ctx.traceTexture[i],
 				x,
 				y,
 				w,
@@ -1060,14 +1011,14 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			if (nonNull)
 			{
 				READ(i);
-				texture = traceTexture[i];
+				texture = ctx.traceTexture[i];
 			}
 			else
 			{
 				texture = NULL;
 			}
 			renderbuffer = FNA3D_GenColorRenderbuffer(
-				device,
+				ctx.device,
 				w,
 				h,
 				format,
@@ -1082,7 +1033,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(depthFormat);
 			READ(multiSampleCount);
 			renderbuffer = FNA3D_GenDepthStencilRenderbuffer(
-				device,
+				ctx.device,
 				w,
 				h,
 				depthFormat,
@@ -1093,17 +1044,17 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 		case MARK_ADDDISPOSERENDERBUFFER:
 			READ(i);
 			FNA3D_AddDisposeRenderbuffer(
-				device,
-				traceRenderbuffer[i]
+				ctx.device,
+				ctx.traceRenderbuffer[i]
 			);
-			traceRenderbuffer[i] = NULL;
+			ctx.traceRenderbuffer[i] = NULL;
 			break;
 		case MARK_GENVERTEXBUFFER:
 			READ(dynamic);
 			READ(usage);
 			READ(sizeInBytes);
 			buffer = FNA3D_GenVertexBuffer(
-				device,
+				ctx.device,
 				dynamic,
 				usage,
 				sizeInBytes
@@ -1113,10 +1064,10 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 		case MARK_ADDDISPOSEVERTEXBUFFER:
 			READ(i);
 			FNA3D_AddDisposeVertexBuffer(
-				device,
-				traceVertexBuffer[i]
+				ctx.device,
+				ctx.traceVertexBuffer[i]
 			);
-			traceVertexBuffer[i] = NULL;
+			ctx.traceVertexBuffer[i] = NULL;
 			break;
 		case MARK_SETVERTEXBUFFERDATA:
 			READ(i);
@@ -1126,10 +1077,10 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(vertexStride);
 			READ(dataOptions);
 			miscBuffer = SDL_malloc(vertexStride * elementCount);
-			SDL_ReadIO(ops, miscBuffer, vertexStride * elementCount);
+			SDL_ReadIO(ctx.ops, miscBuffer, vertexStride * elementCount);
 			FNA3D_SetVertexBufferData(
-				device,
-				traceVertexBuffer[i],
+				ctx.device,
+				ctx.traceVertexBuffer[i],
 				offsetInBytes,
 				miscBuffer,
 				elementCount,
@@ -1147,8 +1098,8 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(vertexStride);
 			miscBuffer = SDL_malloc(vertexStride * elementCount);
 			FNA3D_GetVertexBufferData(
-				device,
-				traceVertexBuffer[i],
+				ctx.device,
+				ctx.traceVertexBuffer[i],
 				offsetInBytes,
 				miscBuffer,
 				elementCount,
@@ -1162,7 +1113,7 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(usage);
 			READ(sizeInBytes);
 			buffer = FNA3D_GenIndexBuffer(
-				device,
+				ctx.device,
 				dynamic,
 				usage,
 				sizeInBytes
@@ -1172,10 +1123,10 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 		case MARK_ADDDISPOSEINDEXBUFFER:
 			READ(i);
 			FNA3D_AddDisposeIndexBuffer(
-				device,
-				traceIndexBuffer[i]
+				ctx.device,
+				ctx.traceIndexBuffer[i]
 			);
-			traceIndexBuffer[i] = NULL;
+			ctx.traceIndexBuffer[i] = NULL;
 			break;
 		case MARK_SETINDEXBUFFERDATA:
 			READ(i);
@@ -1183,10 +1134,10 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(dataLength);
 			READ(dataOptions);
 			miscBuffer = SDL_malloc(dataLength);
-			SDL_ReadIO(ops, miscBuffer, dataLength);
+			SDL_ReadIO(ctx.ops, miscBuffer, dataLength);
 			FNA3D_SetIndexBufferData(
-				device,
-				traceIndexBuffer[i],
+				ctx.device,
+				ctx.traceIndexBuffer[i],
 				offsetInBytes,
 				miscBuffer,
 				dataLength,
@@ -1200,8 +1151,8 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
 			FNA3D_GetIndexBufferData(
-				device,
-				traceIndexBuffer[i],
+				ctx.device,
+				ctx.traceIndexBuffer[i],
 				offsetInBytes,
 				miscBuffer,
 				dataLength
@@ -1211,101 +1162,101 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 		case MARK_CREATEEFFECT:
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
-			SDL_ReadIO(ops, miscBuffer, dataLength);
+			SDL_ReadIO(ctx.ops, miscBuffer, dataLength);
 			FNA3D_CreateEffect(
-				device,
+				ctx.device,
 				(uint8_t*) miscBuffer,
 				dataLength,
 				&effect,
 				&effectData
 			);
 			SDL_free(miscBuffer);
-			for (i = 0; i < traceEffectCount; i += 1)
+			for (i = 0; i < ctx.traceEffectCount; i += 1)
 			{
-				if (traceEffect[i] == NULL)
+				if (ctx.traceEffect[i] == NULL)
 				{
-					traceEffect[i] = effect;
-					traceEffectData[i] = effectData;
+					ctx.traceEffect[i] = effect;
+					ctx.traceEffectData[i] = effectData;
 					break;
 				}
 			}
-			if (i == traceEffectCount)
+			if (i == ctx.traceEffectCount)
 			{
-				traceEffectCount += 1;
-				traceEffect = (FNA3D_Effect**) SDL_realloc(
-					traceEffect,
-					sizeof(FNA3D_Effect*) * traceEffectCount
+				ctx.traceEffectCount += 1;
+				ctx.traceEffect = (FNA3D_Effect**) SDL_realloc(
+					ctx.traceEffect,
+					sizeof(FNA3D_Effect*) * ctx.traceEffectCount
 				);
-				traceEffectData = (MOJOSHADER_effect**) SDL_realloc(
-					traceEffectData,
-					sizeof(MOJOSHADER_effect*) * traceEffectCount
+				ctx.traceEffectData = (MOJOSHADER_effect**) SDL_realloc(
+					ctx.traceEffectData,
+					sizeof(MOJOSHADER_effect*) * ctx.traceEffectCount
 				);
-				traceEffect[i] = effect;
-				traceEffectData[i] = effectData;
+				ctx.traceEffect[i] = effect;
+				ctx.traceEffectData[i] = effectData;
 			}
 			break;
 		case MARK_CLONEEFFECT:
 			READ(i);
 			FNA3D_CloneEffect(
-				device,
-				traceEffect[i],
+				ctx.device,
+				ctx.traceEffect[i],
 				&effect,
 				&effectData
 			);
-			for (i = 0; i < traceEffectCount; i += 1)
+			for (i = 0; i < ctx.traceEffectCount; i += 1)
 			{
-				if (traceEffect[i] == NULL)
+				if (ctx.traceEffect[i] == NULL)
 				{
-					traceEffect[i] = effect;
-					traceEffectData[i] = effectData;
+					ctx.traceEffect[i] = effect;
+					ctx.traceEffectData[i] = effectData;
 					break;
 				}
 			}
-			if (i == traceEffectCount)
+			if (i == ctx.traceEffectCount)
 			{
-				traceEffectCount += 1;
-				traceEffect = (FNA3D_Effect**) SDL_realloc(
-					traceEffect,
-					sizeof(FNA3D_Effect*) * traceEffectCount
+				ctx.traceEffectCount += 1;
+				ctx.traceEffect = (FNA3D_Effect**) SDL_realloc(
+					ctx.traceEffect,
+					sizeof(FNA3D_Effect*) * ctx.traceEffectCount
 				);
-				traceEffectData = (MOJOSHADER_effect**) SDL_realloc(
-					traceEffectData,
-					sizeof(MOJOSHADER_effect*) * traceEffectCount
+				ctx.traceEffectData = (MOJOSHADER_effect**) SDL_realloc(
+					ctx.traceEffectData,
+					sizeof(MOJOSHADER_effect*) * ctx.traceEffectCount
 				);
-				traceEffect[i] = effect;
-				traceEffectData[i] = effectData;
+				ctx.traceEffect[i] = effect;
+				ctx.traceEffectData[i] = effectData;
 			}
 			break;
 		case MARK_ADDDISPOSEEFFECT:
 			READ(i);
-			FNA3D_AddDisposeEffect(device, traceEffect[i]);
-			traceEffect[i] = NULL;
-			traceEffectData[i] = NULL;
+			FNA3D_AddDisposeEffect(ctx.device, ctx.traceEffect[i]);
+			ctx.traceEffect[i] = NULL;
+			ctx.traceEffectData[i] = NULL;
 			break;
 		case MARK_SETEFFECTTECHNIQUE:
 			READ(i);
 			READ(technique);
 			FNA3D_SetEffectTechnique(
-				device,
-				traceEffect[i],
-				&traceEffectData[i]->techniques[technique]
+				ctx.device,
+				ctx.traceEffect[i],
+				&ctx.traceEffectData[i]->techniques[technique]
 			);
 			break;
 		case MARK_APPLYEFFECT:
 			READ(i);
 			READ(pass);
-			effectData = traceEffectData[i];
+			effectData = ctx.traceEffectData[i];
 			for (vi = 0; vi < effectData->param_count; vi += 1)
 			{
 				SDL_ReadIO(
-					ops,
+					ctx.ops,
 					effectData->params[vi].value.values,
 					effectData->params[vi].value.value_count * 4
 				);
 			}
 			FNA3D_ApplyEffect(
-				device,
-				traceEffect[i],
+				ctx.device,
+				ctx.traceEffect[i],
 				pass,
 				&changes
 			);
@@ -1313,45 +1264,45 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 		case MARK_BEGINPASSRESTORE:
 			READ(i);
 			FNA3D_BeginPassRestore(
-				device,
-				traceEffect[i],
+				ctx.device,
+				ctx.traceEffect[i],
 				&changes
 			);
 			break;
 		case MARK_ENDPASSRESTORE:
 			READ(i);
-			FNA3D_EndPassRestore(device, traceEffect[i]);
+			FNA3D_EndPassRestore(ctx.device, ctx.traceEffect[i]);
 			break;
 		case MARK_CREATEQUERY:
-			query = FNA3D_CreateQuery(device);
+			query = FNA3D_CreateQuery(ctx.device);
 			REGISTER_OBJECT(Query, Query, query)
 			break;
 		case MARK_ADDDISPOSEQUERY:
 			READ(i);
-			FNA3D_AddDisposeQuery(device, traceQuery[i]);
-			traceQuery[i] = NULL;
+			FNA3D_AddDisposeQuery(ctx.device, ctx.traceQuery[i]);
+			ctx.traceQuery[i] = NULL;
 			break;
 		case MARK_QUERYBEGIN:
 			READ(i);
-			FNA3D_QueryBegin(device, traceQuery[i]);
+			FNA3D_QueryBegin(ctx.device, ctx.traceQuery[i]);
 			break;
 		case MARK_QUERYEND:
 			READ(i);
-			FNA3D_QueryEnd(device, traceQuery[i]);
+			FNA3D_QueryEnd(ctx.device, ctx.traceQuery[i]);
 			break;
 		case MARK_QUERYPIXELCOUNT:
 			READ(i);
-			while (!FNA3D_QueryComplete(device, traceQuery[i]))
+			while (!FNA3D_QueryComplete(ctx.device, ctx.traceQuery[i]))
 			{
 				SDL_Delay(0);
 			}
-			FNA3D_QueryBegin(device, traceQuery[i]);
+			FNA3D_QueryBegin(ctx.device, ctx.traceQuery[i]);
 			break;
 		case MARK_SETSTRINGMARKER:
 			READ(dataLength);
 			miscBuffer = SDL_malloc(dataLength);
-			SDL_ReadIO(ops, miscBuffer, dataLength);
-			FNA3D_SetStringMarker(device, (char*) miscBuffer);
+			SDL_ReadIO(ctx.ops, miscBuffer, dataLength);
+			FNA3D_SetStringMarker(ctx.device, (char*) miscBuffer);
 			SDL_free(miscBuffer);
 			break;
 		case MARK_SETTEXTURENAME:
@@ -1369,23 +1320,23 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 	}
 
 	/* Clean up. We out. */
-	SDL_CloseIO(ops);
+	SDL_CloseIO(ctx.ops);
 	#define FREE_TRACES(type) \
-		if (trace##type##Count > 0) \
+		if (ctx.trace##type##Count > 0) \
 		{ \
-			for (i = 0; i < trace##type##Count; i += 1) \
+			for (i = 0; i < ctx.trace##type##Count; i += 1) \
 			{ \
-				if (trace##type[i] != NULL) \
+				if (ctx.trace##type[i] != NULL) \
 				{ \
 					FNA3D_AddDispose##type( \
-						device, \
-						trace##type[i] \
+						ctx.device, \
+						ctx.trace##type[i] \
 					); \
 				} \
 			} \
-			SDL_free(trace##type); \
-			trace##type = NULL; \
-			trace##type##Count = 0; \
+			SDL_free(ctx.trace##type); \
+			ctx.trace##type = NULL; \
+			ctx.trace##type##Count = 0; \
 		}
 	FREE_TRACES(Texture)
 	FREE_TRACES(Renderbuffer)
@@ -1393,18 +1344,113 @@ static ErrorCode replay(const char *filename, const ReplayOptions *options)
 	FREE_TRACES(IndexBuffer)
 	FREE_TRACES(Effect)
 	FREE_TRACES(Query)
-	if (traceEffectData != NULL)
+	if (ctx.traceEffectData != NULL)
 	{
-		SDL_free(traceEffectData);
-		traceEffectData = NULL;
+		SDL_free(ctx.traceEffectData);
+		ctx.traceEffectData = NULL;
 	}
 	#undef FREE_TRACES
-	FNA3D_DestroyDevice(device);
-	SDL_DestroyWindow(presentationParameters.deviceWindowHandle);
-	return run ? ERROR_NONE : ERROR_QUIT;
+	FNA3D_DestroyDevice(ctx.device);
+	SDL_DestroyWindow(ctx.presentationParameters.deviceWindowHandle);
+
+	if (!ctx.quit)
+	{
+		ctx.finished = true;
+	}
 
 	#undef REGISTER_OBJECT
 	#undef READ
+
+#ifdef __EMSCRIPTEN__
+	emscripten_cancel_main_loop();
+#endif
+}
+
+static ErrorCode replay(const char *filename, const ReplayOptions *options)
+{
+	uint8_t mark, debugMode;
+	SDL_WindowFlags flags;
+
+	/* Reset the context */
+	SDL_zero(ctx);
+	ctx.options = *options;
+
+	/* Check for the trace file */
+	ctx.ops = SDL_IOFromFile(filename, "rb");
+	if (ctx.ops == NULL)
+	{
+		SDL_Log("%s not found!", filename);
+		return ERROR_NOTFOUND;
+	}
+
+	#define READ(val) SDL_ReadIO(ctx.ops, &val, sizeof(val))
+
+	/* Beginning of the file should be a CreateDevice call */
+	READ(mark);
+	if (mark != MARK_CREATEDEVICE)
+	{
+		SDL_Log("%s is a bad trace!", filename);
+		SDL_CloseIO(ctx.ops);
+		return ERROR_BADTRACE;
+	}
+	READ(ctx.presentationParameters.backBufferWidth);
+	READ(ctx.presentationParameters.backBufferHeight);
+	READ(ctx.presentationParameters.backBufferFormat);
+	READ(ctx.presentationParameters.multiSampleCount);
+	READ(ctx.presentationParameters.isFullScreen);
+	READ(ctx.presentationParameters.depthStencilFormat);
+	READ(ctx.presentationParameters.presentationInterval);
+	READ(ctx.presentationParameters.displayOrientation);
+	READ(ctx.presentationParameters.renderTargetUsage);
+	READ(debugMode);
+
+	#undef READ
+
+	if (options->vsync == VSYNC_FORCE_ON)
+	{
+		ctx.presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_ONE;
+	}
+	else if (options->vsync == VSYNC_FORCE_OFF)
+	{
+		ctx.presentationParameters.presentationInterval = FNA3D_PRESENTINTERVAL_IMMEDIATE;
+	}
+
+	ctx.presentationParameters.isFullScreen |= options->forceFullscreen;
+
+	/* Create a window alongside the device */
+	flags = FNA3D_PrepareWindowAttributes();
+	if (ctx.presentationParameters.isFullScreen)
+	{
+		flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+	}
+#ifdef USE_SDL3
+	flags |= SDL_WINDOW_HIGH_PIXEL_DENSITY;
+	ctx.mode = SDL_GetDesktopDisplayMode(SDL_GetPrimaryDisplay());
+	SDL_Log("Pixel density is %f", ctx.mode->pixel_density);
+#endif
+	ctx.presentationParameters.deviceWindowHandle = SDL_CreateWindow(
+		"FNA3D Replay",
+#ifdef USE_SDL3
+		(int) (ctx.presentationParameters.backBufferWidth / ctx.mode->pixel_density),
+		(int) (ctx.presentationParameters.backBufferHeight / ctx.mode->pixel_density),
+#else
+		ctx.presentationParameters.backBufferWidth,
+		ctx.presentationParameters.backBufferHeight,
+#endif
+		flags
+	);
+	ctx.device = FNA3D_CreateDevice(&ctx.presentationParameters, debugMode || options->forceDebugMode);
+
+#ifdef __EMSCRIPTEN__
+	emscripten_set_main_loop(replayOneFrame, 0, 1);
+	return ERROR_NONE; // never actually excuted since the main loop takes over!
+#else
+	while (!ctx.quit && !ctx.finished)
+	{
+		replayOneFrame();
+	}
+	return ctx.quit ? ERROR_QUIT : ERROR_NONE;
+#endif
 }
 
 #ifdef USE_SDL3
