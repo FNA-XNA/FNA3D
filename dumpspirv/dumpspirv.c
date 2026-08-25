@@ -1253,6 +1253,14 @@ static uint8_t compileFromTrace(const char *filename, const char *folder, SDL_IO
 			break;
 		case MARK_ADDDISPOSEEFFECT:
 			READ(i);
+			if (traceEffectData[i] == currentEffect)
+			{
+				MOJOSHADER_effectEndPass(currentEffect);
+				MOJOSHADER_effectEnd(currentEffect);
+				currentEffect = NULL;
+				currentTechnique = NULL;
+				currentPass = 0;
+			}
 			MOJOSHADER_deleteEffect(traceEffectData[i]);
 			traceEffect[i] = NULL;
 			traceEffectData[i] = NULL;
