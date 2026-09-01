@@ -2404,21 +2404,29 @@ static void SDLGPU_INTERNAL_BindDeferredState(
 		);
 		if (renderer->needVertexSamplerBind)
 		{
-			SDL_BindGPUVertexSamplers(
-				renderer->renderPass,
-				0,
-				renderer->vertexTextureSamplerBindings,
-				MOJOSHADER_sdlGetSamplerSlots(vertShaderData)
-			);
+			int slots = MOJOSHADER_sdlGetSamplerSlots(vertShaderData);
+			if (slots > 0)
+			{
+				SDL_BindGPUVertexSamplers(
+					renderer->renderPass,
+					0,
+					renderer->vertexTextureSamplerBindings,
+					slots
+				);
+			}
 		}
 		if (renderer->needFragmentSamplerBind)
 		{
-			SDL_BindGPUFragmentSamplers(
-				renderer->renderPass,
-				0,
-				renderer->fragmentTextureSamplerBindings,
-				MOJOSHADER_sdlGetSamplerSlots(fragShaderData)
-			);
+			int slots = MOJOSHADER_sdlGetSamplerSlots(fragShaderData);
+			if (slots > 0)
+			{
+				SDL_BindGPUFragmentSamplers(
+					renderer->renderPass,
+					0,
+					renderer->fragmentTextureSamplerBindings,
+					slots
+				);
+			}
 		}
 	}
 
