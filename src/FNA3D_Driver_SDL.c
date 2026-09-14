@@ -2116,7 +2116,14 @@ static void SDLGPU_SetViewport(
 	{
 		renderer->viewport = *viewport;
 
-		if (renderer->renderPass != NULL)
+		/* If we're waiting for a new render pass we can avoid making
+		 * this call, since BeginRenderPass does it for us anyway.
+		 *
+		 * This also avoids potential spec violations with rects that
+		 * are larger than the current render pass target size.
+		 * -flibit
+		 */
+		if (renderer->renderPass != NULL && !renderer->needNewRenderPass)
 		{
 			SDL_LockMutex(renderer->commandLock);
 			SDLGPU_INTERNAL_UpdateViewport(renderer);
@@ -2136,7 +2143,14 @@ static void SDLGPU_SetScissorRect(
 		renderer->viewport.w, scissor->w,
 		renderer->viewport.h, scissor->h);
 
-	if (renderer->renderPass != NULL && renderer->fnaRasterizerState.scissorTestEnable)
+	/* If we're waiting for a new render pass we can avoid making
+	 * this call, since BeginRenderPass does it for us anyway.
+	 *
+	 * This also avoids potential spec violations with rects that
+	 * are larger than the current render pass target size.
+	 * -flibit
+	 */
+	if (renderer->renderPass != NULL && !renderer->needNewRenderPass && renderer->fnaRasterizerState.scissorTestEnable)
 	{
 		SDL_LockMutex(renderer->commandLock);
 		SDL_SetGPUScissor(
