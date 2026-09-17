@@ -2319,7 +2319,7 @@ static void SDLGPU_ApplyRasterizerState(
 	{
 		renderer->fnaRasterizerState.scissorTestEnable = rasterizerState->scissorTestEnable;
 
-		if (renderer->renderPass != NULL)
+		if (renderer->renderPass != NULL && !renderer->needNewRenderPass)
 		{
 			if (renderer->fnaRasterizerState.scissorTestEnable)
 			{
