@@ -300,7 +300,7 @@ uint8_t* FNA3D_Image_Load(
 			);
 		}
 		SDL_DestroySurface(surface);
-		SDL_free(result);
+		STBI_FREE(result);
 
 		/* We're going to cheat and let the client take the memory! */
 		result = (uint8_t*) newSurface->pixels;
