@@ -124,8 +124,8 @@ extern void FNA3D_LogWarn(const char *fmt, ...);
 #define STBI_ASSERT SDL_assert
 #ifdef USE_SDL3
 #define STBI_MALLOC(s) SDL_aligned_alloc(SDL_GetSIMDAlignment(), s);
-#define STBI_REALLOC(p, s) SDL_assert(!"Should never see this!")
-#define STBI_REALLOC_SIZED(p, o, n) FNA3D_Image_LazyRealloc(p, o, n)
+#define STBI_REALLOC FNA3D_IMAGE_COMPILER_ERROR_LOL
+#define STBI_REALLOC_SIZED FNA3D_Image_LazyRealloc
 #define STBI_FREE SDL_aligned_free
 static void* FNA3D_Image_LazyRealloc(void *mem, size_t old, size_t new)
 {
