@@ -216,7 +216,8 @@ uint8_t* FNA3D_Image_Load(
 		FNA3D_LogWarn("Image loading failed: %s", stbi_failure_reason());
 	}
 
-	if (forceW != -1 && forceH != -1)
+	if (	(forceW != -1 && forceH != -1) &&
+			(forceW != *w || forceH != *h)	)
 	{
 		surface = SDL_CreateSurfaceFrom(
 			*w,
