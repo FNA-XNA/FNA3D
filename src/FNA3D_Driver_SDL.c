@@ -3521,6 +3521,7 @@ static void SDLGPU_SetIndexBufferData(
 	int32_t dataLength,
 	FNA3D_SetDataOptions options
 ) {
+	SDLGPU_Renderer *renderer = (SDLGPU_Renderer*) driverData;
 	SDLGPU_BufferHandle *bufferHandle = (SDLGPU_BufferHandle*) buffer;
 
 	bool cycle;
@@ -3538,8 +3539,16 @@ static void SDLGPU_SetIndexBufferData(
 		cycle = false;
 	}
 
+	if (cycle && renderer->indexBufferBinding.buffer == bufferHandle->buffer)
+	{
+		/* Cycling gives the buffer new memory, but the render pass still has
+		 * the old memory bound, so make the next draw bind it again.
+		 */
+		renderer->indexBufferBinding.buffer = NULL;
+	}
+
 	SDLGPU_INTERNAL_SetBufferData(
-		(SDLGPU_Renderer*) driverData,
+		renderer,
 		bufferHandle->buffer,
 		(uint32_t) offsetInBytes,
 		data,
