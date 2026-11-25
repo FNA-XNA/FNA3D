@@ -2570,8 +2570,10 @@ static void D3D11_INTERNAL_CreateSwapChain(
 	HWND dxgiHandle;
 	void* factory4;
 	IDXGISwapChain3 *swapchain3;
+	IDXGIDevice1 *dxgiDevice;
 	DXGI_COLOR_SPACE_TYPE colorSpace;
 	HRESULT res;
+	int reducedLatency = SDL_GetHintBoolean("FNA3D_REDUCED_FRAME_LATENCY", SDL_FALSE);
 
 	uint8_t sRGB = 0;
 	uint8_t growSwapchains = (swapchainData == NULL);
@@ -2615,7 +2617,7 @@ static void D3D11_INTERNAL_CreateSwapChain(
 	swapchainDesc.SampleDesc.Count = 1;
 	swapchainDesc.SampleDesc.Quality = 0;
 	swapchainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	swapchainDesc.BufferCount = 3;
+	swapchainDesc.BufferCount = reducedLatency ? 2 : 3;
 	swapchainDesc.OutputWindow = dxgiHandle;
 	swapchainDesc.Windowed = 1;
 	if (renderer->supportsTearing)
@@ -2718,6 +2720,30 @@ static void D3D11_INTERNAL_CreateSwapChain(
 			IDXGISwapChain3_SetColorSpace1(swapchain3, colorSpace);
 
 			IDXGISwapChain_Release(swapchain);
+		}
+	}
+
+	if (reducedLatency)
+	{
+		/* 
+		  If possible, limit queued frames to 1. (The default is 3.)
+		  This significantly reduces rendering latency, especially in windowed mode. 
+		  Note that this will reduce maximum framerate somewhat.
+		*/
+		if (SUCCEEDED(IDXGIDevice1_QueryInterface(
+			renderer->device,
+			&D3D_IID_IDXGIDevice1,
+			(void**)&dxgiDevice
+		)))
+		{
+			if (!SUCCEEDED(IDXGIDevice1_SetMaximumFrameLatency(dxgiDevice, 1)))
+			{
+				FNA3D_LogWarn("IDXGIDevice1_SetMaximumFrameLatency failed");
+			}
+		}
+		else
+		{
+			FNA3D_LogWarn("IDXGIDevice1_QueryInterface failed");
 		}
 	}
 
